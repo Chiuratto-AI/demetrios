@@ -94,6 +94,21 @@ compiler/src/
 |-- effects/         # Effect system runtime
 |   +-- mod.rs       # Effect handlers
 |
+|-- refinement/      # Refinement type verification
+|   +-- mod.rs       # Z3 SMT solver integration
+|
+|-- lsp/             # Language Server Protocol
+|   |-- mod.rs       # Module exports
+|   |-- server.rs    # Main LSP server (tower-lsp)
+|   |-- document.rs  # Rope-based document management
+|   |-- analysis.rs  # Semantic analysis host
+|   |-- hover.rs     # Hover information provider
+|   |-- completion.rs# Code completion provider
+|   |-- definition.rs# Go to definition provider
+|   |-- references.rs# Find references provider
+|   |-- semantic_tokens.rs # Semantic highlighting
+|   +-- diagnostics.rs # Real-time error reporting
+|
 |-- mlir/            # MLIR integration
 |   +-- mod.rs       # MLIR lowering (stub)
 |
@@ -102,6 +117,12 @@ compiler/src/
     |-- llvm.rs      # LLVM backend
     |-- cranelift.rs # Cranelift JIT
     +-- gpu.rs       # GPU codegen (CUDA/SPIR-V)
+
+editors/vscode/      # VS Code extension
+|-- package.json     # Extension manifest
+|-- src/extension.ts # Extension entry point
+|-- syntaxes/        # TextMate grammars
++-- language-configuration.json
 ```
 
 ## Key Features
@@ -167,10 +188,29 @@ Enable with `--features jit`.
 The GPU backend generates CUDA PTX or SPIR-V code for compute kernels.
 Enable with `--features gpu`.
 
+## LSP Server
+
+The Demetrios LSP server provides IDE integration with:
+
+- **Real-time Diagnostics**: Errors reported as you type
+- **Hover**: Type information and documentation
+- **Go to Definition**: Navigate to declarations
+- **Find References**: Find all usages
+- **Code Completion**: Context-aware suggestions
+- **Semantic Tokens**: Rich syntax highlighting
+
+The LSP server uses:
+- `tower-lsp` for the LSP protocol implementation
+- `ropey` for efficient text rope data structures
+- `dashmap` for thread-safe document storage
+- `tokio` for async runtime
+
 ## Future Work
 
 - [ ] Complete MLIR integration
 - [ ] Incremental compilation
-- [ ] IDE support (LSP)
+- [x] IDE support (LSP) - Completed in v0.10.0
 - [ ] Package manager
 - [ ] Standard library
+- [ ] Debugger integration (DAP)
+- [ ] Inlay hints for LSP
