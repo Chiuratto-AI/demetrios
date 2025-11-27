@@ -5,12 +5,13 @@
 //! - Ownership and borrowing (linear, affine types)
 //! - Algebraic effects
 //! - Refinement types
-//! - Units of measure
+//! - Units of measure with inference
 
 pub mod core;
 pub mod effects;
 pub mod ownership;
 pub mod refinement;
+pub mod unit_infer;
 pub mod units;
 
 pub use self::core::*;
@@ -21,4 +22,5 @@ pub use ownership::*;
 pub use refinement::{
     ArithOp, CompareOp, Predicate, RefinedType, RefinementChecker, RefinementResult,
 };
+pub use unit_infer::{UnitExpr, UnitInference, UnitInferenceError, UnitVar};
 pub use units::{Unit, UnitChecker, UnitError, UnitOp};

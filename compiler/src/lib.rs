@@ -46,6 +46,7 @@ pub mod ownership;
 pub mod parser;
 pub mod repl;
 pub mod resolve;
+pub mod sourcemap;
 pub mod types;
 
 // Re-export diagnostics for convenience

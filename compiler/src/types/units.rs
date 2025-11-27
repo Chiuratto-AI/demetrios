@@ -348,6 +348,7 @@ pub mod medical {
 }
 
 /// Unit checker for type checking
+#[derive(Debug)]
 pub struct UnitChecker {
     /// Known unit aliases
     aliases: HashMap<String, Unit>,

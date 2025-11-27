@@ -131,4 +131,29 @@ mod tests {
         assert_eq!(tokens[1].kind, TokenKind::Ident);
         assert_eq!(tokens[1].text, "x");
     }
+
+    #[test]
+    fn test_lex_unit_literals() {
+        // Integer with unit
+        let tokens = lex("500_mg").unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::IntUnitLit);
+        assert_eq!(tokens[0].text, "500_mg");
+
+        // Float with unit
+        let tokens = lex("10.5_mL").unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::FloatUnitLit);
+        assert_eq!(tokens[0].text, "10.5_mL");
+
+        // Complex unit
+        let tokens = lex("5.0_mg/mL").unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::FloatUnitLit);
+        assert_eq!(tokens[0].text, "5.0_mg/mL");
+
+        // Multiple unit literals
+        let tokens = lex("let dose = 500_mg + 200_mg").unwrap();
+        assert_eq!(tokens[3].kind, TokenKind::IntUnitLit);
+        assert_eq!(tokens[3].text, "500_mg");
+        assert_eq!(tokens[5].kind, TokenKind::IntUnitLit);
+        assert_eq!(tokens[5].text, "200_mg");
+    }
 }

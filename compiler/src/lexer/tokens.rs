@@ -156,6 +156,16 @@ pub enum TokenKind {
     #[regex(r#"'([^'\\]|\\.)'"#)]
     CharLit,
 
+    // Unit literals (number with underscore-prefixed unit suffix)
+    // e.g., 500_mg, 10.5_mL, 3.14_kg
+    #[regex(r"[0-9][0-9_]*_[a-zA-Z][a-zA-Z0-9_/]*", priority = 3)]
+    IntUnitLit,
+    #[regex(
+        r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+-]?[0-9]+)?_[a-zA-Z][a-zA-Z0-9_/]*",
+        priority = 3
+    )]
+    FloatUnitLit,
+
     // Identifiers (priority 1 so _ token takes precedence)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", priority = 1)]
     Ident,
@@ -357,6 +367,8 @@ impl TokenKind {
                 | TokenKind::FloatLit
                 | TokenKind::StringLit
                 | TokenKind::CharLit
+                | TokenKind::IntUnitLit
+                | TokenKind::FloatUnitLit
                 | TokenKind::True
                 | TokenKind::False
         )
@@ -458,6 +470,8 @@ impl TokenKind {
             TokenKind::FloatLit => "<float>",
             TokenKind::StringLit => "<string>",
             TokenKind::CharLit => "<char>",
+            TokenKind::IntUnitLit => "<int_unit>",
+            TokenKind::FloatUnitLit => "<float_unit>",
             TokenKind::Ident => "<ident>",
             TokenKind::Plus => "+",
             TokenKind::Minus => "-",

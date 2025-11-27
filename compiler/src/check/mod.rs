@@ -879,6 +879,10 @@ impl TypeChecker {
             Literal::Float(f) => (HirLiteral::Float(*f), HirType::F64),
             Literal::Char(c) => (HirLiteral::Char(*c), HirType::Char),
             Literal::String(s) => (HirLiteral::String(s.clone()), HirType::String),
+            // Unit literals: for now, treat as the base numeric type
+            // Full unit checking will be done in a separate pass
+            Literal::IntUnit(i, _unit) => (HirLiteral::Int(*i), HirType::I64),
+            Literal::FloatUnit(f, _unit) => (HirLiteral::Float(*f), HirType::F64),
         }
     }
 

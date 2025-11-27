@@ -532,6 +532,10 @@ pub enum Literal {
     Float(f64),
     Char(char),
     String(String),
+    /// Integer with unit of measure (e.g., 500_mg)
+    IntUnit(i64, String),
+    /// Float with unit of measure (e.g., 10.5_mL)
+    FloatUnit(f64, String),
 }
 
 /// Binary operators

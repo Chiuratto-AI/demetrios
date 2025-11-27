@@ -97,3 +97,11 @@ path = "tests/lexer_tests.rs"
 [[test]]
 name = "parser_tests"
 path = "tests/parser_tests.rs"
+
+[[test]]
+name = "units_tests"
+path = "tests/units_tests.rs"
+
+[[test]]
+name = "sourcemap_tests"
+path = "tests/sourcemap_tests.rs"

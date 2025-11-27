@@ -1058,10 +1058,24 @@ impl<'a> Parser<'a> {
                     Vec::new()
                 };
 
-                // Check for unit suffix
-                let unit = if self.at(TokenKind::Lt) && self.peek_n(1) != TokenKind::Ident {
-                    // Already parsed type args
-                    None
+                // Check for unit annotation: Type@unit (e.g., f64@kg, i32@m/s)
+                let unit = if self.at(TokenKind::At) {
+                    self.advance();
+                    // Parse unit identifier (can include / for compound units)
+                    if self.at(TokenKind::Ident) {
+                        let mut unit_str = self.advance().text.clone();
+                        // Handle compound units like m/s, kg*m/s2
+                        while self.at(TokenKind::Slash) || self.at(TokenKind::Star) {
+                            let op = self.advance().text.clone();
+                            unit_str.push_str(&op);
+                            if self.at(TokenKind::Ident) || self.at(TokenKind::IntLit) {
+                                unit_str.push_str(&self.advance().text);
+                            }
+                        }
+                        Some(unit_str)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 };
@@ -1285,6 +1299,29 @@ impl<'a> Parser<'a> {
                 Ok(Expr::Literal {
                     id: self.next_id(),
                     value: Literal::Float(value),
+                })
+            }
+            // Unit literals: 500_mg, 10.5_mL
+            TokenKind::IntUnitLit => {
+                let text = self.advance().text.clone();
+                // Split at the underscore separating number from unit
+                // Format: 123_unit or 123_456_unit (underscores in number)
+                // Find the last underscore followed by a letter
+                let (num_part, unit_part) = split_unit_literal(&text);
+                let value: i64 = num_part.replace('_', "").parse().unwrap_or(0);
+                Ok(Expr::Literal {
+                    id: self.next_id(),
+                    value: Literal::IntUnit(value, unit_part.to_string()),
+                })
+            }
+            TokenKind::FloatUnitLit => {
+                let text = self.advance().text.clone();
+                // Split at the underscore separating number from unit
+                let (num_part, unit_part) = split_unit_literal(&text);
+                let value: f64 = num_part.replace('_', "").parse().unwrap_or(0.0);
+                Ok(Expr::Literal {
+                    id: self.next_id(),
+                    value: Literal::FloatUnit(value, unit_part.to_string()),
                 })
             }
             TokenKind::StringLit => {
@@ -1922,4 +1959,19 @@ impl<'a> Parser<'a> {
 enum Assoc {
     Left,
     Right,
+}
+
+/// Split a unit literal into its numeric and unit parts.
+/// For example: "500_mg" -> ("500", "mg"), "1_000_kg" -> ("1_000", "kg")
+fn split_unit_literal(text: &str) -> (&str, &str) {
+    // Find the last underscore that is followed by a letter (start of unit)
+    // We scan backwards to handle cases like "1_000_kg" where the number has underscores
+    let bytes = text.as_bytes();
+    for i in (0..bytes.len()).rev() {
+        if bytes[i] == b'_' && i + 1 < bytes.len() && bytes[i + 1].is_ascii_alphabetic() {
+            return (&text[..i], &text[i + 1..]);
+        }
+    }
+    // Fallback: shouldn't happen with valid unit literals
+    (text, "")
 }
