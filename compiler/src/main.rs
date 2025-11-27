@@ -42,6 +42,45 @@ enum Commands {
         opt_level: u8,
     },
 
+    /// Build a D source file to native executable (requires --features llvm)
+    Build {
+        /// Input file
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Output file
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+
+        /// Optimization level (0, 1, 2, 3, s, z)
+        #[arg(short = 'O', default_value = "2")]
+        opt_level: String,
+
+        /// Generate debug information
+        #[arg(short = 'g', long)]
+        debug: bool,
+
+        /// Emit LLVM IR instead of compiling
+        #[arg(long)]
+        emit_llvm: bool,
+
+        /// Emit assembly instead of compiling
+        #[arg(long)]
+        emit_asm: bool,
+
+        /// Target triple (e.g., x86_64-unknown-linux-gnu)
+        #[arg(long)]
+        target: Option<String>,
+
+        /// Strip debug symbols from output
+        #[arg(long)]
+        strip: bool,
+
+        /// Verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
     /// Type-check a D source file without compiling
     Check {
         /// Input file
@@ -161,6 +200,28 @@ fn main() -> Result<()> {
             opt_level,
         } => compile(&input, output.as_deref(), emit, opt_level),
 
+        Commands::Build {
+            input,
+            output,
+            opt_level,
+            debug,
+            emit_llvm,
+            emit_asm,
+            target,
+            strip,
+            verbose,
+        } => build(
+            &input,
+            output.as_deref(),
+            &opt_level,
+            debug,
+            emit_llvm,
+            emit_asm,
+            target.as_deref(),
+            strip,
+            verbose,
+        ),
+
         Commands::Check {
             input,
             show_ast,
@@ -192,6 +253,186 @@ fn main() -> Result<()> {
         Commands::Fmt { path, check } => format_code(&path, check),
 
         Commands::Info => info(),
+    }
+}
+
+/// Build a D source file to native executable using LLVM
+#[allow(clippy::too_many_arguments)]
+fn build(
+    input: &std::path::Path,
+    output: Option<&std::path::Path>,
+    opt_level: &str,
+    debug: bool,
+    emit_llvm: bool,
+    emit_asm: bool,
+    target: Option<&str>,
+    strip: bool,
+    verbose: bool,
+) -> Result<()> {
+    #[cfg(feature = "llvm")]
+    {
+        use demetrios::codegen::llvm::{
+            codegen::{LLVMCodegen, OptLevel},
+            linker::Linker,
+            passes,
+            target::{
+                compile_to_asm, compile_to_object, create_native_target_machine,
+                create_target_machine, executable_extension, initialize_native_target,
+                object_extension,
+            },
+        };
+        use inkwell::context::Context;
+
+        tracing::info!("Building {:?} with LLVM", input);
+
+        // Parse optimization level
+        let opt = match opt_level {
+            "0" => OptLevel::O0,
+            "1" => OptLevel::O1,
+            "2" => OptLevel::O2,
+            "3" => OptLevel::O3,
+            "s" => OptLevel::Os,
+            "z" => OptLevel::Oz,
+            _ => {
+                return Err(miette::miette!(
+                    "Invalid optimization level: {}. Use 0, 1, 2, 3, s, or z",
+                    opt_level
+                ));
+            }
+        };
+
+        // Read source file
+        let source = std::fs::read_to_string(input)
+            .map_err(|e| miette::miette!("Failed to read input file: {}", e))?;
+
+        // Lex and parse
+        let tokens = demetrios::lexer::lex(&source)?;
+        let ast = demetrios::parser::parse(&tokens, &source)?;
+
+        // Type check
+        let hir = demetrios::check::check(&ast)?;
+
+        // Lower to HLIR
+        let hlir = demetrios::hlir::lower(&hir);
+
+        if verbose {
+            eprintln!(
+                "Compiled {} items, {} functions",
+                ast.items.len(),
+                hlir.functions.len()
+            );
+        }
+
+        // Initialize LLVM
+        initialize_native_target();
+
+        // Create LLVM context and codegen
+        let context = Context::create();
+        let module_name = input
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("module");
+
+        let mut codegen = LLVMCodegen::new(&context, module_name, opt, debug);
+
+        // Compile to LLVM IR
+        let module = codegen.compile(&hlir);
+
+        // Verify module
+        if let Err(e) = codegen.verify() {
+            return Err(miette::miette!("LLVM verification failed: {}", e));
+        }
+
+        // Get target machine
+        let target_machine = if let Some(triple) = target {
+            create_target_machine(triple, opt)
+                .map_err(|e| miette::miette!("Failed to create target machine: {}", e))?
+        } else {
+            create_native_target_machine(opt)
+                .map_err(|e| miette::miette!("Failed to create target machine: {}", e))?
+        };
+
+        // Run optimization passes
+        passes::optimize_module(module, opt, &target_machine);
+
+        // Handle emit options
+        if emit_llvm {
+            let ir = codegen.print_ir();
+            if let Some(out_path) = output {
+                std::fs::write(out_path, &ir)
+                    .map_err(|e| miette::miette!("Failed to write LLVM IR: {}", e))?;
+                println!("Wrote LLVM IR to {}", out_path.display());
+            } else {
+                println!("{}", ir);
+            }
+            return Ok(());
+        }
+
+        if emit_asm {
+            let asm_path = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+                let mut p = input.to_path_buf();
+                p.set_extension("s");
+                p
+            });
+
+            compile_to_asm(module, &target_machine, &asm_path)
+                .map_err(|e| miette::miette!("Failed to generate assembly: {}", e))?;
+
+            println!("Wrote assembly to {}", asm_path.display());
+            return Ok(());
+        }
+
+        // Compile to object file
+        let triple = target.unwrap_or("native");
+        let obj_ext = object_extension(triple);
+        let obj_path = {
+            let mut p = input.to_path_buf();
+            p.set_extension(obj_ext);
+            p
+        };
+
+        compile_to_object(module, &target_machine, &obj_path)
+            .map_err(|e| miette::miette!("Failed to generate object file: {}", e))?;
+
+        if verbose {
+            eprintln!("Generated object file: {}", obj_path.display());
+        }
+
+        // Link to executable
+        let exe_ext = executable_extension(triple);
+        let exe_path = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+            let mut p = input.to_path_buf();
+            p.set_extension(exe_ext);
+            if exe_ext.is_empty() {
+                // Remove extension for Unix executables
+                p.set_extension("");
+            }
+            p
+        });
+
+        let linker = Linker::new().strip(strip).verbose(verbose);
+
+        linker
+            .link_with_stdlib(&[obj_path.clone()], &exe_path)
+            .map_err(|e| miette::miette!("Linking failed: {}", e))?;
+
+        // Clean up object file
+        if std::fs::remove_file(&obj_path).is_err() && verbose {
+            eprintln!("Warning: could not remove temporary object file");
+        }
+
+        println!("Built: {}", exe_path.display());
+        Ok(())
+    }
+
+    #[cfg(not(feature = "llvm"))]
+    {
+        let _ = (
+            input, output, opt_level, debug, emit_llvm, emit_asm, target, strip, verbose,
+        );
+        Err(miette::miette!(
+            "LLVM backend not enabled. Rebuild with: cargo build --features llvm"
+        ))
     }
 }
 
@@ -538,17 +779,33 @@ fn info() -> Result<()> {
     println!();
     println!("Backends:");
     #[cfg(feature = "llvm")]
-    println!("  - LLVM (enabled)");
+    {
+        println!("  - LLVM (enabled)");
+        println!("    Use 'dc build' for AOT compilation");
+    }
     #[cfg(not(feature = "llvm"))]
-    println!("  - LLVM (disabled)");
+    println!("  - LLVM (disabled) - rebuild with --features llvm");
     #[cfg(feature = "jit")]
-    println!("  - Cranelift JIT (enabled)");
+    {
+        println!("  - Cranelift JIT (enabled)");
+        println!("    Use 'dc jit' for JIT execution");
+    }
     #[cfg(not(feature = "jit"))]
-    println!("  - Cranelift JIT (disabled)");
+    println!("  - Cranelift JIT (disabled) - rebuild with --features jit");
+    #[cfg(feature = "smt")]
+    println!("  - SMT Solver (enabled) - refinement type verification");
+    #[cfg(not(feature = "smt"))]
+    println!("  - SMT Solver (disabled) - rebuild with --features smt");
+    #[cfg(feature = "lsp")]
+    println!("  - LSP Server (enabled) - IDE integration");
+    #[cfg(not(feature = "lsp"))]
+    println!("  - LSP Server (disabled) - rebuild with --features lsp");
     #[cfg(feature = "gpu")]
     println!("  - GPU codegen (enabled)");
     #[cfg(not(feature = "gpu"))]
-    println!("  - GPU codegen (disabled)");
+    println!("  - GPU codegen (disabled) - rebuild with --features gpu");
+    println!();
+    println!("Build with all features: cargo build --features full");
 
     Ok(())
 }

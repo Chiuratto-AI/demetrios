@@ -1,13 +1,69 @@
 //! Code generation backends
 //!
 //! D supports multiple code generation backends:
-//! - LLVM: For optimized native code
-//! - Cranelift: For fast JIT compilation
-//! - GPU: For CUDA/SPIR-V compute kernels
+//! - LLVM: For optimized native code (requires `--features llvm`)
+//! - Cranelift: For fast JIT compilation (requires `--features jit`)
+//! - GPU: For CUDA/SPIR-V compute kernels (requires `--features gpu`)
 
 pub mod cranelift;
 pub mod gpu;
+
+// The LLVM backend is in a subdirectory when the feature is enabled
+#[cfg(feature = "llvm")]
+#[path = "llvm/mod.rs"]
 pub mod llvm;
+
+// Provide stub module when LLVM is not enabled
+#[cfg(not(feature = "llvm"))]
+pub mod llvm {
+    //! LLVM backend stub (feature not enabled)
+
+    use crate::hlir::HlirModule;
+    use std::path::Path;
+
+    /// Optimization level (stub)
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum OptLevel {
+        O0,
+        O1,
+        #[default]
+        O2,
+        O3,
+        Os,
+        Oz,
+    }
+
+    /// LLVM codegen stub when feature is disabled
+    pub struct LLVMCodegen;
+
+    impl LLVMCodegen {
+        pub fn compile(_hlir: &HlirModule) -> Result<(), String> {
+            Err("LLVM backend not enabled. Rebuild with: cargo build --features llvm".to_string())
+        }
+    }
+
+    /// Linker stub
+    pub struct Linker;
+
+    #[derive(Debug)]
+    pub enum LinkError {
+        NotEnabled,
+    }
+
+    impl std::fmt::Display for LinkError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "LLVM backend not enabled")
+        }
+    }
+
+    impl std::error::Error for LinkError {}
+
+    impl Linker {
+        pub fn link(_objects: &[&Path], _output: &Path) -> Result<(), LinkError> {
+            Err(LinkError::NotEnabled)
+        }
+    }
+}
 
 /// Backend selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

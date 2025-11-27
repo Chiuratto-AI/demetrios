@@ -1,6 +1,6 @@
 [package]
 name = "demetrios"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2024"
 authors = ["Demetrios Chiuratto Agourakis", "Dionisio Chiuratto Agourakis"]
 description = "The Demetrios (D) programming language compiler"
@@ -61,6 +61,9 @@ rustyline = "14"
 # SMT Solver for refinement types (optional)
 z3 = { version = "0.12", features = ["static-link-z3"], optional = true }
 
+# LLVM Backend (optional)
+inkwell = { version = "0.5", features = ["llvm15-0"], optional = true }
+
 # LSP Server (optional)
 tower-lsp = { version = "0.20", optional = true }
 tokio = { version = "1.35", features = ["full"], optional = true }
@@ -78,7 +81,7 @@ insta = { version = "1", features = ["yaml"] }
 [features]
 default = []
 # Enable LLVM backend (requires LLVM installation)
-llvm = []
+llvm = ["dep:inkwell"]
 # Enable Cranelift JIT
 jit = [
     "dep:cranelift-codegen",
@@ -101,6 +104,8 @@ lsp = [
     "dep:ropey",
     "dep:url",
 ]
+# Enable all features
+full = ["llvm", "jit", "smt", "lsp"]
 
 [profile.release]
 lto = true
