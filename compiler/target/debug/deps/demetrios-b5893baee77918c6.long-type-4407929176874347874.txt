@@ -1,4 +1,0 @@
-<ast::_::<impl Deserialize<'de> for ast::GenericParam>::deserialize::__Visitor<'de> as Visitor<'de>>::visit_enum::__Field
-<ast::_::<impl Deserialize<'de> for ast::Pattern>::deserialize::__Visitor<'de> as Visitor<'de>>::visit_enum::__Field
-<ast::_::<impl Deserialize<'de> for ast::Stmt>::deserialize::__Visitor<'de> as Visitor<'de>>::visit_enum::__Field
-<ast::_::<impl Deserialize<'de> for ast::TypeExpr>::deserialize::__Visitor<'de> as Visitor<'de>>::visit_enum::__Field

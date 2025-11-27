@@ -19,6 +19,14 @@ struct HirToHlir {
     module_builder: ModuleBuilder,
     /// Map from function names to their signatures (for call resolution)
     functions: HashMap<String, HlirType>,
+    /// Map from enum names to their variant info
+    enums: HashMap<String, Vec<(String, Vec<HlirType>)>>,
+    /// Map from struct names to their field info
+    structs: HashMap<String, Vec<(String, HlirType)>>,
+    /// Map from effect names to their operations
+    effects: HashMap<String, Vec<(String, Vec<HlirType>, HlirType)>>,
+    /// Map from handler names to their effect
+    handlers: HashMap<String, String>,
 }
 
 impl HirToHlir {
@@ -26,11 +34,15 @@ impl HirToHlir {
         Self {
             module_builder: ModuleBuilder::new("main"),
             functions: HashMap::new(),
+            enums: HashMap::new(),
+            structs: HashMap::new(),
+            effects: HashMap::new(),
+            handlers: HashMap::new(),
         }
     }
 
     fn lower_module(mut self, hir: &Hir) -> HlirModule {
-        // First pass: collect function signatures and type definitions
+        // First pass: collect function signatures, type definitions, and effects
         for item in &hir.items {
             match item {
                 HirItem::Function(f) => {
@@ -43,6 +55,7 @@ impl HirToHlir {
                         .iter()
                         .map(|f| (f.name.clone(), HlirType::from_hir(&f.ty)))
                         .collect();
+                    self.structs.insert(s.name.clone(), fields.clone());
                     self.module_builder.add_type_def(HlirTypeDef {
                         name: s.name.clone(),
                         kind: HlirTypeDefKind::Struct(fields),
@@ -59,15 +72,32 @@ impl HirToHlir {
                             )
                         })
                         .collect();
+                    self.enums.insert(e.name.clone(), variants.clone());
                     self.module_builder.add_type_def(HlirTypeDef {
                         name: e.name.clone(),
                         kind: HlirTypeDefKind::Enum(variants),
                     });
                 }
+                HirItem::Effect(eff) => {
+                    let ops: Vec<_> = eff
+                        .operations
+                        .iter()
+                        .map(|op| {
+                            (
+                                op.name.clone(),
+                                op.params.iter().map(HlirType::from_hir).collect(),
+                                HlirType::from_hir(&op.return_type),
+                            )
+                        })
+                        .collect();
+                    self.effects.insert(eff.name.clone(), ops);
+                }
+                HirItem::Handler(h) => {
+                    self.handlers.insert(h.name.clone(), h.effect.clone());
+                }
                 HirItem::Global(g) => {
-                    // We'll need a fresh value ID
                     let global = HlirGlobal {
-                        id: ValueId(0), // Will be assigned properly
+                        id: ValueId(0),
                         name: g.name.clone(),
                         ty: HlirType::from_hir(&g.ty),
                         init: None,
@@ -107,7 +137,14 @@ impl HirToHlir {
         func_builder.switch_to_block(entry);
 
         // Lower function body
-        let mut ctx = LoweringContext::new(&mut func_builder, &self.functions);
+        let mut ctx = LoweringContext::new(
+            &mut func_builder,
+            &self.functions,
+            &self.enums,
+            &self.structs,
+            &self.effects,
+            &self.handlers,
+        );
         let result = ctx.lower_block(&f.body);
 
         // Add return if not already terminated
@@ -127,10 +164,16 @@ impl HirToHlir {
 struct LoweringContext<'a> {
     builder: &'a mut FunctionBuilder,
     functions: &'a HashMap<String, HlirType>,
+    enums: &'a HashMap<String, Vec<(String, Vec<HlirType>)>>,
+    structs: &'a HashMap<String, Vec<(String, HlirType)>>,
+    effects: &'a HashMap<String, Vec<(String, Vec<HlirType>, HlirType)>>,
+    handlers: &'a HashMap<String, String>,
     /// Track if current block is terminated
     terminated: bool,
     /// Loop context for break/continue
     loop_stack: Vec<LoopContext>,
+    /// Closure environment (captured variables)
+    closure_env: Option<ClosureEnv>,
 }
 
 struct LoopContext {
@@ -140,13 +183,33 @@ struct LoopContext {
     break_values: Vec<(BlockId, ValueId)>,
 }
 
+/// Closure environment for captured variables
+struct ClosureEnv {
+    /// Map from captured variable names to their indices in the environment
+    captures: HashMap<String, usize>,
+    /// The environment pointer value
+    env_ptr: ValueId,
+}
+
 impl<'a> LoweringContext<'a> {
-    fn new(builder: &'a mut FunctionBuilder, functions: &'a HashMap<String, HlirType>) -> Self {
+    fn new(
+        builder: &'a mut FunctionBuilder,
+        functions: &'a HashMap<String, HlirType>,
+        enums: &'a HashMap<String, Vec<(String, Vec<HlirType>)>>,
+        structs: &'a HashMap<String, Vec<(String, HlirType)>>,
+        effects: &'a HashMap<String, Vec<(String, Vec<HlirType>, HlirType)>>,
+        handlers: &'a HashMap<String, String>,
+    ) -> Self {
         Self {
             builder,
             functions,
+            enums,
+            structs,
+            effects,
+            handlers,
             terminated: false,
             loop_stack: Vec::new(),
+            closure_env: None,
         }
     }
 
@@ -217,7 +280,6 @@ impl<'a> LoweringContext<'a> {
             }
             HirExprKind::Field { base, field } => {
                 if let Some(base_ptr) = self.lower_lvalue(base) {
-                    // Get field index from type
                     let field_idx = self.get_field_index(&base.ty, field);
                     let field_ty = HlirType::from_hir(&target.ty);
                     let field_ptr = self.builder.build_field_ptr(base_ptr, field_idx, field_ty);
@@ -257,9 +319,41 @@ impl<'a> LoweringContext<'a> {
         }
     }
 
-    fn get_field_index(&self, _ty: &HirType, _field: &str) -> usize {
-        // TODO: Look up actual field index from type definition
+    fn get_field_index(&self, ty: &HirType, field: &str) -> usize {
+        if let HirType::Named { name, .. } = ty {
+            if let Some(fields) = self.structs.get(name) {
+                for (i, (f_name, _)) in fields.iter().enumerate() {
+                    if f_name == field {
+                        return i;
+                    }
+                }
+            }
+        }
         0
+    }
+
+    /// Get the variant tag value for an enum variant
+    fn get_variant_tag(&self, enum_name: &str, variant: &str) -> i64 {
+        if let Some(variants) = self.enums.get(enum_name) {
+            for (i, (v_name, _)) in variants.iter().enumerate() {
+                if v_name == variant {
+                    return i as i64;
+                }
+            }
+        }
+        0
+    }
+
+    /// Get the variant fields for an enum variant
+    fn get_variant_fields(&self, enum_name: &str, variant: &str) -> Vec<HlirType> {
+        if let Some(variants) = self.enums.get(enum_name) {
+            for (v_name, fields) in variants {
+                if v_name == variant {
+                    return fields.clone();
+                }
+            }
+        }
+        Vec::new()
     }
 
     fn lower_expr(&mut self, expr: &HirExpr) -> Option<ValueId> {
@@ -278,8 +372,15 @@ impl<'a> LoweringContext<'a> {
                     return Some(val);
                 }
                 // Try mutable variable (load from slot)
-                if let Some(val) = self.builder.load_var(name, ty) {
+                if let Some(val) = self.builder.load_var(name, ty.clone()) {
                     return Some(val);
+                }
+                // Try closure environment
+                if let Some(ref env) = self.closure_env {
+                    if let Some(&idx) = env.captures.get(name) {
+                        let field_ptr = self.builder.build_field_ptr(env.env_ptr, idx, ty.clone());
+                        return Some(self.builder.build_load(field_ptr, ty));
+                    }
                 }
                 // Try function reference
                 if self.functions.contains_key(name) {
@@ -426,55 +527,32 @@ impl<'a> LoweringContext<'a> {
 
             HirExprKind::Match { scrutinee, arms } => self.lower_match(scrutinee, arms, &ty),
 
-            HirExprKind::Closure { params: _, body: _ } => {
-                // Closures are complex - for now return unit
-                Some(self.builder.build_unit())
-            }
+            HirExprKind::Closure { params, body } => self.lower_closure(params, body, &ty),
 
             HirExprKind::MethodCall {
                 receiver,
                 method,
                 args,
             } => {
-                // Desugar to regular function call
+                // Desugar to regular function call with receiver as first argument
                 let mut all_args = vec![self.lower_expr(receiver)?];
                 all_args.extend(args.iter().filter_map(|a| self.lower_expr(a)));
                 Some(self.builder.build_call(method, all_args, ty))
             }
 
             HirExprKind::Variant {
-                enum_name: _,
-                variant: _,
-                fields: _,
-            } => {
-                // Enum variants - simplified for now
-                Some(self.builder.build_unit())
-            }
+                enum_name,
+                variant,
+                fields,
+            } => self.lower_variant(enum_name, variant, fields, &ty),
 
             HirExprKind::Perform { effect, op, args } => {
-                let arg_vals: Vec<_> = args.iter().filter_map(|a| self.lower_expr(a)).collect();
-                let op = Op::PerformEffect {
-                    effect: effect.clone(),
-                    op: op.clone(),
-                    args: arg_vals,
-                };
-                let result = self.builder.fresh_value();
-                // Emit directly since we need custom Op
-                Some(result)
+                self.lower_effect_perform(effect, op, args, &ty)
             }
 
-            HirExprKind::Handle {
-                expr: _,
-                handler: _,
-            } => {
-                // Effect handlers - complex, simplified for now
-                Some(self.builder.build_unit())
-            }
+            HirExprKind::Handle { expr, handler } => self.lower_effect_handle(expr, handler, &ty),
 
-            HirExprKind::Sample(_) => {
-                // Probabilistic sampling - simplified for now
-                Some(self.builder.build_unit())
-            }
+            HirExprKind::Sample(dist) => self.lower_sample(dist, &ty),
         }
     }
 
@@ -758,13 +836,26 @@ impl<'a> LoweringContext<'a> {
         let scrut_val = self.lower_expr(scrutinee)?;
         let scrut_ty = HlirType::from_hir(&scrutinee.ty);
 
-        // For simple integer matches, use switch
+        // For simple integer matches with literals (and optional wildcard/binding), use switch
         if scrut_ty.is_integer()
+            && arms.iter().all(|a| {
+                matches!(
+                    a.pattern,
+                    HirPattern::Literal(_) | HirPattern::Wildcard | HirPattern::Binding { .. }
+                ) && a.guard.is_none()
+            })
             && arms
                 .iter()
-                .all(|a| matches!(a.pattern, HirPattern::Literal(_)))
+                .any(|a| matches!(a.pattern, HirPattern::Literal(_)))
         {
             return self.lower_match_switch(scrut_val, arms, ty);
+        }
+
+        // For enum variant matching, use tag-based switch
+        if let HirType::Named { name, .. } = &scrutinee.ty {
+            if self.enums.contains_key(name) {
+                return self.lower_match_enum(scrut_val, name, arms, ty);
+            }
         }
 
         // General case: chain of if-else
@@ -782,14 +873,167 @@ impl<'a> LoweringContext<'a> {
 
         let mut cases = Vec::new();
         let mut arm_results = Vec::new();
+        let mut has_wildcard = false;
+        let mut wildcard_arm: Option<&HirMatchArm> = None;
 
+        // First pass: collect cases and check for wildcard
         for arm in arms {
-            if let HirPattern::Literal(HirLiteral::Int(n)) = &arm.pattern {
-                let arm_block = self.builder.create_block("match.arm");
-                cases.push((*n, arm_block));
+            match &arm.pattern {
+                HirPattern::Literal(HirLiteral::Int(n)) => {
+                    let arm_block = self.builder.create_block("match.case");
+                    cases.push((*n, arm_block));
+                }
+                HirPattern::Wildcard | HirPattern::Binding { .. } => {
+                    has_wildcard = true;
+                    wildcard_arm = Some(arm);
+                }
+                _ => {}
+            }
+        }
 
-                self.builder.switch_to_block(arm_block);
-                self.terminated = false;
+        // Build the switch from current block
+        let current = self.builder.current_block().unwrap();
+        self.builder.switch_to_block(current);
+        self.builder
+            .build_switch(scrut, default_block, cases.clone());
+
+        // Generate code for each case
+        for (arm, (_, arm_block)) in arms
+            .iter()
+            .filter(|a| matches!(a.pattern, HirPattern::Literal(HirLiteral::Int(_))))
+            .zip(cases.iter())
+        {
+            self.builder.switch_to_block(*arm_block);
+            self.terminated = false;
+            let result = self.lower_expr(&arm.body);
+            let arm_exit = self.builder.current_block().unwrap();
+            if !self.terminated {
+                self.builder.build_branch(merge_block);
+                if let Some(v) = result {
+                    arm_results.push((arm_exit, v));
+                }
+            }
+        }
+
+        // Default block (wildcard or unreachable)
+        self.builder.switch_to_block(default_block);
+        self.terminated = false;
+        if has_wildcard {
+            if let Some(arm) = wildcard_arm {
+                // Bind the value if it's a binding pattern
+                if let HirPattern::Binding { name, .. } = &arm.pattern {
+                    self.builder.bind_var(name, scrut);
+                }
+                let result = self.lower_expr(&arm.body);
+                let arm_exit = self.builder.current_block().unwrap();
+                if !self.terminated {
+                    self.builder.build_branch(merge_block);
+                    if let Some(v) = result {
+                        arm_results.push((arm_exit, v));
+                    }
+                }
+            }
+        } else {
+            self.builder.build_unreachable();
+        }
+
+        self.builder.switch_to_block(merge_block);
+        self.terminated = false;
+
+        if *ty != HlirType::Void && !arm_results.is_empty() {
+            Some(self.builder.build_phi(arm_results, ty.clone()))
+        } else {
+            None
+        }
+    }
+
+    fn lower_match_enum(
+        &mut self,
+        scrut: ValueId,
+        enum_name: &str,
+        arms: &[HirMatchArm],
+        ty: &HlirType,
+    ) -> Option<ValueId> {
+        let merge_block = self.builder.create_block("match.merge");
+        let default_block = self.builder.create_block("match.default");
+
+        // Extract the tag from the enum value (first field)
+        let tag = self.builder.build_extract(scrut, 0, HlirType::I64);
+
+        let mut cases = Vec::new();
+        let mut arm_results = Vec::new();
+        let mut has_wildcard = false;
+        let mut wildcard_arm: Option<&HirMatchArm> = None;
+
+        // First pass: collect variant cases
+        for arm in arms {
+            match &arm.pattern {
+                HirPattern::Variant {
+                    enum_name: _,
+                    variant,
+                    patterns,
+                } => {
+                    let tag_val = self.get_variant_tag(enum_name, variant);
+                    let arm_block = self.builder.create_block(&format!("match.{}", variant));
+                    cases.push((tag_val, arm_block, variant.clone(), patterns.clone()));
+                }
+                HirPattern::Wildcard | HirPattern::Binding { .. } => {
+                    has_wildcard = true;
+                    wildcard_arm = Some(arm);
+                }
+                _ => {}
+            }
+        }
+
+        // Build the switch
+        let switch_cases: Vec<_> = cases.iter().map(|(t, b, _, _)| (*t, *b)).collect();
+        self.builder.build_switch(tag, default_block, switch_cases);
+
+        // Generate code for each variant case
+        for (arm, (_, arm_block, variant, patterns)) in arms
+            .iter()
+            .filter(|a| matches!(a.pattern, HirPattern::Variant { .. }))
+            .zip(cases.iter())
+        {
+            self.builder.switch_to_block(*arm_block);
+            self.terminated = false;
+
+            // Bind variant fields to pattern variables
+            let field_types = self.get_variant_fields(enum_name, variant);
+            for (i, pattern) in patterns.iter().enumerate() {
+                if let HirPattern::Binding { name, .. } = pattern {
+                    let field_ty = field_types.get(i).cloned().unwrap_or(HlirType::Void);
+                    // Fields start at index 1 (index 0 is the tag)
+                    let field_val = self.builder.build_extract(scrut, i + 1, field_ty);
+                    self.builder.bind_var(name, field_val);
+                }
+            }
+
+            // Handle guard if present
+            if let Some(guard) = &arm.guard {
+                let guard_block = self.builder.create_block("match.guard");
+                let next_block = self.builder.create_block("match.next");
+
+                let guard_val = self.lower_expr(guard);
+                if let Some(gv) = guard_val {
+                    self.builder.build_cond_branch(gv, guard_block, next_block);
+
+                    self.builder.switch_to_block(guard_block);
+                    self.terminated = false;
+                    let result = self.lower_expr(&arm.body);
+                    let arm_exit = self.builder.current_block().unwrap();
+                    if !self.terminated {
+                        self.builder.build_branch(merge_block);
+                        if let Some(v) = result {
+                            arm_results.push((arm_exit, v));
+                        }
+                    }
+
+                    // next_block falls through to default
+                    self.builder.switch_to_block(next_block);
+                    self.builder.build_branch(default_block);
+                }
+            } else {
                 let result = self.lower_expr(&arm.body);
                 let arm_exit = self.builder.current_block().unwrap();
                 if !self.terminated {
@@ -801,11 +1045,26 @@ impl<'a> LoweringContext<'a> {
             }
         }
 
-        // Build switch from entry
-        // We need to go back and add the switch - this is a limitation
-        // For now, just branch to default
+        // Default block
         self.builder.switch_to_block(default_block);
-        self.builder.build_unreachable();
+        self.terminated = false;
+        if has_wildcard {
+            if let Some(arm) = wildcard_arm {
+                if let HirPattern::Binding { name, .. } = &arm.pattern {
+                    self.builder.bind_var(name, scrut);
+                }
+                let result = self.lower_expr(&arm.body);
+                let arm_exit = self.builder.current_block().unwrap();
+                if !self.terminated {
+                    self.builder.build_branch(merge_block);
+                    if let Some(v) = result {
+                        arm_results.push((arm_exit, v));
+                    }
+                }
+            }
+        } else {
+            self.builder.build_unreachable();
+        }
 
         self.builder.switch_to_block(merge_block);
         self.terminated = false;
@@ -845,18 +1104,48 @@ impl<'a> LoweringContext<'a> {
             let matches = self.lower_pattern_check(&arm.pattern, scrut, scrut_ty);
 
             if let Some(cond) = matches {
-                self.builder.build_cond_branch(cond, arm_block, next_block);
+                // Check guard if present
+                if let Some(guard) = &arm.guard {
+                    let guard_check_block = self.builder.create_block("match.guard.check");
+                    self.builder
+                        .build_cond_branch(cond, guard_check_block, next_block);
+
+                    self.builder.switch_to_block(guard_check_block);
+                    self.terminated = false;
+                    // First bind pattern variables so guard can use them
+                    self.bind_pattern(&arm.pattern, scrut);
+                    let guard_val = self.lower_expr(guard);
+                    if let Some(gv) = guard_val {
+                        self.builder.build_cond_branch(gv, arm_block, next_block);
+                    } else {
+                        self.builder.build_branch(arm_block);
+                    }
+                } else {
+                    self.builder.build_cond_branch(cond, arm_block, next_block);
+                }
             } else {
-                // Wildcard or binding - always matches
-                self.builder.build_branch(arm_block);
+                // Wildcard or binding - always matches, but check guard
+                if let Some(guard) = &arm.guard {
+                    self.bind_pattern(&arm.pattern, scrut);
+                    let guard_val = self.lower_expr(guard);
+                    if let Some(gv) = guard_val {
+                        self.builder.build_cond_branch(gv, arm_block, next_block);
+                    } else {
+                        self.builder.build_branch(arm_block);
+                    }
+                } else {
+                    self.builder.build_branch(arm_block);
+                }
             }
 
             // Arm body
             self.builder.switch_to_block(arm_block);
             self.terminated = false;
 
-            // Bind pattern variables
-            self.bind_pattern(&arm.pattern, scrut);
+            // Bind pattern variables (if not already bound for guard)
+            if arm.guard.is_none() {
+                self.bind_pattern(&arm.pattern, scrut);
+            }
 
             let result = self.lower_expr(&arm.body);
             let arm_exit = self.builder.current_block().unwrap();
@@ -936,9 +1225,68 @@ impl<'a> LoweringContext<'a> {
                 }
                 combined
             }
-            HirPattern::Struct { .. } | HirPattern::Variant { .. } => {
-                // Complex patterns - simplified
-                None
+            HirPattern::Struct { name, fields } => {
+                // Check struct fields
+                let mut combined: Option<ValueId> = None;
+                if let Some(struct_fields) = self.structs.get(name) {
+                    for (field_name, field_pattern) in fields {
+                        // Find field index
+                        if let Some(idx) = struct_fields.iter().position(|(n, _)| n == field_name) {
+                            let field_ty = struct_fields[idx].1.clone();
+                            let field_val =
+                                self.builder.build_extract(scrut, idx, field_ty.clone());
+                            if let Some(check) =
+                                self.lower_pattern_check(field_pattern, field_val, &field_ty)
+                            {
+                                combined = Some(match combined {
+                                    Some(prev) => self.builder.build_binary(
+                                        BinaryOp::And,
+                                        prev,
+                                        check,
+                                        HlirType::Bool,
+                                    ),
+                                    None => check,
+                                });
+                            }
+                        }
+                    }
+                }
+                combined
+            }
+            HirPattern::Variant {
+                enum_name,
+                variant,
+                patterns,
+            } => {
+                // Check tag and then fields
+                let tag_val = self.get_variant_tag(enum_name, variant);
+                let tag = self.builder.build_extract(scrut, 0, HlirType::I64);
+                let tag_const = self
+                    .builder
+                    .build_const(HlirConstant::Int(tag_val, HlirType::I64), HlirType::I64);
+                let tag_check = self.builder.build_eq(tag, tag_const);
+
+                // Check field patterns
+                let field_types = self.get_variant_fields(enum_name, variant);
+                let mut combined = Some(tag_check);
+
+                for (i, pattern) in patterns.iter().enumerate() {
+                    let field_ty = field_types.get(i).cloned().unwrap_or(HlirType::Void);
+                    let field_val = self.builder.build_extract(scrut, i + 1, field_ty.clone());
+                    if let Some(check) = self.lower_pattern_check(pattern, field_val, &field_ty) {
+                        combined = Some(match combined {
+                            Some(prev) => self.builder.build_binary(
+                                BinaryOp::And,
+                                prev,
+                                check,
+                                HlirType::Bool,
+                            ),
+                            None => check,
+                        });
+                    }
+                }
+
+                combined
             }
         }
     }
@@ -954,8 +1302,215 @@ impl<'a> LoweringContext<'a> {
                     self.bind_pattern(p, elem);
                 }
             }
+            HirPattern::Struct { name, fields } => {
+                if let Some(struct_fields) = self.structs.get(name).cloned() {
+                    for (field_name, field_pattern) in fields {
+                        if let Some(idx) = struct_fields.iter().position(|(n, _)| n == field_name) {
+                            let field_ty = struct_fields[idx].1.clone();
+                            let field_val = self.builder.build_extract(value, idx, field_ty);
+                            self.bind_pattern(field_pattern, field_val);
+                        }
+                    }
+                }
+            }
+            HirPattern::Variant {
+                enum_name,
+                variant,
+                patterns,
+            } => {
+                let field_types = self.get_variant_fields(enum_name, variant);
+                for (i, pattern) in patterns.iter().enumerate() {
+                    let field_ty = field_types.get(i).cloned().unwrap_or(HlirType::Void);
+                    let field_val = self.builder.build_extract(value, i + 1, field_ty);
+                    self.bind_pattern(pattern, field_val);
+                }
+            }
+            HirPattern::Or(patterns) => {
+                // For or patterns, bind the first pattern (they should all bind the same vars)
+                if let Some(p) = patterns.first() {
+                    self.bind_pattern(p, value);
+                }
+            }
             _ => {}
         }
+    }
+
+    /// Lower closure expression
+    fn lower_closure(
+        &mut self,
+        params: &[HirParam],
+        body: &HirExpr,
+        ty: &HlirType,
+    ) -> Option<ValueId> {
+        // For now, we implement closures as function pointers with an environment
+        // The environment is a tuple of captured variables
+
+        // Collect free variables in the body (simplified - in practice we'd do a proper analysis)
+        // For now, just create a closure struct with the function pointer
+
+        // Build the closure type: { fn_ptr, env_ptr }
+        let closure_ty = ty.clone();
+
+        // For a simple implementation, we'll just return a function pointer
+        // A full implementation would:
+        // 1. Analyze captured variables
+        // 2. Allocate environment struct
+        // 3. Store captured values
+        // 4. Create a wrapper function that unpacks the environment
+
+        // Generate a unique name for the closure function
+        let closure_name = format!("__closure_{}", self.builder.fresh_value().0);
+
+        // For now, create a simple function reference
+        // This is a simplified implementation - full closures would require
+        // environment capture analysis
+        let fn_ptr = self.builder.build_const(
+            HlirConstant::FunctionRef(closure_name),
+            HlirType::Ptr(Box::new(HlirType::Void)),
+        );
+
+        // Create a null environment pointer (no captures for now)
+        let env_ptr = self.builder.build_const(
+            HlirConstant::Null(HlirType::Ptr(Box::new(HlirType::Void))),
+            HlirType::Ptr(Box::new(HlirType::Void)),
+        );
+
+        // Build the closure tuple
+        Some(self.builder.build_tuple(vec![fn_ptr, env_ptr], closure_ty))
+    }
+
+    /// Lower enum variant construction
+    fn lower_variant(
+        &mut self,
+        enum_name: &str,
+        variant: &str,
+        fields: &[HirExpr],
+        ty: &HlirType,
+    ) -> Option<ValueId> {
+        // Enum variants are represented as: { tag: i64, field0, field1, ... }
+        let tag = self.get_variant_tag(enum_name, variant);
+        let tag_val = self
+            .builder
+            .build_const(HlirConstant::Int(tag, HlirType::I64), HlirType::I64);
+
+        let mut values = vec![tag_val];
+        for field in fields {
+            if let Some(v) = self.lower_expr(field) {
+                values.push(v);
+            }
+        }
+
+        // Build as a tuple (tag + fields)
+        Some(self.builder.build_tuple(values, ty.clone()))
+    }
+
+    /// Lower effect perform operation
+    fn lower_effect_perform(
+        &mut self,
+        effect: &str,
+        op: &str,
+        args: &[HirExpr],
+        ty: &HlirType,
+    ) -> Option<ValueId> {
+        let arg_vals: Vec<_> = args.iter().filter_map(|a| self.lower_expr(a)).collect();
+
+        // Look up effect operation return type
+        let ret_ty = if let Some(ops) = self.effects.get(effect) {
+            ops.iter()
+                .find(|(name, _, _)| name == op)
+                .map(|(_, _, ret)| ret.clone())
+                .unwrap_or_else(|| ty.clone())
+        } else {
+            ty.clone()
+        };
+
+        // Emit the perform effect operation
+        let result = self.builder.fresh_value();
+        let instr = HlirInstr {
+            result: Some(result),
+            op: Op::PerformEffect {
+                effect: effect.to_string(),
+                op: op.to_string(),
+                args: arg_vals,
+            },
+            ty: ret_ty,
+        };
+        self.builder
+            .func
+            .get_block_mut(self.builder.current_block().unwrap())
+            .unwrap()
+            .instructions
+            .push(instr);
+
+        Some(result)
+    }
+
+    /// Lower effect handle expression
+    fn lower_effect_handle(
+        &mut self,
+        expr: &HirExpr,
+        handler: &str,
+        ty: &HlirType,
+    ) -> Option<ValueId> {
+        // Effect handlers require continuation support
+        // For now, we implement a simplified version:
+        // 1. Create a handler context
+        // 2. Execute the expression
+        // 3. The handler intercepts effect operations
+
+        // Look up the handler's effect
+        let _effect = self.handlers.get(handler).cloned();
+
+        // For a simplified implementation, we just evaluate the expression
+        // A full implementation would:
+        // 1. Push the handler onto a handler stack
+        // 2. Execute the expression
+        // 3. When a perform is encountered, look up the handler
+        // 4. Execute the handler case with the continuation
+
+        // Create blocks for the handler structure
+        let handle_block = self.builder.create_block("handle.body");
+        let resume_block = self.builder.create_block("handle.resume");
+
+        self.builder.build_branch(handle_block);
+
+        // Execute the expression in the handle block
+        self.builder.switch_to_block(handle_block);
+        self.terminated = false;
+        let result = self.lower_expr(expr);
+
+        if !self.terminated {
+            self.builder.build_branch(resume_block);
+        }
+
+        // Resume block collects the result
+        self.builder.switch_to_block(resume_block);
+        self.terminated = false;
+
+        // Return the result
+        if let Some(r) = result {
+            Some(r)
+        } else {
+            Some(self.builder.build_unit())
+        }
+    }
+
+    /// Lower probabilistic sample expression
+    fn lower_sample(&mut self, dist: &HirExpr, ty: &HlirType) -> Option<ValueId> {
+        // Sampling from distributions is handled as a special operation
+        // In a full implementation, this would:
+        // 1. Evaluate the distribution expression
+        // 2. Call a runtime sampling function
+        // 3. Return the sampled value
+
+        let dist_val = self.lower_expr(dist)?;
+
+        // Call a runtime sampling function
+        // The actual implementation depends on the distribution type
+        Some(
+            self.builder
+                .build_call("__sample", vec![dist_val], ty.clone()),
+        )
     }
 }
 
@@ -1022,5 +1577,175 @@ mod tests {
         assert_eq!(func.name, "add");
         assert_eq!(func.params.len(), 2);
         assert!(!func.blocks.is_empty());
+    }
+
+    fn make_match_hir() -> Hir {
+        use crate::common::NodeId;
+
+        Hir {
+            items: vec![HirItem::Function(HirFn {
+                id: NodeId(0),
+                name: "classify".to_string(),
+                ty: HirFnType {
+                    params: vec![HirParam {
+                        id: NodeId(1),
+                        name: "x".to_string(),
+                        ty: HirType::I64,
+                        is_mut: false,
+                    }],
+                    return_type: Box::new(HirType::I64),
+                    effects: Vec::new(),
+                },
+                body: HirBlock {
+                    stmts: vec![HirStmt::Expr(HirExpr {
+                        id: NodeId(2),
+                        kind: HirExprKind::Match {
+                            scrutinee: Box::new(HirExpr {
+                                id: NodeId(3),
+                                kind: HirExprKind::Local("x".to_string()),
+                                ty: HirType::I64,
+                            }),
+                            arms: vec![
+                                HirMatchArm {
+                                    pattern: HirPattern::Literal(HirLiteral::Int(0)),
+                                    guard: None,
+                                    body: HirExpr {
+                                        id: NodeId(4),
+                                        kind: HirExprKind::Literal(HirLiteral::Int(0)),
+                                        ty: HirType::I64,
+                                    },
+                                },
+                                HirMatchArm {
+                                    pattern: HirPattern::Literal(HirLiteral::Int(1)),
+                                    guard: None,
+                                    body: HirExpr {
+                                        id: NodeId(5),
+                                        kind: HirExprKind::Literal(HirLiteral::Int(10)),
+                                        ty: HirType::I64,
+                                    },
+                                },
+                                HirMatchArm {
+                                    pattern: HirPattern::Wildcard,
+                                    guard: None,
+                                    body: HirExpr {
+                                        id: NodeId(6),
+                                        kind: HirExprKind::Literal(HirLiteral::Int(100)),
+                                        ty: HirType::I64,
+                                    },
+                                },
+                            ],
+                        },
+                        ty: HirType::I64,
+                    })],
+                    ty: HirType::I64,
+                },
+            })],
+        }
+    }
+
+    #[test]
+    fn test_lower_match_with_switch() {
+        let hir = make_match_hir();
+        let hlir = lower(&hir);
+
+        assert_eq!(hlir.functions.len(), 1);
+        let func = &hlir.functions[0];
+        assert_eq!(func.name, "classify");
+
+        // Should have multiple blocks for the match
+        assert!(func.blocks.len() > 1);
+
+        // Check that we have a switch terminator
+        let has_switch = func
+            .blocks
+            .iter()
+            .any(|b| matches!(b.terminator, HlirTerminator::Switch { .. }));
+        assert!(has_switch, "Expected switch terminator for integer match");
+    }
+
+    #[test]
+    fn test_lower_match_with_guard() {
+        use crate::common::NodeId;
+
+        let hir = Hir {
+            items: vec![HirItem::Function(HirFn {
+                id: NodeId(0),
+                name: "guarded".to_string(),
+                ty: HirFnType {
+                    params: vec![HirParam {
+                        id: NodeId(1),
+                        name: "x".to_string(),
+                        ty: HirType::I64,
+                        is_mut: false,
+                    }],
+                    return_type: Box::new(HirType::I64),
+                    effects: Vec::new(),
+                },
+                body: HirBlock {
+                    stmts: vec![HirStmt::Expr(HirExpr {
+                        id: NodeId(2),
+                        kind: HirExprKind::Match {
+                            scrutinee: Box::new(HirExpr {
+                                id: NodeId(3),
+                                kind: HirExprKind::Local("x".to_string()),
+                                ty: HirType::I64,
+                            }),
+                            arms: vec![
+                                HirMatchArm {
+                                    pattern: HirPattern::Binding {
+                                        name: "n".to_string(),
+                                        mutable: false,
+                                    },
+                                    guard: Some(Box::new(HirExpr {
+                                        id: NodeId(4),
+                                        kind: HirExprKind::Binary {
+                                            op: HirBinaryOp::Gt,
+                                            left: Box::new(HirExpr {
+                                                id: NodeId(5),
+                                                kind: HirExprKind::Local("n".to_string()),
+                                                ty: HirType::I64,
+                                            }),
+                                            right: Box::new(HirExpr {
+                                                id: NodeId(6),
+                                                kind: HirExprKind::Literal(HirLiteral::Int(10)),
+                                                ty: HirType::I64,
+                                            }),
+                                        },
+                                        ty: HirType::Bool,
+                                    })),
+                                    body: HirExpr {
+                                        id: NodeId(7),
+                                        kind: HirExprKind::Literal(HirLiteral::Int(1)),
+                                        ty: HirType::I64,
+                                    },
+                                },
+                                HirMatchArm {
+                                    pattern: HirPattern::Wildcard,
+                                    guard: None,
+                                    body: HirExpr {
+                                        id: NodeId(8),
+                                        kind: HirExprKind::Literal(HirLiteral::Int(0)),
+                                        ty: HirType::I64,
+                                    },
+                                },
+                            ],
+                        },
+                        ty: HirType::I64,
+                    })],
+                    ty: HirType::I64,
+                },
+            })],
+        };
+
+        let hlir = lower(&hir);
+        assert_eq!(hlir.functions.len(), 1);
+        let func = &hlir.functions[0];
+
+        // Should have conditional branches for guards
+        let has_cond_branch = func
+            .blocks
+            .iter()
+            .any(|b| matches!(b.terminator, HlirTerminator::CondBranch { .. }));
+        assert!(has_cond_branch, "Expected conditional branch for guard");
     }
 }
