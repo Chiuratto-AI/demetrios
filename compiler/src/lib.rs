@@ -44,6 +44,7 @@ pub mod lexer;
 pub mod mlir;
 pub mod ownership;
 pub mod parser;
+pub mod refinement;
 pub mod repl;
 pub mod resolve;
 pub mod sourcemap;

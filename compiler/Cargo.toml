@@ -58,6 +58,9 @@ target-lexicon = { version = "0.12", optional = true }
 # REPL
 rustyline = "14"
 
+# SMT Solver for refinement types (optional)
+z3 = { version = "0.12", features = ["static-link-z3"], optional = true }
+
 [dev-dependencies]
 criterion = "0.5"
 pretty_assertions = "1"
@@ -79,6 +82,8 @@ jit = [
 ]
 # Enable GPU codegen
 gpu = []
+# Enable Z3 SMT solver for refinement type verification
+smt = ["dep:z3"]
 
 [profile.release]
 lto = true
@@ -105,3 +110,7 @@ path = "tests/units_tests.rs"
 [[test]]
 name = "sourcemap_tests"
 path = "tests/sourcemap_tests.rs"
+
+[[test]]
+name = "refinement_tests"
+path = "tests/refinement_tests.rs"
