@@ -69,7 +69,7 @@ enum Commands {
         skip_ownership: bool,
     },
 
-    /// Run a D program using JIT compilation
+    /// Run a D program using the interpreter
     Run {
         /// Input file
         #[arg(value_name = "FILE")]
@@ -80,8 +80,38 @@ enum Commands {
         args: Vec<String>,
     },
 
+    /// Run a D program using JIT compilation (requires --features jit)
+    Jit {
+        /// Input file
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Enable optimizations
+        #[arg(short = 'O', long)]
+        optimize: bool,
+
+        /// Arguments to pass to the program
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+
     /// Start the interactive REPL
-    Repl,
+    Repl {
+        /// Use JIT compilation instead of interpreter
+        #[arg(long)]
+        jit: bool,
+    },
+
+    /// Benchmark interpreter vs JIT performance
+    Bench {
+        /// Input file
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Number of iterations
+        #[arg(short, long, default_value = "100")]
+        iterations: u32,
+    },
 
     /// Format D source code
     Fmt {
@@ -149,7 +179,15 @@ fn main() -> Result<()> {
 
         Commands::Run { input, args } => run(&input, &args),
 
-        Commands::Repl => repl(),
+        Commands::Jit {
+            input,
+            optimize,
+            args,
+        } => jit_run(&input, optimize, &args),
+
+        Commands::Repl { jit } => repl(jit),
+
+        Commands::Bench { input, iterations } => bench(&input, iterations),
 
         Commands::Fmt { path, check } => format_code(&path, check),
 
@@ -346,60 +384,133 @@ fn run(input: &std::path::Path, args: &[String]) -> Result<()> {
     }
 }
 
-fn repl() -> Result<()> {
-    println!("Demetrios REPL v{}", env!("CARGO_PKG_VERSION"));
-    println!("Type :help for help, :quit to exit");
-    println!();
+fn jit_run(input: &std::path::Path, optimize: bool, _args: &[String]) -> Result<()> {
+    #[cfg(feature = "jit")]
+    {
+        tracing::info!("JIT compiling {:?} (optimize={})", input, optimize);
 
-    let stdin = std::io::stdin();
-    let mut line = String::new();
+        let source = std::fs::read_to_string(input)
+            .map_err(|e| miette::miette!("Failed to read input file: {}", e))?;
 
-    loop {
-        print!("d> ");
-        use std::io::Write;
-        std::io::stdout().flush().ok();
+        let tokens = demetrios::lexer::lex(&source)?;
+        let ast = demetrios::parser::parse(&tokens, &source)?;
+        let hir = demetrios::check::check(&ast)?;
+        let hlir = demetrios::hlir::lower(&hir);
 
-        line.clear();
-        if stdin.read_line(&mut line).is_err() {
-            break;
-        }
+        let jit = if optimize {
+            demetrios::codegen::cranelift::CraneliftJit::new().with_optimization()
+        } else {
+            demetrios::codegen::cranelift::CraneliftJit::new()
+        };
 
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        match trimmed {
-            ":quit" | ":q" => break,
-            ":help" | ":h" => {
-                println!("Commands:");
-                println!("  :help, :h    Show this help");
-                println!("  :quit, :q    Exit the REPL");
-                println!("  :type <expr> Show the type of an expression");
-                println!();
+        match jit.compile_and_run(&hlir) {
+            Ok(result) => {
+                println!("{}", result);
+                Ok(())
             }
-            _ if trimmed.starts_with(":type ") => {
-                let expr = &trimmed[6..];
-                println!("Type inference for '{}' not yet implemented", expr);
-            }
-            _ => {
-                // Try to parse and evaluate
-                match demetrios::lexer::lex(trimmed) {
-                    Ok(tokens) => {
-                        println!(
-                            "Tokens: {:?}",
-                            tokens.iter().map(|t| &t.kind).collect::<Vec<_>>()
-                        );
-                    }
-                    Err(e) => {
-                        println!("Error: {}", e);
-                    }
-                }
-            }
+            Err(e) => Err(miette::miette!("JIT error: {}", e)),
         }
     }
 
-    println!("Goodbye!");
+    #[cfg(not(feature = "jit"))]
+    {
+        let _ = (input, optimize); // Suppress unused warnings
+        Err(miette::miette!(
+            "JIT backend not enabled. Recompile with --features jit"
+        ))
+    }
+}
+
+fn repl(use_jit: bool) -> Result<()> {
+    let config = demetrios::repl::ReplConfig {
+        use_jit,
+        ..Default::default()
+    };
+
+    demetrios::repl::run_with_config(config).map_err(|e| miette::miette!("REPL error: {}", e))
+}
+
+fn bench(input: &std::path::Path, iterations: u32) -> Result<()> {
+    use std::time::Instant;
+
+    println!("Benchmarking {:?} ({} iterations)", input, iterations);
+    println!();
+
+    let source = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read input file: {}", e))?;
+
+    let tokens = demetrios::lexer::lex(&source)?;
+    let ast = demetrios::parser::parse(&tokens, &source)?;
+    let hir = demetrios::check::check(&ast)?;
+
+    // Warm up
+    println!("Warming up...");
+    let mut interpreter = demetrios::interp::Interpreter::new();
+    let _ = interpreter.interpret(&hir);
+
+    // Benchmark interpreter
+    println!("Running interpreter benchmark...");
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let mut interpreter = demetrios::interp::Interpreter::new();
+        let _ = interpreter.interpret(&hir);
+    }
+    let interp_time = start.elapsed();
+    let interp_per_iter = interp_time / iterations;
+
+    println!(
+        "  Interpreter: {:?} total, {:?} per iteration",
+        interp_time, interp_per_iter
+    );
+
+    // Benchmark JIT if available
+    #[cfg(feature = "jit")]
+    {
+        let hlir = demetrios::hlir::lower(&hir);
+        let jit = demetrios::codegen::cranelift::CraneliftJit::new();
+
+        // Compile once
+        println!("Compiling with JIT...");
+        let compile_start = Instant::now();
+        let compiled = jit
+            .compile(&hlir)
+            .map_err(|e| miette::miette!("JIT compile error: {}", e))?;
+        let compile_time = compile_start.elapsed();
+        println!("  JIT compile time: {:?}", compile_time);
+
+        // Run benchmark
+        println!("Running JIT benchmark...");
+        let start = Instant::now();
+        for _ in 0..iterations {
+            unsafe {
+                let _ = compiled.call_i64("main");
+            }
+        }
+        let jit_time = start.elapsed();
+        let jit_per_iter = jit_time / iterations;
+
+        println!(
+            "  JIT: {:?} total, {:?} per iteration",
+            jit_time, jit_per_iter
+        );
+        println!();
+
+        // Calculate speedup
+        let speedup = interp_per_iter.as_nanos() as f64 / jit_per_iter.as_nanos() as f64;
+        println!("JIT speedup: {:.2}x", speedup);
+
+        // Break-even point
+        let break_even = compile_time.as_nanos() as f64
+            / (interp_per_iter.as_nanos() as f64 - jit_per_iter.as_nanos() as f64);
+        println!("Break-even point: {:.0} iterations", break_even.max(0.0));
+    }
+
+    #[cfg(not(feature = "jit"))]
+    {
+        println!();
+        println!("JIT backend not enabled. Recompile with --features jit for JIT benchmarks.");
+    }
+
     Ok(())
 }
 

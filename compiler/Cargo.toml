@@ -47,6 +47,17 @@ codespan-reporting = "0.11"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Cranelift JIT (optional)
+cranelift-codegen = { version = "0.116", optional = true }
+cranelift-frontend = { version = "0.116", optional = true }
+cranelift-jit = { version = "0.116", optional = true }
+cranelift-module = { version = "0.116", optional = true }
+cranelift-native = { version = "0.116", optional = true }
+target-lexicon = { version = "0.12", optional = true }
+
+# REPL
+rustyline = "14"
+
 [dev-dependencies]
 criterion = "0.5"
 pretty_assertions = "1"
@@ -58,7 +69,14 @@ default = []
 # Enable LLVM backend (requires LLVM installation)
 llvm = []
 # Enable Cranelift JIT
-jit = []
+jit = [
+    "dep:cranelift-codegen",
+    "dep:cranelift-frontend",
+    "dep:cranelift-jit",
+    "dep:cranelift-module",
+    "dep:cranelift-native",
+    "dep:target-lexicon",
+]
 # Enable GPU codegen
 gpu = []
 

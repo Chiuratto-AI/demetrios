@@ -47,6 +47,16 @@ impl Interpreter {
         self.output.clear();
     }
 
+    /// Get mutable access to environment (for REPL)
+    pub fn env_mut(&mut self) -> &mut Environment {
+        &mut self.env
+    }
+
+    /// Alias for interpret (for API compatibility)
+    pub fn run(&mut self, hir: &Hir) -> Result<Value> {
+        self.interpret(hir)
+    }
+
     /// Interpret an HIR program
     pub fn interpret(&mut self, hir: &Hir) -> Result<Value> {
         // First pass: collect all definitions
