@@ -1,0 +1,47 @@
+(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15)
+<ast::_::<impl Deserialize<'de> for ast::GenericParam>::deserialize::__Visitor<'de> as Visitor<'de>>::visit_enum::__Field
+<ast::_::<impl Deserialize<'de> for ast::Pattern>::deserialize::__Visitor<'de> as Visitor<'de>>::visit_enum::__Field
+<ast::_::<impl Deserialize<'de> for ast::Stmt>::deserialize::__Visitor<'de> as Visitor<'de>>::visit_enum::__Field
+<ast::_::<impl Deserialize<'de> for ast::TypeExpr>::deserialize::__Visitor<'de> as Visitor<'de>>::visit_enum::__Field
+ast::_::<impl Deserialize<'de> for ast::AssignOp>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::BinaryOp>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::Block>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::EffectDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::EffectOpDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::EffectRef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::EnumDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::ExternBlock>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::ExternFn>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::FieldDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::FnDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::FnModifiers>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::GenericParam>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::Generics>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::GlobalDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::HandlerCase>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::HandlerDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::ImplDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::ImplItem>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::ImplTypeDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::ImportDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::Item>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::Literal>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::MatchArm>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::Modifiers>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::Param>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::Path>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::Pattern>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::Stmt>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::StructDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::TraitDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::TraitFnDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::TraitItem>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::TraitTypeDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::TypeAliasDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::TypeExpr>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::TypeModifiers>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::UnaryOp>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::VariantData>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::VariantDef>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::Visibility>::deserialize::__Field
+ast::_::<impl Deserialize<'de> for ast::WherePredicate>::deserialize::__Field

@@ -1,0 +1,81 @@
+[package]
+name = "demetrios"
+version = "0.1.0"
+edition = "2024"
+authors = ["Demetrios Chiuratto Agourakis", "Dionisio Chiuratto Agourakis"]
+description = "The Demetrios (D) programming language compiler"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Chiuratto-AI/demetrios"
+keywords = ["compiler", "language", "scientific", "effects", "linear-types"]
+categories = ["compilers", "development-tools"]
+
+[[bin]]
+name = "dc"
+path = "src/main.rs"
+
+[lib]
+name = "demetrios"
+path = "src/lib.rs"
+
+[dependencies]
+# Error handling
+miette = { version = "7", features = ["fancy"] }
+thiserror = "1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Data structures
+indexmap = "2"
+petgraph = "0.6"
+id-arena = "2"
+
+# String interning
+string-interner = "0.17"
+
+# Serialization (for AST dump, etc.)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Logos for lexer generation
+logos = "0.14"
+
+# Source code management
+codespan-reporting = "0.11"
+
+# Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+criterion = "0.5"
+pretty_assertions = "1"
+proptest = "1"
+insta = { version = "1", features = ["yaml"] }
+
+[features]
+default = []
+# Enable LLVM backend (requires LLVM installation)
+llvm = []
+# Enable Cranelift JIT
+jit = []
+# Enable GPU codegen
+gpu = []
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+# Faster compile times
+opt-level = 0
+debug = true
+
+[[test]]
+name = "lexer_tests"
+path = "tests/lexer_tests.rs"
+
+[[test]]
+name = "parser_tests"
+path = "tests/parser_tests.rs"
