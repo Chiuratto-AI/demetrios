@@ -41,6 +41,8 @@ pub mod hir;
 pub mod hlir;
 pub mod interp;
 pub mod lexer;
+#[cfg(feature = "lsp")]
+pub mod lsp;
 pub mod mlir;
 pub mod ownership;
 pub mod parser;

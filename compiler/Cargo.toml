@@ -61,6 +61,14 @@ rustyline = "14"
 # SMT Solver for refinement types (optional)
 z3 = { version = "0.12", features = ["static-link-z3"], optional = true }
 
+# LSP Server (optional)
+tower-lsp = { version = "0.20", optional = true }
+tokio = { version = "1.35", features = ["full"], optional = true }
+async-trait = { version = "0.1", optional = true }
+dashmap = { version = "5.5", optional = true }
+ropey = { version = "1.6", optional = true }
+url = { version = "2.5", optional = true }
+
 [dev-dependencies]
 criterion = "0.5"
 pretty_assertions = "1"
@@ -84,6 +92,15 @@ jit = [
 gpu = []
 # Enable Z3 SMT solver for refinement type verification
 smt = ["dep:z3"]
+# Enable LSP server
+lsp = [
+    "dep:tower-lsp",
+    "dep:tokio",
+    "dep:async-trait",
+    "dep:dashmap",
+    "dep:ropey",
+    "dep:url",
+]
 
 [profile.release]
 lto = true
@@ -114,3 +131,8 @@ path = "tests/sourcemap_tests.rs"
 [[test]]
 name = "refinement_tests"
 path = "tests/refinement_tests.rs"
+
+[[bin]]
+name = "demetrios-lsp"
+path = "src/bin/lsp.rs"
+required-features = ["lsp"]
