@@ -35,6 +35,7 @@ pub mod ast;
 pub mod check;
 pub mod codegen;
 pub mod common;
+pub mod diagnostic;
 pub mod diagnostics;
 pub mod doc;
 pub mod effects;
@@ -52,6 +53,7 @@ pub mod refinement;
 pub mod repl;
 pub mod resolve;
 pub mod sourcemap;
+pub mod test;
 pub mod types;
 
 // Re-export diagnostics for convenience

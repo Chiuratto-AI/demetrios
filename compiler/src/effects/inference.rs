@@ -379,6 +379,66 @@ impl<'a> EffectChecker<'a> {
                 });
                 effects
             }
+
+            Expr::AsyncBlock { block, .. } => {
+                let mut effects = self.infer_block(block);
+                // Async block has Async effect
+                effects.add(Effect {
+                    name: "Async".to_string(),
+                    args: Vec::new(),
+                });
+                effects
+            }
+
+            Expr::AsyncClosure { body, .. } => {
+                let mut effects = self.infer_expr(body);
+                // Async closure has Async effect
+                effects.add(Effect {
+                    name: "Async".to_string(),
+                    args: Vec::new(),
+                });
+                effects
+            }
+
+            Expr::Spawn { expr, .. } => {
+                let mut effects = self.infer_expr(expr);
+                // Spawn has Async effect
+                effects.add(Effect {
+                    name: "Async".to_string(),
+                    args: Vec::new(),
+                });
+                effects
+            }
+
+            Expr::Select { arms, .. } => {
+                let mut effects = EffectSet::new();
+                // Select has Async effect
+                effects.add(Effect {
+                    name: "Async".to_string(),
+                    args: Vec::new(),
+                });
+                for arm in arms {
+                    effects = effects.union(&self.infer_expr(&arm.future));
+                    effects = effects.union(&self.infer_expr(&arm.body));
+                    if let Some(guard) = &arm.guard {
+                        effects = effects.union(&self.infer_expr(guard));
+                    }
+                }
+                effects
+            }
+
+            Expr::Join { futures, .. } => {
+                let mut effects = EffectSet::new();
+                // Join has Async effect
+                effects.add(Effect {
+                    name: "Async".to_string(),
+                    args: Vec::new(),
+                });
+                for future in futures {
+                    effects = effects.union(&self.infer_expr(future));
+                }
+                effects
+            }
         }
     }
 

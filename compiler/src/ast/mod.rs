@@ -288,13 +288,123 @@ pub struct ImportDef {
     pub span: Span,
 }
 
-/// Extern block
+/// ABI specification for FFI
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Abi {
+    /// C ABI (default for extern)
+    C,
+    /// C ABI with unwind support
+    CUnwind,
+    /// Rust ABI (default for normal functions)
+    Rust,
+    /// System ABI (stdcall on Windows, C elsewhere)
+    System,
+    /// System ABI with unwind support
+    SystemUnwind,
+    /// x86 stdcall
+    Stdcall,
+    /// x86 stdcall with unwind support
+    StdcallUnwind,
+    /// x86 fastcall
+    Fastcall,
+    /// x86 fastcall with unwind support
+    FastcallUnwind,
+    /// x86 cdecl
+    Cdecl,
+    /// Arm AAPCS
+    Aapcs,
+    /// Win64 ABI
+    Win64,
+    /// SysV64 ABI
+    SysV64,
+    /// Platform intrinsic
+    PlatformIntrinsic,
+    /// Unknown ABI (for forward compatibility)
+    Unknown(String),
+}
+
+impl Default for Abi {
+    fn default() -> Self {
+        Abi::Rust
+    }
+}
+
+impl Abi {
+    /// Parse an ABI string
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "C" => Abi::C,
+            "C-unwind" => Abi::CUnwind,
+            "Rust" => Abi::Rust,
+            "system" => Abi::System,
+            "system-unwind" => Abi::SystemUnwind,
+            "stdcall" => Abi::Stdcall,
+            "stdcall-unwind" => Abi::StdcallUnwind,
+            "fastcall" => Abi::Fastcall,
+            "fastcall-unwind" => Abi::FastcallUnwind,
+            "cdecl" => Abi::Cdecl,
+            "aapcs" => Abi::Aapcs,
+            "win64" => Abi::Win64,
+            "sysv64" => Abi::SysV64,
+            "platform-intrinsic" => Abi::PlatformIntrinsic,
+            other => Abi::Unknown(other.to_string()),
+        }
+    }
+
+    /// Get the ABI as a string
+    pub fn as_str(&self) -> &str {
+        match self {
+            Abi::C => "C",
+            Abi::CUnwind => "C-unwind",
+            Abi::Rust => "Rust",
+            Abi::System => "system",
+            Abi::SystemUnwind => "system-unwind",
+            Abi::Stdcall => "stdcall",
+            Abi::StdcallUnwind => "stdcall-unwind",
+            Abi::Fastcall => "fastcall",
+            Abi::FastcallUnwind => "fastcall-unwind",
+            Abi::Cdecl => "cdecl",
+            Abi::Aapcs => "aapcs",
+            Abi::Win64 => "win64",
+            Abi::SysV64 => "sysv64",
+            Abi::PlatformIntrinsic => "platform-intrinsic",
+            Abi::Unknown(s) => s,
+        }
+    }
+
+    /// Check if this ABI supports unwinding
+    pub fn supports_unwind(&self) -> bool {
+        matches!(
+            self,
+            Abi::CUnwind | Abi::SystemUnwind | Abi::StdcallUnwind | Abi::FastcallUnwind | Abi::Rust
+        )
+    }
+}
+
+impl std::fmt::Display for Abi {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Extern block containing foreign declarations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternBlock {
     pub id: NodeId,
-    pub abi: String,
-    pub items: Vec<ExternFn>,
+    pub abi: Abi,
+    pub items: Vec<ExternItem>,
     pub span: Span,
+}
+
+/// Item in an extern block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExternItem {
+    /// Foreign function declaration
+    Fn(ExternFn),
+    /// Foreign static variable
+    Static(ExternStatic),
+    /// Foreign type (opaque)
+    Type(ExternType),
 }
 
 /// Extern function declaration
@@ -304,6 +414,79 @@ pub struct ExternFn {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,
+    pub is_variadic: bool,
+    pub link_name: Option<String>,
+    pub span: Span,
+}
+
+/// Extern static variable declaration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternStatic {
+    pub id: NodeId,
+    pub name: String,
+    pub ty: TypeExpr,
+    pub is_mut: bool,
+    pub link_name: Option<String>,
+    pub span: Span,
+}
+
+/// Extern opaque type declaration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternType {
+    pub id: NodeId,
+    pub name: String,
+    pub span: Span,
+}
+
+/// Representation attribute for FFI types
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Repr {
+    /// Default D representation
+    D,
+    /// C-compatible representation
+    C,
+    /// Transparent (single-field newtype)
+    Transparent,
+    /// Packed representation (no padding)
+    Packed,
+    /// Specific alignment
+    Align(usize),
+    /// Integer representation for enums
+    Int(IntRepr),
+}
+
+/// Integer representation for enums
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IntRepr {
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    Isize,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    Usize,
+}
+
+/// Calling convention for function pointers
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CallingConvention {
+    /// Default D calling convention
+    D,
+    /// C calling convention
+    C,
+    /// System calling convention
+    System,
+    /// stdcall (Windows)
+    Stdcall,
+    /// fastcall (Windows)
+    Fastcall,
+    /// cdecl
+    Cdecl,
 }
 
 // ==================== GLOBALS ====================
@@ -521,6 +704,21 @@ pub enum Expr {
     Sample { id: NodeId, distribution: Box<Expr> },
     /// Await async expression
     Await { id: NodeId, expr: Box<Expr> },
+    /// Async block: async { ... }
+    AsyncBlock { id: NodeId, block: Block },
+    /// Async closure: async |x| { ... }
+    AsyncClosure {
+        id: NodeId,
+        params: Vec<(String, Option<TypeExpr>)>,
+        return_type: Option<TypeExpr>,
+        body: Box<Expr>,
+    },
+    /// Spawn async task: spawn { ... }
+    Spawn { id: NodeId, expr: Box<Expr> },
+    /// Select expression for waiting on multiple futures
+    Select { id: NodeId, arms: Vec<SelectArm> },
+    /// Join expression for concurrent execution
+    Join { id: NodeId, futures: Vec<Expr> },
 }
 
 /// Literal values
@@ -580,6 +778,19 @@ pub enum UnaryOp {
 pub struct MatchArm {
     pub pattern: Pattern,
     pub guard: Option<Box<Expr>>,
+    pub body: Expr,
+}
+
+/// Select arm for async select expressions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SelectArm {
+    /// The future expression to wait on
+    pub future: Expr,
+    /// Pattern to bind the result
+    pub pattern: Pattern,
+    /// Optional guard condition
+    pub guard: Option<Box<Expr>>,
+    /// Body expression to execute when this arm matches
     pub body: Expr,
 }
 

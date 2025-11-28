@@ -324,6 +324,35 @@ impl<'a> OwnershipChecker<'a> {
             Expr::Await { expr, .. } => {
                 self.check_expr(expr, use_kind);
             }
+
+            Expr::AsyncBlock { block, .. } => {
+                self.check_block(block);
+            }
+
+            Expr::AsyncClosure { body, .. } => {
+                // TODO: check captures
+                self.check_expr(body, UseKind::Move);
+            }
+
+            Expr::Spawn { expr, .. } => {
+                self.check_expr(expr, UseKind::Move);
+            }
+
+            Expr::Select { arms, .. } => {
+                for arm in arms {
+                    self.check_expr(&arm.future, UseKind::Move);
+                    if let Some(guard) = &arm.guard {
+                        self.check_expr(guard, UseKind::Copy);
+                    }
+                    self.check_expr(&arm.body, use_kind);
+                }
+            }
+
+            Expr::Join { futures, .. } => {
+                for future in futures {
+                    self.check_expr(future, UseKind::Move);
+                }
+            }
         }
     }
 

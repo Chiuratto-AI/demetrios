@@ -136,6 +136,8 @@ pub enum TokenKind {
     Unsafe,
     #[token("extern")]
     Extern,
+    #[token("static")]
+    Static,
 
     // Boolean literals
     #[token("true")]
@@ -478,6 +480,7 @@ impl TokenKind {
             TokenKind::Assume => "assume",
             TokenKind::Unsafe => "unsafe",
             TokenKind::Extern => "extern",
+            TokenKind::Static => "static",
             TokenKind::True => "true",
             TokenKind::False => "false",
             TokenKind::IntLit => "<int>",

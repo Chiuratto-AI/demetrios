@@ -780,15 +780,16 @@ impl<'a> Parser<'a> {
         let abi = if self.at(TokenKind::StringLit) {
             let s = self.advance().text.clone();
             // Remove quotes
-            s[1..s.len() - 1].to_string()
+            let abi_str = &s[1..s.len() - 1];
+            Abi::from_str(abi_str)
         } else {
-            "C".to_string()
+            Abi::C
         };
 
         self.expect(TokenKind::LBrace)?;
         let mut items = Vec::new();
         while !self.at(TokenKind::RBrace) {
-            items.push(self.parse_extern_fn()?);
+            items.push(self.parse_extern_item()?);
         }
         self.expect(TokenKind::RBrace)?;
 
@@ -802,18 +803,152 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    fn parse_extern_fn(&mut self) -> Result<ExternFn> {
+    fn parse_extern_item(&mut self) -> Result<ExternItem> {
+        // Check for #[link_name = "..."] attribute
+        let link_name = self.parse_link_name_attr()?;
+
+        match self.peek() {
+            TokenKind::Fn => {
+                let func = self.parse_extern_fn(link_name)?;
+                Ok(ExternItem::Fn(func))
+            }
+            TokenKind::Static => {
+                let static_item = self.parse_extern_static(link_name)?;
+                Ok(ExternItem::Static(static_item))
+            }
+            TokenKind::Type => {
+                let type_item = self.parse_extern_type()?;
+                Ok(ExternItem::Type(type_item))
+            }
+            _ => {
+                let tok = self.current().clone();
+                Err(miette::miette!(
+                    labels = vec![miette::LabeledSpan::at(
+                        tok.span.start..tok.span.end,
+                        "expected fn, static, or type"
+                    )],
+                    "expected extern item, found {:?}",
+                    tok.kind
+                ))
+            }
+        }
+    }
+
+    fn parse_link_name_attr(&mut self) -> Result<Option<String>> {
+        if !self.at(TokenKind::Hash) {
+            return Ok(None);
+        }
+        self.advance(); // #
+        self.expect(TokenKind::LBracket)?;
+
+        let ident = self.parse_ident()?;
+        if ident != "link_name" {
+            // Skip unknown attribute
+            while !self.at(TokenKind::RBracket) && !self.at(TokenKind::Eof) {
+                self.advance();
+            }
+            self.expect(TokenKind::RBracket)?;
+            return Ok(None);
+        }
+
+        self.expect(TokenKind::Eq)?;
+        let link_name = if self.at(TokenKind::StringLit) {
+            let s = self.advance().text.clone();
+            s[1..s.len() - 1].to_string()
+        } else {
+            return Err(miette::miette!("expected string literal for link_name"));
+        };
+        self.expect(TokenKind::RBracket)?;
+        Ok(Some(link_name))
+    }
+
+    fn parse_extern_fn(&mut self, link_name: Option<String>) -> Result<ExternFn> {
+        let start = self.span();
         self.expect(TokenKind::Fn)?;
         let name = self.parse_ident()?;
-        let params = self.parse_params()?;
+
+        // Parse parameters, handling variadic
+        self.expect(TokenKind::LParen)?;
+        let mut params = Vec::new();
+        let mut is_variadic = false;
+
+        while !self.at(TokenKind::RParen) {
+            // Check for variadic ...
+            if self.at(TokenKind::DotDotDot) {
+                self.advance();
+                is_variadic = true;
+                break;
+            }
+
+            params.push(self.parse_param()?);
+
+            if !self.at(TokenKind::RParen) {
+                self.expect(TokenKind::Comma)?;
+                // Allow trailing comma before ...
+                if self.at(TokenKind::DotDotDot) {
+                    self.advance();
+                    is_variadic = true;
+                    break;
+                }
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+
         let return_type = self.parse_return_type()?;
         self.expect(TokenKind::Semi)?;
+
+        let end = self.span();
 
         Ok(ExternFn {
             id: self.next_id(),
             name,
             params,
             return_type,
+            is_variadic,
+            link_name,
+            span: start.merge(end),
+        })
+    }
+
+    fn parse_extern_static(&mut self, link_name: Option<String>) -> Result<ExternStatic> {
+        let start = self.span();
+        self.expect(TokenKind::Static)?;
+
+        let is_mut = if self.at(TokenKind::Mut) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::Colon)?;
+        let ty = self.parse_type()?;
+        self.expect(TokenKind::Semi)?;
+
+        let end = self.span();
+
+        Ok(ExternStatic {
+            id: self.next_id(),
+            name,
+            ty,
+            is_mut,
+            link_name,
+            span: start.merge(end),
+        })
+    }
+
+    fn parse_extern_type(&mut self) -> Result<ExternType> {
+        let start = self.span();
+        self.expect(TokenKind::Type)?;
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::Semi)?;
+        let end = self.span();
+
+        Ok(ExternType {
+            id: self.next_id(),
+            name,
+            span: start.merge(end),
         })
     }
 
@@ -1250,6 +1385,13 @@ impl<'a> Parser<'a> {
                             base: Box::new(expr),
                             index,
                         };
+                    } else if self.at(TokenKind::Await) {
+                        // Postfix await: expr.await
+                        self.advance();
+                        expr = Expr::Await {
+                            id: self.next_id(),
+                            expr: Box::new(expr),
+                        };
                     } else {
                         let field = self.parse_ident()?;
                         expr = Expr::Field {
@@ -1534,6 +1676,55 @@ impl<'a> Parser<'a> {
                 })
             }
 
+            // Async block: async { ... }
+            TokenKind::Async => {
+                self.advance();
+                if self.at(TokenKind::Pipe) {
+                    // Async closure: async |x| { ... }
+                    self.parse_async_closure()
+                } else if self.at(TokenKind::LBrace) {
+                    // Async block: async { ... }
+                    let block = self.parse_block()?;
+                    Ok(Expr::AsyncBlock {
+                        id: self.next_id(),
+                        block,
+                    })
+                } else {
+                    Err(miette::miette!(
+                        "Expected '{{' or '|' after 'async', found {:?}",
+                        self.peek()
+                    ))
+                }
+            }
+
+            // Spawn: spawn { ... } or spawn expr
+            TokenKind::Spawn => {
+                self.advance();
+                let expr = if self.at(TokenKind::LBrace) {
+                    let block = self.parse_block()?;
+                    Expr::AsyncBlock {
+                        id: self.next_id(),
+                        block,
+                    }
+                } else {
+                    self.parse_expr()?
+                };
+                Ok(Expr::Spawn {
+                    id: self.next_id(),
+                    expr: Box::new(expr),
+                })
+            }
+
+            // Await keyword (standalone): await expr
+            TokenKind::Await => {
+                self.advance();
+                let expr = self.parse_unary()?;
+                Ok(Expr::Await {
+                    id: self.next_id(),
+                    expr: Box::new(expr),
+                })
+            }
+
             _ => Err(miette::miette!(
                 "Unexpected token {:?} in expression",
                 self.peek()
@@ -1708,6 +1899,49 @@ impl<'a> Parser<'a> {
         };
 
         Ok(Expr::Closure {
+            id: self.next_id(),
+            params,
+            return_type,
+            body,
+        })
+    }
+
+    fn parse_async_closure(&mut self) -> Result<Expr> {
+        self.expect(TokenKind::Pipe)?;
+        let mut params = Vec::new();
+        while !self.at(TokenKind::Pipe) {
+            let name = self.parse_ident()?;
+            let ty = if self.at(TokenKind::Colon) {
+                self.advance();
+                Some(self.parse_type()?)
+            } else {
+                None
+            };
+            params.push((name, ty));
+            if !self.at(TokenKind::Pipe) {
+                self.expect(TokenKind::Comma)?;
+            }
+        }
+        self.expect(TokenKind::Pipe)?;
+
+        let return_type = if self.at(TokenKind::Arrow) {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        let body = if self.at(TokenKind::LBrace) {
+            let block = self.parse_block()?;
+            Box::new(Expr::Block {
+                id: self.next_id(),
+                block,
+            })
+        } else {
+            Box::new(self.parse_expr()?)
+        };
+
+        Ok(Expr::AsyncClosure {
             id: self.next_id(),
             params,
             return_type,

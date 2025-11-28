@@ -4,8 +4,10 @@
 //! - LLVM: For optimized native code (requires `--features llvm`)
 //! - Cranelift: For fast JIT compilation (requires `--features jit`)
 //! - GPU: For CUDA/SPIR-V compute kernels (requires `--features gpu`)
+//! - Debug: DWARF debug information and source maps
 
 pub mod cranelift;
+pub mod debug;
 pub mod gpu;
 
 // The LLVM backend is in a subdirectory when the feature is enabled

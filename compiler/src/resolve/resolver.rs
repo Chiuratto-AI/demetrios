@@ -668,7 +668,7 @@ impl Resolver {
                 }
             }
 
-            Expr::Try { expr, .. } | Expr::Await { expr, .. } => {
+            Expr::Try { expr, .. } | Expr::Await { expr, .. } | Expr::Spawn { expr, .. } => {
                 self.resolve_expr(expr);
             }
 
@@ -686,6 +686,50 @@ impl Resolver {
 
             Expr::Sample { distribution, .. } => {
                 self.resolve_expr(distribution);
+            }
+
+            Expr::AsyncBlock { block, .. } => {
+                self.resolve_block(block);
+            }
+
+            Expr::AsyncClosure {
+                params,
+                return_type,
+                body,
+                ..
+            } => {
+                self.symbols.push_scope(ScopeKind::Function, None);
+                for (name, ty) in params {
+                    let def_id = self.symbols.fresh_def_id();
+                    let _ = self.symbols.define(name.clone(), def_id);
+                    if let Some(t) = ty {
+                        self.resolve_type_expr(t);
+                    }
+                }
+                if let Some(ret) = return_type {
+                    self.resolve_type_expr(ret);
+                }
+                self.resolve_expr(body);
+                self.symbols.pop_scope();
+            }
+
+            Expr::Select { arms, .. } => {
+                for arm in arms {
+                    self.resolve_expr(&arm.future);
+                    self.symbols.push_scope(ScopeKind::Block, None);
+                    self.resolve_pattern(&arm.pattern, false);
+                    if let Some(guard) = &arm.guard {
+                        self.resolve_expr(guard);
+                    }
+                    self.resolve_expr(&arm.body);
+                    self.symbols.pop_scope();
+                }
+            }
+
+            Expr::Join { futures, .. } => {
+                for future in futures {
+                    self.resolve_expr(future);
+                }
             }
         }
     }
