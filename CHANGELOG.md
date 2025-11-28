@@ -5,6 +5,88 @@ All notable changes to the Demetrios (D) compiler will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2025-11-28
+
+### Added - Day 15: Documentation Generator
+
+- **Doc Comment Parsing** (`doc/parser.rs`)
+  - Support for `///` outer line doc comments
+  - Support for `//!` inner line doc comments
+  - Support for `/** */` outer block doc comments
+  - Support for `/*! */` inner block doc comments
+  - Markdown support via `pulldown-cmark`
+  - Attribute-style docs: `@param`, `@returns`, `@example`, `@since`, `@deprecated`
+  - Cross-reference syntax: `[item]` linking
+
+- **Documentation Model** (`doc/model.rs`)
+  - `CrateDoc`, `ModuleDoc`, `FunctionDoc`, `TypeDoc`, `TraitDoc`, `ConstantDoc`
+  - `SearchIndex` with name-based and full-text term indexing
+  - Type information: parameters, generics, where clauses
+  - Source file tracking and line number references
+
+- **HTML Generation** (`doc/html/`)
+  - Responsive HTML templates for all documentation pages
+  - Dark/light theme support with CSS variables
+  - Syntax highlighting for D language code
+  - Interactive features: theme toggle, copy code buttons, keyboard search
+  - Breadcrumb navigation and sidebar
+
+- **mdBook Integration** (`doc/book/`)
+  - Complete mdBook structure generation
+  - Auto-generated chapters: Introduction, Getting Started, Reference, API
+  - Cross-linking between guide and API documentation
+  - `book.toml` and `SUMMARY.md` generation
+
+- **Doctest Runner** (`doc/doctest.rs`)
+  - Extract and run code examples from documentation
+  - Support for `should_panic`, `ignore`, `no_run`, `compile_fail` attributes
+  - Documentation coverage statistics
+  - Test summary with pass/fail counts and timing
+
+- **CLI Commands**
+  - `dc doc` - Generate HTML documentation
+  - `dc doc-book` - Generate mdBook documentation
+  - `dc doctest` - Run documentation tests
+  - `dc doc-coverage` - Show documentation coverage statistics
+
+- **Lexer Updates**
+  - Added `DocCommentOuter`, `DocCommentInner`, `DocBlockOuter`, `DocBlockInner` tokens
+  - Updated comment skip patterns to preserve doc comments
+
+### Changed
+- Updated `lib.rs` to export `doc` module
+- Added `pulldown-cmark` dependency for markdown rendering
+
+## [0.11.0] - 2025-11-28
+
+### Added - Day 11: LLVM Backend for AOT Compilation
+
+- **LLVM Code Generation** (`codegen/llvm/`)
+  - Full LLVM IR generation from HLIR
+  - Type mapping to LLVM types
+  - Function compilation with proper calling conventions
+  - Control flow: if/else, loops, match expressions
+  - Arithmetic and comparison operations
+
+- **Optimization Passes**
+  - Multiple optimization levels (O0, O1, O2, O3, Os, Oz)
+  - Standard LLVM optimization pipeline
+  - Function inlining and dead code elimination
+  - Loop optimizations
+
+- **Native Code Emission**
+  - Object file generation
+  - Assembly output option
+  - Executable linking with system linker
+  - Cross-platform target support
+
+- **CLI Enhancements**
+  - `dc build` command for AOT compilation
+  - `--emit-llvm` for LLVM IR output
+  - `--emit-asm` for assembly output
+  - `-O` flag for optimization level
+  - `--target` for cross-compilation
+
 ## [0.10.0] - 2025-11-27
 
 ### Added - Day 10: LSP Server for IDE Integration

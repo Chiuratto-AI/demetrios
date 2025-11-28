@@ -6,7 +6,7 @@ use crate::common::{NodeId, Span};
 use serde::{Deserialize, Serialize};
 
 /// Top-level AST
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Ast {
     pub module_name: Option<Path>,
     pub items: Vec<Item>,

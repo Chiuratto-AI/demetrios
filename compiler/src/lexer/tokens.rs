@@ -15,8 +15,11 @@ pub struct Token {
 /// Token kinds recognized by the lexer
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Logos, Serialize, Deserialize)]
 #[logos(skip r"[ \t\r\n\f]+")]
-#[logos(skip r"//[^\n]*")]
-#[logos(skip r"/\*([^*]|\*[^/])*\*/")]
+// Skip regular comments but NOT doc comments (captured as tokens below)
+// Regular line comments: // followed by anything that isn't / or !
+#[logos(skip r"//[^/!\n][^\n]*")]
+// Block comments that aren't doc comments: /* followed by anything that isn't * or !
+#[logos(skip r"/\*[^*!]([^*]|\*[^/])*\*/")]
 pub enum TokenKind {
     // Keywords
     #[token("module")]
@@ -286,6 +289,20 @@ pub enum TokenKind {
     #[token("_", priority = 2)]
     Underscore,
 
+    // Documentation comments
+    /// Outer doc comment: /// ...
+    #[regex(r"///[^\n]*")]
+    DocCommentOuter,
+    /// Inner doc comment: //! ...
+    #[regex(r"//![^\n]*")]
+    DocCommentInner,
+    /// Outer block doc comment: /** ... */
+    #[regex(r"/\*\*([^*]|\*[^/])*\*/")]
+    DocBlockOuter,
+    /// Inner block doc comment: /*! ... */
+    #[regex(r"/\*!([^*]|\*[^/])*\*/")]
+    DocBlockInner,
+
     // Special
     Eof,
 }
@@ -526,6 +543,10 @@ impl TokenKind {
             TokenKind::Dollar => "$",
             TokenKind::Question => "?",
             TokenKind::Underscore => "_",
+            TokenKind::DocCommentOuter => "<doc_comment>",
+            TokenKind::DocCommentInner => "<doc_comment_inner>",
+            TokenKind::DocBlockOuter => "<doc_block>",
+            TokenKind::DocBlockInner => "<doc_block_inner>",
             TokenKind::Eof => "<eof>",
         }
     }

@@ -2,7 +2,7 @@
 
 A novel L0 systems + scientific programming language.
 
-[![Version](https://img.shields.io/badge/version-0.10.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.12.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green.svg)](LICENSE)
 
 ## Features
@@ -14,6 +14,8 @@ A novel L0 systems + scientific programming language.
 - **Refinement Types**: SMT-backed constraint verification
 - **GPU-Native**: First-class GPU memory and kernels
 - **IDE Support**: Full LSP server with VS Code extension
+- **LLVM Backend**: Native AOT compilation with optimizations
+- **Documentation Generator**: HTML docs, mdBook integration, doctests
 
 ## Building
 
@@ -31,6 +33,9 @@ cargo build --release --features "jit,smt,lsp"
 # Compile
 dc compile program.d -o program
 
+# Build native executable (requires --features llvm)
+dc build program.d -O2
+
 # Type check only
 dc check program.d
 
@@ -39,6 +44,15 @@ dc run program.d
 
 # REPL
 dc repl
+
+# Generate documentation
+dc doc --open
+
+# Generate mdBook
+dc doc-book
+
+# Run doctests
+dc doctest
 
 # Start LSP server (requires --features lsp)
 demetrios-lsp --stdio
@@ -99,13 +113,41 @@ Source -> Lexer -> Parser -> AST -> Type Checker -> HIR -> HLIR -> Codegen
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
+## Documentation
+
+Demetrios includes a comprehensive documentation generator:
+
+```d
+/// Calculate drug concentration from dose and volume.
+///
+/// @param dose The drug dose in milligrams
+/// @param volume The solution volume in milliliters
+/// @returns Concentration in mg/mL
+///
+/// @example
+/// ```d
+/// let conc = calculate_concentration(500_mg, 10_mL)
+/// assert(conc == 50_mg/mL)
+/// ```
+fn calculate_concentration(dose: mg, volume: mL) -> mg/mL {
+    dose / volume
+}
+```
+
+- **HTML Documentation**: Responsive, themed API documentation
+- **mdBook Integration**: Generate readable guides and tutorials
+- **Doctests**: Run code examples from documentation as tests
+- **Coverage**: Track documentation coverage statistics
+
 ## Feature Flags
 
 | Feature | Description |
 |---------|-------------|
 | `jit`   | Cranelift JIT backend for fast development |
+| `llvm`  | LLVM backend for optimized native code |
 | `smt`   | Z3 SMT solver for refinement type verification |
 | `lsp`   | Language Server Protocol for IDE integration |
+| `full`  | Enable all features |
 
 ## License
 

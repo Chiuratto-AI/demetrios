@@ -163,6 +163,38 @@ enum Commands {
         check: bool,
     },
 
+    /// Generate documentation for a package
+    Doc {
+        /// Open documentation in browser after generation
+        #[arg(long)]
+        open: bool,
+
+        /// Document private items
+        #[arg(long)]
+        document_private: bool,
+    },
+
+    /// Generate mdBook documentation
+    DocBook {
+        /// Output directory
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Run documentation tests
+    Doctest {
+        /// Filter tests by name pattern
+        #[arg(long)]
+        filter: Option<String>,
+
+        /// Show verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Show documentation coverage
+    DocCoverage,
+
     /// Show information about the compiler
     Info,
 }
@@ -251,6 +283,17 @@ fn main() -> Result<()> {
         Commands::Bench { input, iterations } => bench(&input, iterations),
 
         Commands::Fmt { path, check } => format_code(&path, check),
+
+        Commands::Doc {
+            open,
+            document_private,
+        } => doc(open, document_private),
+
+        Commands::DocBook { output } => doc_book(output),
+
+        Commands::Doctest { filter, verbose } => doctest(filter, verbose),
+
+        Commands::DocCoverage => doc_coverage(),
 
         Commands::Info => info(),
     }
@@ -764,6 +807,26 @@ fn format_code(path: &std::path::Path, check: bool) -> Result<()> {
 
     // TODO: Implement formatter
     Err(miette::miette!("Formatter not yet implemented"))
+}
+
+fn doc(open: bool, document_private: bool) -> Result<()> {
+    demetrios::pkg::cli::cmd_doc(open, document_private)
+        .map_err(|e| miette::miette!("Documentation generation failed: {}", e))
+}
+
+fn doc_book(output: Option<PathBuf>) -> Result<()> {
+    demetrios::pkg::cli::cmd_doc_book(output)
+        .map_err(|e| miette::miette!("Book generation failed: {}", e))
+}
+
+fn doctest(filter: Option<String>, verbose: bool) -> Result<()> {
+    demetrios::pkg::cli::cmd_doctest(filter, verbose)
+        .map_err(|e| miette::miette!("Doctest failed: {}", e))
+}
+
+fn doc_coverage() -> Result<()> {
+    demetrios::pkg::cli::cmd_doc_coverage()
+        .map_err(|e| miette::miette!("Coverage calculation failed: {}", e))
 }
 
 fn info() -> Result<()> {

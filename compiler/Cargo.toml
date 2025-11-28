@@ -1,6 +1,6 @@
 [package]
 name = "demetrios"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2024"
 authors = ["Demetrios Chiuratto Agourakis", "Dionisio Chiuratto Agourakis"]
 description = "The Demetrios (D) programming language compiler"
@@ -36,6 +36,10 @@ string-interner = "0.17"
 # Serialization (for AST dump, etc.)
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.8"
+
+# Markdown parsing for documentation
+pulldown-cmark = "0.10"
 
 # Logos for lexer generation
 logos = "0.14"
@@ -64,6 +68,11 @@ z3 = { version = "0.12", features = ["static-link-z3"], optional = true }
 # LLVM Backend (optional)
 inkwell = { version = "0.5", features = ["llvm15-0"], optional = true }
 
+# GPU Backend (optional)
+rspirv = { version = "0.12", optional = true }
+spirv = { version = "0.3", optional = true }
+rustc-hash = "2.0"
+
 # LSP Server (optional)
 tower-lsp = { version = "0.20", optional = true }
 tokio = { version = "1.35", features = ["full"], optional = true }
@@ -91,8 +100,8 @@ jit = [
     "dep:cranelift-native",
     "dep:target-lexicon",
 ]
-# Enable GPU codegen
-gpu = []
+# Enable GPU codegen (PTX and SPIR-V)
+gpu = ["dep:rspirv", "dep:spirv"]
 # Enable Z3 SMT solver for refinement type verification
 smt = ["dep:z3"]
 # Enable LSP server
@@ -105,7 +114,7 @@ lsp = [
     "dep:url",
 ]
 # Enable all features
-full = ["llvm", "jit", "smt", "lsp"]
+full = ["llvm", "jit", "gpu", "smt", "lsp"]
 
 [profile.release]
 lto = true

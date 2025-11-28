@@ -156,4 +156,40 @@ mod tests {
         assert_eq!(tokens[5].kind, TokenKind::IntUnitLit);
         assert_eq!(tokens[5].text, "200_mg");
     }
+
+    #[test]
+    fn test_lex_doc_comments() {
+        // Outer doc comment
+        let tokens = lex("/// This is a doc comment\nfn foo() {}").unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::DocCommentOuter);
+        assert!(tokens[0].text.contains("This is a doc comment"));
+        assert_eq!(tokens[1].kind, TokenKind::Fn);
+
+        // Inner doc comment
+        let tokens = lex("//! Module-level doc\nfn bar() {}").unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::DocCommentInner);
+        assert!(tokens[0].text.contains("Module-level doc"));
+        assert_eq!(tokens[1].kind, TokenKind::Fn);
+
+        // Multiple doc comments
+        let tokens = lex("/// First line\n/// Second line\nfn baz() {}").unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::DocCommentOuter);
+        assert_eq!(tokens[1].kind, TokenKind::DocCommentOuter);
+        assert_eq!(tokens[2].kind, TokenKind::Fn);
+    }
+
+    #[test]
+    fn test_lex_doc_block_comments() {
+        // Outer block doc comment
+        let tokens = lex("/** Block doc */\nfn foo() {}").unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::DocBlockOuter);
+        assert!(tokens[0].text.contains("Block doc"));
+        assert_eq!(tokens[1].kind, TokenKind::Fn);
+
+        // Inner block doc comment
+        let tokens = lex("/*! Inner block doc */\nfn bar() {}").unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::DocBlockInner);
+        assert!(tokens[0].text.contains("Inner block doc"));
+        assert_eq!(tokens[1].kind, TokenKind::Fn);
+    }
 }
