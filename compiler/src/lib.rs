@@ -31,30 +31,40 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+pub mod analyze;
 pub mod ast;
+pub mod build;
 pub mod check;
 pub mod codegen;
 pub mod common;
 pub mod diagnostic;
 pub mod diagnostics;
+#[cfg(feature = "distributed")]
+pub mod distributed;
 pub mod doc;
 pub mod effects;
+pub mod fmt;
 pub mod hir;
 pub mod hlir;
 pub mod interp;
 pub mod lexer;
+pub mod lint;
 #[cfg(feature = "lsp")]
 pub mod lsp;
+pub mod macro_system;
 pub mod mlir;
 pub mod ownership;
 pub mod parser;
 pub mod pkg;
+pub mod refactor;
 pub mod refinement;
 pub mod repl;
 pub mod resolve;
 pub mod sourcemap;
+pub mod target;
 pub mod test;
 pub mod types;
+pub mod watch;
 
 // Re-export diagnostics for convenience
 pub use diagnostics::{CompileError, Reporter, SourceFile};
