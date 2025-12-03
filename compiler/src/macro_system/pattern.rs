@@ -3,17 +3,27 @@
 use std::collections::HashMap;
 
 use super::token_tree::*;
-use crate::lexer::TokenKind;
 use crate::common::Span;
+use crate::lexer::TokenKind;
 
 /// A macro pattern
 #[derive(Debug, Clone)]
 pub enum Pattern {
     Token(TokenKind),
     Literal(String),
-    MetaVar { name: String, fragment: FragmentSpecifier },
-    Group { delimiter: Delimiter, patterns: Vec<Pattern> },
-    Repeat { patterns: Vec<Pattern>, separator: Option<Box<Pattern>>, kind: RepeatKind },
+    MetaVar {
+        name: String,
+        fragment: FragmentSpecifier,
+    },
+    Group {
+        delimiter: Delimiter,
+        patterns: Vec<Pattern>,
+    },
+    Repeat {
+        patterns: Vec<Pattern>,
+        separator: Option<Box<Pattern>>,
+        kind: RepeatKind,
+    },
     Wildcard,
 }
 
@@ -48,8 +58,8 @@ pub enum RepeatKind {
 /// Captured bindings from pattern matching
 #[derive(Debug, Clone, Default)]
 pub struct Bindings {
-    singles: HashMap<String, Capture>,
-    repeats: HashMap<String, Vec<Bindings>>,
+    pub singles: HashMap<String, Capture>,
+    pub repeats: HashMap<String, Vec<Bindings>>,
 }
 
 /// A single capture
@@ -63,23 +73,23 @@ impl Bindings {
     pub fn new() -> Self {
         Bindings::default()
     }
-    
+
     pub fn insert_single(&mut self, name: String, capture: Capture) {
         self.singles.insert(name, capture);
     }
-    
+
     pub fn insert_repeat(&mut self, name: String, bindings: Vec<Bindings>) {
         self.repeats.insert(name, bindings);
     }
-    
+
     pub fn get_single(&self, name: &str) -> Option<&Capture> {
         self.singles.get(name)
     }
-    
+
     pub fn get_repeat(&self, name: &str) -> Option<&[Bindings]> {
         self.repeats.get(name).map(|v| v.as_slice())
     }
-    
+
     pub fn merge(&mut self, other: Bindings) {
         self.singles.extend(other.singles);
         for (name, bindings) in other.repeats {
@@ -101,7 +111,7 @@ impl PatternMatcher {
             depth: 0,
         }
     }
-    
+
     pub fn match_pattern(
         &mut self,
         pattern: &Pattern,
@@ -114,12 +124,12 @@ impl PatternMatcher {
                 span: input.first().map(|t| t.span()).unwrap_or_default(),
             });
         }
-        
+
         let result = self.match_pattern_inner(pattern, input);
         self.depth -= 1;
         result
     }
-    
+
     fn match_pattern_inner(
         &mut self,
         pattern: &Pattern,
@@ -129,10 +139,15 @@ impl PatternMatcher {
             Pattern::Token(kind) => self.match_token(*kind, input),
             Pattern::Literal(text) => self.match_literal(text, input),
             Pattern::MetaVar { name, fragment } => self.match_metavar(name, *fragment, input),
-            Pattern::Group { delimiter, patterns } => self.match_group(*delimiter, patterns, input),
-            Pattern::Repeat { patterns, separator, kind } => {
-                self.match_repeat(patterns, separator.as_deref(), *kind, input)
-            }
+            Pattern::Group {
+                delimiter,
+                patterns,
+            } => self.match_group(*delimiter, patterns, input),
+            Pattern::Repeat {
+                patterns,
+                separator,
+                kind,
+            } => self.match_repeat(patterns, separator.as_deref(), *kind, input),
             Pattern::Wildcard => {
                 if input.is_empty() {
                     Err(MacroError::PatternMismatch {
@@ -146,7 +161,7 @@ impl PatternMatcher {
             }
         }
     }
-    
+
     fn match_token(
         &self,
         kind: TokenKind,
@@ -166,7 +181,7 @@ impl PatternMatcher {
             }),
         }
     }
-    
+
     fn match_literal(
         &self,
         text: &str,
@@ -186,7 +201,7 @@ impl PatternMatcher {
             }),
         }
     }
-    
+
     fn match_metavar(
         &mut self,
         name: &str,
@@ -194,59 +209,60 @@ impl PatternMatcher {
         input: &[TokenTree],
     ) -> Result<(Bindings, usize), MacroError> {
         let (trees, consumed) = self.parse_fragment(fragment, input)?;
-        
+
         let mut bindings = Bindings::new();
         bindings.insert_single(name.to_string(), Capture { trees, fragment });
-        
+
         Ok((bindings, consumed))
     }
-    
+
     fn parse_fragment(
         &mut self,
         fragment: FragmentSpecifier,
         input: &[TokenTree],
     ) -> Result<(Vec<TokenTree>, usize), MacroError> {
         match fragment {
-            FragmentSpecifier::Ident => {
-                match input.first() {
-                    Some(TokenTree::Token(t)) if t.token.kind == TokenKind::Ident => {
-                        Ok((vec![input[0].clone()], 1))
-                    }
-                    _ => Err(MacroError::PatternMismatch {
-                        expected: "identifier".to_string(),
-                        found: format!("{:?}", input.first()),
-                        span: input.first().map(|t| t.span()).unwrap_or_default(),
-                    }),
+            FragmentSpecifier::Ident => match input.first() {
+                Some(TokenTree::Token(t)) if t.token.kind == TokenKind::Ident => {
+                    Ok((vec![input[0].clone()], 1))
                 }
-            }
-            
-            FragmentSpecifier::Literal => {
-                match input.first() {
-                    Some(TokenTree::Token(t)) if matches!(
+                _ => Err(MacroError::PatternMismatch {
+                    expected: "identifier".to_string(),
+                    found: format!("{:?}", input.first()),
+                    span: input.first().map(|t| t.span()).unwrap_or_default(),
+                }),
+            },
+
+            FragmentSpecifier::Literal => match input.first() {
+                Some(TokenTree::Token(t))
+                    if matches!(
                         t.token.kind,
-                        TokenKind::Int | TokenKind::Float | TokenKind::String | TokenKind::Char
-                    ) => Ok((vec![input[0].clone()], 1)),
-                    _ => Err(MacroError::PatternMismatch {
-                        expected: "literal".to_string(),
-                        found: format!("{:?}", input.first()),
-                        span: input.first().map(|t| t.span()).unwrap_or_default(),
-                    }),
+                        TokenKind::IntLit
+                            | TokenKind::FloatLit
+                            | TokenKind::StringLit
+                            | TokenKind::CharLit
+                    ) =>
+                {
+                    Ok((vec![input[0].clone()], 1))
                 }
-            }
-            
-            FragmentSpecifier::Block => {
-                match input.first() {
-                    Some(TokenTree::Delimited(Delimiter::Brace, _, _)) => {
-                        Ok((vec![input[0].clone()], 1))
-                    }
-                    _ => Err(MacroError::PatternMismatch {
-                        expected: "block".to_string(),
-                        found: format!("{:?}", input.first()),
-                        span: input.first().map(|t| t.span()).unwrap_or_default(),
-                    }),
+                _ => Err(MacroError::PatternMismatch {
+                    expected: "literal".to_string(),
+                    found: format!("{:?}", input.first()),
+                    span: input.first().map(|t| t.span()).unwrap_or_default(),
+                }),
+            },
+
+            FragmentSpecifier::Block => match input.first() {
+                Some(TokenTree::Delimited(Delimiter::Brace, _, _)) => {
+                    Ok((vec![input[0].clone()], 1))
                 }
-            }
-            
+                _ => Err(MacroError::PatternMismatch {
+                    expected: "block".to_string(),
+                    found: format!("{:?}", input.first()),
+                    span: input.first().map(|t| t.span()).unwrap_or_default(),
+                }),
+            },
+
             FragmentSpecifier::TokenTree | FragmentSpecifier::Tt => {
                 if input.is_empty() {
                     Err(MacroError::PatternMismatch {
@@ -258,7 +274,7 @@ impl PatternMatcher {
                     Ok((vec![input[0].clone()], 1))
                 }
             }
-            
+
             _ => {
                 if input.is_empty() {
                     Err(MacroError::PatternMismatch {
@@ -272,7 +288,7 @@ impl PatternMatcher {
             }
         }
     }
-    
+
     fn match_group(
         &mut self,
         delimiter: Delimiter,
@@ -298,24 +314,24 @@ impl PatternMatcher {
             }),
         }
     }
-    
-    fn match_sequence(
+
+    pub fn match_sequence(
         &mut self,
         patterns: &[Pattern],
         input: &[TokenTree],
     ) -> Result<(Bindings, usize), MacroError> {
         let mut bindings = Bindings::new();
         let mut pos = 0;
-        
+
         for pattern in patterns {
             let (pattern_bindings, consumed) = self.match_pattern(pattern, &input[pos..])?;
             bindings.merge(pattern_bindings);
             pos += consumed;
         }
-        
+
         Ok((bindings, pos))
     }
-    
+
     fn match_repeat(
         &mut self,
         patterns: &[Pattern],
@@ -325,13 +341,13 @@ impl PatternMatcher {
     ) -> Result<(Bindings, usize), MacroError> {
         let mut all_bindings: Vec<Bindings> = Vec::new();
         let mut pos = 0;
-        
+
         loop {
             match self.match_sequence(patterns, &input[pos..]) {
                 Ok((bindings, consumed)) => {
                     all_bindings.push(bindings);
                     pos += consumed;
-                    
+
                     if let Some(sep) = separator {
                         match self.match_pattern(sep, &input[pos..]) {
                             Ok((_, sep_consumed)) => {
@@ -344,7 +360,7 @@ impl PatternMatcher {
                 Err(_) => break,
             }
         }
-        
+
         match kind {
             RepeatKind::ZeroOrMore => {}
             RepeatKind::OneOrMore => {
@@ -366,13 +382,13 @@ impl PatternMatcher {
                 }
             }
         }
-        
+
         let names = collect_metavar_names(patterns);
         let mut result = Bindings::new();
         for name in names {
             result.insert_repeat(name, all_bindings.clone());
         }
-        
+
         Ok((result, pos))
     }
 }

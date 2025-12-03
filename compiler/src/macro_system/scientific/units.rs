@@ -5,10 +5,10 @@
 
 use std::collections::HashMap;
 
+use crate::common::Span;
+use crate::lexer::TokenKind;
 use crate::macro_system::proc_macro::*;
 use crate::macro_system::token_tree::*;
-use crate::lexer::TokenKind;
-use crate::common::Span;
 
 /// Dimension representation (SI base units)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -26,35 +26,56 @@ impl Dimension {
     pub fn dimensionless() -> Self {
         Self::default()
     }
-    
+
     pub fn length() -> Self {
-        Dimension { length: 1, ..Default::default() }
-    }
-    
+        Dimension {
+            length: 1,
+            ..Default::default()
+        }
+}
+
     pub fn mass() -> Self {
-        Dimension { mass: 1, ..Default::default() }
-    }
-    
+        Dimension {
+            mass: 1,
+            ..Default::default()
+        }
+}
+
     pub fn time() -> Self {
-        Dimension { time: 1, ..Default::default() }
-    }
-    
+        Dimension {
+            time: 1,
+            ..Default::default()
+        }
+}
+
     pub fn current() -> Self {
-        Dimension { current: 1, ..Default::default() }
-    }
-    
+        Dimension {
+            current: 1,
+            ..Default::default()
+        }
+}
+
     pub fn temperature() -> Self {
-        Dimension { temperature: 1, ..Default::default() }
-    }
-    
+        Dimension {
+            temperature: 1,
+            ..Default::default()
+        }
+}
+
     pub fn amount() -> Self {
-        Dimension { amount: 1, ..Default::default() }
-    }
-    
+        Dimension {
+            amount: 1,
+            ..Default::default()
+        }
+}
+
     pub fn luminosity() -> Self {
-        Dimension { luminosity: 1, ..Default::default() }
-    }
-    
+        Dimension {
+            luminosity: 1,
+            ..Default::default()
+        }
+}
+
     pub fn mul(&self, other: &Dimension) -> Dimension {
         Dimension {
             length: self.length + other.length,
@@ -66,7 +87,7 @@ impl Dimension {
             luminosity: self.luminosity + other.luminosity,
         }
     }
-    
+
     pub fn div(&self, other: &Dimension) -> Dimension {
         Dimension {
             length: self.length - other.length,
@@ -78,7 +99,7 @@ impl Dimension {
             luminosity: self.luminosity - other.luminosity,
         }
     }
-    
+
     pub fn pow(&self, n: i8) -> Dimension {
         Dimension {
             length: self.length * n,
@@ -90,10 +111,10 @@ impl Dimension {
             luminosity: self.luminosity * n,
         }
     }
-    
+
     pub fn to_type_tokens(&self) -> TokenStream {
         let mut tokens = TokenStream::new();
-        
+
         fn int_to_type(n: i8) -> String {
             if n >= 0 {
                 format!("P{}", n)
@@ -101,7 +122,7 @@ impl Dimension {
                 format!("N{}", -n)
             }
         }
-        
+
         let type_str = format!(
             "Unit<{}, {}, {}, {}, {}, {}, {}>",
             int_to_type(self.length),
@@ -112,14 +133,14 @@ impl Dimension {
             int_to_type(self.amount),
             int_to_type(self.luminosity),
         );
-        
+
         let token = crate::lexer::Token {
             kind: TokenKind::Ident,
             text: type_str,
             span: Span::default(),
         };
         tokens.push(TokenTree::Token(TokenWithCtx::new(token)));
-        
+
         tokens
     }
 }
@@ -127,51 +148,51 @@ impl Dimension {
 /// Common derived units
 pub mod derived {
     use super::Dimension;
-    
+
     pub fn velocity() -> Dimension {
         Dimension::length().div(&Dimension::time())
     }
-    
+
     pub fn acceleration() -> Dimension {
         velocity().div(&Dimension::time())
     }
-    
+
     pub fn force() -> Dimension {
         Dimension::mass().mul(&acceleration())
     }
-    
+
     pub fn energy() -> Dimension {
         force().mul(&Dimension::length())
     }
-    
+
     pub fn power() -> Dimension {
         energy().div(&Dimension::time())
     }
-    
+
     pub fn pressure() -> Dimension {
         force().div(&Dimension::length().pow(2))
     }
-    
+
     pub fn charge() -> Dimension {
         Dimension::current().mul(&Dimension::time())
     }
-    
+
     pub fn voltage() -> Dimension {
         power().div(&Dimension::current())
     }
-    
+
     pub fn resistance() -> Dimension {
         voltage().div(&Dimension::current())
     }
-    
+
     pub fn capacitance() -> Dimension {
         charge().div(&voltage())
     }
-    
+
     pub fn concentration() -> Dimension {
         Dimension::amount().div(&Dimension::length().pow(3))
     }
-    
+
     pub fn frequency() -> Dimension {
         Dimension::dimensionless().div(&Dimension::time())
     }
@@ -180,27 +201,27 @@ pub mod derived {
 /// Pharmacological units
 pub mod pharma {
     use super::Dimension;
-    
+
     pub fn drug_concentration() -> Dimension {
         super::derived::concentration()
     }
-    
+
     pub fn clearance() -> Dimension {
         Dimension::length().pow(3).div(&Dimension::time())
     }
-    
+
     pub fn volume_of_distribution() -> Dimension {
         Dimension::length().pow(3).div(&Dimension::mass())
     }
-    
+
     pub fn half_life() -> Dimension {
         Dimension::time()
     }
-    
+
     pub fn bioavailability() -> Dimension {
         Dimension::dimensionless()
     }
-    
+
     pub fn auc() -> Dimension {
         drug_concentration().mul(&Dimension::time())
     }
@@ -217,7 +238,7 @@ pub fn parse_unit(name: &str) -> Option<Dimension> {
         "K" | "kelvin" => Dimension::temperature(),
         "mol" | "mole" | "moles" => Dimension::amount(),
         "cd" | "candela" => Dimension::luminosity(),
-        
+
         // SI derived units
         "Hz" | "hertz" => derived::frequency(),
         "N" | "newton" | "newtons" => derived::force(),
@@ -228,7 +249,7 @@ pub fn parse_unit(name: &str) -> Option<Dimension> {
         "V" | "volt" | "volts" => derived::voltage(),
         "Ω" | "ohm" | "ohms" => derived::resistance(),
         "F" | "farad" | "farads" => derived::capacitance(),
-        
+
         // Common prefixed units
         "mm" | "millimeter" => Dimension::length(),
         "cm" | "centimeter" => Dimension::length(),
@@ -241,7 +262,7 @@ pub fn parse_unit(name: &str) -> Option<Dimension> {
         "ns" | "nanosecond" => Dimension::time(),
         "min" | "minute" => Dimension::time(),
         "h" | "hour" => Dimension::time(),
-        
+
         // Pharmacological units
         "mL" | "milliliter" => Dimension::length().pow(3),
         "L" | "liter" => Dimension::length().pow(3),
@@ -250,11 +271,11 @@ pub fn parse_unit(name: &str) -> Option<Dimension> {
         "mM" | "millimolar" => pharma::drug_concentration(),
         "μM" | "micromolar" => pharma::drug_concentration(),
         "nM" | "nanomolar" => pharma::drug_concentration(),
-        
+
         // Dimensionless
         "percent" | "%" => Dimension::dimensionless(),
         "ppm" => Dimension::dimensionless(),
-        
+
         _ => return None,
     })
 }
@@ -262,26 +283,23 @@ pub fn parse_unit(name: &str) -> Option<Dimension> {
 /// Unit macro: unit!(value: unit_name)
 pub fn expand_unit_macro(input: TokenStream) -> Result<TokenStream, ProcMacroError> {
     let trees = input.into_trees();
-    
+
     if trees.len() < 3 {
         return Err(ProcMacroError::new("expected: value : unit"));
     }
-    
+
     let value = &trees[0];
-    
+
     let unit_name = match trees.last() {
-        Some(TokenTree::Token(t)) if t.token.kind == TokenKind::Ident => {
-            &t.token.text
-        }
+        Some(TokenTree::Token(t)) if t.token.kind == TokenKind::Ident => &t.token.text,
         _ => return Err(ProcMacroError::new("expected unit name")),
     };
-    
-    let dimension = parse_unit(unit_name).ok_or_else(|| {
-        ProcMacroError::new(format!("unknown unit: {}", unit_name))
-    })?;
-    
+
+    let dimension = parse_unit(unit_name)
+        .ok_or_else(|| ProcMacroError::new(format!("unknown unit: {}", unit_name)))?;
+
     let mut result = TokenStream::new();
-    
+
     result.push(make_ident("Quantity"));
     result.push(make_punct("::"));
     result.push(make_punct("<"));
@@ -292,7 +310,7 @@ pub fn expand_unit_macro(input: TokenStream) -> Result<TokenStream, ProcMacroErr
     result.push(make_punct("("));
     result.push(value.clone());
     result.push(make_punct(")"));
-    
+
     Ok(result)
 }
 
@@ -300,7 +318,7 @@ fn make_ident(name: &str) -> TokenTree {
     let token = crate::lexer::Token {
         kind: TokenKind::Ident,
         text: name.to_string(),
-        span: Span::default(),
+        span: crate::common::Span::default(),
     };
     TokenTree::Token(TokenWithCtx::new(token))
 }
@@ -312,12 +330,20 @@ fn make_punct(p: &str) -> TokenTree {
         ">" => TokenKind::Gt,
         "(" => TokenKind::LParen,
         ")" => TokenKind::RParen,
-        _ => TokenKind::Unknown,
+        "+" => TokenKind::Plus,
+        "-" => TokenKind::Minus,
+        "*" => TokenKind::Star,
+        "/" => TokenKind::Slash,
+        "," => TokenKind::Comma,
+        ";" => TokenKind::Semi,
+        ":" => TokenKind::Colon,
+        "." => TokenKind::Dot,
+        _ => TokenKind::Ident, // Fallback for unknown punctuation
     };
     let token = crate::lexer::Token {
         kind,
         text: p.to_string(),
-        span: Span::default(),
+        span: crate::common::Span::default(),
     };
     TokenTree::Token(TokenWithCtx::new(token))
 }

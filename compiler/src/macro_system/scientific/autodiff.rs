@@ -286,7 +286,7 @@ impl SymExpr {
                 } else {
                     format!("{}", c)
                 };
-                tokens.push(make_token(TokenKind::Float, &text));
+                tokens.push(make_token(TokenKind::FloatLit, &text));
             }
             
             SymExpr::Var(name) => {
@@ -312,7 +312,14 @@ impl SymExpr {
                     right.to_tokens_inner(tokens);
                     tokens.push(make_token(TokenKind::RParen, ")"));
                 } else {
-                    tokens.push(make_token(TokenKind::Unknown, op_text));
+                    let op_kind = match op {
+                        BinOp::Add => TokenKind::Plus,
+                        BinOp::Sub => TokenKind::Minus,
+                        BinOp::Mul => TokenKind::Star,
+                        BinOp::Div => TokenKind::Slash,
+                        BinOp::Pow => unreachable!(),
+                    };
+                    tokens.push(make_token(op_kind, op_text));
                     right.to_tokens_inner(tokens);
                 }
                 
@@ -335,7 +342,7 @@ impl SymExpr {
                 };
                 
                 if let Some(p) = prefix {
-                    tokens.push(make_token(TokenKind::Unknown, p));
+                    tokens.push(make_token(TokenKind::Minus, p));
                     inner.to_tokens_inner(tokens);
                 } else if let Some(f) = func {
                     tokens.push(make_token(TokenKind::Ident, f));
