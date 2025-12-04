@@ -34,6 +34,7 @@
 pub mod analyze;
 pub mod ast;
 pub mod build;
+pub mod causal;
 pub mod check;
 pub mod codegen;
 pub mod common;
