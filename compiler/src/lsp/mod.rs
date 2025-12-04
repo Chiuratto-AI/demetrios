@@ -33,11 +33,14 @@
 //! - tower-lsp: <https://docs.rs/tower-lsp/>
 
 pub mod analysis;
+pub mod code_actions;
 pub mod completion;
 pub mod definition;
 pub mod diagnostics;
 pub mod document;
+pub mod epistemic;
 pub mod hover;
+pub mod inlay_hints;
 pub mod references;
 pub mod semantic_tokens;
 pub mod server;

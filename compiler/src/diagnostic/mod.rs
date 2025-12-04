@@ -21,7 +21,10 @@
 
 pub mod codes;
 pub mod emitter;
+pub mod epistemic;
 pub mod suggestion;
+pub mod type_diff;
+pub mod typo;
 
 use std::collections::HashMap;
 use std::fmt;
@@ -31,6 +34,8 @@ use std::path::PathBuf;
 pub use codes::{ErrorCode, ErrorIndex};
 pub use emitter::{DiagnosticEmitter, HumanEmitter, JsonEmitter};
 pub use suggestion::{Suggestion, SuggestionApplicability};
+pub use type_diff::{TypeDiff, TypeErrorBuilder, render_type_diff};
+pub use typo::{SuggestionBuilder as TypoSuggestionBuilder, TypoDetector, TypoSuggestion};
 
 /// Source location span
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

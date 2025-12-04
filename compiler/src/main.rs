@@ -161,6 +161,87 @@ enum Commands {
         /// Check formatting without modifying files
         #[arg(long)]
         check: bool,
+
+        /// Show diff of changes
+        #[arg(long)]
+        diff: bool,
+
+        /// Maximum line width
+        #[arg(long, default_value = "100")]
+        max_width: usize,
+
+        /// Use tabs instead of spaces
+        #[arg(long)]
+        use_tabs: bool,
+
+        /// Indent width (number of spaces)
+        #[arg(long, default_value = "4")]
+        indent_width: usize,
+    },
+
+    /// Lint D source code
+    Lint {
+        /// Input file (or directory)
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Output format (text, json, sarif)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Treat warnings as errors
+        #[arg(long)]
+        deny_warnings: bool,
+
+        /// Allow specific lint (e.g., --allow unused_variable)
+        #[arg(long, value_name = "LINT")]
+        allow: Vec<String>,
+
+        /// Warn for specific lint
+        #[arg(long, value_name = "LINT")]
+        warn: Vec<String>,
+
+        /// Deny specific lint
+        #[arg(long, value_name = "LINT")]
+        deny: Vec<String>,
+
+        /// Fix issues automatically where possible
+        #[arg(long)]
+        fix: bool,
+    },
+
+    /// Analyze code for metrics and issues
+    Analyze {
+        /// Input file (or directory)
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Analysis type (metrics, dead-code, all)
+        #[arg(long, default_value = "all")]
+        analysis: String,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Show detailed output
+        #[arg(long)]
+        verbose: bool,
+    },
+
+    /// Apply automatic fixes
+    Fix {
+        /// Input file (or directory)
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Only show what would be fixed
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Allow unsafe fixes
+        #[arg(long)]
+        allow_unsafe: bool,
     },
 
     /// Generate documentation for a package
@@ -344,6 +425,12 @@ enum Commands {
         format: String,
     },
 
+    /// Diagnostics management commands
+    Diagnostics {
+        #[command(subcommand)]
+        command: DiagnosticsCommands,
+    },
+
     /// Generate debug information for a compiled binary
     DebugInfo {
         /// Input D source file
@@ -368,6 +455,482 @@ enum Commands {
         /// Output source map file
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+
+    /// Build project using the build system
+    BuildSystem {
+        /// Source directory
+        #[arg(value_name = "DIR", default_value = ".")]
+        source_dir: PathBuf,
+
+        /// Build profile (dev, release, test, bench)
+        #[arg(long, default_value = "dev")]
+        profile: String,
+
+        /// Number of parallel jobs (0 = auto)
+        #[arg(short = 'j', long, default_value = "0")]
+        jobs: usize,
+
+        /// Enable verbose output
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Disable incremental compilation
+        #[arg(long)]
+        no_incremental: bool,
+    },
+
+    /// Clean build artifacts and cache
+    Clean {
+        /// Also remove cache
+        #[arg(long)]
+        cache: bool,
+
+        /// Verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Watch files and rebuild on changes
+    Watch {
+        /// Paths to watch (default: src)
+        #[arg(value_name = "PATH", default_value = "src")]
+        paths: Vec<PathBuf>,
+
+        /// Clear screen before each rebuild
+        #[arg(short, long)]
+        clear: bool,
+
+        /// Run tests after successful build
+        #[arg(short, long)]
+        test: bool,
+
+        /// Command to run after successful build
+        #[arg(short = 'x', long)]
+        exec: Option<String>,
+
+        /// Debounce delay in milliseconds
+        #[arg(long, default_value = "100")]
+        debounce: u64,
+
+        /// Patterns to ignore (glob)
+        #[arg(long)]
+        ignore: Vec<String>,
+
+        /// Enable verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Start development server with live reload
+    Serve {
+        /// Root directory to serve
+        #[arg(value_name = "DIR", default_value = ".")]
+        root: PathBuf,
+
+        /// Port to listen on
+        #[arg(short, long, default_value = "3000")]
+        port: u16,
+
+        /// Host to bind to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+
+        /// Disable live reload
+        #[arg(long)]
+        no_reload: bool,
+
+        /// Open browser automatically
+        #[arg(short, long)]
+        open: bool,
+
+        /// Enable directory listing
+        #[arg(long)]
+        directory_listing: bool,
+
+        /// SPA fallback file (e.g., index.html)
+        #[arg(long)]
+        spa: Option<String>,
+
+        /// Enable verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Run build hooks
+    Hook {
+        /// Hook point to run (pre-build, post-build, etc.)
+        #[arg(value_name = "POINT")]
+        point: String,
+
+        /// Project root directory
+        #[arg(short, long, default_value = ".")]
+        project: PathBuf,
+
+        /// Enable verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Target management commands
+    Target {
+        #[command(subcommand)]
+        command: TargetCommands,
+    },
+
+    /// Sysroot management commands
+    Sysroot {
+        #[command(subcommand)]
+        command: SysrootCommands,
+    },
+
+    /// Distributed build commands
+    #[cfg(feature = "distributed")]
+    Distributed {
+        #[command(subcommand)]
+        command: DistributedCommands,
+    },
+
+    /// Build cache commands
+    #[cfg(feature = "distributed")]
+    Cache {
+        #[command(subcommand)]
+        command: CacheCommands,
+    },
+
+    /// CI/CD configuration commands
+    #[cfg(feature = "distributed")]
+    Ci {
+        #[command(subcommand)]
+        command: CiCommands,
+    },
+}
+
+#[cfg(feature = "distributed")]
+#[derive(Subcommand)]
+enum DistributedCommands {
+    /// Start a distributed build server
+    Server {
+        /// Listen address
+        #[arg(long, default_value = "0.0.0.0:9876")]
+        address: String,
+
+        /// Maximum concurrent connections
+        #[arg(long, default_value = "100")]
+        max_connections: usize,
+
+        /// Enable build cache
+        #[arg(long)]
+        cache: bool,
+
+        /// Server name
+        #[arg(long, default_value = "d-build-server")]
+        name: String,
+    },
+
+    /// Submit a remote build
+    Build {
+        /// Server address
+        #[arg(long, default_value = "localhost:9876")]
+        server: String,
+
+        /// Target triple
+        #[arg(long)]
+        target: Option<String>,
+
+        /// Build profile
+        #[arg(long, default_value = "debug")]
+        profile: String,
+
+        /// Project directory
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+
+    /// Query server status
+    Status {
+        /// Server address
+        #[arg(long, default_value = "localhost:9876")]
+        server: String,
+    },
+}
+
+#[cfg(feature = "distributed")]
+#[derive(Subcommand)]
+enum CacheCommands {
+    /// Start a cache server
+    Server {
+        /// Listen address
+        #[arg(long, default_value = "0.0.0.0:9877")]
+        address: String,
+
+        /// Storage directory
+        #[arg(long, default_value = "~/.d/cache-storage")]
+        storage: PathBuf,
+
+        /// Maximum cache size (e.g., "10GB")
+        #[arg(long, default_value = "10GB")]
+        max_size: String,
+    },
+
+    /// Show cache statistics
+    Stats {
+        /// Cache server URL
+        #[arg(long)]
+        url: Option<String>,
+
+        /// Local cache only
+        #[arg(long)]
+        local: bool,
+    },
+
+    /// Clean cache entries
+    Clean {
+        /// Clean all entries
+        #[arg(long)]
+        all: bool,
+
+        /// Clean entries older than (e.g., "7d", "24h")
+        #[arg(long)]
+        older_than: Option<String>,
+
+        /// Dry run (show what would be deleted)
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[cfg(feature = "distributed")]
+#[derive(Subcommand)]
+enum CiCommands {
+    /// Generate GitHub Actions workflow
+    Github {
+        /// Output file path
+        #[arg(long, default_value = ".github/workflows/ci.yml")]
+        output: PathBuf,
+
+        /// Also generate release workflow
+        #[arg(long)]
+        release: bool,
+
+        /// Target triples (comma-separated)
+        #[arg(long)]
+        targets: Option<String>,
+    },
+
+    /// Generate GitLab CI pipeline
+    Gitlab {
+        /// Output file path
+        #[arg(long, default_value = ".gitlab-ci.yml")]
+        output: PathBuf,
+
+        /// Target triples (comma-separated)
+        #[arg(long)]
+        targets: Option<String>,
+    },
+
+    /// Generate build provenance (SLSA)
+    Provenance {
+        /// Output file path
+        #[arg(long, default_value = "provenance.json")]
+        output: PathBuf,
+
+        /// Target triple
+        #[arg(long)]
+        target: Option<String>,
+
+        /// Build profile
+        #[arg(long, default_value = "release")]
+        profile: String,
+    },
+
+    /// Check reproducibility
+    Reproducible {
+        /// Number of builds to compare
+        #[arg(long, default_value = "2")]
+        builds: usize,
+
+        /// Show environment warnings
+        #[arg(long)]
+        check_env: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum DiagnosticsCommands {
+    /// Check a file and show diagnostics with rich formatting
+    Check {
+        /// Input file
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Output format (human, json, sarif)
+        #[arg(long, default_value = "human")]
+        format: String,
+
+        /// Maximum number of errors to show
+        #[arg(long, default_value = "50")]
+        max_errors: usize,
+
+        /// Show type diff for type errors
+        #[arg(long)]
+        show_type_diff: bool,
+
+        /// Show unification trace for type errors
+        #[arg(long)]
+        show_trace: bool,
+    },
+
+    /// Show similar names for typo detection
+    Similar {
+        /// The name to find similar matches for
+        #[arg(value_name = "NAME")]
+        name: String,
+
+        /// Category (variable, type, function, keyword)
+        #[arg(short, long, default_value = "all")]
+        category: String,
+
+        /// Maximum edit distance
+        #[arg(long, default_value = "3")]
+        max_distance: usize,
+    },
+
+    /// Test diagnostic rendering
+    Render {
+        /// Diagnostic level (error, warning, note, help)
+        #[arg(long, default_value = "error")]
+        level: String,
+
+        /// Error code
+        #[arg(long)]
+        code: Option<String>,
+
+        /// Message
+        #[arg(value_name = "MESSAGE")]
+        message: String,
+
+        /// Output format (human, json, sarif)
+        #[arg(long, default_value = "human")]
+        format: String,
+    },
+
+    /// Show diagnostic statistics for a file
+    Stats {
+        /// Input file
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum TargetCommands {
+    /// List all available targets
+    List {
+        /// Filter by OS (linux, windows, macos, etc.)
+        #[arg(long)]
+        os: Option<String>,
+
+        /// Filter by architecture (x86_64, aarch64, etc.)
+        #[arg(long)]
+        arch: Option<String>,
+
+        /// Show only built-in targets
+        #[arg(long)]
+        builtin: bool,
+
+        /// Show detailed information
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Show information about a specific target
+    Info {
+        /// Target name or triple
+        #[arg(value_name = "TARGET")]
+        target: String,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Add a custom target from a JSON specification file
+    Add {
+        /// Path to target specification JSON file
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+    },
+
+    /// Create a new custom target specification
+    Create {
+        /// Target triple (e.g., x86_64-unknown-myos)
+        #[arg(value_name = "TRIPLE")]
+        triple: String,
+
+        /// Base target to derive from
+        #[arg(long)]
+        base: Option<String>,
+
+        /// Output file for the specification
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Show host target information
+    Host,
+
+    /// Check target configuration predicates
+    Cfg {
+        /// Target to check (default: host)
+        #[arg(long)]
+        target: Option<String>,
+
+        /// Cfg predicate to evaluate
+        #[arg(value_name = "PREDICATE")]
+        predicate: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SysrootCommands {
+    /// List installed sysroots
+    List {
+        /// Show detailed information
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Show sysroot for a specific target
+    Show {
+        /// Target triple
+        #[arg(value_name = "TARGET")]
+        target: String,
+    },
+
+    /// Install sysroot for a target
+    Install {
+        /// Target triple
+        #[arg(value_name = "TARGET")]
+        target: String,
+
+        /// Force reinstallation
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Remove installed sysroot
+    Remove {
+        /// Target triple
+        #[arg(value_name = "TARGET")]
+        target: String,
+    },
+
+    /// Clean stale sysroots
+    Clean {
+        /// Show what would be removed without removing
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -454,7 +1017,37 @@ fn main() -> Result<()> {
 
         Commands::Bench { input, iterations } => bench(&input, iterations),
 
-        Commands::Fmt { path, check } => format_code(&path, check),
+        Commands::Fmt {
+            path,
+            check,
+            diff,
+            max_width,
+            use_tabs,
+            indent_width,
+        } => format_code(&path, check, diff, max_width, use_tabs, indent_width),
+
+        Commands::Lint {
+            path,
+            format,
+            deny_warnings,
+            allow,
+            warn,
+            deny,
+            fix,
+        } => lint_code(&path, &format, deny_warnings, &allow, &warn, &deny, fix),
+
+        Commands::Analyze {
+            path,
+            analysis,
+            format,
+            verbose,
+        } => analyze_code(&path, &analysis, &format, verbose),
+
+        Commands::Fix {
+            path,
+            dry_run,
+            allow_unsafe,
+        } => fix_code(&path, dry_run, allow_unsafe),
 
         Commands::Doc {
             open,
@@ -542,6 +1135,28 @@ fn main() -> Result<()> {
 
         Commands::ErrorIndex { category, format } => show_error_index(category.as_deref(), &format),
 
+        Commands::Diagnostics { command } => match command {
+            DiagnosticsCommands::Check {
+                input,
+                format,
+                max_errors,
+                show_type_diff,
+                show_trace,
+            } => diagnostics_check(&input, &format, max_errors, show_type_diff, show_trace),
+            DiagnosticsCommands::Similar {
+                name,
+                category,
+                max_distance,
+            } => diagnostics_similar(&name, &category, max_distance),
+            DiagnosticsCommands::Render {
+                level,
+                code,
+                message,
+                format,
+            } => diagnostics_render(&level, code.as_deref(), &message, &format),
+            DiagnosticsCommands::Stats { input } => diagnostics_stats(&input),
+        },
+
         Commands::DebugInfo {
             input,
             output,
@@ -549,6 +1164,136 @@ fn main() -> Result<()> {
         } => generate_debug_info(&input, output.as_deref(), &format),
 
         Commands::SourceMap { input, output } => generate_source_map(&input, output.as_deref()),
+
+        Commands::BuildSystem {
+            source_dir,
+            profile,
+            jobs,
+            verbose,
+            no_incremental,
+        } => build_system(&source_dir, &profile, jobs, verbose, no_incremental),
+
+        Commands::Clean { cache, verbose } => clean_build(cache, verbose),
+
+        Commands::Watch {
+            paths,
+            clear,
+            test,
+            exec,
+            debounce,
+            ignore,
+            verbose,
+        } => watch_files(
+            &paths,
+            clear,
+            test,
+            exec.as_deref(),
+            debounce,
+            &ignore,
+            verbose,
+        ),
+
+        Commands::Serve {
+            root,
+            port,
+            host,
+            no_reload,
+            open,
+            directory_listing,
+            spa,
+            verbose,
+        } => serve_files(
+            &root,
+            port,
+            &host,
+            no_reload,
+            open,
+            directory_listing,
+            spa.as_deref(),
+            verbose,
+        ),
+
+        Commands::Hook {
+            point,
+            project,
+            verbose,
+        } => run_hook(&point, &project, verbose),
+
+        Commands::Target { command } => match command {
+            TargetCommands::List {
+                os,
+                arch,
+                builtin,
+                verbose,
+            } => target_list(os.as_deref(), arch.as_deref(), builtin, verbose),
+            TargetCommands::Info { target, format } => target_info(&target, &format),
+            TargetCommands::Add { file } => target_add(&file),
+            TargetCommands::Create {
+                triple,
+                base,
+                output,
+            } => target_create(&triple, base.as_deref(), output.as_deref()),
+            TargetCommands::Host => target_host(),
+            TargetCommands::Cfg { target, predicate } => {
+                target_cfg(target.as_deref(), predicate.as_deref())
+            }
+        },
+
+        Commands::Sysroot { command } => match command {
+            SysrootCommands::List { verbose } => sysroot_list(verbose),
+            SysrootCommands::Show { target } => sysroot_show(&target),
+            SysrootCommands::Install { target, force } => sysroot_install(&target, force),
+            SysrootCommands::Remove { target } => sysroot_remove(&target),
+            SysrootCommands::Clean { dry_run } => sysroot_clean(dry_run),
+        },
+
+        #[cfg(feature = "distributed")]
+        Commands::Distributed { command } => match command {
+            DistributedCommands::Server {
+                address,
+                max_connections,
+                cache,
+                name,
+            } => distributed_server(&address, max_connections, cache, &name),
+            DistributedCommands::Build {
+                server,
+                target,
+                profile,
+                path,
+            } => distributed_build(&server, target.as_deref(), &profile, &path),
+            DistributedCommands::Status { server } => distributed_status(&server),
+        },
+
+        #[cfg(feature = "distributed")]
+        Commands::Cache { command } => match command {
+            CacheCommands::Server {
+                address,
+                storage,
+                max_size,
+            } => cache_server(&address, &storage, &max_size),
+            CacheCommands::Stats { url, local } => cache_stats(url.as_deref(), local),
+            CacheCommands::Clean {
+                all,
+                older_than,
+                dry_run,
+            } => cache_clean(all, older_than.as_deref(), dry_run),
+        },
+
+        #[cfg(feature = "distributed")]
+        Commands::Ci { command } => match command {
+            CiCommands::Github {
+                output,
+                release,
+                targets,
+            } => ci_github(&output, release, targets.as_deref()),
+            CiCommands::Gitlab { output, targets } => ci_gitlab(&output, targets.as_deref()),
+            CiCommands::Provenance {
+                output,
+                target,
+                profile,
+            } => ci_provenance(&output, target.as_deref(), &profile),
+            CiCommands::Reproducible { builds, check_env } => ci_reproducible(builds, check_env),
+        },
     }
 }
 
@@ -1051,15 +1796,556 @@ fn bench(input: &std::path::Path, iterations: u32) -> Result<()> {
     Ok(())
 }
 
-fn format_code(path: &std::path::Path, check: bool) -> Result<()> {
-    if check {
-        println!("Checking formatting of {:?}", path);
+fn format_code(
+    path: &std::path::Path,
+    check: bool,
+    show_diff: bool,
+    max_width: usize,
+    use_tabs: bool,
+    indent_width: usize,
+) -> Result<()> {
+    use demetrios::fmt::{FormatConfig, Formatter};
+
+    // Build configuration
+    let mut config = FormatConfig::default();
+    config.max_width = max_width as u32;
+    config.use_tabs = use_tabs;
+    config.indent_width = indent_width as u32;
+
+    // Collect files to format
+    let files = if path.is_dir() {
+        collect_d_files(path)?
     } else {
-        println!("Formatting {:?}", path);
+        vec![path.to_path_buf()]
+    };
+
+    if files.is_empty() {
+        println!("No .d files found");
+        return Ok(());
     }
 
-    // TODO: Implement formatter
-    Err(miette::miette!("Formatter not yet implemented"))
+    let mut formatted_count = 0;
+    let mut unchanged_count = 0;
+    let mut error_count = 0;
+
+    for file in &files {
+        let source = std::fs::read_to_string(file)
+            .map_err(|e| miette::miette!("Failed to read {}: {}", file.display(), e))?;
+
+        // Parse the file
+        let tokens = match demetrios::lexer::lex(&source) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Error parsing {}: {}", file.display(), e);
+                error_count += 1;
+                continue;
+            }
+        };
+
+        let ast = match demetrios::parser::parse(&tokens, &source) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("Error parsing {}: {}", file.display(), e);
+                error_count += 1;
+                continue;
+            }
+        };
+
+        // Format the code
+        let mut formatter = Formatter::new(config.clone());
+        let formatted = match formatter.format(&source) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Format error in {}: {}", file.display(), e);
+                error_count += 1;
+                continue;
+            }
+        };
+
+        if formatted == source {
+            unchanged_count += 1;
+            continue;
+        }
+
+        formatted_count += 1;
+
+        if check {
+            println!("Would reformat: {}", file.display());
+            if show_diff {
+                print_diff(&source, &formatted);
+            }
+        } else {
+            if show_diff {
+                print_diff(&source, &formatted);
+            }
+            std::fs::write(file, &formatted)
+                .map_err(|e| miette::miette!("Failed to write {}: {}", file.display(), e))?;
+            println!("Formatted: {}", file.display());
+        }
+    }
+
+    println!();
+    println!(
+        "Summary: {} formatted, {} unchanged, {} errors",
+        formatted_count, unchanged_count, error_count
+    );
+
+    if check && formatted_count > 0 {
+        Err(miette::miette!(
+            "{} file(s) would be reformatted",
+            formatted_count
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// Print a simple diff between two strings
+fn print_diff(original: &str, formatted: &str) {
+    let orig_lines: Vec<&str> = original.lines().collect();
+    let fmt_lines: Vec<&str> = formatted.lines().collect();
+
+    for (i, (orig, fmt)) in orig_lines.iter().zip(fmt_lines.iter()).enumerate() {
+        if orig != fmt {
+            println!("  Line {}: ", i + 1);
+            println!("    - {}", orig);
+            println!("    + {}", fmt);
+        }
+    }
+
+    // Handle different line counts
+    if orig_lines.len() > fmt_lines.len() {
+        for (i, line) in orig_lines.iter().skip(fmt_lines.len()).enumerate() {
+            println!("  Line {}: ", fmt_lines.len() + i + 1);
+            println!("    - {}", line);
+        }
+    } else if fmt_lines.len() > orig_lines.len() {
+        for (i, line) in fmt_lines.iter().skip(orig_lines.len()).enumerate() {
+            println!("  Line {}: ", orig_lines.len() + i + 1);
+            println!("    + {}", line);
+        }
+    }
+}
+
+/// Collect all .d files in a directory
+fn collect_d_files(dir: &std::path::Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+
+    for entry in walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if path.extension().map(|e| e == "d").unwrap_or(false) {
+            files.push(path.to_path_buf());
+        }
+    }
+
+    Ok(files)
+}
+
+/// Lint D source code
+#[allow(clippy::too_many_arguments)]
+fn lint_code(
+    path: &std::path::Path,
+    format: &str,
+    deny_warnings: bool,
+    allow: &[String],
+    warn: &[String],
+    deny: &[String],
+    fix: bool,
+) -> Result<()> {
+    use demetrios::lint::{LintConfig, LintLevel, Linter};
+
+    // Build configuration
+    let mut config = LintConfig::default();
+
+    // Apply lint level overrides
+    for lint_name in allow {
+        config.set_level(lint_name, LintLevel::Allow);
+    }
+    for lint_name in warn {
+        config.set_level(lint_name, LintLevel::Warn);
+    }
+    for lint_name in deny {
+        config.set_level(lint_name, LintLevel::Deny);
+    }
+
+    // Collect files to lint
+    let files = if path.is_dir() {
+        collect_d_files(path)?
+    } else {
+        vec![path.to_path_buf()]
+    };
+
+    if files.is_empty() {
+        println!("No .d files found");
+        return Ok(());
+    }
+
+    let mut total_warnings = 0;
+    let mut total_errors = 0;
+    let mut all_diagnostics = Vec::new();
+
+    for file in &files {
+        let source = std::fs::read_to_string(file)
+            .map_err(|e| miette::miette!("Failed to read {}: {}", file.display(), e))?;
+
+        // Parse the file
+        let tokens = match demetrios::lexer::lex(&source) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Error parsing {}: {}", file.display(), e);
+                total_errors += 1;
+                continue;
+            }
+        };
+
+        let ast = match demetrios::parser::parse(&tokens, &source) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("Error parsing {}: {}", file.display(), e);
+                total_errors += 1;
+                continue;
+            }
+        };
+
+        // Run linter
+        let linter = Linter::with_config(config.clone());
+        let diagnostics = linter.lint(&ast, &file.to_string_lossy(), &source);
+
+        for diag in &diagnostics {
+            match diag.level {
+                LintLevel::Warn => total_warnings += 1,
+                LintLevel::Deny | LintLevel::Forbid => total_errors += 1,
+                _ => {}
+            }
+        }
+
+        all_diagnostics.extend(diagnostics.into_iter().map(|d| (file.clone(), d)));
+    }
+
+    // Output results
+    match format {
+        "json" => {
+            println!("{{");
+            println!("  \"diagnostics\": [");
+            for (i, (file, diag)) in all_diagnostics.iter().enumerate() {
+                let comma = if i < all_diagnostics.len() - 1 {
+                    ","
+                } else {
+                    ""
+                };
+                println!(
+                    "    {{\"file\": \"{}\", \"lint\": \"{}\", \"message\": \"{}\", \"level\": \"{}\"}}{}",
+                    file.display(),
+                    diag.lint_name,
+                    diag.message.replace('"', "\\\""),
+                    format!("{:?}", diag.level).to_lowercase(),
+                    comma
+                );
+            }
+            println!("  ],");
+            println!("  \"warnings\": {},", total_warnings);
+            println!("  \"errors\": {}", total_errors);
+            println!("}}");
+        }
+        "sarif" => {
+            // SARIF format for IDE integration
+            println!("{{");
+            println!(
+                "  \"$schema\": \"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json\","
+            );
+            println!("  \"version\": \"2.1.0\",");
+            println!("  \"runs\": [{{");
+            println!(
+                "    \"tool\": {{\"driver\": {{\"name\": \"dc lint\", \"version\": \"{}\"}}}},",
+                env!("CARGO_PKG_VERSION")
+            );
+            println!("    \"results\": []");
+            println!("  }}]");
+            println!("}}");
+        }
+        _ => {
+            // Text format
+            for (file, diag) in &all_diagnostics {
+                let level_str = match diag.level {
+                    LintLevel::Allow => "allow",
+                    LintLevel::Warn => "warning",
+                    LintLevel::Deny => "error",
+                    LintLevel::Forbid => "error",
+                };
+                println!(
+                    "{}: {} [{}]: {}",
+                    file.display(),
+                    level_str,
+                    diag.lint_name,
+                    diag.message
+                );
+
+                // Show suggestions if available
+                for suggestion in &diag.suggestions {
+                    println!("  help: {}", suggestion.message);
+                }
+            }
+
+            println!();
+            println!(
+                "Summary: {} warning(s), {} error(s)",
+                total_warnings, total_errors
+            );
+        }
+    }
+
+    // Apply fixes if requested
+    if fix && !all_diagnostics.is_empty() {
+        println!();
+        println!("Auto-fix not yet implemented. Use 'dc fix' for automatic fixes.");
+    }
+
+    // Determine exit status
+    if total_errors > 0 || (deny_warnings && total_warnings > 0) {
+        Err(miette::miette!("Linting failed with errors"))
+    } else {
+        Ok(())
+    }
+}
+
+/// Analyze code for metrics and issues
+fn analyze_code(
+    path: &std::path::Path,
+    analysis_type: &str,
+    format: &str,
+    verbose: bool,
+) -> Result<()> {
+    use demetrios::analyze::{analyze_dead_code, calculate_metrics};
+
+    // Collect files to analyze
+    let files = if path.is_dir() {
+        collect_d_files(path)?
+    } else {
+        vec![path.to_path_buf()]
+    };
+
+    if files.is_empty() {
+        println!("No .d files found");
+        return Ok(());
+    }
+
+    let run_metrics = analysis_type == "metrics" || analysis_type == "all";
+    let run_dead_code = analysis_type == "dead-code" || analysis_type == "all";
+
+    for file in &files {
+        let source = std::fs::read_to_string(file)
+            .map_err(|e| miette::miette!("Failed to read {}: {}", file.display(), e))?;
+
+        // Parse the file
+        let tokens = match demetrios::lexer::lex(&source) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Error parsing {}: {}", file.display(), e);
+                continue;
+            }
+        };
+
+        let ast = match demetrios::parser::parse(&tokens, &source) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("Error parsing {}: {}", file.display(), e);
+                continue;
+            }
+        };
+
+        match format {
+            "json" => {
+                println!("{{");
+                println!("  \"file\": \"{}\",", file.display());
+
+                if run_metrics {
+                    let metrics = calculate_metrics(&ast, &source);
+                    println!("  \"metrics\": {{");
+                    println!("    \"loc\": {},", metrics.loc);
+                    println!("    \"functions\": {},", metrics.functions);
+                    println!("    \"types\": {},", metrics.types);
+                    println!("    \"avg_complexity\": {:.2}", metrics.avg_complexity);
+                    println!("  }},");
+                }
+
+                if run_dead_code {
+                    let dead_code = analyze_dead_code(&ast);
+                    println!("  \"dead_code\": {{");
+                    println!("    \"unused_items\": {},", dead_code.unused_items.len());
+                    println!(
+                        "    \"unreachable_code\": {},",
+                        dead_code.unreachable_code.len()
+                    );
+                    println!(
+                        "    \"unused_variables\": {}",
+                        dead_code.unused_variables.len()
+                    );
+                    println!("  }}");
+                }
+
+                println!("}}");
+            }
+            _ => {
+                // Text format
+                println!("=== Analysis: {} ===", file.display());
+                println!();
+
+                if run_metrics {
+                    let metrics = calculate_metrics(&ast, &source);
+                    println!("Code Metrics:");
+                    println!("  Lines of code: {}", metrics.loc);
+                    println!("  Comment lines: {}", metrics.comment_lines);
+                    println!("  Blank lines: {}", metrics.blank_lines);
+                    println!("  Functions: {}", metrics.functions);
+                    println!("  Types: {}", metrics.types);
+                    println!("  Average complexity: {:.2}", metrics.avg_complexity);
+
+                    if verbose {
+                        println!();
+                        println!("  Function Details:");
+                        for (name, func) in &metrics.function_metrics {
+                            println!(
+                                "    {}: {} lines, complexity {}, cognitive {}",
+                                name,
+                                func.lines,
+                                func.cyclomatic_complexity,
+                                func.cognitive_complexity
+                            );
+                        }
+                    }
+                    println!();
+                }
+
+                if run_dead_code {
+                    let dead_code = analyze_dead_code(&ast);
+                    println!("Dead Code Analysis:");
+                    println!("  Unused items: {}", dead_code.unused_items.len());
+                    println!("  Unreachable code: {}", dead_code.unreachable_code.len());
+                    println!("  Unused variables: {}", dead_code.unused_variables.len());
+                    println!("  Unused imports: {}", dead_code.unused_imports.len());
+
+                    if verbose && dead_code.has_issues() {
+                        println!();
+                        for item in &dead_code.unused_items {
+                            println!("    Unused {}: {}", item.kind, item.name);
+                        }
+                        for var in &dead_code.unused_variables {
+                            println!("    Unused {}: {}", var.kind, var.name);
+                            if let Some(suggestion) = &var.suggestion {
+                                println!("      hint: prefix with underscore: {}", suggestion);
+                            }
+                        }
+                        for unreach in &dead_code.unreachable_code {
+                            println!("    Unreachable code: {}", unreach.reason);
+                        }
+                    }
+                    println!();
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Apply automatic fixes
+fn fix_code(path: &std::path::Path, dry_run: bool, allow_unsafe: bool) -> Result<()> {
+    use demetrios::lint::{Applicability, LintConfig, Linter};
+
+    // Collect files to fix
+    let files = if path.is_dir() {
+        collect_d_files(path)?
+    } else {
+        vec![path.to_path_buf()]
+    };
+
+    if files.is_empty() {
+        println!("No .d files found");
+        return Ok(());
+    }
+
+    let mut total_fixes = 0;
+
+    for file in &files {
+        let source = std::fs::read_to_string(file)
+            .map_err(|e| miette::miette!("Failed to read {}: {}", file.display(), e))?;
+
+        // Parse the file
+        let tokens = match demetrios::lexer::lex(&source) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Error parsing {}: {}", file.display(), e);
+                continue;
+            }
+        };
+
+        let ast = match demetrios::parser::parse(&tokens, &source) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("Error parsing {}: {}", file.display(), e);
+                continue;
+            }
+        };
+
+        // Run linter to get suggestions
+        let linter = Linter::with_config(LintConfig::default());
+        let diagnostics = linter.lint(&ast, &file.to_string_lossy(), &source);
+
+        // Collect applicable suggestions
+        let suggestions: Vec<_> = diagnostics
+            .iter()
+            .flat_map(|d| &d.suggestions)
+            .filter(|s| match s.applicability {
+                Applicability::MachineApplicable => true,
+                Applicability::MaybeIncorrect => allow_unsafe,
+                Applicability::HasPlaceholders | Applicability::Unspecified => false,
+            })
+            .collect();
+
+        if suggestions.is_empty() {
+            continue;
+        }
+
+        // Collect all edits from suggestions
+        let mut edits: Vec<_> = suggestions.iter().flat_map(|s| &s.edits).collect();
+
+        // Sort edits by position (reverse order for safe application)
+        edits.sort_by(|a, b| b.span.start.cmp(&a.span.start));
+
+        let fix_count = suggestions.len();
+        total_fixes += fix_count;
+
+        if dry_run {
+            println!("{}: {} fix(es) available", file.display(), fix_count);
+            for suggestion in &suggestions {
+                println!("  - {}", suggestion.message);
+            }
+        } else {
+            // Apply edits
+            let mut fixed_source = source.clone();
+            for edit in &edits {
+                if edit.span.start < fixed_source.len() && edit.span.end <= fixed_source.len() {
+                    fixed_source.replace_range(edit.span.start..edit.span.end, &edit.replacement);
+                }
+            }
+
+            std::fs::write(file, &fixed_source)
+                .map_err(|e| miette::miette!("Failed to write {}: {}", file.display(), e))?;
+            println!("{}: applied {} fix(es)", file.display(), fix_count);
+        }
+    }
+
+    println!();
+    if dry_run {
+        println!("Dry run: {} fix(es) would be applied", total_fixes);
+    } else {
+        println!("Applied {} fix(es)", total_fixes);
+    }
+
+    Ok(())
 }
 
 fn doc(open: bool, document_private: bool) -> Result<()> {
@@ -1681,6 +2967,307 @@ fn show_error_index(category: Option<&str>, format: &str) -> Result<()> {
     Ok(())
 }
 
+/// Check a file and show diagnostics with rich formatting
+fn diagnostics_check(
+    input: &std::path::Path,
+    format: &str,
+    max_errors: usize,
+    show_type_diff: bool,
+    _show_trace: bool,
+) -> Result<()> {
+    use demetrios::diagnostic::emitter::SarifEmitter;
+    use demetrios::diagnostic::{
+        Diagnostic, DiagnosticHandler, DiagnosticLevel, HumanEmitter, JsonEmitter, Span,
+    };
+
+    tracing::info!("Checking {:?} with rich diagnostics", input);
+
+    // Read source file
+    let source = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read input file: {}", e))?;
+
+    // Create emitter based on format
+    let emitter: Box<dyn demetrios::diagnostic::DiagnosticEmitter> = match format {
+        "json" => Box::new(JsonEmitter::stdout()),
+        "sarif" => Box::new(SarifEmitter::new(Box::new(std::io::stdout()))),
+        _ => Box::new(HumanEmitter::stderr()), // human format with color
+    };
+
+    let mut handler = DiagnosticHandler::new(emitter).max_errors(max_errors);
+    let file_id = handler
+        .source_map_mut()
+        .add_file(input.to_path_buf(), source.clone());
+
+    // Try to lex
+    let tokens = match demetrios::lexer::lex(&source) {
+        Ok(t) => t,
+        Err(e) => {
+            let diagnostic = Diagnostic::error(format!("Lexer error: {}", e))
+                .with_code("L0001")
+                .with_label(Span::new(0, source.len().min(10), file_id), "error here");
+            handler.emit(&diagnostic);
+            handler.abort_if_errors();
+            return Ok(());
+        }
+    };
+
+    // Try to parse
+    let ast = match demetrios::parser::parse(&tokens, &source) {
+        Ok(a) => a,
+        Err(e) => {
+            let diagnostic = Diagnostic::error(format!("Parse error: {}", e)).with_code("P0001");
+            handler.emit(&diagnostic);
+            handler.abort_if_errors();
+            return Ok(());
+        }
+    };
+
+    // Try to type check
+    match demetrios::check::check(&ast) {
+        Ok(hir) => {
+            if handler.has_errors() {
+                handler.abort_if_errors();
+            } else {
+                println!(
+                    "No errors found in {} ({} items)",
+                    input.display(),
+                    hir.items.len()
+                );
+            }
+        }
+        Err(e) => {
+            let mut diagnostic = Diagnostic::error(format!("{}", e)).with_code("T0001");
+
+            // Add type diff if requested
+            if show_type_diff {
+                diagnostic =
+                    diagnostic.with_note("Use --show-trace for detailed unification trace");
+            }
+
+            handler.emit(&diagnostic);
+            handler.abort_if_errors();
+        }
+    }
+
+    Ok(())
+}
+
+/// Show similar names for typo detection
+fn diagnostics_similar(name: &str, category: &str, max_distance: usize) -> Result<()> {
+    use demetrios::diagnostic::typo::{SuggestionBuilder, find_similar};
+
+    let builder = SuggestionBuilder::new();
+
+    println!("Finding names similar to '{}'...", name);
+    println!();
+
+    match category {
+        "keyword" | "keywords" => {
+            if let Some(msg) = builder.did_you_mean_keyword(name) {
+                println!("Keywords: {}", msg);
+            } else {
+                println!("No similar keywords found");
+            }
+        }
+        "type" | "types" => {
+            if let Some(msg) = builder.did_you_mean_type(name) {
+                println!("Types: {}", msg);
+            } else {
+                println!("No similar types found");
+            }
+        }
+        "function" | "functions" | "fn" => {
+            if let Some(msg) = builder.did_you_mean_function(name) {
+                println!("Functions: {}", msg);
+            } else {
+                println!("No similar functions found");
+            }
+        }
+        "variable" | "variables" | "var" => {
+            if let Some(msg) = builder.did_you_mean_variable(name) {
+                println!("Variables: {}", msg);
+            } else {
+                println!("No similar variables found");
+            }
+        }
+        _ => {
+            // Show all categories
+            println!("Category: all (max distance: {})", max_distance);
+            println!();
+
+            // Keywords
+            let keywords = vec![
+                "fn", "let", "var", "const", "struct", "enum", "type", "trait", "impl", "if",
+                "else", "match", "while", "for", "loop", "return", "break", "continue", "with",
+                "where", "as", "in", "use", "mod", "pub", "mut", "ref", "linear", "affine",
+                "kernel", "effect", "handler", "handle", "perform", "resume",
+            ];
+            let kw_similar = find_similar(name, keywords.into_iter(), max_distance, 5);
+            if !kw_similar.is_empty() {
+                println!("Similar keywords:");
+                for s in &kw_similar {
+                    println!(
+                        "  {} (distance: {}, score: {:.2})",
+                        s.text, s.distance, s.score
+                    );
+                }
+                println!();
+            }
+
+            // Types
+            let types = vec![
+                "int", "i8", "i16", "i32", "i64", "uint", "u8", "u16", "u32", "u64", "f32", "f64",
+                "bool", "char", "string", "unit", "never", "Option", "Result", "Vec", "HashMap",
+            ];
+            let type_similar = find_similar(name, types.into_iter(), max_distance, 5);
+            if !type_similar.is_empty() {
+                println!("Similar types:");
+                for s in &type_similar {
+                    println!(
+                        "  {} (distance: {}, score: {:.2})",
+                        s.text, s.distance, s.score
+                    );
+                }
+                println!();
+            }
+
+            // Functions
+            let functions = vec![
+                "print",
+                "println",
+                "assert",
+                "panic",
+                "todo",
+                "unreachable",
+                "Some",
+                "None",
+                "Ok",
+                "Err",
+                "len",
+                "size",
+                "clone",
+                "copy",
+                "drop",
+            ];
+            let fn_similar = find_similar(name, functions.into_iter(), max_distance, 5);
+            if !fn_similar.is_empty() {
+                println!("Similar functions:");
+                for s in &fn_similar {
+                    println!(
+                        "  {} (distance: {}, score: {:.2})",
+                        s.text, s.distance, s.score
+                    );
+                }
+            }
+
+            if kw_similar.is_empty() && type_similar.is_empty() && fn_similar.is_empty() {
+                println!(
+                    "No similar names found within edit distance {}",
+                    max_distance
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Test diagnostic rendering
+fn diagnostics_render(level: &str, code: Option<&str>, message: &str, format: &str) -> Result<()> {
+    use demetrios::diagnostic::emitter::SarifEmitter;
+    use demetrios::diagnostic::{
+        Diagnostic, DiagnosticHandler, DiagnosticLevel, HumanEmitter, JsonEmitter, Span,
+    };
+
+    // Parse level
+    let diag_level = match level.to_lowercase().as_str() {
+        "bug" | "ice" => DiagnosticLevel::Bug,
+        "fatal" => DiagnosticLevel::Fatal,
+        "error" | "err" => DiagnosticLevel::Error,
+        "warning" | "warn" => DiagnosticLevel::Warning,
+        "note" => DiagnosticLevel::Note,
+        "help" => DiagnosticLevel::Help,
+        _ => DiagnosticLevel::Error,
+    };
+
+    // Create diagnostic
+    let mut diagnostic = Diagnostic::new(diag_level, message);
+    if let Some(c) = code {
+        diagnostic = diagnostic.with_code(c);
+    }
+
+    // Add a sample label
+    diagnostic = diagnostic
+        .with_label(Span::new(0, 10, 1), "sample location")
+        .with_note("This is a sample diagnostic for testing rendering")
+        .with_help("Use different --level values to see different styles");
+
+    // Create emitter
+    let emitter: Box<dyn demetrios::diagnostic::DiagnosticEmitter> = match format {
+        "json" => Box::new(JsonEmitter::stdout()),
+        "sarif" => Box::new(SarifEmitter::new(Box::new(std::io::stdout()))),
+        _ => Box::new(HumanEmitter::stderr()),
+    };
+
+    let mut handler = DiagnosticHandler::new(emitter);
+    handler.source_map_mut().add_file(
+        PathBuf::from("sample.d"),
+        "let x = 42\nlet y = x + 1".to_string(),
+    );
+
+    handler.emit(&diagnostic);
+
+    Ok(())
+}
+
+/// Show diagnostic statistics for a file
+fn diagnostics_stats(input: &std::path::Path) -> Result<()> {
+    tracing::info!("Collecting diagnostic stats for {:?}", input);
+
+    // Read source file
+    let source = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read input file: {}", e))?;
+
+    let mut lexer_errors = 0;
+    let mut parser_errors = 0;
+    let mut type_errors = 0;
+
+    // Count lexer errors
+    if demetrios::lexer::lex(&source).is_err() {
+        lexer_errors += 1;
+    }
+
+    // Count parser errors
+    let tokens = demetrios::lexer::lex(&source).unwrap_or_default();
+    if demetrios::parser::parse(&tokens, &source).is_err() {
+        parser_errors += 1;
+    }
+
+    // Count type errors (if parsing succeeded)
+    if let Ok(ast) = demetrios::parser::parse(&tokens, &source) {
+        if demetrios::check::check(&ast).is_err() {
+            type_errors += 1;
+        }
+    }
+
+    println!("Diagnostic Statistics for {}", input.display());
+    println!("=======================================");
+    println!();
+    println!("Source lines:    {}", source.lines().count());
+    println!("Source bytes:    {}", source.len());
+    println!();
+    println!("Lexer errors:    {}", lexer_errors);
+    println!("Parser errors:   {}", parser_errors);
+    println!("Type errors:     {}", type_errors);
+    println!();
+    println!(
+        "Total errors:    {}",
+        lexer_errors + parser_errors + type_errors
+    );
+
+    Ok(())
+}
+
 /// Generate debug information
 fn generate_debug_info(
     input: &std::path::Path,
@@ -1826,4 +3413,1389 @@ fn generate_source_map(input: &std::path::Path, output: Option<&std::path::Path>
     println!("  Names: {} identifier(s)", source_map.names.len());
 
     Ok(())
+}
+
+/// Build project using the build system
+fn build_system(
+    source_dir: &std::path::Path,
+    profile_name: &str,
+    jobs: usize,
+    verbose: bool,
+    no_incremental: bool,
+) -> Result<()> {
+    use demetrios::build::{BuildConfig, BuildManager, BuildProfile};
+
+    tracing::info!(
+        "Building project in {} with profile {}",
+        source_dir.display(),
+        profile_name
+    );
+
+    // Parse profile
+    let profile = BuildProfile::from_name(profile_name)
+        .ok_or_else(|| miette::miette!("Invalid profile: {}", profile_name))?;
+
+    // Create build config
+    let mut config = match profile {
+        BuildProfile::Dev => BuildConfig::dev(),
+        BuildProfile::Release => BuildConfig::release(),
+        BuildProfile::Test => BuildConfig::test(),
+        BuildProfile::Bench => BuildConfig::bench(),
+    };
+
+    // Apply command-line overrides
+    config.flags.verbose = verbose;
+    if no_incremental {
+        config.flags.incremental = false;
+    }
+
+    // Update paths
+    config.paths.source_dir = source_dir.to_path_buf();
+    config.paths.build_dir = source_dir.join("build");
+    config.paths.cache_dir = source_dir.join("build/cache");
+    config.paths.target_dir = source_dir.join("target");
+
+    // Create build manager
+    let mut manager = BuildManager::new(config)
+        .map_err(|e| miette::miette!("Failed to create build manager: {}", e))?;
+
+    // Initialize
+    println!("Initializing build system...");
+    manager
+        .init(source_dir)
+        .map_err(|e| miette::miette!("Initialization failed: {}", e))?;
+
+    // Get stats before build
+    let stats_before = manager.stats();
+
+    if verbose {
+        println!("Build configuration:");
+        println!("  Profile: {}", profile.name());
+        println!("  Source dir: {}", source_dir.display());
+        println!("  Total units: {}", stats_before.total_units);
+        println!("  Dirty units: {}", stats_before.dirty_units);
+        println!("  Jobs: {}", if jobs == 0 { num_cpus::get() } else { jobs });
+        println!();
+    }
+
+    // Execute build
+    println!("Building project...");
+    let report = manager
+        .build()
+        .map_err(|e| miette::miette!("Build failed: {}", e))?;
+
+    // Print results
+    report.print_summary();
+
+    if report.success {
+        Ok(())
+    } else {
+        Err(miette::miette!("Build failed"))
+    }
+}
+
+/// Clean build artifacts and cache
+fn clean_build(clean_cache: bool, verbose: bool) -> Result<()> {
+    use std::fs;
+
+    println!("Cleaning build artifacts...");
+
+    let build_dir = std::path::PathBuf::from("build");
+    let target_dir = std::path::PathBuf::from("target");
+
+    let mut removed_count = 0;
+
+    // Remove build directory
+    if build_dir.exists() {
+        if verbose {
+            println!("Removing {}", build_dir.display());
+        }
+        fs::remove_dir_all(&build_dir)
+            .map_err(|e| miette::miette!("Failed to remove build dir: {}", e))?;
+        removed_count += 1;
+    }
+
+    // Remove target directory
+    if target_dir.exists() {
+        if verbose {
+            println!("Removing {}", target_dir.display());
+        }
+        fs::remove_dir_all(&target_dir)
+            .map_err(|e| miette::miette!("Failed to remove target dir: {}", e))?;
+        removed_count += 1;
+    }
+
+    // Remove cache if requested
+    if clean_cache {
+        let cache_dir = std::path::PathBuf::from("build/cache");
+        if cache_dir.exists() {
+            if verbose {
+                println!("Removing {}", cache_dir.display());
+            }
+            fs::remove_dir_all(&cache_dir)
+                .map_err(|e| miette::miette!("Failed to remove cache dir: {}", e))?;
+            removed_count += 1;
+        }
+    }
+
+    println!(
+        "Cleaned {} director{}",
+        removed_count,
+        if removed_count == 1 { "y" } else { "ies" }
+    );
+    Ok(())
+}
+
+/// Watch files and rebuild on changes
+#[allow(clippy::too_many_arguments)]
+fn watch_files(
+    paths: &[PathBuf],
+    clear_screen: bool,
+    run_tests: bool,
+    exec_command: Option<&str>,
+    debounce_ms: u64,
+    ignore_patterns: &[String],
+    verbose: bool,
+) -> Result<()> {
+    use demetrios::watch::{WatchConfig, WatchMode, WatchModeConfig};
+    use std::time::Duration;
+
+    tracing::info!("Starting watch mode for {:?}", paths);
+
+    // Build watch configuration
+    let watch_config = WatchConfig {
+        paths: paths.to_vec(),
+        recursive: true,
+        debounce: Duration::from_millis(debounce_ms),
+        exclude: ignore_patterns.to_vec(),
+        ..Default::default()
+    };
+
+    let config = WatchModeConfig {
+        watch: watch_config,
+        clear_screen,
+        run_tests,
+        exec: exec_command.map(String::from),
+        ..Default::default()
+    };
+
+    println!("Watch mode starting...");
+    println!("  Watching: {:?}", paths);
+    println!("  Clear screen: {}", clear_screen);
+    println!("  Run tests: {}", run_tests);
+    if let Some(cmd) = exec_command {
+        println!("  Execute: {}", cmd);
+    }
+    println!("  Debounce: {}ms", debounce_ms);
+    if !ignore_patterns.is_empty() {
+        println!("  Ignore: {:?}", ignore_patterns);
+    }
+    println!();
+    println!("Press 'q' to quit, 'r' to rebuild, 'p' to pause/resume");
+    println!();
+
+    let mut watch_mode = WatchMode::new(config)
+        .map_err(|e| miette::miette!("Failed to initialize watch mode: {}", e))?;
+
+    watch_mode
+        .run()
+        .map_err(|e| miette::miette!("Watch mode error: {}", e))?;
+
+    Ok(())
+}
+
+/// Start development server with live reload
+#[allow(clippy::too_many_arguments)]
+fn serve_files(
+    root: &std::path::Path,
+    port: u16,
+    host: &str,
+    no_reload: bool,
+    open_browser: bool,
+    directory_listing: bool,
+    spa_fallback: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    use demetrios::watch::{DevServer, DevServerConfig};
+
+    tracing::info!("Starting development server at {}:{}", host, port);
+
+    let config = DevServerConfig {
+        host: host.to_string(),
+        port,
+        root: root.to_path_buf(),
+        live_reload: !no_reload,
+        open_browser,
+        directory_listing,
+        spa_fallback: spa_fallback.map(String::from),
+        ..Default::default()
+    };
+
+    println!("Development server configuration:");
+    println!("  Root: {}", root.display());
+    println!("  Address: http://{}:{}", host, port);
+    println!("  Live reload: {}", !no_reload);
+    println!("  Directory listing: {}", directory_listing);
+    if let Some(fallback) = spa_fallback {
+        println!("  SPA fallback: {}", fallback);
+    }
+    println!();
+
+    let mut server = DevServer::new(config);
+
+    // Handle Ctrl+C gracefully
+    let server_running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let r = server_running.clone();
+
+    ctrlc::set_handler(move || {
+        println!("\nShutting down server...");
+        r.store(false, std::sync::atomic::Ordering::SeqCst);
+    })
+    .map_err(|e| miette::miette!("Failed to set Ctrl-C handler: {}", e))?;
+
+    server
+        .start()
+        .map_err(|e| miette::miette!("Server error: {}", e))?;
+
+    Ok(())
+}
+
+/// Run build hooks
+fn run_hook(point: &str, project: &std::path::Path, verbose: bool) -> Result<()> {
+    use demetrios::watch::{HookContext, HookManager, HookPoint};
+
+    tracing::info!("Running hook '{}' for project {:?}", point, project);
+
+    // Parse hook point
+    let hook_point = HookPoint::from_str(point).ok_or_else(|| {
+        miette::miette!(
+            "Unknown hook point: '{}'. Valid points are: pre-build, post-build, \
+             pre-test, post-test, watch-start, watch-stop, on-file-change, \
+             pre-reload, post-reload, pre-format, post-format, pre-lint, post-lint, on-error",
+            point
+        )
+    })?;
+
+    // Create hook manager
+    let mut manager = HookManager::new(project.to_path_buf());
+    manager.set_verbose(verbose);
+
+    // Try to load hooks from d.toml
+    let config_path = project.join("d.toml");
+    if config_path.exists() {
+        manager
+            .load_from_toml(&config_path)
+            .map_err(|e| miette::miette!("Failed to load hooks from d.toml: {}", e))?;
+
+        if verbose {
+            println!("Loaded hooks from {}", config_path.display());
+        }
+    } else {
+        println!(
+            "No d.toml found in {}. No hooks configured.",
+            project.display()
+        );
+        return Ok(());
+    }
+
+    // Create hook context
+    let context = HookContext::new(project.to_path_buf(), hook_point);
+
+    // Run hooks
+    println!("Running {} hooks...", point);
+    let results = manager.run(hook_point, &context);
+
+    if results.is_empty() {
+        println!("No hooks registered for '{}'", point);
+        return Ok(());
+    }
+
+    // Report results
+    let mut success_count = 0;
+    let mut failure_count = 0;
+
+    for result in &results {
+        if result.success {
+            success_count += 1;
+            if verbose {
+                println!("  [OK] {} ({:?})", result.name, result.duration);
+                if !result.stdout.is_empty() {
+                    for line in result.stdout.lines() {
+                        println!("       {}", line);
+                    }
+                }
+            }
+        } else {
+            failure_count += 1;
+            println!(
+                "  [FAIL] {} (exit code: {:?})",
+                result.name, result.exit_code
+            );
+            if !result.stderr.is_empty() {
+                for line in result.stderr.lines() {
+                    eprintln!("         {}", line);
+                }
+            }
+        }
+    }
+
+    println!();
+    println!(
+        "Hook results: {} passed, {} failed",
+        success_count, failure_count
+    );
+
+    if failure_count > 0 {
+        Err(miette::miette!("{} hook(s) failed", failure_count))
+    } else {
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Target Management Commands
+// =============================================================================
+
+/// List available targets
+fn target_list(
+    os_filter: Option<&str>,
+    arch_filter: Option<&str>,
+    builtin_only: bool,
+    verbose: bool,
+) -> Result<()> {
+    use demetrios::target::{Architecture, OperatingSystem, TargetRegistry};
+
+    let registry = TargetRegistry::with_builtins();
+
+    // Get targets based on filter
+    let targets: Vec<_> = if builtin_only {
+        registry.list_builtins()
+    } else {
+        registry.list()
+    };
+
+    // Parse OS filter
+    let os_filter = os_filter.map(|s| OperatingSystem::parse(s));
+
+    // Parse arch filter
+    let arch_filter = arch_filter.map(|s| Architecture::parse(s));
+
+    println!("Available targets:");
+    println!();
+
+    let mut count = 0;
+    for name in targets {
+        if let Ok(spec) = registry.get(name) {
+            // Apply OS filter
+            if let Some(ref os) = os_filter {
+                if spec.os.os != *os {
+                    continue;
+                }
+            }
+
+            // Apply arch filter
+            if let Some(ref arch) = arch_filter {
+                if spec.arch.arch != *arch {
+                    continue;
+                }
+            }
+
+            count += 1;
+
+            if verbose {
+                println!("  {}", name);
+                println!("    Arch: {}", spec.arch.arch);
+                println!("    OS: {}", spec.os.os);
+                println!("    Env: {}", spec.env.env);
+                println!("    Pointer width: {} bits", spec.pointer_width());
+                println!();
+            } else {
+                println!("  {}", name);
+            }
+        }
+    }
+
+    println!();
+    println!("Total: {} target(s)", count);
+
+    Ok(())
+}
+
+/// Show information about a specific target
+fn target_info(target: &str, format: &str) -> Result<()> {
+    use demetrios::target::TargetRegistry;
+
+    let registry = TargetRegistry::with_builtins();
+
+    let spec = registry
+        .get(target)
+        .map_err(|e| miette::miette!("Target not found: {}", e))?;
+
+    match format {
+        "json" => {
+            let json = serde_json::to_string_pretty(&spec)
+                .map_err(|e| miette::miette!("Failed to serialize target: {}", e))?;
+            println!("{}", json);
+        }
+        _ => {
+            println!("Target: {}", spec.triple);
+            println!();
+            println!("Architecture:");
+            println!("  Name: {}", spec.arch.arch);
+            println!("  CPU: {}", spec.arch.cpu);
+            println!("  Pointer width: {} bits", spec.pointer_width());
+            println!("  Data layout: {}", spec.data_layout());
+            if !spec.arch.features.is_empty() {
+                let features: Vec<&str> = spec.arch.features.iter().map(|s| s.as_str()).collect();
+                println!("  Features: {}", features.join(", "));
+            }
+            println!();
+            println!("Operating System:");
+            println!("  Name: {}", spec.os.os);
+            if let Some(ref ver) = spec.os.min_version {
+                println!("  Min version: {}", ver);
+            }
+            println!("  Requires PIE: {}", spec.os.requires_pie);
+            println!("  Panic strategy: {:?}", spec.os.panic_strategy);
+            println!();
+            println!("Environment:");
+            println!("  ABI: {}", spec.env.env);
+            println!("  C runtime: {:?}", spec.env.crt);
+            println!("  Relocation model: {:?}", spec.env.relocation_model);
+            println!("  Code model: {:?}", spec.env.code_model);
+            println!();
+            println!("Linker:");
+            println!("  Flavor: {:?}", spec.linker.flavor);
+            if let Some(ref path) = spec.linker.path {
+                println!("  Path: {}", path.display());
+            }
+            println!();
+            println!("Options:");
+            println!("  Built-in: {}", spec.options.is_builtin);
+            println!("  Supports i128: {}", spec.options.supports_i128);
+            println!("  Has float: {}", spec.options.has_float);
+            println!("  Has TLS: {}", spec.options.has_tls);
+            if let Some(width) = spec.options.max_atomic_width {
+                println!("  Max atomic width: {} bits", width);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Add a custom target from a file
+fn target_add(file: &std::path::Path) -> Result<()> {
+    use demetrios::target::TargetSpec;
+
+    let spec = TargetSpec::from_file(file)
+        .map_err(|e| miette::miette!("Failed to load target specification: {}", e))?;
+
+    println!("Successfully loaded target: {}", spec.triple);
+    println!();
+    println!("To use this target, specify: --target {}", file.display());
+    println!(
+        "Or copy the file to ~/.demetrios/targets/{}.json",
+        spec.triple
+    );
+
+    Ok(())
+}
+
+/// Create a new custom target specification
+fn target_create(triple: &str, base: Option<&str>, output: Option<&std::path::Path>) -> Result<()> {
+    use demetrios::target::{TargetRegistry, TargetSpec};
+
+    let registry = TargetRegistry::with_builtins();
+
+    // Start with base target or parse triple
+    let mut spec = if let Some(base_name) = base {
+        let mut base_spec = registry
+            .get(base_name)
+            .map_err(|e| miette::miette!("Base target not found: {}", e))?;
+
+        // Update the triple
+        base_spec.triple = triple
+            .parse()
+            .map_err(|e| miette::miette!("Invalid triple: {}", e))?;
+        base_spec.options.is_builtin = false;
+        base_spec
+    } else {
+        let mut spec = TargetSpec::from_triple(triple)
+            .map_err(|e| miette::miette!("Invalid triple: {}", e))?;
+        spec.options.is_builtin = false;
+        spec
+    };
+
+    // Determine output path
+    let out_path = output
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from(format!("{}.json", triple)));
+
+    // Save the specification
+    spec.to_file(&out_path)
+        .map_err(|e| miette::miette!("Failed to save target: {}", e))?;
+
+    println!("Created target specification: {}", out_path.display());
+    println!();
+    println!("Edit the JSON file to customize the target, then use with:");
+    println!("  dc build --target {}", out_path.display());
+
+    Ok(())
+}
+
+/// Show host target information
+fn target_host() -> Result<()> {
+    use demetrios::target::{CfgContext, TargetSpec, host_triple};
+
+    let triple = host_triple();
+    println!("Host target: {}", triple);
+    println!();
+
+    // Parse and show details
+    if let Ok(spec) = TargetSpec::from_triple(&triple) {
+        println!("Architecture: {}", spec.arch.arch);
+        println!("OS: {}", spec.os.os);
+        println!("Environment: {}", spec.env.env);
+        println!("Pointer width: {} bits", spec.pointer_width());
+        println!();
+
+        // Show cfg values
+        let cfg = CfgContext::from_target(&spec);
+        println!("Configuration flags:");
+        let mut flags: Vec<_> = cfg.flags().iter().collect();
+        flags.sort();
+        for flag in flags {
+            println!("  {}", flag);
+        }
+        println!();
+        println!("Configuration values:");
+        let mut values: Vec<_> = cfg.values().iter().collect();
+        values.sort_by_key(|(k, _)| *k);
+        for (key, value) in values {
+            println!("  {} = \"{}\"", key, value);
+        }
+    }
+
+    Ok(())
+}
+
+/// Check target cfg predicates
+fn target_cfg(target: Option<&str>, predicate: Option<&str>) -> Result<()> {
+    use demetrios::target::{CfgContext, CfgPredicate, TargetRegistry, TargetSpec, host_triple};
+
+    let registry = TargetRegistry::with_builtins();
+
+    // Get target specification
+    let spec = if let Some(target_name) = target {
+        registry
+            .get(target_name)
+            .map_err(|e| miette::miette!("Target not found: {}", e))?
+    } else {
+        let triple = host_triple();
+        TargetSpec::from_triple(&triple)
+            .map_err(|e| miette::miette!("Failed to parse host triple: {}", e))?
+    };
+
+    // Create cfg context
+    let cfg = CfgContext::from_target(&spec);
+
+    if let Some(pred_str) = predicate {
+        // Evaluate specific predicate
+        let pred = CfgPredicate::parse(pred_str)
+            .map_err(|e| miette::miette!("Invalid predicate: {}", e))?;
+
+        let result = pred.evaluate(&cfg);
+        println!("cfg({}) = {}", pred_str, result);
+    } else {
+        // Show all cfg values
+        println!("Target: {}", spec.triple);
+        println!();
+        println!("Flags:");
+        let mut flags: Vec<_> = cfg.flags().iter().collect();
+        flags.sort();
+        for flag in flags {
+            println!("  cfg({})", flag);
+        }
+        println!();
+        println!("Values:");
+        let mut values: Vec<_> = cfg.values().iter().collect();
+        values.sort_by_key(|(k, _)| *k);
+        for (key, value) in values {
+            println!("  cfg({} = \"{}\")", key, value);
+        }
+    }
+
+    Ok(())
+}
+
+// =============================================================================
+// Sysroot Management Commands
+// =============================================================================
+
+/// List installed sysroots
+fn sysroot_list(verbose: bool) -> Result<()> {
+    use demetrios::target::SysrootManager;
+
+    let cache_dir = get_sysroot_cache_dir();
+    let manager = SysrootManager::new(cache_dir);
+
+    let sysroots = manager
+        .list_cached()
+        .map_err(|e| miette::miette!("Failed to list sysroots: {}", e))?;
+
+    if sysroots.is_empty() {
+        println!("No sysroots installed.");
+        println!();
+        println!("Install a sysroot with: dc sysroot install <target>");
+        return Ok(());
+    }
+
+    println!("Installed sysroots:");
+    println!();
+
+    for (name, metadata) in &sysroots {
+        if verbose {
+            println!("  {}", name);
+            println!("    Version: {}", metadata.version);
+            println!("    Created: {}", format_timestamp(metadata.created));
+            println!("    Source: {:?}", metadata.source);
+            if !metadata.components.is_empty() {
+                let components: Vec<_> = metadata
+                    .components
+                    .iter()
+                    .map(|c| c.display_name())
+                    .collect();
+                println!("    Components: {}", components.join(", "));
+            }
+            println!();
+        } else {
+            println!("  {}", name);
+        }
+    }
+
+    println!();
+    println!("Total: {} sysroot(s)", sysroots.len());
+
+    Ok(())
+}
+
+/// Show sysroot for a specific target
+fn sysroot_show(target: &str) -> Result<()> {
+    use demetrios::target::{Sysroot, TargetRegistry, TargetTriple};
+
+    let registry = TargetRegistry::with_builtins();
+
+    // Parse target
+    let spec = registry
+        .get(target)
+        .map_err(|e| miette::miette!("Target not found: {}", e))?;
+
+    let cache_dir = get_sysroot_cache_dir();
+    let sysroot_path = cache_dir.join(target);
+
+    if sysroot_path.exists() {
+        let triple = TargetTriple::parse(target)
+            .map_err(|e| miette::miette!("Invalid target triple: {}", e))?;
+
+        let sysroot = Sysroot::open(&sysroot_path, &triple)
+            .map_err(|e| miette::miette!("Failed to open sysroot: {}", e))?;
+
+        println!("Sysroot for: {}", target);
+        println!("  Path: {}", sysroot.path.display());
+        println!("  Library paths:");
+        for path in &sysroot.lib_paths {
+            println!("    {}", path.display());
+        }
+        println!("  Include paths:");
+        for path in &sysroot.include_paths {
+            println!("    {}", path.display());
+        }
+
+        if let Some(ref metadata) = sysroot.metadata {
+            println!();
+            println!("Metadata:");
+            println!("  Version: {}", metadata.version);
+            println!("  Created: {}", format_timestamp(metadata.created));
+        }
+    } else {
+        println!("No sysroot installed for: {}", target);
+        println!();
+        println!("Install with: dc sysroot install {}", target);
+
+        // Try to find system sysroot
+        if let Some(ref system_sysroot) = spec.os.sysroot {
+            println!();
+            println!("System sysroot found at: {}", system_sysroot.display());
+        }
+    }
+
+    Ok(())
+}
+
+/// Install sysroot for a target
+fn sysroot_install(target: &str, force: bool) -> Result<()> {
+    use demetrios::target::{SysrootConfig, SysrootManager, TargetRegistry};
+
+    let registry = TargetRegistry::with_builtins();
+
+    // Verify target exists
+    let _spec = registry
+        .get(target)
+        .map_err(|e| miette::miette!("Target not found: {}", e))?;
+
+    let cache_dir = get_sysroot_cache_dir();
+    let sysroot_path = cache_dir.join(target);
+
+    if sysroot_path.exists() && !force {
+        println!("Sysroot already installed for: {}", target);
+        println!("Use --force to reinstall.");
+        return Ok(());
+    }
+
+    if force && sysroot_path.exists() {
+        std::fs::remove_dir_all(&sysroot_path)
+            .map_err(|e| miette::miette!("Failed to remove existing sysroot: {}", e))?;
+    }
+
+    println!("Installing sysroot for: {}", target);
+    println!();
+
+    // Create sysroot manager with auto-build enabled
+    let config = SysrootConfig {
+        auto_build: true,
+        ..Default::default()
+    };
+
+    let mut manager = SysrootManager::with_config(cache_dir, config);
+
+    let spec = registry.get(target).unwrap();
+    match manager.get_sysroot(&spec) {
+        Ok(sysroot) => {
+            println!("Sysroot installed at: {}", sysroot.path.display());
+            Ok(())
+        }
+        Err(e) => Err(miette::miette!("Failed to install sysroot: {}", e)),
+    }
+}
+
+/// Remove installed sysroot
+fn sysroot_remove(target: &str) -> Result<()> {
+    use demetrios::target::SysrootManager;
+
+    let cache_dir = get_sysroot_cache_dir();
+    let mut manager = SysrootManager::new(cache_dir);
+
+    manager
+        .remove_cached(target)
+        .map_err(|e| miette::miette!("Failed to remove sysroot: {}", e))?;
+
+    println!("Removed sysroot for: {}", target);
+    Ok(())
+}
+
+/// Clean stale sysroots
+fn sysroot_clean(dry_run: bool) -> Result<()> {
+    use demetrios::target::SysrootManager;
+
+    let cache_dir = get_sysroot_cache_dir();
+    let mut manager = SysrootManager::new(cache_dir.clone());
+
+    if dry_run {
+        let sysroots = manager
+            .list_cached()
+            .map_err(|e| miette::miette!("Failed to list sysroots: {}", e))?;
+
+        let stale: Vec<_> = sysroots
+            .iter()
+            .filter(|(_, m)| m.is_stale(std::time::Duration::from_secs(86400 * 30)))
+            .collect();
+
+        if stale.is_empty() {
+            println!("No stale sysroots found.");
+        } else {
+            println!("Would remove {} stale sysroot(s):", stale.len());
+            for (name, _) in stale {
+                println!("  {}", name);
+            }
+        }
+    } else {
+        let removed = manager
+            .clean_stale()
+            .map_err(|e| miette::miette!("Failed to clean sysroots: {}", e))?;
+
+        if removed == 0 {
+            println!("No stale sysroots found.");
+        } else {
+            println!("Removed {} stale sysroot(s)", removed);
+        }
+    }
+
+    Ok(())
+}
+
+/// Get the sysroot cache directory
+fn get_sysroot_cache_dir() -> PathBuf {
+    dirs::cache_dir()
+        .map(|p| p.join("demetrios").join("sysroots"))
+        .unwrap_or_else(|| PathBuf::from(".demetrios/sysroots"))
+}
+
+/// Format a Unix timestamp as a human-readable string
+fn format_timestamp(timestamp: u64) -> String {
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    let time = UNIX_EPOCH + Duration::from_secs(timestamp);
+    let datetime = chrono::DateTime::<chrono::Utc>::from(time);
+    datetime.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+}
+
+// =============================================================================
+// Distributed Build Commands
+// =============================================================================
+
+#[cfg(feature = "distributed")]
+/// Start a distributed build server
+fn distributed_server(
+    address: &str,
+    max_connections: usize,
+    enable_cache: bool,
+    name: &str,
+) -> Result<()> {
+    use demetrios::distributed::{BuildServer, ServerConfig};
+
+    println!("Starting distributed build server...");
+    println!("  Name: {}", name);
+    println!("  Address: {}", address);
+    println!("  Max connections: {}", max_connections);
+    println!("  Cache enabled: {}", enable_cache);
+    println!();
+
+    let config = ServerConfig {
+        address: address
+            .parse()
+            .map_err(|e| miette::miette!("Invalid address: {}", e))?,
+        max_connections,
+        cache_enabled: enable_cache,
+        server_name: name.to_string(),
+        ..Default::default()
+    };
+
+    // Create and run server (blocking)
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| miette::miette!("Failed to create runtime: {}", e))?;
+
+    rt.block_on(async {
+        let server = BuildServer::new(config);
+        println!("Server listening on {}", address);
+        println!("Press Ctrl+C to stop");
+        println!();
+
+        server
+            .start()
+            .await
+            .map_err(|e| miette::miette!("Server error: {}", e))
+    })
+}
+
+#[cfg(feature = "distributed")]
+/// Submit a remote build
+fn distributed_build(
+    server: &str,
+    target: Option<&str>,
+    profile: &str,
+    path: &std::path::Path,
+) -> Result<()> {
+    println!("Distributed build configuration:");
+    println!("  Server: {}", server);
+    println!("  Target: {}", target.unwrap_or("default"));
+    println!("  Profile: {}", profile);
+    println!("  Path: {}", path.display());
+    println!();
+    println!("Note: Distributed build client is available in the library.");
+    println!("Use the demetrios::distributed::BuildClient API for programmatic access.");
+    println!();
+    println!("Example:");
+    println!("  let client = BuildClient::new(ClientConfig::default());");
+    println!("  client.connect(\"{}:9876\").await?;", server);
+    println!("  let job = client.submit_job(...).await?;");
+    Ok(())
+}
+
+#[cfg(feature = "distributed")]
+/// Query server status
+fn distributed_status(server: &str) -> Result<()> {
+    println!("Server status query for: {}", server);
+    println!();
+    println!("Note: Use the BuildClient API to query server status programmatically.");
+    println!();
+    println!("The distributed build protocol supports:");
+    println!("  - Job submission and tracking");
+    println!("  - Worker registration and load balancing");
+    println!("  - Build artifact caching");
+    println!("  - Real-time progress reporting");
+    Ok(())
+}
+
+// =============================================================================
+// Cache Commands
+// =============================================================================
+
+#[cfg(feature = "distributed")]
+/// Start a cache server
+fn cache_server(address: &str, storage: &std::path::Path, max_size: &str) -> Result<()> {
+    // Parse max size
+    let max_bytes = parse_size(max_size).map_err(|e| miette::miette!("Invalid size: {}", e))?;
+
+    println!("Cache server configuration:");
+    println!("  Address: {}", address);
+    println!("  Storage: {}", storage.display());
+    println!("  Max size: {} ({} bytes)", max_size, max_bytes);
+    println!();
+    println!("Note: Use the demetrios::distributed::cache::CacheServer API programmatically.");
+    println!();
+    println!("Example:");
+    println!("  use demetrios::distributed::cache::{{CacheServer, CacheServerConfig}};");
+    println!();
+    println!("  let config = CacheServerConfig {{");
+    println!(
+        "      storage_dir: PathBuf::from(\"{}\"),",
+        storage.display()
+    );
+    println!("      max_size: {},", max_bytes);
+    println!("      listen_addr: \"{}\".parse().unwrap(),", address);
+    println!("      ..Default::default()");
+    println!("  }};");
+    println!("  let server = CacheServer::new(config);");
+    println!("  server.start().await?;");
+    Ok(())
+}
+
+#[cfg(feature = "distributed")]
+/// Show cache statistics
+fn cache_stats(url: Option<&str>, local_only: bool) -> Result<()> {
+    let cache_dir = dirs::cache_dir()
+        .map(|p| p.join("demetrios").join("build-cache"))
+        .unwrap_or_else(|| PathBuf::from(".d/cache"));
+
+    println!("Cache Statistics");
+    println!();
+
+    if local_only || url.is_none() {
+        println!("Local cache directory: {}", cache_dir.display());
+        if cache_dir.exists() {
+            // Count files and size
+            let mut total_size = 0u64;
+            let mut entry_count = 0usize;
+            if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+                for entry in entries.flatten() {
+                    if let Ok(meta) = entry.metadata() {
+                        total_size += meta.len();
+                        entry_count += 1;
+                    }
+                }
+            }
+            println!("  Entries: {}", entry_count);
+            println!("  Total size: {}", format_bytes(total_size));
+        } else {
+            println!("  (cache directory does not exist)");
+        }
+    }
+
+    if let Some(cache_url) = url {
+        println!();
+        println!("Remote cache server: {}", cache_url);
+        println!("  Use CacheClient API to query remote stats programmatically.");
+    }
+
+    println!();
+    println!("Note: Use demetrios::distributed::cache::CacheClient for detailed statistics.");
+    Ok(())
+}
+
+#[cfg(feature = "distributed")]
+/// Clean cache entries
+fn cache_clean(clean_all: bool, older_than: Option<&str>, dry_run: bool) -> Result<()> {
+    let cache_dir = dirs::cache_dir()
+        .map(|p| p.join("demetrios").join("build-cache"))
+        .unwrap_or_else(|| PathBuf::from(".d/cache"));
+
+    if !cache_dir.exists() {
+        println!("No cache found at {}", cache_dir.display());
+        return Ok(());
+    }
+
+    println!("Cache cleanup");
+    println!("  Directory: {}", cache_dir.display());
+    println!("  Mode: {}", if clean_all { "all" } else { "selective" });
+    if let Some(age) = older_than {
+        println!("  Older than: {}", age);
+    }
+    println!("  Dry run: {}", dry_run);
+    println!();
+
+    if clean_all && !dry_run {
+        // Actually clean the cache directory
+        let mut removed = 0usize;
+        let mut bytes_freed = 0u64;
+        if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+            for entry in entries.flatten() {
+                if let Ok(meta) = entry.metadata() {
+                    bytes_freed += meta.len();
+                    if std::fs::remove_file(entry.path()).is_ok() {
+                        removed += 1;
+                    }
+                }
+            }
+        }
+        println!(
+            "Removed {} entries ({} freed)",
+            removed,
+            format_bytes(bytes_freed)
+        );
+    } else if dry_run {
+        // Count what would be removed
+        let mut total_size = 0u64;
+        let mut entry_count = 0usize;
+        if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+            for entry in entries.flatten() {
+                if let Ok(meta) = entry.metadata() {
+                    total_size += meta.len();
+                    entry_count += 1;
+                }
+            }
+        }
+        println!(
+            "Would remove {} entries ({})",
+            entry_count,
+            format_bytes(total_size)
+        );
+    } else {
+        println!("Note: Use --all to clean all entries or --older-than to clean selectively.");
+    }
+
+    Ok(())
+}
+
+// =============================================================================
+// CI Commands
+// =============================================================================
+
+#[cfg(feature = "distributed")]
+/// Generate GitHub Actions workflow
+fn ci_github(output: &std::path::Path, release: bool, targets: Option<&str>) -> Result<()> {
+    println!("GitHub Actions workflow generation");
+    println!();
+    println!("  Output: {}", output.display());
+    println!("  Release workflow: {}", release);
+    if let Some(t) = targets {
+        println!("  Targets: {}", t);
+    }
+    println!();
+
+    // Generate a basic workflow template
+    let workflow = r#"name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Run tests
+        run: cargo test --verbose
+"#;
+
+    // Create directory if needed
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| miette::miette!("Failed to create directory: {}", e))?;
+    }
+
+    std::fs::write(output, workflow)
+        .map_err(|e| miette::miette!("Failed to write workflow: {}", e))?;
+
+    println!("Created: {}", output.display());
+    println!();
+    println!("Note: Use demetrios::distributed::ci::github::WorkflowGenerator");
+    println!("for more advanced workflow generation with matrix builds.");
+
+    Ok(())
+}
+
+#[cfg(feature = "distributed")]
+/// Generate GitLab CI pipeline
+fn ci_gitlab(output: &std::path::Path, targets: Option<&str>) -> Result<()> {
+    println!("GitLab CI pipeline generation");
+    println!();
+    println!("  Output: {}", output.display());
+    if let Some(t) = targets {
+        println!("  Targets: {}", t);
+    }
+    println!();
+
+    // Generate a basic pipeline template
+    let pipeline = r#"stages:
+  - build
+  - test
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
+
+cache:
+  paths:
+    - .cargo/
+    - target/
+
+build:
+  stage: build
+  script:
+    - cargo build --verbose
+
+test:
+  stage: test
+  script:
+    - cargo test --verbose
+"#;
+
+    std::fs::write(output, pipeline)
+        .map_err(|e| miette::miette!("Failed to write pipeline: {}", e))?;
+
+    println!("Created: {}", output.display());
+    println!();
+    println!("Note: Use demetrios::distributed::ci::gitlab::PipelineGenerator");
+    println!("for more advanced pipeline generation with matrix builds.");
+
+    Ok(())
+}
+
+#[cfg(feature = "distributed")]
+/// Generate build provenance
+fn ci_provenance(output: &std::path::Path, target: Option<&str>, profile: &str) -> Result<()> {
+    use demetrios::distributed::reproducible::BuildEnvironment;
+
+    println!("Build provenance generation (SLSA format)");
+    println!();
+    println!("  Output: {}", output.display());
+    println!("  Profile: {}", profile);
+    println!("  Target: {}", target.unwrap_or("host"));
+    println!();
+
+    // Capture build environment
+    let env = BuildEnvironment::capture(target.unwrap_or("host"), profile);
+
+    // Generate basic SLSA provenance
+    let provenance = serde_json::json!({
+        "_type": "https://in-toto.io/Statement/v0.1",
+        "predicateType": "https://slsa.dev/provenance/v0.2",
+        "subject": [],
+        "predicate": {
+            "builder": {
+                "id": format!("demetrios-compiler-v{}", env!("CARGO_PKG_VERSION"))
+            },
+            "buildType": "https://demetrios-lang.org/build/v1",
+            "invocation": {
+                "configSource": {},
+                "parameters": {
+                    "profile": profile,
+                    "target": target.unwrap_or("host")
+                },
+                "environment": {
+                    "compiler_version": env.compiler_version,
+                    "os": env.host.os,
+                    "arch": env.host.arch
+                }
+            },
+            "metadata": {
+                "buildStartedOn": chrono::Utc::now().to_rfc3339(),
+                "reproducible": env.source_epoch.is_some()
+            }
+        }
+    });
+
+    let json = serde_json::to_string_pretty(&provenance)
+        .map_err(|e| miette::miette!("Failed to serialize provenance: {}", e))?;
+
+    std::fs::write(output, &json)
+        .map_err(|e| miette::miette!("Failed to write provenance: {}", e))?;
+
+    println!("Created: {}", output.display());
+    println!();
+    println!("Build provenance (SLSA format) generated successfully!");
+    println!("Builder: Demetrios Compiler v{}", env!("CARGO_PKG_VERSION"));
+
+    Ok(())
+}
+
+#[cfg(feature = "distributed")]
+/// Check reproducibility
+fn ci_reproducible(builds: usize, check_env: bool) -> Result<()> {
+    use demetrios::distributed::reproducible::BuildEnvironment;
+
+    println!("Build reproducibility check");
+    println!();
+    println!("  Builds to compare: {}", builds);
+    println!("  Check environment: {}", check_env);
+    println!();
+
+    if check_env {
+        println!("Environment Analysis:");
+        let env = BuildEnvironment::capture("host", "release");
+
+        println!("  Compiler: v{}", env.compiler_version);
+        println!("  Target: {}", env.target);
+        println!("  OS: {}", env.host.os);
+        println!("  Arch: {}", env.host.arch);
+        println!(
+            "  SOURCE_DATE_EPOCH: {}",
+            env.source_epoch
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| "not set".into())
+        );
+
+        if env.source_epoch.is_none() {
+            println!();
+            println!("  Warning: SOURCE_DATE_EPOCH not set.");
+            println!("  For reproducible builds, set this environment variable:");
+            println!("    export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)");
+        }
+        println!();
+    }
+
+    if builds < 2 {
+        println!("Note: Need at least 2 builds to verify reproducibility.");
+        println!("Run with --builds 2 or higher.");
+        return Ok(());
+    }
+
+    println!("To verify reproducibility:");
+    println!("  1. Build the project multiple times");
+    println!("  2. Compare output hashes");
+    println!();
+    println!("Example:");
+    println!("  cargo build --release");
+    println!("  sha256sum target/release/dc > build1.sha");
+    println!("  cargo clean && cargo build --release");
+    println!("  sha256sum target/release/dc > build2.sha");
+    println!("  diff build1.sha build2.sha");
+    println!();
+    println!("Note: Use demetrios::distributed::reproducible module for");
+    println!("programmatic reproducibility verification.");
+
+    Ok(())
+}
+
+// =============================================================================
+// Helper Functions for Distributed Builds
+// =============================================================================
+
+#[cfg(feature = "distributed")]
+/// Parse a size string (e.g., "10GB", "500MB")
+fn parse_size(s: &str) -> std::result::Result<u64, String> {
+    let s = s.trim().to_uppercase();
+
+    let (num_str, unit) = if s.ends_with("GB") {
+        (&s[..s.len() - 2], 1024 * 1024 * 1024)
+    } else if s.ends_with("MB") {
+        (&s[..s.len() - 2], 1024 * 1024)
+    } else if s.ends_with("KB") {
+        (&s[..s.len() - 2], 1024)
+    } else if s.ends_with("B") {
+        (&s[..s.len() - 1], 1)
+    } else {
+        return Err(format!(
+            "Invalid size format: {}. Use GB, MB, KB, or B suffix",
+            s
+        ));
+    };
+
+    num_str
+        .trim()
+        .parse::<u64>()
+        .map(|n| n * unit)
+        .map_err(|_| format!("Invalid number: {}", num_str))
+}
+
+#[cfg(feature = "distributed")]
+/// Parse a duration string (e.g., "7d", "24h", "30m")
+fn parse_duration(s: &str) -> std::result::Result<std::time::Duration, String> {
+    let s = s.trim().to_lowercase();
+
+    let (num_str, multiplier) = if s.ends_with('d') {
+        (&s[..s.len() - 1], 86400)
+    } else if s.ends_with('h') {
+        (&s[..s.len() - 1], 3600)
+    } else if s.ends_with('m') {
+        (&s[..s.len() - 1], 60)
+    } else if s.ends_with('s') {
+        (&s[..s.len() - 1], 1)
+    } else {
+        return Err(format!(
+            "Invalid duration format: {}. Use d, h, m, or s suffix",
+            s
+        ));
+    };
+
+    num_str
+        .trim()
+        .parse::<u64>()
+        .map(|n| std::time::Duration::from_secs(n * multiplier))
+        .map_err(|_| format!("Invalid number: {}", num_str))
+}
+
+#[cfg(feature = "distributed")]
+/// Format bytes as human-readable string
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+#[cfg(feature = "distributed")]
+/// Format age as human-readable string
+fn format_age(timestamp: Option<u64>) -> String {
+    match timestamp {
+        Some(ts) => {
+            use std::time::{Duration, SystemTime, UNIX_EPOCH};
+            let time = UNIX_EPOCH + Duration::from_secs(ts);
+            match SystemTime::now().duration_since(time) {
+                Ok(age) => {
+                    let secs = age.as_secs();
+                    if secs < 60 {
+                        format!("{} seconds ago", secs)
+                    } else if secs < 3600 {
+                        format!("{} minutes ago", secs / 60)
+                    } else if secs < 86400 {
+                        format!("{} hours ago", secs / 3600)
+                    } else {
+                        format!("{} days ago", secs / 86400)
+                    }
+                }
+                Err(_) => "in the future".to_string(),
+            }
+        }
+        None => "N/A".to_string(),
+    }
 }

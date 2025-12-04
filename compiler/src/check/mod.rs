@@ -7,6 +7,9 @@
 //! - Effect checking
 //! - Ownership/borrow checking
 //! - Unit checking
+//! - Epistemic type constraints
+
+pub mod epistemic;
 
 use crate::ast::*;
 use crate::common::{NodeId, Span};
@@ -503,7 +506,7 @@ impl TypeChecker {
                         value: value_expr,
                     });
                 }
-                Stmt::Empty => {}
+                Stmt::Empty | Stmt::MacroInvocation(_) => {}
             }
         }
 

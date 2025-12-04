@@ -115,6 +115,16 @@ impl<'a> Parser<'a> {
     // ==================== ITEMS ====================
 
     fn parse_item(&mut self) -> Result<Item> {
+        // Check for macro invocation at item level (identifier followed by !)
+        if self.at(TokenKind::Ident) && self.peek_n(1) == TokenKind::Bang {
+            let macro_inv = self.parse_macro_invocation()?;
+            // Consume optional semicolon after macro invocation
+            if self.at(TokenKind::Semi) {
+                self.advance();
+            }
+            return Ok(Item::MacroInvocation(macro_inv));
+        }
+
         // Parse visibility
         let visibility = self.parse_visibility();
 
@@ -1500,6 +1510,12 @@ impl<'a> Parser<'a> {
 
             // Identifiers and paths
             TokenKind::Ident | TokenKind::SelfLower => {
+                // Check for macro invocation (identifier followed by !)
+                if self.peek_n(1) == TokenKind::Bang {
+                    let macro_inv = self.parse_macro_invocation()?;
+                    return Ok(Expr::MacroInvocation(macro_inv));
+                }
+
                 let path = self.parse_path()?;
 
                 // Check for struct literal (only if allowed in this context)
@@ -2185,6 +2201,99 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Path { segments })
+    }
+
+    // ==================== MACROS ====================
+
+    /// Parse a macro invocation (e.g., vec![1, 2, 3])
+    fn parse_macro_invocation(&mut self) -> Result<MacroInvocation> {
+        let start_span = self.span();
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::Bang)?;
+        let args = self.parse_macro_args()?;
+        let end_span = self.span();
+
+        Ok(MacroInvocation {
+            id: self.next_id(),
+            name,
+            args,
+            span: start_span.merge(end_span),
+        })
+    }
+
+    /// Parse macro arguments (token tree inside delimiters)
+    fn parse_macro_args(&mut self) -> Result<Vec<crate::macro_system::token_tree::TokenTree>> {
+        use crate::macro_system::token_tree::{Delimiter, TokenTree, TokenWithCtx};
+
+        match self.peek() {
+            TokenKind::LParen => self.parse_delimited_macro_args(Delimiter::Parenthesis),
+            TokenKind::LBracket => self.parse_delimited_macro_args(Delimiter::Bracket),
+            TokenKind::LBrace => self.parse_delimited_macro_args(Delimiter::Brace),
+            _ => Err(miette::miette!(
+                "Expected macro arguments (parentheses, brackets, or braces), found {:?}",
+                self.peek()
+            )),
+        }
+    }
+
+    /// Parse delimited macro arguments
+    fn parse_delimited_macro_args(
+        &mut self,
+        delim: crate::macro_system::token_tree::Delimiter,
+    ) -> Result<Vec<crate::macro_system::token_tree::TokenTree>> {
+        use crate::macro_system::token_tree::{Delimiter, TokenTree};
+
+        let open_delim = match delim {
+            Delimiter::Parenthesis => TokenKind::LParen,
+            Delimiter::Bracket => TokenKind::LBracket,
+            Delimiter::Brace => TokenKind::LBrace,
+            Delimiter::None => return Err(miette::miette!("Invalid delimiter")),
+        };
+
+        let close_delim = match delim {
+            Delimiter::Parenthesis => TokenKind::RParen,
+            Delimiter::Bracket => TokenKind::RBracket,
+            Delimiter::Brace => TokenKind::RBrace,
+            Delimiter::None => return Err(miette::miette!("Invalid delimiter")),
+        };
+
+        self.expect(open_delim)?;
+        let mut args = Vec::new();
+
+        while !self.at(close_delim) && !self.at(TokenKind::Eof) {
+            args.push(self.parse_token_tree()?);
+        }
+
+        self.expect(close_delim)?;
+        Ok(args)
+    }
+
+    /// Parse a single token tree (token or delimited sequence)
+    fn parse_token_tree(&mut self) -> Result<crate::macro_system::token_tree::TokenTree> {
+        use crate::macro_system::token_tree::{Delimiter, TokenTree, TokenWithCtx};
+
+        match self.peek() {
+            TokenKind::LParen => {
+                let span = self.span();
+                let args = self.parse_delimited_macro_args(Delimiter::Parenthesis)?;
+                Ok(TokenTree::Delimited(Delimiter::Parenthesis, args, span))
+            }
+            TokenKind::LBracket => {
+                let span = self.span();
+                let args = self.parse_delimited_macro_args(Delimiter::Bracket)?;
+                Ok(TokenTree::Delimited(Delimiter::Bracket, args, span))
+            }
+            TokenKind::LBrace => {
+                let span = self.span();
+                let args = self.parse_delimited_macro_args(Delimiter::Brace)?;
+                Ok(TokenTree::Delimited(Delimiter::Brace, args, span))
+            }
+            _ => {
+                let token = self.current().clone();
+                self.advance();
+                Ok(TokenTree::Token(TokenWithCtx::new(token)))
+            }
+        }
     }
 }
 

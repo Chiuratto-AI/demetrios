@@ -37,12 +37,16 @@
 //! ```
 
 pub mod confidence;
+pub mod heterogeneity;
 pub mod knowledge;
 pub mod operations;
 pub mod provenance;
 pub mod temporal;
 
 pub use confidence::{Confidence, EpistemicStatus, Evidence, EvidenceKind, Revisability, Source};
+pub use heterogeneity::{
+    HeterogeneityConfig, HeterogeneityResolver, ResolutionResult, ResolutionStrategy,
+};
 pub use knowledge::{
     CompatibilityResult, DomainOntology, FederatedRef, FoundationOntology, IncompatibilityReason,
     Knowledge, KnowledgeType, KnownIndices, OntologyBinding, OntologyConstraint, OntologyRef,

@@ -360,6 +360,10 @@ pub enum EvidenceKind {
     Computation { code_ref: String },
     /// Expert opinion
     ExpertOpinion { source: String },
+    /// Verified by external process
+    Verified { verifier: String },
+    /// Human assertion or review
+    HumanAssertion { reviewer: String },
 }
 
 impl fmt::Display for EpistemicStatus {

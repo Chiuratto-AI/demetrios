@@ -147,7 +147,7 @@ impl<'a> EffectChecker<'a> {
                 // Assignment implies Mut effect if target is mutable
                 effects
             }
-            Stmt::Empty => EffectSet::new(),
+            Stmt::Empty | Stmt::MacroInvocation(_) => EffectSet::new(),
         }
     }
 
@@ -439,6 +439,8 @@ impl<'a> EffectChecker<'a> {
                 }
                 effects
             }
+
+            Expr::MacroInvocation(_) => EffectSet::new(),
         }
     }
 

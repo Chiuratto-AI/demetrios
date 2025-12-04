@@ -11,6 +11,7 @@ use tower_lsp::{Client, LanguageServer};
 
 use super::analysis::AnalysisHost;
 use super::document::Document;
+use super::semantic_tokens::{semantic_token_modifiers, semantic_token_types};
 
 /// The Demetrios Language Server
 pub struct DemetriosLanguageServer {
@@ -377,57 +378,4 @@ impl LanguageServer for DemetriosLanguageServer {
     }
 }
 
-/// Semantic token types supported by the server
-fn semantic_token_types() -> Vec<SemanticTokenType> {
-    vec![
-        SemanticTokenType::NAMESPACE,
-        SemanticTokenType::TYPE,
-        SemanticTokenType::CLASS,
-        SemanticTokenType::ENUM,
-        SemanticTokenType::INTERFACE,
-        SemanticTokenType::STRUCT,
-        SemanticTokenType::TYPE_PARAMETER,
-        SemanticTokenType::PARAMETER,
-        SemanticTokenType::VARIABLE,
-        SemanticTokenType::PROPERTY,
-        SemanticTokenType::ENUM_MEMBER,
-        SemanticTokenType::EVENT,
-        SemanticTokenType::FUNCTION,
-        SemanticTokenType::METHOD,
-        SemanticTokenType::MACRO,
-        SemanticTokenType::KEYWORD,
-        SemanticTokenType::MODIFIER,
-        SemanticTokenType::COMMENT,
-        SemanticTokenType::STRING,
-        SemanticTokenType::NUMBER,
-        SemanticTokenType::REGEXP,
-        SemanticTokenType::OPERATOR,
-        SemanticTokenType::DECORATOR,
-        // Custom types for D-specific features
-        SemanticTokenType::new("effect"),
-        SemanticTokenType::new("unit"),
-        SemanticTokenType::new("refinement"),
-        SemanticTokenType::new("lifetime"),
-    ]
-}
-
-/// Semantic token modifiers supported by the server
-fn semantic_token_modifiers() -> Vec<SemanticTokenModifier> {
-    vec![
-        SemanticTokenModifier::DECLARATION,
-        SemanticTokenModifier::DEFINITION,
-        SemanticTokenModifier::READONLY,
-        SemanticTokenModifier::STATIC,
-        SemanticTokenModifier::DEPRECATED,
-        SemanticTokenModifier::ABSTRACT,
-        SemanticTokenModifier::ASYNC,
-        SemanticTokenModifier::MODIFICATION,
-        SemanticTokenModifier::DOCUMENTATION,
-        SemanticTokenModifier::DEFAULT_LIBRARY,
-        // Custom modifiers for D-specific features
-        SemanticTokenModifier::new("mutable"),
-        SemanticTokenModifier::new("linear"),
-        SemanticTokenModifier::new("affine"),
-        SemanticTokenModifier::new("unsafe"),
-    ]
-}
+// Semantic token types and modifiers are now defined in semantic_tokens.rs

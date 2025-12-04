@@ -127,7 +127,7 @@ impl<'a> OwnershipChecker<'a> {
                 // Target is being written to, not consumed
             }
 
-            Stmt::Empty => {}
+            Stmt::Empty | Stmt::MacroInvocation(_) => {}
         }
     }
 
@@ -353,6 +353,8 @@ impl<'a> OwnershipChecker<'a> {
                     self.check_expr(future, UseKind::Move);
                 }
             }
+
+            Expr::MacroInvocation(_) => {}
         }
     }
 

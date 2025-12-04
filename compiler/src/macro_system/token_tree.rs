@@ -6,12 +6,13 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
+use serde::{Deserialize, Serialize};
 
 use crate::lexer::{Token, TokenKind};
 use crate::common::Span;
 
 /// Unique syntax context for hygiene
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SyntaxContext(u64);
 
 impl SyntaxContext {
@@ -55,17 +56,17 @@ impl MarkSet {
 }
 
 /// A token tree node
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TokenTree {
     /// A single token
     Token(TokenWithCtx),
-    
+
     /// A delimited group
     Delimited(Delimiter, Vec<TokenTree>, Span),
 }
 
 /// A token with syntax context
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenWithCtx {
     pub token: Token,
     pub ctx: SyntaxContext,
@@ -85,7 +86,7 @@ impl TokenWithCtx {
 }
 
 /// Delimiter types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Delimiter {
     Parenthesis,
     Bracket,

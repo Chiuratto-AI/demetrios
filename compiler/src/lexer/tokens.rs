@@ -5,7 +5,7 @@ use logos::Logos;
 use serde::{Deserialize, Serialize};
 
 /// A token with its kind, span, and text
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,

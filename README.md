@@ -2,12 +2,20 @@
 
 A novel L0 systems + scientific programming language.
 
-[![Version](https://img.shields.io/badge/version-0.28.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.30.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green.svg)](LICENSE)
 
 ## Features
 
-### 🔬 **Scientific Computing Revolution (v0.28.0)**
+### 🧠 **The Epistemic Paradigm Shift (v0.30.0)**
+- **Knowledge[τ, ε, δ, Φ] Types**: Every value carries its epistemic history
+- **4-Layer Ontology Architecture**: From 850 primitives to 15M federated terms
+- **Dependent Ontological Types**: Types encode confidence requirements
+- **Epistemic Heterogeneity Resolution**: Bayesian, AGM, consensus strategies
+- **Integrity Warnings**: Compile-time diagnostics for uncertain knowledge
+- **LSP Extensions**: IDE hints for confidence levels and provenance
+
+### 🔬 **Scientific Computing (v0.28.0)**
 - **Linear Algebra**: BLAS/LAPACK integration with matrix decompositions
 - **Numerical Methods**: ODE solvers, optimization, integration, FFT
 - **Automatic Differentiation**: Forward/reverse mode with higher-order derivatives

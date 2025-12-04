@@ -57,6 +57,7 @@ pub enum Item {
     Import(ImportDef),
     Extern(ExternBlock),
     Global(GlobalDef),
+    MacroInvocation(MacroInvocation),
 }
 
 // ==================== FUNCTIONS ====================
@@ -719,6 +720,8 @@ pub enum Expr {
     Select { id: NodeId, arms: Vec<SelectArm> },
     /// Join expression for concurrent execution
     Join { id: NodeId, futures: Vec<Expr> },
+    /// Macro invocation
+    MacroInvocation(MacroInvocation),
 }
 
 /// Literal values
@@ -816,6 +819,8 @@ pub enum Stmt {
     },
     /// Empty statement (;)
     Empty,
+    /// Macro invocation
+    MacroInvocation(MacroInvocation),
 }
 
 /// Assignment operators
@@ -865,6 +870,17 @@ pub enum Pattern {
     },
     /// Or pattern: p1 | p2
     Or(Vec<Pattern>),
+}
+
+// ==================== MACROS ====================
+
+/// Macro invocation (e.g., vec![1, 2, 3])
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MacroInvocation {
+    pub id: NodeId,
+    pub name: String,
+    pub args: Vec<crate::macro_system::token_tree::TokenTree>,
+    pub span: Span,
 }
 
 // ==================== PATHS ====================

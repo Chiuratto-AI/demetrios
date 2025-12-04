@@ -504,7 +504,7 @@ impl Resolver {
                 self.resolve_expr(target);
                 self.resolve_expr(value);
             }
-            Stmt::Empty => {}
+            Stmt::Empty | Stmt::MacroInvocation(_) => {}
         }
     }
 
@@ -731,6 +731,8 @@ impl Resolver {
                     self.resolve_expr(future);
                 }
             }
+
+            Expr::MacroInvocation(_) => {}
         }
     }
 

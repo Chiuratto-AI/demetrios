@@ -50,6 +50,8 @@
 //! ```
 
 pub mod cache;
+pub mod domain;
+pub mod foundation;
 #[cfg(feature = "ontology")]
 pub mod semantic_sql;
 pub mod sssom;
@@ -59,7 +61,21 @@ mod primitive;
 mod resolver;
 
 pub use cache::{OntologyCache, CacheConfig, CacheStats};
+pub use domain::{
+    DomainOntologies, DomainTerm, DomainStats,
+    OntologyMetadata as DomainOntologyMetadata,
+};
 pub use federated::{FederatedResolver, FederatedSource, FederatedQuery};
+pub use foundation::{
+    FoundationOntologies, FoundationTerm, TermEntry, TermMapping,
+    CurationStatus, OntologySource,
+    augmentation::EpistemicAugmenter,
+    pato::PATOOntology,
+    uo::UOOntology,
+    iao::IAOOntology,
+    schema_org::SchemaOrgOntology,
+    fhir::FHIROntology,
+};
 pub use primitive::{
     PrimitiveStore, BfoClass, RoRelation, CobClass,
     PRIMITIVE_BFO, PRIMITIVE_RO, PRIMITIVE_COB,
@@ -71,7 +87,7 @@ pub use resolver::{
 #[cfg(feature = "ontology")]
 pub use semantic_sql::{SemanticSqlStore, SqlOntology, SqlTerm};
 pub use sssom::{
-    SssomMapping, SssomMappingSet, MappingPredicate, MappingJustification,
+    SssomMapping, SssomMappingSet, MappingJustification,
     load_sssom_mappings, MappingDirection,
 };
 

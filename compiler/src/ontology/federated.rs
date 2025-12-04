@@ -40,6 +40,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use crate::epistemic::{Confidence, EpistemicStatus, Evidence, EvidenceKind, Revisability, Source};
 use super::{OntologyError, OntologyResult};
 
 /// Configuration for federated resolution
@@ -188,6 +189,53 @@ pub struct FederatedTerm {
     pub obsolete: bool,
     /// Source this came from
     pub source: String,
+    /// Epistemic status for this federated term
+    pub epistemic: EpistemicStatus,
+}
+
+impl FederatedTerm {
+    /// Compute epistemic status for a federated term
+    pub fn compute_epistemic(
+        source_name: &str,
+        ontology: &str,
+        term_id: &str,
+        has_definition: bool,
+        obsolete: bool,
+    ) -> EpistemicStatus {
+        // Base confidence varies by source
+        let source_confidence: f64 = match source_name {
+            "OLS4" => 0.85,      // OBO Foundry curation
+            "BioPortal" => 0.80, // Broader curation quality
+            _ => 0.70,           // Unknown sources
+        };
+
+        // Adjust for definition presence
+        let definition_factor: f64 = if has_definition { 1.0 } else { 0.9 };
+
+        // Adjust for obsolete status
+        let obsolete_factor: f64 = if obsolete { 0.5 } else { 1.0 };
+
+        let final_confidence = (source_confidence * definition_factor * obsolete_factor).clamp(0.0, 1.0);
+
+        EpistemicStatus {
+            confidence: Confidence::new(final_confidence),
+            revisability: Revisability::Revisable {
+                conditions: vec![
+                    "ontology_update".into(),
+                    "federated_refresh".into(),
+                ],
+            },
+            source: Source::OntologyAssertion {
+                ontology: ontology.to_string(),
+                term: term_id.to_string(),
+            },
+            evidence: vec![Evidence {
+                kind: EvidenceKind::Publication { doi: None },
+                reference: format!("Federated: {} via {}", ontology, source_name),
+                strength: Confidence::new(final_confidence),
+            }],
+        }
+    }
 }
 
 /// The federated resolver
