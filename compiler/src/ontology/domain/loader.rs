@@ -5,14 +5,18 @@
 
 use std::collections::HashMap;
 
-use crate::epistemic::{Confidence, EpistemicStatus, Evidence, EvidenceKind, Revisability, Source, TermId};
+use crate::epistemic::{
+    Confidence, EpistemicStatus, Evidence, EvidenceKind, Revisability, Source, TermId,
+};
 use crate::ontology::OntologyError;
 
 use super::{DomainIndex, DomainTerm, OntologyMetadata};
 
 /// Load an ontology from its SQLite database
 #[cfg(feature = "ontology")]
-pub(crate) fn load_ontology_from_sqlite(metadata: &OntologyMetadata) -> Result<DomainIndex, OntologyError> {
+pub(crate) fn load_ontology_from_sqlite(
+    metadata: &OntologyMetadata,
+) -> Result<DomainIndex, OntologyError> {
     use rusqlite::Connection;
 
     let conn = Connection::open(&metadata.db_file).map_err(|e| {
@@ -216,7 +220,10 @@ fn load_ancestors(
 
         for row in rows {
             let (subject, object) = row.map_err(|e| OntologyError::DatabaseError(e.to_string()))?;
-            ancestors.entry(subject).or_insert_with(Vec::new).push(object);
+            ancestors
+                .entry(subject)
+                .or_insert_with(Vec::new)
+                .push(object);
         }
     }
 
@@ -231,7 +238,10 @@ fn default_epistemic(term_id: &str, ontology: &str) -> EpistemicStatus {
             conditions: vec!["ontology_update".into(), "domain_evidence".into()],
         },
         source: Source::OntologyAssertion {
-            ontology: format!("http://purl.obolibrary.org/obo/{}.owl", ontology.to_lowercase()),
+            ontology: format!(
+                "http://purl.obolibrary.org/obo/{}.owl",
+                ontology.to_lowercase()
+            ),
             term: term_id.to_string(),
         },
         evidence: vec![Evidence {
@@ -244,7 +254,9 @@ fn default_epistemic(term_id: &str, ontology: &str) -> EpistemicStatus {
 
 /// Bootstrap loader for when SQLite is not available
 #[cfg(not(feature = "ontology"))]
-pub(crate) fn load_ontology_from_sqlite(_metadata: &OntologyMetadata) -> Result<DomainIndex, OntologyError> {
+pub(crate) fn load_ontology_from_sqlite(
+    _metadata: &OntologyMetadata,
+) -> Result<DomainIndex, OntologyError> {
     // Return empty index in bootstrap mode
     Ok(DomainIndex {
         terms: HashMap::new(),

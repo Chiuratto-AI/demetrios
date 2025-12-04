@@ -231,7 +231,11 @@ impl ReviseOp {
 
     /// Create Bayesian revision
     pub fn bayesian(target: Expr, evidence: Expr, prior_weight: f64) -> Self {
-        Self::new(target, evidence, RevisionStrategy::Bayesian { prior_weight })
+        Self::new(
+            target,
+            evidence,
+            RevisionStrategy::Bayesian { prior_weight },
+        )
     }
 
     /// Create replacement revision

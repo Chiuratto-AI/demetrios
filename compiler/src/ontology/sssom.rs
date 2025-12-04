@@ -350,7 +350,8 @@ impl SssomMapping {
 
     /// Get the confidence, defaulting to predicate-based estimate
     pub fn effective_confidence(&self) -> f64 {
-        self.confidence.unwrap_or_else(|| self.predicate.default_confidence())
+        self.confidence
+            .unwrap_or_else(|| self.predicate.default_confidence())
     }
 
     /// Check if this is a bidirectional mapping
@@ -552,9 +553,8 @@ pub enum MappingDirection {
 
 /// Load SSSOM mappings from a file
 pub fn load_sssom_mappings(path: impl AsRef<Path>) -> OntologyResult<SssomMappingSet> {
-    let file = File::open(path.as_ref()).map_err(|e| {
-        OntologyError::SssomParseError(format!("Cannot open file: {}", e))
-    })?;
+    let file = File::open(path.as_ref())
+        .map_err(|e| OntologyError::SssomParseError(format!("Cannot open file: {}", e)))?;
     let reader = BufReader::new(file);
 
     let mut mapping_set = SssomMappingSet::new();
@@ -562,9 +562,8 @@ pub fn load_sssom_mappings(path: impl AsRef<Path>) -> OntologyResult<SssomMappin
     let mut in_metadata = true;
 
     for line in reader.lines() {
-        let line = line.map_err(|e| {
-            OntologyError::SssomParseError(format!("Read error: {}", e))
-        })?;
+        let line =
+            line.map_err(|e| OntologyError::SssomParseError(format!("Read error: {}", e)))?;
 
         // Skip empty lines
         if line.trim().is_empty() {
@@ -623,7 +622,10 @@ pub fn load_sssom_mappings(path: impl AsRef<Path>) -> OntologyResult<SssomMappin
 
         // Extract required fields
         let subject_id = row.get("subject_id").copied().unwrap_or("");
-        let predicate_id = row.get("predicate_id").copied().unwrap_or("skos:exactMatch");
+        let predicate_id = row
+            .get("predicate_id")
+            .copied()
+            .unwrap_or("skos:exactMatch");
         let object_id = row.get("object_id").copied().unwrap_or("");
 
         if subject_id.is_empty() || object_id.is_empty() {
@@ -634,9 +636,7 @@ pub fn load_sssom_mappings(path: impl AsRef<Path>) -> OntologyResult<SssomMappin
             subject_id,
             MappingPredicate::parse(predicate_id),
             object_id,
-            MappingJustification::parse(
-                row.get("mapping_justification").copied().unwrap_or(""),
-            ),
+            MappingJustification::parse(row.get("mapping_justification").copied().unwrap_or("")),
         );
 
         // Optional fields
@@ -687,7 +687,10 @@ pub fn parse_sssom_string(content: &str) -> OntologyResult<SssomMappingSet> {
             .collect();
 
         let subject_id = row.get("subject_id").copied().unwrap_or("");
-        let predicate_id = row.get("predicate_id").copied().unwrap_or("skos:exactMatch");
+        let predicate_id = row
+            .get("predicate_id")
+            .copied()
+            .unwrap_or("skos:exactMatch");
         let object_id = row.get("object_id").copied().unwrap_or("");
 
         if subject_id.is_empty() || object_id.is_empty() {

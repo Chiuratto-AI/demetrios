@@ -40,8 +40,8 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crate::epistemic::{Confidence, EpistemicStatus, Evidence, EvidenceKind, Revisability, Source};
 use super::{OntologyError, OntologyResult};
+use crate::epistemic::{Confidence, EpistemicStatus, Evidence, EvidenceKind, Revisability, Source};
 
 /// Configuration for federated resolution
 #[derive(Debug, Clone)]
@@ -63,12 +63,12 @@ pub struct FederatedConfig {
 impl Default for FederatedConfig {
     fn default() -> Self {
         Self {
-            timeout_ms: 10000,           // 10 seconds
+            timeout_ms: 10000, // 10 seconds
             max_retries: 3,
-            backoff_base_ms: 1000,       // 1 second
-            backoff_max_ms: 30000,       // 30 seconds
+            backoff_base_ms: 1000,        // 1 second
+            backoff_max_ms: 30000,        // 30 seconds
             min_request_interval_ms: 100, // 10 requests/second max
-            cache_ttl_seconds: 86400,    // 24 hours
+            cache_ttl_seconds: 86400,     // 24 hours
         }
     }
 }
@@ -79,9 +79,7 @@ pub enum FederatedSource {
     /// EMBL-EBI OLS4 (no API key required)
     OLS4,
     /// NCBO BioPortal (API key required)
-    BioPortal {
-        api_key: String,
-    },
+    BioPortal { api_key: String },
     /// Custom endpoint
     Custom {
         name: String,
@@ -215,15 +213,13 @@ impl FederatedTerm {
         // Adjust for obsolete status
         let obsolete_factor: f64 = if obsolete { 0.5 } else { 1.0 };
 
-        let final_confidence = (source_confidence * definition_factor * obsolete_factor).clamp(0.0, 1.0);
+        let final_confidence =
+            (source_confidence * definition_factor * obsolete_factor).clamp(0.0, 1.0);
 
         EpistemicStatus {
             confidence: Confidence::new(final_confidence),
             revisability: Revisability::Revisable {
-                conditions: vec![
-                    "ontology_update".into(),
-                    "federated_refresh".into(),
-                ],
+                conditions: vec!["ontology_update".into(), "federated_refresh".into()],
             },
             source: Source::OntologyAssertion {
                 ontology: ontology.to_string(),
@@ -316,11 +312,9 @@ impl FederatedResolver {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            OntologyError::TermNotFound {
-                ontology: query.ontology.clone().unwrap_or_default(),
-                term: query.term_id.clone(),
-            }
+        Err(last_error.unwrap_or_else(|| OntologyError::TermNotFound {
+            ontology: query.ontology.clone().unwrap_or_default(),
+            term: query.term_id.clone(),
         }))
     }
 
@@ -390,7 +384,11 @@ impl FederatedResolver {
     }
 
     /// Query BioPortal
-    fn query_bioportal(&self, query: &FederatedQuery, _api_key: &str) -> OntologyResult<FederatedTerm> {
+    fn query_bioportal(
+        &self,
+        query: &FederatedQuery,
+        _api_key: &str,
+    ) -> OntologyResult<FederatedTerm> {
         // Build URL
         let url = if let Some(ref ontology) = query.ontology {
             format!(
@@ -531,11 +529,13 @@ mod tests {
     #[test]
     fn test_federated_source_urls() {
         assert!(FederatedSource::OLS4.base_url().contains("ebi.ac.uk"));
-        assert!(FederatedSource::BioPortal {
-            api_key: "test".into()
-        }
-        .base_url()
-        .contains("bioontology.org"));
+        assert!(
+            FederatedSource::BioPortal {
+                api_key: "test".into()
+            }
+            .base_url()
+            .contains("bioontology.org")
+        );
     }
 
     #[test]

@@ -1,4 +1,3 @@
-
 //! Algebraic effect system
 //!
 //! D has full algebraic effects with handlers, inspired by Koka/Eff.
@@ -125,11 +124,7 @@ impl EffectInference {
                     vec![Type::String],
                     Type::Unit,
                 ))
-                .with_op(EffectOperation::new(
-                    "read_line",
-                    vec![],
-                    Type::String,
-                ))
+                .with_op(EffectOperation::new("read_line", vec![], Type::String))
                 .with_op(EffectOperation::new(
                     "read_file",
                     vec![Type::String],
@@ -149,14 +144,12 @@ impl EffectInference {
         self.definitions.push(EffectDef::new("Alloc"));
 
         // Exception effect
-        self.definitions.push(
-            EffectDef::new("Exn")
-                .with_op(EffectOperation::new(
-                    "throw",
-                    vec![Type::String],
-                    Type::Never,
-                )),
-        );
+        self.definitions
+            .push(EffectDef::new("Exn").with_op(EffectOperation::new(
+                "throw",
+                vec![Type::String],
+                Type::Never,
+            )));
 
         // Async effect
         self.definitions.push(

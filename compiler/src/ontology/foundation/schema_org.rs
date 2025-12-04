@@ -269,10 +269,7 @@ impl SchemaOrgOntology {
                 label: "Drug".into(),
                 description: Some("A chemical or biologic substance used to treat disease".into()),
                 parents: vec!["schema:MedicalEntity".into()],
-                properties: vec![
-                    "schema:activeIngredient".into(),
-                    "schema:dosageForm".into(),
-                ],
+                properties: vec!["schema:activeIngredient".into(), "schema:dosageForm".into()],
             },
         );
 

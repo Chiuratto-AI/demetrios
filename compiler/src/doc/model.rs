@@ -7,7 +7,6 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-
 /// Complete documentation for a crate
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrateDoc {

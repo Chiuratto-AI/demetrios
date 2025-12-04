@@ -30,13 +30,13 @@ pub struct UOUnit {
 /// SI base unit dimensions
 #[derive(Debug, Clone, Default)]
 pub struct BaseUnits {
-    pub meter: i8,      // length
-    pub kilogram: i8,   // mass
-    pub second: i8,     // time
-    pub ampere: i8,     // electric current
-    pub kelvin: i8,     // temperature
-    pub mole: i8,       // amount of substance
-    pub candela: i8,    // luminous intensity
+    pub meter: i8,    // length
+    pub kilogram: i8, // mass
+    pub second: i8,   // time
+    pub ampere: i8,   // electric current
+    pub kelvin: i8,   // temperature
+    pub mole: i8,     // amount of substance
+    pub candela: i8,  // luminous intensity
 }
 
 impl UOOntology {

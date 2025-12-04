@@ -96,12 +96,12 @@ impl SyntaxHighlighter {
                 .into_iter()
                 .collect();
 
-Self {
+        Self {
             keywords,
             types,
             effects,
         }
-}
+    }
 
     /// Highlight D source code
     pub fn highlight(&self, source: &str) -> String {

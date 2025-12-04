@@ -252,7 +252,7 @@ impl Predicate {
 
             Predicate::And(ps) => {
                 Predicate::And(ps.iter().map(|p| p.substitute(from, to)).collect())
-}
+            }
 
             Predicate::Or(ps) => Predicate::Or(ps.iter().map(|p| p.substitute(from, to)).collect()),
 
@@ -263,11 +263,11 @@ impl Predicate {
 
             Predicate::Forall(x, ty, p) if x != from => {
                 Predicate::Forall(x.clone(), ty.clone(), Box::new(p.substitute(from, to)))
-}
+            }
 
             Predicate::Exists(x, ty, p) if x != from => {
                 Predicate::Exists(x.clone(), ty.clone(), Box::new(p.substitute(from, to)))
-}
+            }
 
             Predicate::App(name, args) => Predicate::App(
                 name.clone(),
@@ -742,7 +742,7 @@ pub mod medical {
                 )),
             ]),
         )
-}
+    }
 
     /// Valid creatinine clearance: `{ crcl | 0 < crcl < 200 mL/min }`
     pub fn valid_crcl(base: Type) -> RefinementType {
@@ -762,7 +762,7 @@ pub mod medical {
                 )),
             ]),
         )
-}
+    }
 
     /// Valid age: `{ age | 0 <= age <= 150 }`
     pub fn valid_age(base: Type) -> RefinementType {
@@ -787,7 +787,7 @@ pub mod medical {
                 )),
             ]),
         )
-}
+    }
 
     /// Valid serum creatinine: `{ scr | 0.1 <= scr <= 20 mg/dL }`
     pub fn valid_serum_creatinine(base: Type) -> RefinementType {

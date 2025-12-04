@@ -256,7 +256,9 @@ impl IAOOntology {
             IAOClass {
                 id: "IAO:0000600".into(),
                 label: "elucidation".into(),
-                definition: Some("A statement that clarifies the meaning of a primitive term".into()),
+                definition: Some(
+                    "A statement that clarifies the meaning of a primitive term".into(),
+                ),
                 parents: vec!["IAO:0000030".into()],
                 synonyms: vec![],
             },

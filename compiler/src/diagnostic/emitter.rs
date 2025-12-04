@@ -410,7 +410,7 @@ impl JsonEmitter {
         json.push_str(&format!(
             "\"message\":\"{}\",",
             escape_json(&diagnostic.message)
-));
+        ));
 
         // Labels
         json.push_str("\"labels\":[");
@@ -424,7 +424,7 @@ impl JsonEmitter {
             json.push_str(&format!(
                 "\"span\":{{\"start\":{},\"end\":{},\"file_id\":{}}}",
                 label.span.start, label.span.end, label.span.file_id
-));
+            ));
 
             // Add resolved location if source map available
             if let Some(sm) = source_map {
@@ -567,7 +567,7 @@ impl SarifEmitter {
     ]
   }}]
 }}"#,
-            self.tool_name,self.tool_version, results
+            self.tool_name, self.tool_version, results
         );
 
         if let Ok(mut writer) = self.writer.lock() {

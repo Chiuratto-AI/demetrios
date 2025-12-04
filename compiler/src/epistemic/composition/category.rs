@@ -1,4 +1,3 @@
-
 //! Categorical Semantics for Epistemic Composition
 //!
 //! This module provides the category-theoretic foundations for the
@@ -192,7 +191,12 @@ impl EpistemicMonad {
             vec![ka.provenance().clone(), kb.provenance().clone()],
         );
 
-        EpistemicValue::new(kb.into_inner(), combined_confidence, combined_ontology, provenance)
+        EpistemicValue::new(
+            kb.into_inner(),
+            combined_confidence,
+            combined_ontology,
+            provenance,
+        )
     }
 
     /// Monadic join: Knowledge[Knowledge[A]] → Knowledge[A]

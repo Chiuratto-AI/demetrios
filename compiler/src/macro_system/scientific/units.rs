@@ -32,49 +32,49 @@ impl Dimension {
             length: 1,
             ..Default::default()
         }
-}
+    }
 
     pub fn mass() -> Self {
         Dimension {
             mass: 1,
             ..Default::default()
         }
-}
+    }
 
     pub fn time() -> Self {
         Dimension {
             time: 1,
             ..Default::default()
         }
-}
+    }
 
     pub fn current() -> Self {
         Dimension {
             current: 1,
             ..Default::default()
         }
-}
+    }
 
     pub fn temperature() -> Self {
         Dimension {
             temperature: 1,
             ..Default::default()
         }
-}
+    }
 
     pub fn amount() -> Self {
         Dimension {
             amount: 1,
             ..Default::default()
         }
-}
+    }
 
     pub fn luminosity() -> Self {
         Dimension {
             luminosity: 1,
             ..Default::default()
         }
-}
+    }
 
     pub fn mul(&self, other: &Dimension) -> Dimension {
         Dimension {

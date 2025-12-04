@@ -758,7 +758,7 @@ mod tests {
             &include,
             &exclude
         ));
-}
+    }
 
     #[test]
     fn test_poll_backend_file_detection() {

@@ -1,4 +1,3 @@
-
 //! Gradual typing for dependent epistemic types
 //!
 //! When proof search fails, gradual typing allows deferring checks to runtime.

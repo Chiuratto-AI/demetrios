@@ -91,7 +91,9 @@ impl EpistemicStatus {
     /// The confidence is reduced by the transformation's confidence factor.
     pub fn propagate(&self, transformation: &Transformation) -> Self {
         Self {
-            confidence: self.confidence.propagate(transformation.confidence_factor()),
+            confidence: self
+                .confidence
+                .propagate(transformation.confidence_factor()),
             revisability: self.revisability.clone(),
             source: Source::Transformation {
                 original: Box::new(self.source.clone()),
@@ -276,7 +278,10 @@ pub enum Source {
     Derivation(String),
 
     /// From external source
-    External { uri: String, accessed: Option<String> },
+    External {
+        uri: String,
+        accessed: Option<String>,
+    },
 
     /// From ontology assertion
     OntologyAssertion { ontology: String, term: String },

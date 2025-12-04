@@ -15,10 +15,10 @@
 
 use tower_lsp::lsp_types::*;
 
-use crate::epistemic::{Confidence, EpistemicStatus, Revisability, Source};
 use crate::diagnostic::epistemic::{
     EpistemicDiagnostic, EpistemicIntegrityChecker, EpistemicSeverity,
 };
+use crate::epistemic::{Confidence, EpistemicStatus, Revisability, Source};
 
 /// Epistemic hover provider
 pub struct EpistemicHoverProvider;
@@ -29,26 +29,37 @@ impl EpistemicHoverProvider {
         let mut parts = Vec::new();
 
         // Confidence section
-        parts.push(MarkedString::String(Self::format_confidence_header(&status.confidence)));
+        parts.push(MarkedString::String(Self::format_confidence_header(
+            &status.confidence,
+        )));
 
         // Source section
         parts.push(MarkedString::String(Self::format_source(&status.source)));
 
         // Revisability section
-        parts.push(MarkedString::String(Self::format_revisability(&status.revisability)));
+        parts.push(MarkedString::String(Self::format_revisability(
+            &status.revisability,
+        )));
 
         // Evidence section (if any)
         if !status.evidence.is_empty() {
             let evidence_text = status
                 .evidence
                 .iter()
-                .map(|e| format!("- {}: {} (strength: {:.0}%)",
-                    Self::evidence_kind_name(&e.kind),
-                    e.reference,
-                    e.strength.value() * 100.0))
+                .map(|e| {
+                    format!(
+                        "- {}: {} (strength: {:.0}%)",
+                        Self::evidence_kind_name(&e.kind),
+                        e.reference,
+                        e.strength.value() * 100.0
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n");
-            parts.push(MarkedString::String(format!("**Evidence:**\n{}", evidence_text)));
+            parts.push(MarkedString::String(format!(
+                "**Evidence:**\n{}",
+                evidence_text
+            )));
         }
 
         parts
@@ -60,13 +71,21 @@ impl EpistemicHoverProvider {
         let badge = Self::confidence_badge(value);
         let bar = Self::confidence_bar(value);
 
-        let bounds = if let (Some(lower), Some(upper)) = (confidence.lower_bound(), confidence.upper_bound()) {
+        let bounds = if let (Some(lower), Some(upper)) =
+            (confidence.lower_bound(), confidence.upper_bound())
+        {
             format!(" [{:.0}% - {:.0}%]", lower * 100.0, upper * 100.0)
         } else {
             String::new()
         };
 
-        format!("**Confidence:** {} {:.0}%{}\n{}", badge, value * 100.0, bounds, bar)
+        format!(
+            "**Confidence:** {} {:.0}%{}\n{}",
+            badge,
+            value * 100.0,
+            bounds,
+            bar
+        )
     }
 
     /// Get confidence badge emoji
@@ -95,7 +114,11 @@ impl EpistemicHoverProvider {
     fn format_source(source: &Source) -> String {
         match source {
             Source::Axiom => "**Source:** Axiom (by definition)".to_string(),
-            Source::Measurement { instrument, protocol, timestamp } => {
+            Source::Measurement {
+                instrument,
+                protocol,
+                timestamp,
+            } => {
                 let mut parts = vec!["**Source:** Measurement"];
                 let mut details = Vec::new();
                 if let Some(inst) = instrument {
@@ -117,7 +140,8 @@ impl EpistemicHoverProvider {
                 format!("**Source:** Derived via `{}`", method)
             }
             Source::External { uri, accessed } => {
-                let access_info = accessed.as_ref()
+                let access_info = accessed
+                    .as_ref()
                     .map(|a| format!(" (accessed: {})", a))
                     .unwrap_or_default();
                 format!("**Source:** External: {}{}", uri, access_info)
@@ -126,16 +150,22 @@ impl EpistemicHoverProvider {
                 format!("**Source:** Ontology assertion: `{}:{}`", ontology, term)
             }
             Source::ModelPrediction { model, version } => {
-                let ver = version.as_ref()
+                let ver = version
+                    .as_ref()
                     .map(|v| format!(" v{}", v))
                     .unwrap_or_default();
                 format!("**Source:** Model prediction: `{}{}`", model, ver)
             }
             Source::Transformation { original, via } => {
-                format!("**Source:** Transformed via `{}` from {}", via, Self::source_brief(original))
+                format!(
+                    "**Source:** Transformed via `{}` from {}",
+                    via,
+                    Self::source_brief(original)
+                )
             }
             Source::HumanAssertion { asserter } => {
-                let who = asserter.as_ref()
+                let who = asserter
+                    .as_ref()
                     .map(|a| format!(" by {}", a))
                     .unwrap_or_default();
                 format!("**Source:** Human assertion{}", who)
@@ -169,7 +199,10 @@ impl EpistemicHoverProvider {
                 if conditions.is_empty() {
                     "**Revisability:** 🔓 Revisable".to_string()
                 } else {
-                    format!("**Revisability:** 🔓 Revisable under:\n- {}", conditions.join("\n- "))
+                    format!(
+                        "**Revisability:** 🔓 Revisable under:\n- {}",
+                        conditions.join("\n- ")
+                    )
                 }
             }
             Revisability::MustRevise { reason } => {
@@ -252,7 +285,7 @@ impl EpistemicInlayProvider {
             kind: Some(InlayHintKind::TYPE),
             text_edits: None,
             tooltip: Some(InlayHintTooltip::String(
-                EpistemicHoverProvider::format_source(source)
+                EpistemicHoverProvider::format_source(source),
             )),
             padding_left: Some(true),
             padding_right: Some(false),
@@ -276,7 +309,9 @@ impl EpistemicCodeLensProvider {
         let title = if low_confidence_count > 0 {
             format!(
                 "{} avg {:.0}% | {} low-confidence values",
-                badge, avg_confidence * 100.0, low_confidence_count
+                badge,
+                avg_confidence * 100.0,
+                low_confidence_count
             )
         } else {
             format!("{} avg {:.0}% confidence", badge, avg_confidence * 100.0)
@@ -296,7 +331,10 @@ impl EpistemicCodeLensProvider {
     /// Generate warning lens for functions with epistemic issues
     pub fn warning_lens(range: Range, warning_count: usize, error_count: usize) -> CodeLens {
         let title = if error_count > 0 {
-            format!("🔴 {} epistemic errors, {} warnings", error_count, warning_count)
+            format!(
+                "🔴 {} epistemic errors, {} warnings",
+                error_count, warning_count
+            )
         } else {
             format!("🟡 {} epistemic warnings", warning_count)
         };
@@ -329,8 +367,14 @@ pub fn to_lsp_diagnostics(epistemic_diagnostics: &[EpistemicDiagnostic]) -> Vec<
 
             // Convert span to LSP range (would need source map in real implementation)
             let range = Range {
-                start: Position { line: 0, character: span.start as u32 },
-                end: Position { line: 0, character: span.end as u32 },
+                start: Position {
+                    line: 0,
+                    character: span.start as u32,
+                },
+                end: Position {
+                    line: 0,
+                    character: span.end as u32,
+                },
             };
 
             let mut related_info = Vec::new();
@@ -438,8 +482,14 @@ impl EpistemicQuickFixProvider {
                 if let Some(span) = diagnostic.span {
                     let edit = TextEdit {
                         range: Range {
-                            start: Position { line: 0, character: span.start as u32 },
-                            end: Position { line: 0, character: span.end as u32 },
+                            start: Position {
+                                line: 0,
+                                character: span.start as u32,
+                            },
+                            end: Position {
+                                line: 0,
+                                character: span.end as u32,
+                            },
                         },
                         new_text: replacement.clone(),
                     };
@@ -503,16 +553,27 @@ mod tests {
 
     #[test]
     fn test_confidence_bar() {
-        assert_eq!(EpistemicHoverProvider::confidence_bar(1.0), "`[██████████]`");
-        assert_eq!(EpistemicHoverProvider::confidence_bar(0.5), "`[█████░░░░░]`");
-        assert_eq!(EpistemicHoverProvider::confidence_bar(0.0), "`[░░░░░░░░░░]`");
+        assert_eq!(
+            EpistemicHoverProvider::confidence_bar(1.0),
+            "`[██████████]`"
+        );
+        assert_eq!(
+            EpistemicHoverProvider::confidence_bar(0.5),
+            "`[█████░░░░░]`"
+        );
+        assert_eq!(
+            EpistemicHoverProvider::confidence_bar(0.0),
+            "`[░░░░░░░░░░]`"
+        );
     }
 
     #[test]
     fn test_format_epistemic_hover() {
         let status = EpistemicStatus {
             confidence: Confidence::new(0.85),
-            revisability: Revisability::Revisable { conditions: vec!["new_data".into()] },
+            revisability: Revisability::Revisable {
+                conditions: vec!["new_data".into()],
+            },
             source: Source::Measurement {
                 instrument: Some("mass_spec".into()),
                 protocol: None,
@@ -527,7 +588,13 @@ mod tests {
 
     #[test]
     fn test_confidence_hint() {
-        let hint = EpistemicInlayProvider::confidence_hint(0.9, Position { line: 0, character: 10 });
+        let hint = EpistemicInlayProvider::confidence_hint(
+            0.9,
+            Position {
+                line: 0,
+                character: 10,
+            },
+        );
         if let InlayHintLabel::String(label) = hint.label {
             assert!(label.contains("90%"));
         } else {
@@ -539,7 +606,10 @@ mod tests {
     fn test_semantic_modifiers() {
         let high_conf = EpistemicStatus {
             confidence: Confidence::new(0.95),
-            source: Source::OntologyAssertion { ontology: "GO".into(), term: "0001".into() },
+            source: Source::OntologyAssertion {
+                ontology: "GO".into(),
+                term: "0001".into(),
+            },
             ..Default::default()
         };
 
@@ -553,7 +623,9 @@ mod tests {
         let low_conf = EpistemicStatus {
             confidence: Confidence::new(0.3),
             source: Source::Unknown,
-            revisability: Revisability::MustRevise { reason: "provisional".into() },
+            revisability: Revisability::MustRevise {
+                reason: "provisional".into(),
+            },
             evidence: vec![],
         };
 
@@ -565,12 +637,7 @@ mod tests {
 
     #[test]
     fn test_code_lens_summary() {
-        let lens = EpistemicCodeLensProvider::function_summary_lens(
-            Range::default(),
-            0.7,
-            0.85,
-            2,
-        );
+        let lens = EpistemicCodeLensProvider::function_summary_lens(Range::default(), 0.7, 0.85, 2);
 
         if let Some(cmd) = lens.command {
             assert!(cmd.title.contains("85%"));
@@ -585,7 +652,10 @@ mod tests {
             Source::Axiom,
             Source::Derivation("test".into()),
             Source::Unknown,
-            Source::OntologyAssertion { ontology: "GO".into(), term: "0001".into() },
+            Source::OntologyAssertion {
+                ontology: "GO".into(),
+                term: "0001".into(),
+            },
         ];
 
         for source in sources {

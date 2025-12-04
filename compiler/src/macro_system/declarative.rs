@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use super::pattern::*;
 use super::token_tree::*;
-use crate::lexer::TokenKind;
 use crate::common::Span;
+use crate::lexer::TokenKind;
 
 /// A declarative macro definition
 #[derive(Debug, Clone)]
@@ -31,8 +31,15 @@ pub struct MacroArm {
 pub enum TemplateTree {
     Token(TokenKind, String),
     MetaVar(String),
-    Group { delimiter: Delimiter, templates: Vec<TemplateTree> },
-    Repeat { templates: Vec<TemplateTree>, separator: Option<Box<TemplateTree>>, kind: RepeatKind },
+    Group {
+        delimiter: Delimiter,
+        templates: Vec<TemplateTree>,
+    },
+    Repeat {
+        templates: Vec<TemplateTree>,
+        separator: Option<Box<TemplateTree>>,
+        kind: RepeatKind,
+    },
 }
 
 /// Macro expander
@@ -56,11 +63,11 @@ impl MacroExpander {
             expansion_count: 0,
         }
     }
-    
+
     pub fn define(&mut self, macro_def: MacroDef) {
         self.macros.insert(macro_def.name.clone(), macro_def);
     }
-    
+
     pub fn expand(
         &mut self,
         name: &str,
@@ -73,50 +80,52 @@ impl MacroExpander {
                 span: input.first().map(|t| t.span()).unwrap_or_default(),
             });
         }
-        
+
         let result = self.expand_inner(name, input);
         self.depth -= 1;
         result
     }
-    
+
     fn expand_inner(
         &mut self,
         name: &str,
         input: Vec<TokenTree>,
     ) -> Result<Vec<TokenTree>, MacroError> {
-        let macro_def = self.macros.get(name).cloned().ok_or_else(|| {
-            MacroError::PatternMismatch {
-                expected: format!("macro '{}'", name),
-                found: "undefined".to_string(),
-                span: input.first().map(|t| t.span()).unwrap_or_default(),
-            }
-        })?;
-        
+        let macro_def =
+            self.macros
+                .get(name)
+                .cloned()
+                .ok_or_else(|| MacroError::PatternMismatch {
+                    expected: format!("macro '{}'", name),
+                    found: "undefined".to_string(),
+                    span: input.first().map(|t| t.span()).unwrap_or_default(),
+                })?;
+
         let expansion_ctx = SyntaxContext::fresh();
         self.expansion_count += 1;
-        
+
         let mark = Mark {
             macro_id: self.expansion_count,
             phase: self.depth as u32,
         };
         self.marks.add_mark(expansion_ctx, mark);
-        
+
         let mut matcher = PatternMatcher::new();
-        
+
         for arm in &macro_def.arms {
             match self.try_arm(&mut matcher, arm, &input, expansion_ctx) {
                 Ok(result) => return Ok(result),
                 Err(_) => continue,
             }
         }
-        
+
         Err(MacroError::PatternMismatch {
             expected: format!("matching arm for '{}'", name),
             found: "no matching pattern".to_string(),
             span: input.first().map(|t| t.span()).unwrap_or_default(),
         })
     }
-    
+
     fn try_arm(
         &mut self,
         matcher: &mut PatternMatcher,
@@ -125,7 +134,7 @@ impl MacroExpander {
         ctx: SyntaxContext,
     ) -> Result<Vec<TokenTree>, MacroError> {
         let (bindings, consumed) = matcher.match_sequence(&arm.pattern, input)?;
-        
+
         if consumed != input.len() {
             return Err(MacroError::PatternMismatch {
                 expected: "end of input".to_string(),
@@ -133,15 +142,15 @@ impl MacroExpander {
                 span: input.get(consumed).map(|t| t.span()).unwrap_or_default(),
             });
         }
-        
+
         let mut result = Vec::new();
         for template in &arm.template {
             result.extend(self.transcribe_tree(template, &bindings, ctx)?);
         }
-        
+
         self.expand_nested(result)
     }
-    
+
     fn transcribe_tree(
         &self,
         template: &TemplateTree,
@@ -155,37 +164,51 @@ impl MacroExpander {
                     text: text.clone(),
                     span: Span::default(),
                 };
-                Ok(vec![TokenTree::Token(TokenWithCtx::with_context(token, ctx))])
+                Ok(vec![TokenTree::Token(TokenWithCtx::with_context(
+                    token, ctx,
+                ))])
             }
-            
+
             TemplateTree::MetaVar(name) => {
-                let capture = bindings.get_single(name).ok_or_else(|| {
-                    MacroError::UndefinedMetaVariable {
-                        name: name.clone(),
-                        span: Span::default(),
-                    }
-                })?;
-                
-                Ok(capture.trees.iter()
+                let capture =
+                    bindings
+                        .get_single(name)
+                        .ok_or_else(|| MacroError::UndefinedMetaVariable {
+                            name: name.clone(),
+                            span: Span::default(),
+                        })?;
+
+                Ok(capture
+                    .trees
+                    .iter()
                     .cloned()
                     .map(|t| t.with_context(ctx))
                     .collect())
             }
-            
-            TemplateTree::Group { delimiter, templates } => {
+
+            TemplateTree::Group {
+                delimiter,
+                templates,
+            } => {
                 let mut inner = Vec::new();
                 for t in templates {
                     inner.extend(self.transcribe_tree(t, bindings, ctx)?);
                 }
-                Ok(vec![TokenTree::Delimited(*delimiter, inner, Span::default())])
+                Ok(vec![TokenTree::Delimited(
+                    *delimiter,
+                    inner,
+                    Span::default(),
+                )])
             }
-            
-            TemplateTree::Repeat { templates, separator, kind } => {
-                self.transcribe_repeat(templates, separator.as_deref(), *kind, bindings, ctx)
-            }
+
+            TemplateTree::Repeat {
+                templates,
+                separator,
+                kind,
+            } => self.transcribe_repeat(templates, separator.as_deref(), *kind, bindings, ctx),
         }
     }
-    
+
     fn transcribe_repeat(
         &self,
         templates: &[TemplateTree],
@@ -196,25 +219,29 @@ impl MacroExpander {
     ) -> Result<Vec<TokenTree>, MacroError> {
         let repeat_count = self.find_repeat_count(templates, bindings)?;
         let mut result = Vec::new();
-        
+
         for i in 0..repeat_count {
             let iter_bindings = self.index_bindings(bindings, i)?;
-            
+
             if i > 0 {
                 if let Some(sep) = separator {
                     result.extend(self.transcribe_tree(sep, &iter_bindings, ctx)?);
                 }
             }
-            
+
             for template in templates {
                 result.extend(self.transcribe_tree(template, &iter_bindings, ctx)?);
             }
         }
-        
+
         Ok(result)
     }
-    
-    fn find_repeat_count(&self, templates: &[TemplateTree], bindings: &Bindings) -> Result<usize, MacroError> {
+
+    fn find_repeat_count(
+        &self,
+        templates: &[TemplateTree],
+        bindings: &Bindings,
+    ) -> Result<usize, MacroError> {
         for template in templates {
             if let TemplateTree::MetaVar(name) = template {
                 if let Some(repeated) = bindings.get_repeat(name) {
@@ -222,19 +249,19 @@ impl MacroExpander {
                 }
             }
         }
-        
+
         Err(MacroError::InvalidRepetition {
             span: Span::default(),
         })
     }
-    
+
     fn index_bindings(&self, bindings: &Bindings, index: usize) -> Result<Bindings, MacroError> {
         let mut result = Bindings::new();
-        
+
         for (name, capture) in &bindings.singles {
             result.insert_single(name.clone(), capture.clone());
         }
-        
+
         for (name, repeated) in &bindings.repeats {
             if let Some(iter_bindings) = repeated.get(index) {
                 if let Some(capture) = iter_bindings.get_single(name) {
@@ -242,25 +269,24 @@ impl MacroExpander {
                 }
             }
         }
-        
+
         Ok(result)
     }
-    
+
     fn expand_nested(&mut self, trees: Vec<TokenTree>) -> Result<Vec<TokenTree>, MacroError> {
         let mut result = Vec::new();
         let mut i = 0;
-        
+
         while i < trees.len() {
             if i + 1 < trees.len() {
-                if let (
-                    TokenTree::Token(name_tok),
-                    TokenTree::Token(bang_tok),
-                ) = (&trees[i], &trees[i + 1]) {
+                if let (TokenTree::Token(name_tok), TokenTree::Token(bang_tok)) =
+                    (&trees[i], &trees[i + 1])
+                {
                     if name_tok.token.kind == TokenKind::Ident
                         && bang_tok.token.kind == TokenKind::Bang
                     {
                         let macro_name = &name_tok.token.text;
-                        
+
                         if self.macros.contains_key(macro_name) {
                             if i + 2 < trees.len() {
                                 if let TokenTree::Delimited(_, inner, _) = &trees[i + 2] {
@@ -274,7 +300,7 @@ impl MacroExpander {
                     }
                 }
             }
-            
+
             match &trees[i] {
                 TokenTree::Delimited(d, inner, span) => {
                     let expanded = self.expand_nested(inner.clone())?;
@@ -284,10 +310,10 @@ impl MacroExpander {
                     result.push(other.clone());
                 }
             }
-            
+
             i += 1;
         }
-        
+
         Ok(result)
     }
 }

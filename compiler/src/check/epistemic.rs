@@ -26,9 +26,7 @@ use std::collections::HashMap;
 use crate::epistemic::{
     Confidence, EpistemicStatus, Evidence, OntologyBinding, Revisability, Source, TermId,
 };
-use crate::ontology::{
-    FoundationOntologies, OntologyResolver, ParsedTermRef, SubsumptionResult,
-};
+use crate::ontology::{FoundationOntologies, OntologyResolver, ParsedTermRef, SubsumptionResult};
 
 /// Temporal index placeholder (until full temporal support)
 #[derive(Debug, Clone)]
@@ -72,7 +70,10 @@ pub enum TemporalConstraint {
     /// Valid at a specific point in time
     AtTime(TemporalIndex),
     /// Valid during an interval
-    During { start: TemporalIndex, end: TemporalIndex },
+    During {
+        start: TemporalIndex,
+        end: TemporalIndex,
+    },
     /// Must be current (no more than N days old)
     Current { max_age_days: u32 },
 }
@@ -114,8 +115,8 @@ pub struct EpistemicChecker {
 impl EpistemicChecker {
     /// Create a new epistemic checker
     pub fn new() -> Self {
-        let resolver = OntologyResolver::default_resolver()
-            .expect("Failed to create ontology resolver");
+        let resolver =
+            OntologyResolver::default_resolver().expect("Failed to create ontology resolver");
         Self {
             foundations: FoundationOntologies::bootstrap(),
             resolver,
@@ -153,7 +154,7 @@ impl EpistemicChecker {
             match self.check_temporal_constraint(value_status, temporal) {
                 ConstraintResult::Violated(msg) => return ConstraintResult::Violated(msg),
                 ConstraintResult::Indeterminate(msg) => {
-                    return ConstraintResult::Indeterminate(msg)
+                    return ConstraintResult::Indeterminate(msg);
                 }
                 _ => {}
             }
@@ -164,7 +165,7 @@ impl EpistemicChecker {
             match self.check_provenance_constraint(value_status, provenance) {
                 ConstraintResult::Violated(msg) => return ConstraintResult::Violated(msg),
                 ConstraintResult::Indeterminate(msg) => {
-                    return ConstraintResult::Indeterminate(msg)
+                    return ConstraintResult::Indeterminate(msg);
                 }
                 _ => {}
             }
@@ -363,7 +364,8 @@ pub fn combine_epistemic_bayesian(statuses: &[EpistemicStatus]) -> EpistemicStat
     };
 
     // Combine evidence from all sources
-    let combined_evidence: Vec<Evidence> = statuses.iter().flat_map(|s| s.evidence.clone()).collect();
+    let combined_evidence: Vec<Evidence> =
+        statuses.iter().flat_map(|s| s.evidence.clone()).collect();
 
     // Use most restrictive revisability
     let combined_revisability = Revisability::Revisable {

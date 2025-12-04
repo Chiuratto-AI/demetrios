@@ -57,6 +57,7 @@ pub mod native;
 #[cfg(feature = "ontology")]
 pub mod semantic_sql;
 pub mod sssom;
+pub mod version;
 
 mod federated;
 mod primitive;

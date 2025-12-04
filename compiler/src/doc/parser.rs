@@ -2,7 +2,6 @@
 //!
 //! Parses markdown doc comments into structured documentation sections.
 
-
 /// Parsed documentation sections
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DocSections {

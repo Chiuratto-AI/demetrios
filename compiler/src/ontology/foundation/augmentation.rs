@@ -38,16 +38,16 @@ impl EpistemicAugmenter {
 
         // Adjust based on definition quality
         let definition_factor = match &entry.definition {
-            Some(def) if def.len() > 100 => 1.0,  // Good definition
+            Some(def) if def.len() > 100 => 1.0, // Good definition
             Some(def) if def.len() > 20 => 0.95, // Minimal definition
-            Some(_) => 0.9,                       // Poor definition
-            None => 0.8,                          // No definition
+            Some(_) => 0.9,                      // Poor definition
+            None => 0.8,                         // No definition
         };
 
         // Adjust based on parent chain (deeper = more specific = higher confidence)
         let hierarchy_factor = match entry.parents.len() {
-            0 => 0.95,    // Root term
-            1..=3 => 1.0, // Good specificity
+            0 => 0.95,     // Root term
+            1..=3 => 1.0,  // Good specificity
             4..=6 => 1.02, // Very specific
             _ => 1.0,
         };

@@ -165,8 +165,8 @@ impl DomainOntologies {
             OntologyMetadata {
                 prefix: "GO".into(),
                 name: "Gene Ontology".into(),
-                description:
-                    "Ontology of genes, gene products, and their biological attributes".into(),
+                description: "Ontology of genes, gene products, and their biological attributes"
+                    .into(),
                 version: "2024-01".into(),
                 term_count: 45000,
                 db_file: db_path.join("go.db"),
@@ -331,9 +331,9 @@ impl DomainOntologies {
         }
 
         // Parse CURIEs
-        let (child_prefix, _) = child.split_once(':').ok_or_else(|| {
-            OntologyError::InvalidTermFormat(format!("Invalid CURIE: {}", child))
-        })?;
+        let (child_prefix, _) = child
+            .split_once(':')
+            .ok_or_else(|| OntologyError::InvalidTermFormat(format!("Invalid CURIE: {}", child)))?;
 
         let (parent_prefix, _) = parent.split_once(':').ok_or_else(|| {
             OntologyError::InvalidTermFormat(format!("Invalid CURIE: {}", parent))
@@ -474,7 +474,10 @@ mod tests {
 
         let chebi = domains.get_metadata("CHEBI");
         assert!(chebi.is_some());
-        assert_eq!(chebi.unwrap().name, "Chemical Entities of Biological Interest");
+        assert_eq!(
+            chebi.unwrap().name,
+            "Chemical Entities of Biological Interest"
+        );
 
         let unknown = domains.get_metadata("UNKNOWN");
         assert!(unknown.is_none());

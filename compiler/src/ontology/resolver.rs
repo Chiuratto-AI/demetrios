@@ -39,7 +39,9 @@
 use std::path::PathBuf;
 
 use super::cache::{CacheConfig, CachedTerm, CachedTermData, OntologyCache, SubsumptionCache};
-use super::primitive::{BfoClass, CobClass, RoRelation, PRIMITIVE_BFO, PRIMITIVE_COB, PRIMITIVE_RO};
+use super::primitive::{
+    BfoClass, CobClass, PRIMITIVE_BFO, PRIMITIVE_COB, PRIMITIVE_RO, RoRelation,
+};
 use super::sssom::SssomMappingSet;
 use super::{OntologyError, OntologyLayer, OntologyResult, OntologyStats, ParsedTermRef};
 
@@ -403,7 +405,11 @@ impl OntologyResolver {
     }
 
     /// Check if child term is a subclass of parent term
-    pub fn is_subclass_of(&mut self, child: &str, parent: &str) -> OntologyResult<SubsumptionResult> {
+    pub fn is_subclass_of(
+        &mut self,
+        child: &str,
+        parent: &str,
+    ) -> OntologyResult<SubsumptionResult> {
         self.stats.subsumption_checks += 1;
 
         // Check cache first

@@ -22,9 +22,19 @@ pub enum ConstValue {
     Char(char),
     Array(Vec<ConstValue>),
     Tuple(Vec<ConstValue>),
-    Struct { name: String, fields: HashMap<String, ConstValue> },
-    Enum { name: String, variant: String, value: Option<Box<ConstValue>> },
-    Function { name: String, module: String },
+    Struct {
+        name: String,
+        fields: HashMap<String, ConstValue>,
+    },
+    Enum {
+        name: String,
+        variant: String,
+        value: Option<Box<ConstValue>>,
+    },
+    Function {
+        name: String,
+        module: String,
+    },
     Type(String),
     Error(String),
 }
@@ -38,7 +48,7 @@ impl ConstValue {
             _ => true,
         }
     }
-    
+
     pub fn as_int(&self) -> Option<i128> {
         match self {
             ConstValue::Int(i) => Some(*i),
@@ -61,7 +71,9 @@ impl fmt::Display for ConstValue {
             ConstValue::Array(arr) => {
                 write!(f, "[")?;
                 for (i, v) in arr.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", v)?;
                 }
                 write!(f, "]")
@@ -69,7 +81,9 @@ impl fmt::Display for ConstValue {
             ConstValue::Tuple(tup) => {
                 write!(f, "(")?;
                 for (i, v) in tup.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", v)?;
                 }
                 write!(f, ")")
@@ -77,12 +91,18 @@ impl fmt::Display for ConstValue {
             ConstValue::Struct { name, fields } => {
                 write!(f, "{} {{ ", name)?;
                 for (i, (k, v)) in fields.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}: {}", k, v)?;
                 }
                 write!(f, " }}")
             }
-            ConstValue::Enum { name, variant, value } => {
+            ConstValue::Enum {
+                name,
+                variant,
+                value,
+            } => {
                 write!(f, "{}::{}", name, variant)?;
                 if let Some(v) = value {
                     write!(f, "({})", v)?;
@@ -123,7 +143,7 @@ impl CtfeError {
             backtrace: Vec::new(),
         }
     }
-    
+
     pub fn with_span(mut self, span: Span) -> Self {
         self.span = Some(span);
         self
@@ -155,7 +175,7 @@ impl CtfeContext {
             max_depth: 128,
         }
     }
-    
+
     pub fn consume_fuel(&mut self) -> Result<(), CtfeError> {
         if self.fuel == 0 {
             return Err(CtfeError::new("const evaluation exceeded step limit"));
@@ -163,32 +183,35 @@ impl CtfeContext {
         self.fuel -= 1;
         Ok(())
     }
-    
+
     pub fn lookup_var(&self, name: &str) -> Result<ConstValue, CtfeError> {
         for scope in self.locals.iter().rev() {
             if let Some(value) = scope.get(name) {
                 return Ok(value.clone());
             }
         }
-        Err(CtfeError::new(format!("undefined variable in const context: {}", name)))
+        Err(CtfeError::new(format!(
+            "undefined variable in const context: {}",
+            name
+        )))
     }
-    
+
     pub fn set_var(&mut self, name: String, value: ConstValue) {
         if let Some(scope) = self.locals.last_mut() {
             scope.insert(name, value);
         }
     }
-    
+
     pub fn push_scope(&mut self) {
         self.locals.push(HashMap::new());
     }
-    
+
     pub fn pop_scope(&mut self) {
         if self.locals.len() > 1 {
             self.locals.pop();
         }
     }
-    
+
     pub fn eval_binary_op(
         &self,
         op: &str,
@@ -226,13 +249,13 @@ impl CtfeContext {
                     Ok(ConstValue::Int(a % b))
                 }
             }
-            
+
             // Float arithmetic
             ("+", ConstValue::Float(a), ConstValue::Float(b)) => Ok(ConstValue::Float(a + b)),
             ("-", ConstValue::Float(a), ConstValue::Float(b)) => Ok(ConstValue::Float(a - b)),
             ("*", ConstValue::Float(a), ConstValue::Float(b)) => Ok(ConstValue::Float(a * b)),
             ("/", ConstValue::Float(a), ConstValue::Float(b)) => Ok(ConstValue::Float(a / b)),
-            
+
             // Comparisons
             ("==", _, _) => Ok(ConstValue::Bool(left == right)),
             ("!=", _, _) => Ok(ConstValue::Bool(left != right)),
@@ -240,30 +263,30 @@ impl CtfeContext {
             ("<=", ConstValue::Int(a), ConstValue::Int(b)) => Ok(ConstValue::Bool(a <= b)),
             (">", ConstValue::Int(a), ConstValue::Int(b)) => Ok(ConstValue::Bool(a > b)),
             (">=", ConstValue::Int(a), ConstValue::Int(b)) => Ok(ConstValue::Bool(a >= b)),
-            
+
             // Boolean operations
             ("&&", ConstValue::Bool(a), ConstValue::Bool(b)) => Ok(ConstValue::Bool(*a && *b)),
             ("||", ConstValue::Bool(a), ConstValue::Bool(b)) => Ok(ConstValue::Bool(*a || *b)),
-            
+
             // Bitwise operations
             ("&", ConstValue::Int(a), ConstValue::Int(b)) => Ok(ConstValue::Int(a & b)),
             ("|", ConstValue::Int(a), ConstValue::Int(b)) => Ok(ConstValue::Int(a | b)),
             ("^", ConstValue::Int(a), ConstValue::Int(b)) => Ok(ConstValue::Int(a ^ b)),
             ("<<", ConstValue::Int(a), ConstValue::Int(b)) => Ok(ConstValue::Int(a << b)),
             (">>", ConstValue::Int(a), ConstValue::Int(b)) => Ok(ConstValue::Int(a >> b)),
-            
+
             // String concatenation
             ("+", ConstValue::String(a), ConstValue::String(b)) => {
                 Ok(ConstValue::String(format!("{}{}", a, b)))
             }
-            
+
             _ => Err(CtfeError::new(format!(
                 "unsupported binary operation {} on {:?} and {:?}",
                 op, left, right
             ))),
         }
     }
-    
+
     pub fn eval_unary_op(&self, op: &str, operand: &ConstValue) -> Result<ConstValue, CtfeError> {
         match (op, operand) {
             ("-", ConstValue::Int(i)) => Ok(ConstValue::Int(-i)),
@@ -289,6 +312,9 @@ pub fn static_assert(condition: bool, message: &str) -> Result<(), CtfeError> {
     if condition {
         Ok(())
     } else {
-        Err(CtfeError::new(format!("static assertion failed: {}", message)))
+        Err(CtfeError::new(format!(
+            "static assertion failed: {}",
+            message
+        )))
     }
 }

@@ -1,8 +1,8 @@
 //! Parser tests
 
+use demetrios::ast::*;
 use demetrios::lexer::lex;
 use demetrios::parser::parse;
-use demetrios::ast::*;
 
 fn parse_source(source: &str) -> Ast {
     let tokens = lex(source).unwrap();
@@ -148,14 +148,16 @@ fn test_parse_if_expression() {
 
 #[test]
 fn test_parse_match_expression() {
-    let ast = parse_source(r#"
+    let ast = parse_source(
+        r#"
         fn main() {
             match x {
                 0 => "zero",
                 _ => "other",
             }
         }
-    "#);
+    "#,
+    );
 
     if let Item::Function(f) = &ast.items[0] {
         if let Stmt::Expr { expr, .. } = &f.body.stmts[0] {
@@ -186,12 +188,14 @@ fn test_parse_binary_expressions() {
 
 #[test]
 fn test_parse_effect_definition() {
-    let ast = parse_source(r#"
+    let ast = parse_source(
+        r#"
         effect IO {
             fn print(s: String);
             fn read_line() -> String;
         }
-    "#);
+    "#,
+    );
 
     if let Item::Effect(e) = &ast.items[0] {
         assert_eq!(e.name, "IO");

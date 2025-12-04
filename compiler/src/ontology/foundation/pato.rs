@@ -185,7 +185,9 @@ impl PATOOntology {
             PATOClass {
                 id: "PATO:0000070".into(),
                 label: "count".into(),
-                definition: Some("A quality of a collection representing the number of items".into()),
+                definition: Some(
+                    "A quality of a collection representing the number of items".into(),
+                ),
                 parents: vec!["PATO:0001035".into()],
                 synonyms: vec!["number".into()],
             },
@@ -196,7 +198,9 @@ impl PATOOntology {
             PATOClass {
                 id: "PATO:0000048".into(),
                 label: "hardness".into(),
-                definition: Some("A physical quality representing resistance to deformation".into()),
+                definition: Some(
+                    "A physical quality representing resistance to deformation".into(),
+                ),
                 parents: vec!["PATO:0001035".into()],
                 synonyms: vec![],
             },

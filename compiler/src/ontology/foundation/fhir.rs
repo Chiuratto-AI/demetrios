@@ -92,9 +92,15 @@ impl FHIROntology {
             ("decimal", "A rational number"),
             ("uri", "A Uniform Resource Identifier"),
             ("url", "A Uniform Resource Locator"),
-            ("canonical", "A URI that refers to a resource by canonical URL"),
+            (
+                "canonical",
+                "A URI that refers to a resource by canonical URL",
+            ),
             ("base64Binary", "A stream of bytes, base64 encoded"),
-            ("instant", "An instant in time (YYYY-MM-DDThh:mm:ss.sss+zz:zz)"),
+            (
+                "instant",
+                "An instant in time (YYYY-MM-DDThh:mm:ss.sss+zz:zz)",
+            ),
             ("date", "A date (YYYY, YYYY-MM, or YYYY-MM-DD)"),
             ("dateTime", "A date, date-time or partial date"),
             ("time", "A time during the day (hh:mm:ss)"),
@@ -127,8 +133,14 @@ impl FHIROntology {
             ("Range", "Set of values bounded by low and high"),
             ("Ratio", "A ratio of two Quantity values"),
             ("Period", "Time range defined by start and end date/time"),
-            ("Coding", "A reference to a code defined by a terminology system"),
-            ("CodeableConcept", "Concept - reference to a terminology or text"),
+            (
+                "Coding",
+                "A reference to a code defined by a terminology system",
+            ),
+            (
+                "CodeableConcept",
+                "Concept - reference to a terminology or text",
+            ),
             ("Identifier", "An identifier for this resource"),
             ("HumanName", "Name of a human"),
             ("Address", "An address expressed using postal conventions"),
@@ -191,7 +203,9 @@ impl FHIROntology {
             FHIRResource {
                 id: "fhir:DomainResource".into(),
                 name: "DomainResource".into(),
-                description: Some("A resource with narrative, extensions, and contained resources".into()),
+                description: Some(
+                    "A resource with narrative, extensions, and contained resources".into(),
+                ),
                 parents: vec!["fhir:Resource".into()],
                 elements: vec![
                     FHIRElement {
@@ -245,7 +259,9 @@ impl FHIROntology {
             FHIRResource {
                 id: "fhir:Patient".into(),
                 name: "Patient".into(),
-                description: Some("Demographics and administrative information about a person".into()),
+                description: Some(
+                    "Demographics and administrative information about a person".into(),
+                ),
                 parents: vec!["fhir:DomainResource".into()],
                 elements: vec![
                     FHIRElement {
@@ -300,7 +316,8 @@ impl FHIROntology {
                     },
                     FHIRElement {
                         path: "Observation.value[x]".into(),
-                        type_code: "Quantity|CodeableConcept|string|boolean|integer|Range|Ratio".into(),
+                        type_code: "Quantity|CodeableConcept|string|boolean|integer|Range|Ratio"
+                            .into(),
                         cardinality: (0, Some(1)),
                         description: Some("Actual result".into()),
                     },
@@ -321,14 +338,19 @@ impl FHIROntology {
             FHIRResource {
                 id: "fhir:Condition".into(),
                 name: "Condition".into(),
-                description: Some("A clinical condition, problem, diagnosis, or other event".into()),
+                description: Some(
+                    "A clinical condition, problem, diagnosis, or other event".into(),
+                ),
                 parents: vec!["fhir:DomainResource".into()],
                 elements: vec![
                     FHIRElement {
                         path: "Condition.clinicalStatus".into(),
                         type_code: "CodeableConcept".into(),
                         cardinality: (0, Some(1)),
-                        description: Some("active | recurrence | relapse | inactive | remission | resolved".into()),
+                        description: Some(
+                            "active | recurrence | relapse | inactive | remission | resolved"
+                                .into(),
+                        ),
                     },
                     FHIRElement {
                         path: "Condition.code".into(),
@@ -477,7 +499,10 @@ impl FHIROntology {
             FHIRResource {
                 id: "fhir:Organization".into(),
                 name: "Organization".into(),
-                description: Some("A formally or informally recognized grouping of people or organizations".into()),
+                description: Some(
+                    "A formally or informally recognized grouping of people or organizations"
+                        .into(),
+                ),
                 parents: vec!["fhir:DomainResource".into()],
                 elements: vec![
                     FHIRElement {
@@ -509,7 +534,9 @@ impl FHIROntology {
             FHIRResource {
                 id: "fhir:Practitioner".into(),
                 name: "Practitioner".into(),
-                description: Some("A person with a formal responsibility in healthcare delivery".into()),
+                description: Some(
+                    "A person with a formal responsibility in healthcare delivery".into(),
+                ),
                 parents: vec!["fhir:DomainResource".into()],
                 elements: vec![
                     FHIRElement {
@@ -528,7 +555,9 @@ impl FHIROntology {
                         path: "Practitioner.qualification".into(),
                         type_code: "BackboneElement".into(),
                         cardinality: (0, None),
-                        description: Some("Qualifications obtained by training and certification".into()),
+                        description: Some(
+                            "Qualifications obtained by training and certification".into(),
+                        ),
                     },
                 ],
                 maturity: 4,

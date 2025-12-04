@@ -6,8 +6,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::ast::{
-    self, Ast, EnumDef, FnDef, GenericParam, Generics, GlobalDef, ImplDef, Item, Param,
-    StructDef, TraitDef, TraitFnDef, TraitItem, TypeAliasDef, TypeExpr, VariantData, Visibility as AstVisibility,
+    self, Ast, EnumDef, FnDef, GenericParam, Generics, GlobalDef, ImplDef, Item, Param, StructDef,
+    TraitDef, TraitFnDef, TraitItem, TypeAliasDef, TypeExpr, VariantData,
+    Visibility as AstVisibility,
 };
 
 use super::model::*;
@@ -261,7 +262,7 @@ impl DocExtractor {
         }
         if f.modifiers.is_kernel {
             sig.push_str("kernel ");
-}
+        }
 
         sig.push_str("fn ");
         sig.push_str(&f.name);
@@ -329,7 +330,7 @@ impl DocExtractor {
                     .collect::<Vec<_>>()
                     .join(", "),
             );
-}
+        }
 
         sig
     }
@@ -366,18 +367,18 @@ impl DocExtractor {
                     ty: self.type_expr_to_info(&f.ty),
                     doc: None,
                     visibility: self.convert_visibility(&f.visibility),
-            };
+                };
 
-        // Index field
+                // Index field
                 search_index.add(SearchEntry {
                     path: format!("{}::{}", path, f.name),
                     name: f.name.clone(),
                     kind: SearchKind::Field,
                     desc: String::new(),
                     parent: Some(path.clone()),
-           });
+                });
 
-            field_doc
+                field_doc
             })
             .collect();
 
@@ -446,18 +447,18 @@ impl DocExtractor {
                             .collect(),
                     },
                     discriminant: None,
-            };
+                };
 
-         // Index variant
+                // Index variant
                 search_index.add(SearchEntry {
                     path: format!("{}::{}", path, v.name),
                     name: v.name.clone(),
                     kind: SearchKind::Variant,
                     desc: String::new(),
                     parent: Some(path.clone()),
-          });
+                });
 
-          variant_doc
+                variant_doc
             })
             .collect();
 
@@ -600,7 +601,7 @@ impl DocExtractor {
                     .collect::<Vec<_>>()
                     .join(", "),
             );
-}
+        }
 
         sig
     }
@@ -915,7 +916,7 @@ impl DocExtractor {
                 .collect::<Vec<_>>()
                 .join(" | "),
         }
-}
+    }
 
     /// Convert literal to string
     fn literal_to_string(&self, lit: &ast::Literal) -> String {

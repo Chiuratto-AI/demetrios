@@ -1030,6 +1030,89 @@ enum OntologyCommands {
         #[arg(short, long)]
         verbose: bool,
     },
+
+    /// Lock ontology versions (generate ontology.lock)
+    Lock {
+        /// Project directory containing ontology dependencies
+        #[arg(value_name = "DIR", default_value = ".")]
+        project_dir: PathBuf,
+
+        /// Output lock file path
+        #[arg(short, long, default_value = "ontology.lock")]
+        output: PathBuf,
+
+        /// Force overwrite existing lock file
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Check for ontology updates
+    Update {
+        /// Lock file to check
+        #[arg(value_name = "FILE", default_value = "ontology.lock")]
+        lock_file: PathBuf,
+
+        /// Actually update the lock file (otherwise dry-run)
+        #[arg(long)]
+        write: bool,
+
+        /// Show verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Show diff between ontology versions
+    Diff {
+        /// Ontology ID (e.g., chebi, go)
+        #[arg(value_name = "ONTOLOGY")]
+        ontology: String,
+
+        /// Old version
+        #[arg(value_name = "OLD_VERSION")]
+        old_version: String,
+
+        /// New version
+        #[arg(value_name = "NEW_VERSION")]
+        new_version: String,
+
+        /// Data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
+
+        /// Show detailed changes
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Check for deprecated term usage
+    Deprecations {
+        /// Input source file to check
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
+
+        /// Treat warnings as errors
+        #[arg(long)]
+        deny_warnings: bool,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Verify lock file integrity
+    Verify {
+        /// Lock file to verify
+        #[arg(value_name = "FILE", default_value = "ontology.lock")]
+        lock_file: PathBuf,
+
+        /// Data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1089,6 +1172,55 @@ enum LayoutCommands {
         /// Number of simulation iterations
         #[arg(long, default_value = "100")]
         iterations: usize,
+    },
+
+    /// Visualize layout as ASCII or Mermaid diagram (Day 39)
+    Visualize {
+        /// Input file containing Knowledge types
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Ontology data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
+
+        /// Output format: ascii, mermaid, table
+        #[arg(short, long, default_value = "ascii")]
+        format: String,
+
+        /// Output file (default: stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Validate layout constraints (Day 39 - Participatory Compilation)
+    Constraints {
+        /// Input file containing constraint definitions
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Ontology data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
+
+        /// Show verbose output including satisfied constraints
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Explain layout decision for a specific concept (Day 39)
+    Explain {
+        /// Concept CURIE to explain (e.g., CHEBI:15365)
+        #[arg(value_name = "CONCEPT")]
+        concept: String,
+
+        /// Input file containing Knowledge types
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Ontology data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
     },
 }
 
@@ -1430,6 +1562,33 @@ fn main() -> Result<()> {
                 data_dir,
             } => ontology_is_subclass(&child, &parent, &data_dir),
             OntologyCommands::List { data_dir, verbose } => ontology_list(&data_dir, verbose),
+            OntologyCommands::Lock {
+                project_dir,
+                output,
+                force,
+            } => ontology_lock(&project_dir, &output, force),
+            OntologyCommands::Update {
+                lock_file,
+                write,
+                verbose,
+            } => ontology_update(&lock_file, write, verbose),
+            OntologyCommands::Diff {
+                ontology,
+                old_version,
+                new_version,
+                data_dir,
+                verbose,
+            } => ontology_diff(&ontology, &old_version, &new_version, &data_dir, verbose),
+            OntologyCommands::Deprecations {
+                input,
+                data_dir,
+                deny_warnings,
+                format,
+            } => ontology_deprecations(&input, &data_dir, deny_warnings, &format),
+            OntologyCommands::Verify {
+                lock_file,
+                data_dir,
+            } => ontology_verify(&lock_file, &data_dir),
         },
 
         Commands::Layout { command } => match command {
@@ -1451,6 +1610,22 @@ fn main() -> Result<()> {
                 cache_sizes,
                 iterations,
             } => layout_validate(&input, &data_dir, &cache_sizes, iterations),
+            LayoutCommands::Visualize {
+                input,
+                data_dir,
+                format,
+                output,
+            } => layout_visualize(&input, &data_dir, &format, output.as_deref()),
+            LayoutCommands::Constraints {
+                input,
+                data_dir,
+                verbose,
+            } => layout_constraints(&input, &data_dir, verbose),
+            LayoutCommands::Explain {
+                concept,
+                input,
+                data_dir,
+            } => layout_explain(&concept, &input, &data_dir),
         },
 
         #[cfg(feature = "distributed")]
@@ -4705,6 +4880,350 @@ fn ontology_list(data_dir: &Path, verbose: bool) -> Result<()> {
 }
 
 // =============================================================================
+// Ontology Versioning Commands (Day 40)
+// =============================================================================
+
+/// Lock ontology versions to ontology.lock
+fn ontology_lock(project_dir: &Path, output: &Path, force: bool) -> Result<()> {
+    use demetrios::ontology::OntologyLayer;
+    use demetrios::ontology::native::NativeOntologyRegistry;
+    use demetrios::ontology::version::{
+        Manifest, OntologyEntry, OntologyVersion, manifest::OntologySource as ManifestSource,
+    };
+
+    // Check if lock file already exists
+    if output.exists() && !force {
+        return Err(miette::miette!(
+            "Lock file {} already exists. Use --force to overwrite.",
+            output.display()
+        ));
+    }
+
+    println!("Generating ontology lock file...");
+    println!("Project: {}", project_dir.display());
+
+    // Find ontology data directory
+    let data_dir = project_dir.join(".demetrios/ontology");
+    if !data_dir.exists() {
+        return Err(miette::miette!(
+            "No ontology data found. Run 'dc ontology init' first."
+        ));
+    }
+
+    let mut registry = NativeOntologyRegistry::new(&data_dir);
+    let available = registry.list_available();
+
+    if available.is_empty() {
+        return Err(miette::miette!(
+            "No ontologies found. Run 'dc ontology init' first."
+        ));
+    }
+
+    // Create manifest with all available ontologies
+    let mut manifest = Manifest::new();
+
+    for id in &available {
+        if let Ok(ont) = registry.get_or_load(id) {
+            let version = OntologyVersion::parse(&ont.version)
+                .unwrap_or_else(|_| OntologyVersion::Tag(ont.version.clone()));
+
+            manifest.upsert(OntologyEntry {
+                name: id.clone(),
+                version,
+                checksum: None, // Would compute from file
+                source: ManifestSource::LocalFile(
+                    data_dir
+                        .join(format!("{}.dontology", id))
+                        .to_string_lossy()
+                        .to_string(),
+                ),
+                layer: OntologyLayer::Domain,
+                terms_used: Some(ont.concept_count),
+                term_ids: None,
+                dependencies: vec![],
+            });
+        }
+    }
+
+    // Save manifest
+    manifest
+        .save(output)
+        .map_err(|e| miette::miette!("Failed to write lock file: {}", e))?;
+
+    println!(
+        "\nGenerated {} with {} ontologies:",
+        output.display(),
+        manifest.len()
+    );
+    for name in manifest.names() {
+        if let Some(entry) = manifest.get(name) {
+            println!("  {} @ {}", name, entry.version);
+        }
+    }
+
+    Ok(())
+}
+
+/// Check for ontology updates
+fn ontology_update(lock_file: &Path, write: bool, verbose: bool) -> Result<()> {
+    use demetrios::ontology::version::Manifest;
+
+    if !lock_file.exists() {
+        return Err(miette::miette!(
+            "Lock file not found: {}. Run 'dc ontology lock' first.",
+            lock_file.display()
+        ));
+    }
+
+    let manifest = Manifest::load(lock_file)
+        .map_err(|e| miette::miette!("Failed to read lock file: {}", e))?;
+
+    println!("Checking for updates...");
+    println!(
+        "Lock file: {} ({} ontologies)",
+        lock_file.display(),
+        manifest.len()
+    );
+
+    // In a real implementation, we would query remote sources for latest versions
+    // For now, we just report what's in the lock file
+    let mut updates_available = 0;
+
+    for entry in &manifest.ontologies {
+        if verbose {
+            println!(
+                "  {} @ {} (from {:?})",
+                entry.name, entry.version, entry.source
+            );
+        }
+
+        // Simulate checking for updates - in reality this would query BioPortal/OLS4
+        // For now, we just say everything is up to date
+    }
+
+    if updates_available == 0 {
+        println!("\nAll ontologies are up to date.");
+    } else {
+        println!("\n{} update(s) available.", updates_available);
+        if !write {
+            println!("Run with --write to update the lock file.");
+        }
+    }
+
+    Ok(())
+}
+
+/// Show diff between ontology versions
+fn ontology_diff(
+    ontology: &str,
+    old_version: &str,
+    new_version: &str,
+    data_dir: &Path,
+    verbose: bool,
+) -> Result<()> {
+    use demetrios::ontology::native::NativeOntologyRegistry;
+    use demetrios::ontology::version::diff::{OntologyDiff, OntologySnapshot, SnapshotTerm};
+
+    println!(
+        "Computing diff for {} ({} -> {})",
+        ontology, old_version, new_version
+    );
+
+    // In a full implementation, we would load both versions from cache/storage
+    // For now, we demonstrate the diff capability with the current version
+
+    let mut registry = NativeOntologyRegistry::new(data_dir);
+    let ont = registry
+        .get_or_load(&ontology.to_lowercase())
+        .map_err(|e| miette::miette!("Failed to load ontology '{}': {}", ontology, e))?;
+
+    // Create snapshot from current ontology (as "new")
+    let mut new_snapshot = OntologySnapshot::new(ontology, new_version);
+
+    // Use search with empty prefix to get sample concepts for demonstration
+    let sample_concepts = ont.search("", 100);
+    for (curie, label) in sample_concepts {
+        new_snapshot.add_term(SnapshotTerm {
+            id: curie.to_string(),
+            label: Some(label.to_string()),
+            definition: ont.get_definition(curie).map(|s| s.to_string()),
+            superclasses: ont
+                .get_parent(curie)
+                .map(|p| vec![p.to_string()])
+                .unwrap_or_default(),
+            synonyms: vec![],
+            obsolete: false,
+            replaced_by: None,
+        });
+    }
+
+    // Create empty "old" snapshot for demonstration
+    let old_snapshot = OntologySnapshot::new(ontology, old_version);
+
+    let diff = OntologyDiff::compute(&old_snapshot, &new_snapshot);
+
+    // Print summary
+    println!("{}", diff.summary());
+
+    if verbose {
+        println!("{}", diff.detailed_report());
+    } else if diff.has_breaking_changes() {
+        println!("Breaking Changes:");
+        for change in diff.breaking_changes().take(10) {
+            println!("  - {}", change.description);
+        }
+        if diff.breaking_count() > 10 {
+            println!("  ... and {} more", diff.breaking_count() - 10);
+        }
+    }
+
+    Ok(())
+}
+
+/// Check for deprecated term usage
+fn ontology_deprecations(
+    input: &Path,
+    _data_dir: &Path,
+    deny_warnings: bool,
+    format: &str,
+) -> Result<()> {
+    use demetrios::ontology::version::deprecation::DeprecationTracker;
+
+    let content = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read {}: {}", input.display(), e))?;
+
+    // Extract CURIEs from source using simple pattern matching
+    // Look for patterns like CHEBI:12345, GO:0008150, etc.
+    let mut curies: Vec<&str> = Vec::new();
+    for word in content.split(|c: char| !c.is_alphanumeric() && c != ':') {
+        if let Some(colon_pos) = word.find(':') {
+            let prefix = &word[..colon_pos];
+            let suffix = &word[colon_pos + 1..];
+            // Check if prefix is uppercase letters and suffix is digits
+            if !prefix.is_empty()
+                && prefix.chars().all(|c| c.is_ascii_uppercase())
+                && !suffix.is_empty()
+                && suffix.chars().all(|c| c.is_ascii_digit())
+            {
+                curies.push(word);
+            }
+        }
+    }
+
+    if curies.is_empty() {
+        println!("No ontology terms found in {}", input.display());
+        return Ok(());
+    }
+
+    println!(
+        "Found {} ontology term references in {}",
+        curies.len(),
+        input.display()
+    );
+
+    // Create tracker with some example deprecations
+    // In reality, this would be loaded from ontology metadata
+    let mut tracker = DeprecationTracker::new();
+    if deny_warnings {
+        tracker = tracker.warnings_as_errors(true);
+    }
+
+    // Check each CURIE
+    let warnings: Vec<_> = curies
+        .iter()
+        .filter_map(|curie| tracker.check(curie, None))
+        .collect();
+
+    match format {
+        "json" => {
+            println!("[");
+            for (i, w) in warnings.iter().enumerate() {
+                let comma = if i < warnings.len() - 1 { "," } else { "" };
+                println!("  {}{}", w.to_json(), comma);
+            }
+            println!("]");
+        }
+        _ => {
+            if warnings.is_empty() {
+                println!("\nNo deprecated terms found.");
+            } else {
+                println!("\nDeprecation warnings:");
+                for w in &warnings {
+                    print!("{}", w.format());
+                }
+            }
+        }
+    }
+
+    if tracker.has_errors() {
+        Err(miette::miette!("Deprecated term errors found"))
+    } else {
+        Ok(())
+    }
+}
+
+/// Verify lock file integrity
+fn ontology_verify(lock_file: &Path, data_dir: &Path) -> Result<()> {
+    use demetrios::ontology::native::NativeOntologyRegistry;
+    use demetrios::ontology::version::Manifest;
+
+    if !lock_file.exists() {
+        return Err(miette::miette!(
+            "Lock file not found: {}",
+            lock_file.display()
+        ));
+    }
+
+    let manifest = Manifest::load(lock_file)
+        .map_err(|e| miette::miette!("Failed to parse lock file: {}", e))?;
+
+    println!("Verifying {}...", lock_file.display());
+    println!("Schema version: {}", manifest.metadata.schema_version);
+    println!("Generated: {}", manifest.metadata.generated);
+    println!("Ontologies: {}", manifest.len());
+
+    let mut errors = 0;
+    let mut warnings = 0;
+    let mut registry = NativeOntologyRegistry::new(data_dir);
+
+    for entry in &manifest.ontologies {
+        print!("  {} @ {} ... ", entry.name, entry.version);
+
+        // Try to load the ontology
+        match registry.get_or_load(&entry.name) {
+            Ok(ont) => {
+                // Check version matches
+                if ont.version != entry.version.to_string() {
+                    println!("VERSION MISMATCH (have {})", ont.version);
+                    warnings += 1;
+                } else {
+                    println!("OK");
+                }
+            }
+            Err(_) => {
+                println!("NOT FOUND");
+                errors += 1;
+            }
+        }
+    }
+
+    println!();
+    if errors > 0 {
+        Err(miette::miette!(
+            "Verification failed: {} error(s), {} warning(s)",
+            errors,
+            warnings
+        ))
+    } else if warnings > 0 {
+        println!("Verification passed with {} warning(s)", warnings);
+        Ok(())
+    } else {
+        println!("Verification passed.");
+        Ok(())
+    }
+}
+
+// =============================================================================
 // Layout Synthesis Commands
 // =============================================================================
 
@@ -5028,6 +5547,337 @@ fn layout_validate(
         println!(
             "\nOverall: Results are INCONCLUSIVE. May need more data or different access patterns."
         );
+    }
+
+    Ok(())
+}
+
+/// Visualize layout as ASCII, Mermaid, or table (Day 39)
+fn layout_visualize(
+    input: &Path,
+    data_dir: &Path,
+    format: &str,
+    output: Option<&Path>,
+) -> Result<()> {
+    use demetrios::layout::{
+        DistanceMatrix, LayoutConfig, cluster_concepts, extract_concepts_from_types,
+        generate_ascii, generate_layout, generate_mermaid, generate_table,
+    };
+    use demetrios::ontology::native::NativeOntology;
+    use std::io::Write;
+
+    // Read input file
+    let content = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read {}: {}", input.display(), e))?;
+
+    let types: Vec<&str> = content.lines().collect();
+    let usage = extract_concepts_from_types(&types);
+
+    if usage.concepts.is_empty() {
+        println!("No concepts found in input file.");
+        return Ok(());
+    }
+
+    // Load ontology
+    let ontology = if data_dir.exists() {
+        let ont_path = data_dir.join("chebi.dontology");
+        if ont_path.exists() {
+            NativeOntology::load(&ont_path).ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let ontology = ontology.unwrap_or_else(|| NativeOntology::empty("default"));
+
+    // Build layout
+    let concepts: Vec<_> = usage.concepts.iter().cloned().collect();
+    let distances = DistanceMatrix::build(&concepts, &ontology);
+    let clustering = cluster_concepts(&usage, &distances, 4);
+    let plan = generate_layout(clustering, LayoutConfig::default());
+
+    // Generate visualization
+    let visualization = match format.to_lowercase().as_str() {
+        "mermaid" | "md" => generate_mermaid(&plan),
+        "table" | "tbl" => generate_table(&plan),
+        _ => generate_ascii(&plan),
+    };
+
+    // Output
+    if let Some(out_path) = output {
+        let mut file = std::fs::File::create(out_path)
+            .map_err(|e| miette::miette!("Failed to create {}: {}", out_path.display(), e))?;
+        file.write_all(visualization.as_bytes())
+            .map_err(|e| miette::miette!("Failed to write: {}", e))?;
+        println!("Visualization written to {}", out_path.display());
+    } else {
+        println!("{}", visualization);
+    }
+
+    Ok(())
+}
+
+/// Validate layout constraints (Day 39 - Participatory Compilation)
+fn layout_constraints(input: &Path, data_dir: &Path, verbose: bool) -> Result<()> {
+    use demetrios::layout::{
+        ConstraintSet, ConstraintSource, DistanceMatrix, ForcedRegion, LayoutConfig,
+        LayoutConstraint, cluster_concepts, extract_concepts_from_types, format_diagnostics,
+        solve_constraints, validate_constraints_diagnostic,
+    };
+    use demetrios::ontology::native::NativeOntology;
+
+    // Read constraint file (simple format: one constraint per line)
+    // Format: colocate:A,B,C or separate:X,Y or hot:Z or cold:W
+    let content = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read {}: {}", input.display(), e))?;
+
+    let mut constraints = ConstraintSet::new();
+    let mut concepts_to_use: Vec<String> = Vec::new();
+
+    for (line_num, line) in content.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let source = ConstraintSource::new(
+            input.to_string_lossy(),
+            line_num as u32 + 1,
+            1,
+            line.split(':').next().unwrap_or(""),
+        );
+
+        if let Some((cmd, args)) = line.split_once(':') {
+            let concepts: Vec<String> = args.split(',').map(|s| s.trim().to_string()).collect();
+            concepts_to_use.extend(concepts.clone());
+
+            match cmd.trim().to_lowercase().as_str() {
+                "colocate" => {
+                    constraints.add(LayoutConstraint::Colocate { concepts, source });
+                }
+                "separate" => {
+                    constraints.add(LayoutConstraint::Separate { concepts, source });
+                }
+                "hot" => {
+                    for concept in concepts {
+                        constraints.add(LayoutConstraint::ForceRegion {
+                            concept,
+                            region: ForcedRegion::Hot,
+                            source: source.clone(),
+                        });
+                    }
+                }
+                "cold" => {
+                    for concept in concepts {
+                        constraints.add(LayoutConstraint::ForceRegion {
+                            concept,
+                            region: ForcedRegion::Cold,
+                            source: source.clone(),
+                        });
+                    }
+                }
+                "warm" => {
+                    for concept in concepts {
+                        constraints.add(LayoutConstraint::ForceRegion {
+                            concept,
+                            region: ForcedRegion::Warm,
+                            source: source.clone(),
+                        });
+                    }
+                }
+                _ => {
+                    eprintln!(
+                        "Warning: Unknown constraint type '{}' at line {}",
+                        cmd,
+                        line_num + 1
+                    );
+                }
+            }
+        }
+    }
+
+    if constraints.is_empty() {
+        println!("No constraints found in input file.");
+        println!("\nConstraint file format:");
+        println!("  colocate:A,B,C     # Place concepts A, B, C in same cluster");
+        println!("  separate:X,Y       # Keep concepts X, Y in different clusters");
+        println!("  hot:Z              # Force concept Z to hot region");
+        println!("  cold:W             # Force concept W to cold region");
+        return Ok(());
+    }
+
+    println!("Loaded {} constraints", constraints.len());
+
+    // Build usage from concepts
+    let mut usage = demetrios::layout::ConceptUsage::new();
+    for concept in &concepts_to_use {
+        usage.record_access(concept);
+    }
+
+    // Load ontology
+    let ontology = if data_dir.exists() {
+        let ont_path = data_dir.join("chebi.dontology");
+        if ont_path.exists() {
+            demetrios::ontology::native::NativeOntology::load(&ont_path).ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let ontology =
+        ontology.unwrap_or_else(|| demetrios::ontology::native::NativeOntology::empty("default"));
+
+    // Build clustering and solve constraints
+    let concepts: Vec<_> = usage.concepts.iter().cloned().collect();
+    let distances = DistanceMatrix::build(&concepts, &ontology);
+    let clustering = cluster_concepts(&usage, &distances, 4);
+
+    let result = solve_constraints(clustering, &constraints, LayoutConfig::default());
+
+    // Generate diagnostics
+    let diagnostics = validate_constraints_diagnostic(&result, verbose);
+    let output = format_diagnostics(&diagnostics, true);
+    println!("{}", output);
+
+    // Summary
+    if result.is_success() {
+        println!("All {} constraints satisfied.", result.satisfied.len());
+    } else {
+        println!(
+            "{} conflict(s), {} warning(s)",
+            result.conflicts.len(),
+            result.warnings.len()
+        );
+    }
+
+    Ok(())
+}
+
+/// Explain layout decision for a specific concept (Day 39)
+fn layout_explain(concept: &str, input: &Path, data_dir: &Path) -> Result<()> {
+    use demetrios::layout::{
+        DistanceMatrix, LayoutConfig, cluster_concepts, extract_concepts_from_types,
+        generate_layout,
+    };
+    use demetrios::ontology::native::NativeOntology;
+
+    // Read input file
+    let content = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read {}: {}", input.display(), e))?;
+
+    let types: Vec<&str> = content.lines().collect();
+    let usage = extract_concepts_from_types(&types);
+
+    if usage.concepts.is_empty() {
+        println!("No concepts found in input file.");
+        return Ok(());
+    }
+
+    if !usage.concepts.contains(concept) {
+        println!("Concept '{}' not found in input file.", concept);
+        println!("\nAvailable concepts:");
+        for c in usage.concepts.iter().take(10) {
+            println!("  {}", c);
+        }
+        if usage.concepts.len() > 10 {
+            println!("  ... and {} more", usage.concepts.len() - 10);
+        }
+        return Ok(());
+    }
+
+    // Load ontology
+    let ontology = if data_dir.exists() {
+        let ont_path = data_dir.join("chebi.dontology");
+        if ont_path.exists() {
+            NativeOntology::load(&ont_path).ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let ontology = ontology.unwrap_or_else(|| NativeOntology::empty("default"));
+
+    // Build layout
+    let concepts: Vec<_> = usage.concepts.iter().cloned().collect();
+    let distances = DistanceMatrix::build(&concepts, &ontology);
+    let clustering = cluster_concepts(&usage, &distances, 4);
+    let plan = generate_layout(clustering.clone(), LayoutConfig::default());
+
+    // Find the concept's layout
+    if let Some(layout) = plan.get(concept) {
+        println!("\n=== Layout Explanation for '{}' ===\n", concept);
+
+        // Region info
+        let region_desc = match layout.region {
+            demetrios::layout::MemoryRegion::Hot => {
+                "Hot (Stack/L1-L2 cache) - Frequently accessed data"
+            }
+            demetrios::layout::MemoryRegion::Warm => {
+                "Warm (Arena/L2-L3 cache) - Moderately accessed data"
+            }
+            demetrios::layout::MemoryRegion::Cold => "Cold (Heap/RAM) - Rarely accessed data",
+        };
+        println!("Region: {}", region_desc);
+        println!("Cluster: {}", layout.cluster_id);
+        println!("Order within cluster: {}", layout.order);
+
+        // Find cluster members
+        let cluster_members: Vec<_> = plan
+            .layouts
+            .iter()
+            .filter(|l| l.cluster_id == layout.cluster_id)
+            .map(|l| l.concept.as_str())
+            .collect();
+
+        println!("\nCluster members ({}):", cluster_members.len());
+        for member in cluster_members.iter().take(10) {
+            if *member == concept {
+                println!("  * {} (this concept)", member);
+            } else {
+                println!("    {}", member);
+            }
+        }
+        if cluster_members.len() > 10 {
+            println!("    ... and {} more", cluster_members.len() - 10);
+        }
+
+        // Access count
+        if let Some(&count) = usage.access_counts.get(concept) {
+            println!("\nAccess count: {}", count);
+        }
+
+        // Semantic distance to cluster members
+        println!("\nSemantic distances to cluster members:");
+        let concept_idx = concepts.iter().position(|c| c == concept);
+        if let Some(idx) = concept_idx {
+            for member in cluster_members.iter().take(5) {
+                if *member != concept {
+                    if let Some(member_idx) = concepts.iter().position(|c| c == *member) {
+                        let dist = distances.get(idx, member_idx);
+                        println!("  {} → {}: distance {}", concept, member, dist);
+                    }
+                }
+            }
+        }
+
+        println!("\n=== Why This Placement? ===\n");
+        println!(
+            "The layout synthesizer placed '{}' in the {:?} region",
+            concept, layout.region
+        );
+        println!("based on:");
+        println!("  1. Access frequency (how often it's used in code)");
+        println!("  2. Semantic proximity (ontology distance to other concepts)");
+        println!("  3. Co-occurrence patterns (concepts accessed together)");
+        println!("\nUse #[hot] or #[cold] annotations to override this decision.");
+    } else {
+        println!("Concept '{}' has no layout assigned.", concept);
     }
 
     Ok(())

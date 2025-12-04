@@ -75,7 +75,8 @@ fn test_hlir_builder_conditional() {
 fn test_hlir_module_builder() {
     let mut module_builder = ModuleBuilder::new("test_module");
 
-    let mut func_builder = FunctionBuilder::new(module_builder.fresh_func_id(), "main", HlirType::I64);
+    let mut func_builder =
+        FunctionBuilder::new(module_builder.fresh_func_id(), "main", HlirType::I64);
     let entry = func_builder.create_block("entry");
     func_builder.switch_to_block(entry);
     let val = func_builder.build_i64(42);
@@ -222,46 +223,54 @@ mod jit_tests {
 
     #[test]
     fn test_jit_conditional() {
-        let result = compile_and_run(r#"
+        let result = compile_and_run(
+            r#"
             fn main() -> i64 {
                 if true { 1 } else { 0 }
             }
-        "#);
+        "#,
+        );
         assert_eq!(result.unwrap(), 1);
     }
 
     #[test]
     fn test_jit_comparison() {
-        let result = compile_and_run(r#"
+        let result = compile_and_run(
+            r#"
             fn main() -> i64 {
                 if 5 > 3 { 1 } else { 0 }
             }
-        "#);
+        "#,
+        );
         assert_eq!(result.unwrap(), 1);
     }
 
     #[test]
     fn test_jit_let_binding() {
-        let result = compile_and_run(r#"
+        let result = compile_and_run(
+            r#"
             fn main() -> i64 {
                 let x = 10;
                 let y = 20;
                 x + y
             }
-        "#);
+        "#,
+        );
         assert_eq!(result.unwrap(), 30);
     }
 
     #[test]
     fn test_jit_function_call() {
-        let result = compile_and_run(r#"
+        let result = compile_and_run(
+            r#"
             fn double(n: i64) -> i64 {
                 n * 2
             }
             fn main() -> i64 {
                 double(21)
             }
-        "#);
+        "#,
+        );
         assert_eq!(result.unwrap(), 42);
     }
 

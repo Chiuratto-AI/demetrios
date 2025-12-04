@@ -145,14 +145,20 @@ impl HeterogeneityResolver {
 
         // Apply resolution strategy
         match self.config.strategy {
-            ResolutionStrategy::Prioritized => self.resolve_prioritized(statuses, had_conflict, max_diff),
+            ResolutionStrategy::Prioritized => {
+                self.resolve_prioritized(statuses, had_conflict, max_diff)
+            }
             ResolutionStrategy::Bayesian => self.resolve_bayesian(statuses, had_conflict, max_diff),
             ResolutionStrategy::AGM => self.resolve_agm(statuses, had_conflict, max_diff),
             ResolutionStrategy::Consensus { threshold } => {
                 self.resolve_consensus(statuses, threshold, had_conflict, max_diff)
             }
-            ResolutionStrategy::Conservative => self.resolve_conservative(statuses, had_conflict, max_diff),
-            ResolutionStrategy::Optimistic => self.resolve_optimistic(statuses, had_conflict, max_diff),
+            ResolutionStrategy::Conservative => {
+                self.resolve_conservative(statuses, had_conflict, max_diff)
+            }
+            ResolutionStrategy::Optimistic => {
+                self.resolve_optimistic(statuses, had_conflict, max_diff)
+            }
             ResolutionStrategy::WeightedAverage => {
                 self.resolve_weighted_average(statuses, had_conflict, max_diff)
             }
@@ -284,9 +290,12 @@ impl HeterogeneityResolver {
         // Apply epistemic entrenchment - more entrenched beliefs resist revision
         // Higher confidence = more entrenched
         let entrenchment_penalty = if had_conflict {
-            let prior_confidence: f64 =
-                statuses.iter().take(statuses.len() - 1).map(|s| s.confidence.value()).sum::<f64>()
-                    / (statuses.len() - 1) as f64;
+            let prior_confidence: f64 = statuses
+                .iter()
+                .take(statuses.len() - 1)
+                .map(|s| s.confidence.value())
+                .sum::<f64>()
+                / (statuses.len() - 1) as f64;
 
             if prior_confidence > revised.confidence.value() {
                 // Prior beliefs were more entrenched
@@ -337,8 +346,8 @@ impl HeterogeneityResolver {
         let threshold_f = threshold as f64 / 100.0;
 
         // Calculate mean confidence
-        let mean: f64 = statuses.iter().map(|s| s.confidence.value()).sum::<f64>()
-            / statuses.len() as f64;
+        let mean: f64 =
+            statuses.iter().map(|s| s.confidence.value()).sum::<f64>() / statuses.len() as f64;
 
         // Calculate agreement ratio (how many are within threshold of mean)
         let agreeing = statuses
@@ -497,7 +506,10 @@ impl HeterogeneityResolver {
 
         if all_conditions.is_empty() {
             // Check if any are non-revisable
-            if statuses.iter().any(|s| s.revisability == Revisability::NonRevisable) {
+            if statuses
+                .iter()
+                .any(|s| s.revisability == Revisability::NonRevisable)
+            {
                 Revisability::NonRevisable
             } else {
                 Revisability::Revisable { conditions: vec![] }
@@ -526,8 +538,10 @@ impl HeterogeneityResolver {
             / n;
 
         // Source diversity (number of unique source types)
-        let source_types: std::collections::HashSet<_> =
-            statuses.iter().map(|s| std::mem::discriminant(&s.source)).collect();
+        let source_types: std::collections::HashSet<_> = statuses
+            .iter()
+            .map(|s| std::mem::discriminant(&s.source))
+            .collect();
         let source_diversity = source_types.len() as f64 / n;
 
         // Combine measures

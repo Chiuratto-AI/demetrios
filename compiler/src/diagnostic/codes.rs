@@ -616,7 +616,7 @@ mod tests {
             index.get("O0001").unwrap().category,
             ErrorCategory::Ownership
         );
-}
+    }
 
     #[test]
     fn test_explain_error() {

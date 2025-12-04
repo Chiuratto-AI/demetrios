@@ -125,9 +125,9 @@ impl SemanticSqlStore {
                     id: row.get(0)?,
                     label: row.get(1)?,
                     definition: row.get(2)?,
-                    synonyms: vec![],  // Loaded separately
-                    xrefs: vec![],     // Loaded separately
-                    obsolete: false,   // Loaded separately
+                    synonyms: vec![], // Loaded separately
+                    xrefs: vec![],    // Loaded separately
+                    obsolete: false,  // Loaded separately
                 })
             })
             .map_err(|e| match e {
@@ -141,10 +141,7 @@ impl SemanticSqlStore {
         // Load synonyms
         let synonyms = self.get_synonyms(&iri)?;
 
-        Ok(SqlTerm {
-            synonyms,
-            ..result
-        })
+        Ok(SqlTerm { synonyms, ..result })
     }
 
     /// Get synonyms for a term
@@ -450,10 +447,7 @@ impl SemanticSqlStore {
                 "NCBITaxon" | "NCBITAXON" => "http://purl.obolibrary.org/obo/NCBITaxon_",
                 _ => {
                     // Generic OBO pattern
-                    return format!(
-                        "http://purl.obolibrary.org/obo/{}",
-                        curie.replace(':', "_")
-                    );
+                    return format!("http://purl.obolibrary.org/obo/{}", curie.replace(':', "_"));
                 }
             };
 

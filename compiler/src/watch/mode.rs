@@ -562,7 +562,7 @@ impl WatchMode {
         println!(
             "  Total build:   {:.2}s",
             stats.total_build_time.as_secs_f64()
-);
+        );
 
         if let Some(start) = stats.start_time {
             let elapsed = start.elapsed();

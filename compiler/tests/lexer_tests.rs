@@ -1,6 +1,6 @@
 //! Lexer tests
 
-use demetrios::lexer::{lex, TokenKind};
+use demetrios::lexer::{TokenKind, lex};
 
 #[test]
 fn test_lex_empty() {

@@ -6,8 +6,8 @@
 //! - Linear algebra DSL
 //! - Statistical modeling
 
-pub mod units;
 pub mod autodiff;
+pub mod units;
 
-pub use units::*;
 pub use autodiff::*;
+pub use units::*;

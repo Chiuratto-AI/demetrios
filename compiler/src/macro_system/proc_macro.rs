@@ -1,12 +1,12 @@
 //! Procedural macro infrastructure
 
+use std::collections::HashMap;
 use std::fmt;
 use std::iter::FromIterator;
-use std::collections::HashMap;
 
 use super::token_tree::*;
-use crate::lexer::{Token, TokenKind};
 use crate::common::Span;
+use crate::lexer::{Token, TokenKind};
 
 /// A stream of tokens for procedural macros
 #[derive(Debug, Clone, Default)]
@@ -18,23 +18,23 @@ impl TokenStream {
     pub fn new() -> Self {
         TokenStream { trees: Vec::new() }
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.trees.is_empty()
     }
-    
+
     pub fn push(&mut self, tree: TokenTree) {
         self.trees.push(tree);
     }
-    
+
     pub fn extend(&mut self, other: TokenStream) {
         self.trees.extend(other.trees);
     }
-    
+
     pub fn into_trees(self) -> Vec<TokenTree> {
         self.trees
     }
-    
+
     pub fn trees(&self) -> &[TokenTree] {
         &self.trees
     }
@@ -51,7 +51,7 @@ impl FromIterator<TokenTree> for TokenStream {
 impl IntoIterator for TokenStream {
     type Item = TokenTree;
     type IntoIter = std::vec::IntoIter<TokenTree>;
-    
+
     fn into_iter(self) -> Self::IntoIter {
         self.trees.into_iter()
     }
@@ -70,13 +70,22 @@ fn format_tree(tree: &TokenTree) -> String {
     match tree {
         TokenTree::Token(t) => t.token.text.clone(),
         TokenTree::Delimited(Delimiter::Parenthesis, inner, _) => {
-            format!("({})", inner.iter().map(format_tree).collect::<Vec<_>>().join(" "))
+            format!(
+                "({})",
+                inner.iter().map(format_tree).collect::<Vec<_>>().join(" ")
+            )
         }
         TokenTree::Delimited(Delimiter::Bracket, inner, _) => {
-            format!("[{}]", inner.iter().map(format_tree).collect::<Vec<_>>().join(" "))
+            format!(
+                "[{}]",
+                inner.iter().map(format_tree).collect::<Vec<_>>().join(" ")
+            )
         }
         TokenTree::Delimited(Delimiter::Brace, inner, _) => {
-            format!("{{{}}}", inner.iter().map(format_tree).collect::<Vec<_>>().join(" "))
+            format!(
+                "{{{}}}",
+                inner.iter().map(format_tree).collect::<Vec<_>>().join(" ")
+            )
         }
         TokenTree::Delimited(Delimiter::None, inner, _) => {
             inner.iter().map(format_tree).collect::<Vec<_>>().join(" ")
@@ -96,8 +105,13 @@ pub struct ProcMacroDef {
 #[derive(Debug, Clone)]
 pub enum ProcMacroKind {
     FunctionLike,
-    Derive { trait_name: String, attributes: Vec<String> },
-    Attribute { targets: Vec<AttributeTarget> },
+    Derive {
+        trait_name: String,
+        attributes: Vec<String>,
+    },
+    Attribute {
+        targets: Vec<AttributeTarget>,
+    },
 }
 
 /// Valid attribute targets
@@ -158,12 +172,12 @@ impl ProcMacroError {
             help: None,
         }
     }
-    
+
     pub fn with_span(mut self, span: Span) -> Self {
         self.span = Some(span);
         self
     }
-    
+
     pub fn with_help(mut self, help: impl Into<String>) -> Self {
         self.help = Some(help.into());
         self
@@ -195,32 +209,34 @@ impl ProcMacroRegistry {
             derives: HashMap::new(),
         }
     }
-    
+
     pub fn register(&mut self, macro_def: ProcMacroDef) {
         if let ProcMacroKind::Derive { ref trait_name, .. } = macro_def.kind {
-            self.derives.insert(trait_name.clone(), macro_def.name.clone());
+            self.derives
+                .insert(trait_name.clone(), macro_def.name.clone());
         }
         self.macros.insert(macro_def.name.clone(), macro_def);
     }
-    
+
     pub fn get(&self, name: &str) -> Option<&ProcMacroDef> {
         self.macros.get(name)
     }
-    
+
     pub fn get_derive(&self, trait_name: &str) -> Option<&ProcMacroDef> {
-        self.derives.get(trait_name)
+        self.derives
+            .get(trait_name)
             .and_then(|name| self.macros.get(name))
     }
-    
+
     pub fn invoke_function(
         &self,
         name: &str,
         input: TokenStream,
     ) -> Result<TokenStream, ProcMacroError> {
-        let macro_def = self.get(name).ok_or_else(|| {
-            ProcMacroError::new(format!("undefined proc macro: {}", name))
-        })?;
-        
+        let macro_def = self
+            .get(name)
+            .ok_or_else(|| ProcMacroError::new(format!("undefined proc macro: {}", name)))?;
+
         match &macro_def.implementation {
             ProcMacroImpl::Native(native) => (native.func)(input),
             ProcMacroImpl::Interpreted(_) => {
@@ -228,17 +244,17 @@ impl ProcMacroRegistry {
             }
         }
     }
-    
+
     pub fn invoke_attribute(
         &self,
         name: &str,
         attr: TokenStream,
         item: TokenStream,
     ) -> Result<TokenStream, ProcMacroError> {
-        let macro_def = self.get(name).ok_or_else(|| {
-            ProcMacroError::new(format!("undefined attribute macro: {}", name))
-        })?;
-        
+        let macro_def = self
+            .get(name)
+            .ok_or_else(|| ProcMacroError::new(format!("undefined attribute macro: {}", name)))?;
+
         match &macro_def.implementation {
             ProcMacroImpl::Native(native) => {
                 let func = native.attr_func.ok_or_else(|| {
@@ -251,16 +267,16 @@ impl ProcMacroRegistry {
             }
         }
     }
-    
+
     pub fn invoke_derive(
         &self,
         trait_name: &str,
         item: TokenStream,
     ) -> Result<TokenStream, ProcMacroError> {
-        let macro_def = self.get_derive(trait_name).ok_or_else(|| {
-            ProcMacroError::new(format!("no derive macro for: {}", trait_name))
-        })?;
-        
+        let macro_def = self
+            .get_derive(trait_name)
+            .ok_or_else(|| ProcMacroError::new(format!("no derive macro for: {}", trait_name)))?;
+
         match &macro_def.implementation {
             ProcMacroImpl::Native(native) => (native.func)(item),
             ProcMacroImpl::Interpreted(_) => {

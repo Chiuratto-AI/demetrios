@@ -339,7 +339,7 @@ pub fn standard_qualifiers() -> Vec<Qualifier> {
                 Predicate::ge(Term::var("v"), Term::int(0)),
                 Predicate::lt(Term::var("v"), Term::var("x")),
             ]),
-),
+        ),
         // v = len(x)
         Qualifier::bounds(
             "IsLen",
@@ -376,7 +376,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::gt(Term::var("dose"), Term::float(0.0)),
                 Predicate::le(Term::var("dose"), Term::var("max")),
             ]),
-),
+        ),
         // Positive dose: dose > 0
         Qualifier::medical(
             "PosDose",
@@ -399,7 +399,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::ge(Term::var("conc"), Term::var("min")),
                 Predicate::le(Term::var("conc"), Term::var("max")),
             ]),
-),
+        ),
         // Valid clearance: 0 < crcl < 200
         Qualifier::medical(
             "ValidCrCl",
@@ -408,7 +408,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::gt(Term::var("crcl"), Term::float(0.0)),
                 Predicate::lt(Term::var("crcl"), Term::float(200.0)),
             ]),
-),
+        ),
         // Valid age: 0 <= age <= 150
         Qualifier::medical(
             "ValidAge",
@@ -417,7 +417,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::ge(Term::var("age"), Term::float(0.0)),
                 Predicate::le(Term::var("age"), Term::float(150.0)),
             ]),
-),
+        ),
         // Positive weight: weight > 0
         Qualifier::medical(
             "PosWeight",
@@ -432,7 +432,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::gt(Term::var("weight"), Term::float(0.0)),
                 Predicate::le(Term::var("weight"), Term::float(500.0)),
             ]),
-),
+        ),
         // Valid serum creatinine: 0.1 <= scr <= 20
         Qualifier::medical(
             "ValidSCr",
@@ -441,7 +441,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::ge(Term::var("scr"), Term::float(0.1)),
                 Predicate::le(Term::var("scr"), Term::float(20.0)),
             ]),
-),
+        ),
         // ======== Adjustment factors ========
 
         // Dose adjustment factor: 0 < factor <= 1
@@ -452,7 +452,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::gt(Term::var("factor"), Term::float(0.0)),
                 Predicate::le(Term::var("factor"), Term::float(1.0)),
             ]),
-),
+        ),
         // Probability: 0 <= p <= 1
         Qualifier::medical(
             "Probability",
@@ -461,7 +461,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::ge(Term::var("p"), Term::float(0.0)),
                 Predicate::le(Term::var("p"), Term::float(1.0)),
             ]),
-),
+        ),
         // ======== Vital signs ========
 
         // Valid heart rate: 20 <= hr <= 300
@@ -472,7 +472,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::ge(Term::var("hr"), Term::float(20.0)),
                 Predicate::le(Term::var("hr"), Term::float(300.0)),
             ]),
-),
+        ),
         // Valid systolic BP: 40 <= bp <= 300
         Qualifier::medical(
             "ValidSysBP",
@@ -481,7 +481,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::ge(Term::var("bp"), Term::float(40.0)),
                 Predicate::le(Term::var("bp"), Term::float(300.0)),
             ]),
-),
+        ),
         // Valid diastolic BP: 20 <= bp <= 200
         Qualifier::medical(
             "ValidDiaBP",
@@ -490,7 +490,7 @@ pub fn medical_qualifiers() -> Vec<Qualifier> {
                 Predicate::ge(Term::var("bp"), Term::float(20.0)),
                 Predicate::le(Term::var("bp"), Term::float(200.0)),
             ]),
-),
+        ),
         // Valid temperature: 25 <= temp <= 45 (Celsius)
         Qualifier::medical(
             "ValidTemp",
@@ -708,7 +708,7 @@ mod tests {
             instantiations[0],
             Predicate::gt(Term::var("x"), Term::int(0))
         );
-}
+    }
 
     #[test]
     fn test_therapeutic_range_qualifier() {

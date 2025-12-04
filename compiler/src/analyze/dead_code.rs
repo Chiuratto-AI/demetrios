@@ -420,7 +420,11 @@ impl DeadCodeAnalyzer {
                     );
                 }
             }
-            Item::Import(_) | Item::Effect(_) | Item::Handler(_) | Item::Extern(_) | Item::MacroInvocation(_) => {}
+            Item::Import(_)
+            | Item::Effect(_)
+            | Item::Handler(_)
+            | Item::Extern(_)
+            | Item::MacroInvocation(_) => {}
         }
     }
 

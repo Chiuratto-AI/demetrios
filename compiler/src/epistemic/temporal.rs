@@ -202,21 +202,19 @@ impl PartialOrd for TemporalIndex {
                     month: m2,
                     day: d2,
                 },
-            ) => {
-                match y1.cmp(y2) {
-                    Ordering::Equal => match (m1, m2) {
-                        (Some(m1), Some(m2)) => match m1.cmp(m2) {
-                            Ordering::Equal => match (d1, d2) {
-                                (Some(d1), Some(d2)) => Some(d1.cmp(d2)),
-                                _ => Some(Ordering::Equal),
-                            },
-                            other => Some(other),
+            ) => match y1.cmp(y2) {
+                Ordering::Equal => match (m1, m2) {
+                    (Some(m1), Some(m2)) => match m1.cmp(m2) {
+                        Ordering::Equal => match (d1, d2) {
+                            (Some(d1), Some(d2)) => Some(d1.cmp(d2)),
+                            _ => Some(Ordering::Equal),
                         },
-                        _ => Some(Ordering::Equal),
+                        other => Some(other),
                     },
-                    other => Some(other),
-                }
-            }
+                    _ => Some(Ordering::Equal),
+                },
+                other => Some(other),
+            },
             (
                 TemporalIndex::Version {
                     ontology: o1,
@@ -324,7 +322,11 @@ impl ContextIndex {
     }
 
     /// Create a geographic context
-    pub fn geographic(country: Option<&str>, region: Option<&str>, institution: Option<&str>) -> Self {
+    pub fn geographic(
+        country: Option<&str>,
+        region: Option<&str>,
+        institution: Option<&str>,
+    ) -> Self {
         Self::Geographic {
             country: country.map(String::from),
             region: region.map(String::from),

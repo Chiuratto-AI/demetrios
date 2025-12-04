@@ -1,4 +1,3 @@
-
 //! Dependency resolution using PubGrub-inspired algorithm
 //!
 //! Resolves a set of compatible dependency versions.
@@ -122,7 +121,11 @@ impl std::fmt::Display for ResolveError {
             ResolveError::NotFound(pkg) => write!(f, "Package not found: {}", pkg),
             ResolveError::Registry(e) => write!(f, "Registry error: {}", e),
             ResolveError::FeatureNotFound { package, feature } => {
-                write!(f, "Feature '{}' not found in package '{}'", feature, package)
+                write!(
+                    f,
+                    "Feature '{}' not found in package '{}'",
+                    feature, package
+                )
             }
         }
     }
@@ -286,7 +289,11 @@ impl<'a> Resolver<'a> {
     }
 
     /// Get package source
-    fn get_source(&self, dep: &Dependency, _version: &Version) -> Result<PackageSource, ResolveError> {
+    fn get_source(
+        &self,
+        dep: &Dependency,
+        _version: &Version,
+    ) -> Result<PackageSource, ResolveError> {
         match dep {
             Dependency::Simple(_) => Ok(PackageSource::Registry {
                 registry: "https://registry.demetrios-lang.org".to_string(),

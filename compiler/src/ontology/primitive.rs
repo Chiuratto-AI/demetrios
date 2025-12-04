@@ -384,10 +384,7 @@ static BFO_SUBSUMPTION: &[(BfoClass, BfoClass)] = &[
     (BfoClass::ImmaterialEntity, BfoClass::IndependentContinuant),
     (BfoClass::Site, BfoClass::ImmaterialEntity),
     (BfoClass::SpatialRegion, BfoClass::ImmaterialEntity),
-    (
-        BfoClass::ContinuantFiatBoundary,
-        BfoClass::ImmaterialEntity,
-    ),
+    (BfoClass::ContinuantFiatBoundary, BfoClass::ImmaterialEntity),
     (
         BfoClass::OneDimensionalSpatialRegion,
         BfoClass::SpatialRegion,
@@ -579,8 +576,14 @@ static RO_TERMS: &[PrimitiveTerm<RoRelation>] = &[
 static RO_SUBSUMPTION: &[(RoRelation, RoRelation)] = &[
     (RoRelation::ContainedIn, RoRelation::LocatedIn),
     (RoRelation::PrecedesInTime, RoRelation::TemporallyRelatedTo),
-    (RoRelation::PositivelyRegulates, RoRelation::CausallyRelatedTo),
-    (RoRelation::NegativelyRegulates, RoRelation::CausallyRelatedTo),
+    (
+        RoRelation::PositivelyRegulates,
+        RoRelation::CausallyRelatedTo,
+    ),
+    (
+        RoRelation::NegativelyRegulates,
+        RoRelation::CausallyRelatedTo,
+    ),
     (
         RoRelation::RegulatesActivityOf,
         RoRelation::CausallyRelatedTo,
@@ -779,9 +782,6 @@ mod tests {
     #[test]
     fn test_cob_bfo_parent() {
         assert_eq!(CobClass::Organism.bfo_parent(), BfoClass::MaterialEntity);
-        assert_eq!(
-            CobClass::BiologicalProcess.bfo_parent(),
-            BfoClass::Process
-        );
+        assert_eq!(CobClass::BiologicalProcess.bfo_parent(), BfoClass::Process);
     }
 }

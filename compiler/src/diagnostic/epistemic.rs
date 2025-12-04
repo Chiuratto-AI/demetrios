@@ -25,8 +25,7 @@ use std::fmt;
 
 use crate::diagnostic::{Diagnostic, DiagnosticLevel, Span};
 use crate::epistemic::{
-    Confidence, EpistemicStatus, HeterogeneityResolver, ResolutionStrategy,
-    Revisability, Source,
+    Confidence, EpistemicStatus, HeterogeneityResolver, ResolutionStrategy, Revisability, Source,
 };
 
 /// Epistemic diagnostic code categories
@@ -255,8 +254,7 @@ impl EpistemicDiagnostic {
     /// Convert to standard Diagnostic
     pub fn to_diagnostic(&self) -> Diagnostic {
         let level: DiagnosticLevel = self.code.severity().into();
-        let mut diag = Diagnostic::new(level, &self.message)
-            .with_code(self.code.code());
+        let mut diag = Diagnostic::new(level, &self.message).with_code(self.code.code());
 
         if let Some(span) = &self.span {
             diag = diag.with_label(*span, "");
@@ -435,7 +433,9 @@ impl EpistemicIntegrityChecker {
                     EpistemicCode::ConfidenceDegradation,
                     format!("moderate confidence {:.2} in {}", confidence, context),
                 )
-                .with_note("Confidence is above minimum but may be insufficient for critical paths"),
+                .with_note(
+                    "Confidence is above minimum but may be insufficient for critical paths",
+                ),
             );
         }
 
@@ -671,7 +671,10 @@ impl EpistemicIntegrityChecker {
             self.diagnostics.push(
                 EpistemicDiagnostic::new(
                     EpistemicCode::DeprecatedTerm,
-                    format!("deprecated term {}:{} used in {}", ontology, term_id, context),
+                    format!(
+                        "deprecated term {}:{} used in {}",
+                        ontology, term_id, context
+                    ),
                 )
                 .with_note("Deprecated terms may be removed in future ontology versions")
                 .with_suggestion(EpistemicSuggestion::new(
@@ -713,7 +716,10 @@ impl EpistemicIntegrityChecker {
             self.diagnostics.push(
                 EpistemicDiagnostic::new(
                     EpistemicCode::NonRevisableModified,
-                    format!("attempted modification of non-revisable value in {}", context),
+                    format!(
+                        "attempted modification of non-revisable value in {}",
+                        context
+                    ),
                 )
                 .with_note("Non-revisable values (axioms, definitions) cannot be changed")
                 .with_suggestion(EpistemicSuggestion::new(
@@ -821,10 +827,12 @@ mod tests {
         checker.check_status(&status, "test");
 
         assert!(!checker.diagnostics().is_empty());
-        assert!(checker
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == EpistemicCode::LowConfidence));
+        assert!(
+            checker
+                .diagnostics()
+                .iter()
+                .any(|d| d.code == EpistemicCode::LowConfidence)
+        );
     }
 
     #[test]
@@ -838,10 +846,12 @@ mod tests {
         checker.check_status(&status, "test");
 
         assert!(checker.has_errors());
-        assert!(checker
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == EpistemicCode::ZeroConfidence));
+        assert!(
+            checker
+                .diagnostics()
+                .iter()
+                .any(|d| d.code == EpistemicCode::ZeroConfidence)
+        );
     }
 
     #[test]
@@ -855,15 +865,12 @@ mod tests {
         checker.check_status(&status, "test");
 
         // Should have no confidence-related warnings
-        assert!(!checker
-            .diagnostics()
-            .iter()
-            .any(|d| matches!(
-                d.code,
-                EpistemicCode::LowConfidence
-                    | EpistemicCode::ZeroConfidence
-                    | EpistemicCode::ConfidenceDegradation
-            )));
+        assert!(!checker.diagnostics().iter().any(|d| matches!(
+            d.code,
+            EpistemicCode::LowConfidence
+                | EpistemicCode::ZeroConfidence
+                | EpistemicCode::ConfidenceDegradation
+        )));
     }
 
     #[test]
@@ -881,10 +888,12 @@ mod tests {
         checker.check_status(&status, "test");
 
         assert!(checker.has_errors());
-        assert!(checker
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == EpistemicCode::RevisionRequired));
+        assert!(
+            checker
+                .diagnostics()
+                .iter()
+                .any(|d| d.code == EpistemicCode::RevisionRequired)
+        );
     }
 
     #[test]
@@ -901,17 +910,15 @@ mod tests {
         };
 
         let mut checker = EpistemicIntegrityChecker::new();
-        checker.check_combination(
-            &[&status1, &status2],
-            "test",
-            ResolutionStrategy::Bayesian,
-        );
+        checker.check_combination(&[&status1, &status2], "test", ResolutionStrategy::Bayesian);
 
         assert!(checker.has_warnings());
-        assert!(checker
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == EpistemicCode::HighHeterogeneity));
+        assert!(
+            checker
+                .diagnostics()
+                .iter()
+                .any(|d| d.code == EpistemicCode::HighHeterogeneity)
+        );
     }
 
     #[test]
@@ -919,10 +926,12 @@ mod tests {
         let mut checker = EpistemicIntegrityChecker::new();
         checker.check_ontology_term("GO", "0000001", true, "test");
 
-        assert!(checker
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == EpistemicCode::DeprecatedTerm));
+        assert!(
+            checker
+                .diagnostics()
+                .iter()
+                .any(|d| d.code == EpistemicCode::DeprecatedTerm)
+        );
     }
 
     #[test]
@@ -930,10 +939,12 @@ mod tests {
         let mut checker = EpistemicIntegrityChecker::new();
         checker.check_mapping(0.5, "CHEBI:12345", "DRUGBANK:DB00001", "test");
 
-        assert!(checker
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == EpistemicCode::UncertainMapping));
+        assert!(
+            checker
+                .diagnostics()
+                .iter()
+                .any(|d| d.code == EpistemicCode::UncertainMapping)
+        );
     }
 
     #[test]
@@ -967,10 +978,12 @@ mod tests {
         let mut checker = EpistemicIntegrityChecker::new();
         checker.check_status(&status, "test");
 
-        assert!(checker
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == EpistemicCode::ProvenanceChainTooLong));
+        assert!(
+            checker
+                .diagnostics()
+                .iter()
+                .any(|d| d.code == EpistemicCode::ProvenanceChainTooLong)
+        );
     }
 
     #[test]
@@ -1024,9 +1037,11 @@ mod tests {
         let mut checker = EpistemicIntegrityChecker::new();
         checker.check_status(&status, "test");
 
-        assert!(checker
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == EpistemicCode::WideConfidenceInterval));
+        assert!(
+            checker
+                .diagnostics()
+                .iter()
+                .any(|d| d.code == EpistemicCode::WideConfidenceInterval)
+        );
     }
 }

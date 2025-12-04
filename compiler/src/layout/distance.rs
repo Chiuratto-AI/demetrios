@@ -187,7 +187,11 @@ mod tests {
     fn test_distance_matrix_basic() {
         // Create a mock ontology for testing
         let ontology = NativeOntology::empty("test");
-        let concepts = vec!["A:001".to_string(), "A:002".to_string(), "A:003".to_string()];
+        let concepts = vec![
+            "A:001".to_string(),
+            "A:002".to_string(),
+            "A:003".to_string(),
+        ];
 
         let matrix = DistanceMatrix::build(&concepts, &ontology);
 
@@ -200,7 +204,11 @@ mod tests {
     #[test]
     fn test_condensed_form() {
         let ontology = NativeOntology::empty("test");
-        let concepts = vec!["A:001".to_string(), "A:002".to_string(), "A:003".to_string()];
+        let concepts = vec![
+            "A:001".to_string(),
+            "A:002".to_string(),
+            "A:003".to_string(),
+        ];
 
         let matrix = DistanceMatrix::build(&concepts, &ontology);
         let condensed = matrix.to_condensed();

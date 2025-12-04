@@ -228,9 +228,7 @@ impl OntologyCache {
     /// Create a new cache with the given configuration
     pub fn new(config: CacheConfig) -> Self {
         Self {
-            hot: LruCache::new(
-                std::num::NonZeroUsize::new(config.hot_cache_size.max(1)).unwrap(),
-            ),
+            hot: LruCache::new(std::num::NonZeroUsize::new(config.hot_cache_size.max(1)).unwrap()),
             warm: LruCache::new(
                 std::num::NonZeroUsize::new(config.warm_cache_size.max(1)).unwrap(),
             ),
@@ -285,9 +283,17 @@ impl OntologyCache {
                 let mut promoted = entry;
                 promoted.record_access();
                 // Cascade eviction when promoting to hot
-                if let Some((evicted_key, evicted_entry)) = self.hot.push(curie.to_string(), promoted) {
-                    if let Some((warm_evicted_key, warm_evicted_entry)) = self.warm.push(evicted_key, evicted_entry) {
-                        if self.cold.push(warm_evicted_key, warm_evicted_entry).is_some() {
+                if let Some((evicted_key, evicted_entry)) =
+                    self.hot.push(curie.to_string(), promoted)
+                {
+                    if let Some((warm_evicted_key, warm_evicted_entry)) =
+                        self.warm.push(evicted_key, evicted_entry)
+                    {
+                        if self
+                            .cold
+                            .push(warm_evicted_key, warm_evicted_entry)
+                            .is_some()
+                        {
                             self.stats.evictions += 1;
                         }
                     }
@@ -305,7 +311,9 @@ impl OntologyCache {
                 let mut promoted = entry;
                 promoted.record_access();
                 // Cascade eviction when promoting to warm
-                if let Some((evicted_key, evicted_entry)) = self.warm.push(curie.to_string(), promoted) {
+                if let Some((evicted_key, evicted_entry)) =
+                    self.warm.push(curie.to_string(), promoted)
+                {
                     if self.cold.push(evicted_key, evicted_entry).is_some() {
                         self.stats.evictions += 1;
                     }
@@ -335,9 +343,15 @@ impl OntologyCache {
         // Insert into hot cache with cascading eviction to warm/cold
         if let Some((evicted_key, evicted_entry)) = self.hot.push(curie, entry) {
             // Cascade evicted item to warm cache
-            if let Some((warm_evicted_key, warm_evicted_entry)) = self.warm.push(evicted_key, evicted_entry) {
+            if let Some((warm_evicted_key, warm_evicted_entry)) =
+                self.warm.push(evicted_key, evicted_entry)
+            {
                 // Cascade warm eviction to cold cache
-                if self.cold.push(warm_evicted_key, warm_evicted_entry).is_some() {
+                if self
+                    .cold
+                    .push(warm_evicted_key, warm_evicted_entry)
+                    .is_some()
+                {
                     self.stats.evictions += 1;
                 }
             }
@@ -534,11 +548,7 @@ mod tests {
             xrefs: vec![],
         };
 
-        cache.insert(
-            "CHEBI:15365".to_string(),
-            term_data,
-            OntologyLayer::Domain,
-        );
+        cache.insert("CHEBI:15365".to_string(), term_data, OntologyLayer::Domain);
 
         let retrieved = cache.get("CHEBI:15365");
         assert!(retrieved.is_some());
