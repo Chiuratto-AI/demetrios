@@ -37,6 +37,7 @@
 //! ```
 
 pub mod agents;
+pub mod composition;
 pub mod confidence;
 pub mod evolution;
 pub mod heterogeneity;
