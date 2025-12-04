@@ -50,6 +50,7 @@ pub mod hlir;
 pub mod interp;
 pub mod lexer;
 pub mod lint;
+pub mod llm;
 #[cfg(feature = "lsp")]
 pub mod lsp;
 pub mod macro_system;

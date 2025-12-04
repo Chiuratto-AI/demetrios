@@ -73,6 +73,10 @@ chrono = "0.4"
 lru = "0.12"
 rusqlite = { version = "0.31", features = ["bundled"], optional = true }
 
+# LLM integration (optional)
+regex = { version = "1.10", optional = true }
+lazy_static = { version = "1.4", optional = true }
+
 # Cranelift JIT (optional)
 cranelift-codegen = { version = "0.116", optional = true }
 cranelift-frontend = { version = "0.116", optional = true }
@@ -160,8 +164,10 @@ distributed = [
 ]
 # Enable ontology support with SQLite backend
 ontology = ["dep:rusqlite"]
+# Enable LLM integration for ontology generation and epistemic agents
+llm = ["dep:regex", "dep:lazy_static"]
 # Enable all features
-full = ["llvm", "jit", "gpu", "smt", "lsp", "distributed", "ontology"]
+full = ["llvm", "jit", "gpu", "smt", "lsp", "distributed", "ontology", "llm"]
 
 [profile.release]
 lto = true

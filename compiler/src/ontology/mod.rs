@@ -52,6 +52,7 @@
 pub mod cache;
 pub mod domain;
 pub mod foundation;
+pub mod llm_gen;
 #[cfg(feature = "ontology")]
 pub mod semantic_sql;
 pub mod sssom;
@@ -60,35 +61,27 @@ mod federated;
 mod primitive;
 mod resolver;
 
-pub use cache::{OntologyCache, CacheConfig, CacheStats};
+pub use cache::{CacheConfig, CacheStats, OntologyCache};
 pub use domain::{
-    DomainOntologies, DomainTerm, DomainStats,
-    OntologyMetadata as DomainOntologyMetadata,
+    DomainOntologies, DomainStats, DomainTerm, OntologyMetadata as DomainOntologyMetadata,
 };
-pub use federated::{FederatedResolver, FederatedSource, FederatedQuery};
+pub use federated::{FederatedQuery, FederatedResolver, FederatedSource};
 pub use foundation::{
-    FoundationOntologies, FoundationTerm, TermEntry, TermMapping,
-    CurationStatus, OntologySource,
-    augmentation::EpistemicAugmenter,
-    pato::PATOOntology,
-    uo::UOOntology,
-    iao::IAOOntology,
-    schema_org::SchemaOrgOntology,
-    fhir::FHIROntology,
+    CurationStatus, FoundationOntologies, FoundationTerm, OntologySource, TermEntry, TermMapping,
+    augmentation::EpistemicAugmenter, fhir::FHIROntology, iao::IAOOntology, pato::PATOOntology,
+    schema_org::SchemaOrgOntology, uo::UOOntology,
 };
 pub use primitive::{
-    PrimitiveStore, BfoClass, RoRelation, CobClass,
-    PRIMITIVE_BFO, PRIMITIVE_RO, PRIMITIVE_COB,
+    BfoClass, CobClass, PRIMITIVE_BFO, PRIMITIVE_COB, PRIMITIVE_RO, PrimitiveStore, RoRelation,
 };
 pub use resolver::{
-    OntologyResolver, ResolvedTerm, ResolutionError, SubsumptionResult,
-    TermInfo, RelationInfo, OntologyMetadata,
+    OntologyMetadata, OntologyResolver, RelationInfo, ResolutionError, ResolvedTerm,
+    SubsumptionResult, TermInfo,
 };
 #[cfg(feature = "ontology")]
 pub use semantic_sql::{SemanticSqlStore, SqlOntology, SqlTerm};
 pub use sssom::{
-    SssomMapping, SssomMappingSet, MappingJustification,
-    load_sssom_mappings, MappingDirection,
+    MappingDirection, MappingJustification, SssomMapping, SssomMappingSet, load_sssom_mappings,
 };
 
 use crate::epistemic::{OntologyBinding, OntologyRef, TermId};
@@ -346,8 +339,7 @@ mod tests {
 
     #[test]
     fn test_parse_iri() {
-        let term =
-            ParsedTermRef::parse("http://purl.obolibrary.org/obo/CHEBI_15365").unwrap();
+        let term = ParsedTermRef::parse("http://purl.obolibrary.org/obo/CHEBI_15365").unwrap();
         assert_eq!(term.prefix, "CHEBI");
         assert_eq!(term.local_id, "15365");
     }

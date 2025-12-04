@@ -36,7 +36,9 @@
 //! └──────────────────── Knowledge: First-class epistemic primitive
 //! ```
 
+pub mod agents;
 pub mod confidence;
+pub mod evolution;
 pub mod heterogeneity;
 pub mod knowledge;
 pub mod operations;
