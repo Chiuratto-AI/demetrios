@@ -38,6 +38,7 @@ pub mod causal;
 pub mod check;
 pub mod codegen;
 pub mod common;
+pub mod dependent;
 pub mod diagnostic;
 pub mod diagnostics;
 #[cfg(feature = "distributed")]
