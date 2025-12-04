@@ -4,7 +4,7 @@
 
 use clap::{Parser, Subcommand};
 use miette::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Parser)]
@@ -584,6 +584,12 @@ enum Commands {
         command: SysrootCommands,
     },
 
+    /// Native ontology management commands
+    Ontology {
+        #[command(subcommand)]
+        command: OntologyCommands,
+    },
+
     /// Distributed build commands
     #[cfg(feature = "distributed")]
     Distributed {
@@ -934,6 +940,92 @@ enum SysrootCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum OntologyCommands {
+    /// Initialize ontology data (download and build .dontology files)
+    Init {
+        /// Only download core ontologies (BFO, RO, COB, PATO, UO, IAO)
+        #[arg(long)]
+        core_only: bool,
+
+        /// Force re-download even if files exist
+        #[arg(short, long)]
+        force: bool,
+
+        /// Output directory for .dontology files
+        #[arg(short, long, default_value = ".demetrios/ontology")]
+        output: PathBuf,
+
+        /// Specific ontologies to download (comma-separated)
+        #[arg(short, long)]
+        include: Option<String>,
+
+        /// Show verbose progress
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Show information about a concept
+    Info {
+        /// Concept CURIE (e.g., CHEBI:15365, GO:0008150)
+        #[arg(value_name = "CURIE")]
+        curie: String,
+
+        /// Show ancestors
+        #[arg(long)]
+        ancestors: bool,
+
+        /// Data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
+    },
+
+    /// Search for concepts by label
+    Search {
+        /// Search query (prefix match on labels)
+        #[arg(value_name = "QUERY")]
+        query: String,
+
+        /// Maximum results to show
+        #[arg(short, long, default_value = "20")]
+        limit: usize,
+
+        /// Specific ontology to search (default: all)
+        #[arg(short, long)]
+        ontology: Option<String>,
+
+        /// Data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
+    },
+
+    /// Check if one concept is a subclass of another
+    IsSubclass {
+        /// Child concept CURIE
+        #[arg(value_name = "CHILD")]
+        child: String,
+
+        /// Parent concept CURIE
+        #[arg(value_name = "PARENT")]
+        parent: String,
+
+        /// Data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
+    },
+
+    /// List available ontologies
+    List {
+        /// Data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
+
+        /// Show detailed information
+        #[arg(short, long)]
+        verbose: bool,
+    },
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum EmitType {
     /// Abstract Syntax Tree (JSON)
@@ -1245,6 +1337,33 @@ fn main() -> Result<()> {
             SysrootCommands::Install { target, force } => sysroot_install(&target, force),
             SysrootCommands::Remove { target } => sysroot_remove(&target),
             SysrootCommands::Clean { dry_run } => sysroot_clean(dry_run),
+        },
+
+        Commands::Ontology { command } => match command {
+            OntologyCommands::Init {
+                core_only,
+                force,
+                output,
+                include,
+                verbose,
+            } => ontology_init(core_only, force, &output, include.as_deref(), verbose),
+            OntologyCommands::Info {
+                curie,
+                ancestors,
+                data_dir,
+            } => ontology_info(&curie, ancestors, &data_dir),
+            OntologyCommands::Search {
+                query,
+                limit,
+                ontology,
+                data_dir,
+            } => ontology_search(&query, limit, ontology.as_deref(), &data_dir),
+            OntologyCommands::IsSubclass {
+                child,
+                parent,
+                data_dir,
+            } => ontology_is_subclass(&child, &parent, &data_dir),
+            OntologyCommands::List { data_dir, verbose } => ontology_list(&data_dir, verbose),
         },
 
         #[cfg(feature = "distributed")]
@@ -4239,6 +4358,263 @@ fn get_sysroot_cache_dir() -> PathBuf {
     dirs::cache_dir()
         .map(|p| p.join("demetrios").join("sysroots"))
         .unwrap_or_else(|| PathBuf::from(".demetrios/sysroots"))
+}
+
+// ============================================================================
+// Ontology Commands
+// ============================================================================
+
+/// Initialize ontology data by downloading and building .dontology files
+fn ontology_init(
+    core_only: bool,
+    force: bool,
+    output: &Path,
+    include: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    use demetrios::ontology::native::downloader::{
+        DownloadConfig, OntologyDownloader, core_ontologies,
+    };
+
+    println!("Initializing ontology data...");
+    println!("Output directory: {}", output.display());
+
+    let config = DownloadConfig {
+        output_dir: output.to_path_buf(),
+        force,
+        verify: true,
+        timeout_secs: 120,
+    };
+
+    let downloader = OntologyDownloader::new(config);
+
+    // Determine which ontologies to download
+    let all_ontologies = core_ontologies();
+    let ids: Vec<&str> = if let Some(include_list) = include {
+        include_list.split(',').map(|s| s.trim()).collect()
+    } else if core_only {
+        all_ontologies
+            .iter()
+            .filter(|o| o.core)
+            .map(|o| o.id.as_str())
+            .collect()
+    } else {
+        all_ontologies.iter().map(|o| o.id.as_str()).collect()
+    };
+
+    let progress = if verbose {
+        Some(Box::new(|name: &str, current: usize, total: usize| {
+            println!("[{}/{}] Downloading {}...", current + 1, total, name);
+        }) as Box<dyn Fn(&str, usize, usize) + Send>)
+    } else {
+        None
+    };
+
+    match downloader.download_by_ids(&ids, progress) {
+        Ok(paths) => {
+            println!("\nSuccessfully initialized {} ontologies:", paths.len());
+            for path in &paths {
+                println!("  {}", path.display());
+            }
+            Ok(())
+        }
+        Err(e) => Err(miette::miette!("Failed to initialize ontologies: {}", e)),
+    }
+}
+
+/// Show information about an ontology concept
+fn ontology_info(curie: &str, show_ancestors: bool, data_dir: &Path) -> Result<()> {
+    use demetrios::ontology::native::NativeOntologyRegistry;
+
+    // Parse CURIE to get ontology prefix
+    let prefix = curie
+        .split(':')
+        .next()
+        .ok_or_else(|| miette::miette!("Invalid CURIE format: {}", curie))?
+        .to_lowercase();
+
+    let mut registry = NativeOntologyRegistry::new(data_dir);
+
+    let ont = registry
+        .get_or_load(&prefix)
+        .map_err(|e| miette::miette!("Failed to load ontology '{}': {}", prefix, e))?;
+
+    match ont.get_concept(curie) {
+        Some(_concept) => {
+            println!("Concept: {}", curie);
+
+            if let Some(label) = ont.get_label(curie) {
+                println!("Label: {}", label);
+            }
+
+            if let Some(def) = ont.get_definition(curie) {
+                println!("Definition: {}", def);
+            }
+
+            if let Some(parent) = ont.get_parent(curie) {
+                println!("Parent: {}", parent);
+            }
+
+            if show_ancestors {
+                let ancestors = ont.get_ancestors(curie);
+                if !ancestors.is_empty() {
+                    println!("Ancestors:");
+                    for (i, anc) in ancestors.iter().enumerate() {
+                        let indent = "  ".repeat(i + 1);
+                        let label = ont.get_label(anc).unwrap_or("");
+                        println!("{}└─ {} ({})", indent, anc, label);
+                    }
+                }
+            }
+
+            Ok(())
+        }
+        None => Err(miette::miette!("Concept not found: {}", curie)),
+    }
+}
+
+/// Search for concepts by label
+fn ontology_search(
+    query: &str,
+    limit: usize,
+    ontology: Option<&str>,
+    data_dir: &Path,
+) -> Result<()> {
+    use demetrios::ontology::native::NativeOntologyRegistry;
+
+    let mut registry = NativeOntologyRegistry::new(data_dir);
+
+    let ontologies: Vec<String> = if let Some(ont_id) = ontology {
+        vec![ont_id.to_lowercase()]
+    } else {
+        registry.list_available()
+    };
+
+    if ontologies.is_empty() {
+        return Err(miette::miette!(
+            "No ontologies found. Run 'dc ontology init' first."
+        ));
+    }
+
+    let mut all_results = Vec::new();
+
+    for ont_id in &ontologies {
+        if let Ok(ont) = registry.get_or_load(ont_id) {
+            let results = ont.search(query, limit);
+            for (curie, label) in results {
+                all_results.push((curie.to_string(), label.to_string(), ont_id.clone()));
+            }
+        }
+    }
+
+    // Sort by label match quality
+    all_results.sort_by(|a, b| {
+        let a_exact = a.1.to_lowercase().starts_with(&query.to_lowercase());
+        let b_exact = b.1.to_lowercase().starts_with(&query.to_lowercase());
+        b_exact.cmp(&a_exact).then_with(|| a.1.cmp(&b.1))
+    });
+
+    // Limit results
+    all_results.truncate(limit);
+
+    if all_results.is_empty() {
+        println!("No results found for '{}'", query);
+    } else {
+        println!("Found {} results for '{}':", all_results.len(), query);
+        for (curie, label, ont_id) in &all_results {
+            println!("  {} - {} [{}]", curie, label, ont_id);
+        }
+    }
+
+    Ok(())
+}
+
+/// Check if one concept is a subclass of another
+fn ontology_is_subclass(child: &str, parent: &str, data_dir: &Path) -> Result<()> {
+    use demetrios::ontology::native::NativeOntologyRegistry;
+
+    // Parse CURIEs to get ontology prefix
+    let child_prefix = child
+        .split(':')
+        .next()
+        .ok_or_else(|| miette::miette!("Invalid child CURIE: {}", child))?
+        .to_lowercase();
+
+    let parent_prefix = parent
+        .split(':')
+        .next()
+        .ok_or_else(|| miette::miette!("Invalid parent CURIE: {}", parent))?
+        .to_lowercase();
+
+    if child_prefix != parent_prefix {
+        return Err(miette::miette!(
+            "Cross-ontology subclass check not yet supported: {} vs {}",
+            child_prefix,
+            parent_prefix
+        ));
+    }
+
+    let mut registry = NativeOntologyRegistry::new(data_dir);
+    let ont = registry
+        .get_or_load(&child_prefix)
+        .map_err(|e| miette::miette!("Failed to load ontology '{}': {}", child_prefix, e))?;
+
+    let is_subclass = ont.is_subclass(child, parent);
+
+    if is_subclass {
+        println!("{} IS a subclass of {}", child, parent);
+
+        // Show the path
+        let ancestors = ont.get_ancestors(child);
+        if let Some(pos) = ancestors.iter().position(|a| *a == parent) {
+            println!(
+                "Path: {} -> {} -> {}",
+                child,
+                ancestors[..=pos].join(" -> "),
+                parent
+            );
+        }
+    } else {
+        println!("{} is NOT a subclass of {}", child, parent);
+    }
+
+    Ok(())
+}
+
+/// List available ontologies
+fn ontology_list(data_dir: &Path, verbose: bool) -> Result<()> {
+    use demetrios::ontology::native::NativeOntologyRegistry;
+
+    let registry = NativeOntologyRegistry::new(data_dir);
+    let available = registry.list_available();
+
+    if available.is_empty() {
+        println!("No ontologies found in {}", data_dir.display());
+        println!("\nRun 'dc ontology init' to download ontologies.");
+        return Ok(());
+    }
+
+    println!("Available ontologies in {}:", data_dir.display());
+
+    if verbose {
+        let mut registry = NativeOntologyRegistry::new(data_dir);
+        for id in &available {
+            if let Ok(ont) = registry.get_or_load(id) {
+                println!(
+                    "  {} - {} concepts (v{})",
+                    id, ont.concept_count, ont.version
+                );
+            } else {
+                println!("  {} (failed to load)", id);
+            }
+        }
+    } else {
+        for id in &available {
+            println!("  {}", id);
+        }
+    }
+
+    Ok(())
 }
 
 /// Format a Unix timestamp as a human-readable string

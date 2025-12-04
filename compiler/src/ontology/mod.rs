@@ -53,6 +53,7 @@ pub mod cache;
 pub mod domain;
 pub mod foundation;
 pub mod llm_gen;
+pub mod native;
 #[cfg(feature = "ontology")]
 pub mod semantic_sql;
 pub mod sssom;
