@@ -1,0 +1,53 @@
+# Build artifacts
+/target/
+/compiler/target/
+**/target/
+
+# Cargo lock for libraries (keep for binaries)
+# Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+*.pdb
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Coverage
+*.gcno
+*.gcda
+*.gcov
+tarpaulin-report.html
+lcov.info
+
+# Profiling
+perf.data
+perf.data.old
+flamegraph.svg
+
+# SQLite databases (domain ontologies)
+*.db
+*.sqlite
+*.sqlite3
+
+# Log files
+*.log
+
+# Generated documentation
+/docs/api/
+/docs/book/
+
+# Test outputs
+test-results/

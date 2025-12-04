@@ -1,0 +1,195 @@
+{
+  "name": "demetrios-vscode",
+  "displayName": "Demetrios Language Support",
+  "description": "Language support for the Demetrios programming language",
+  "version": "0.1.0",
+  "publisher": "demetrios",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/demetrios-lang/demetrios"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "demetrios",
+    "scientific computing",
+    "effect system",
+    "linear types",
+    "units of measure"
+  ],
+  "activationEvents": [
+    "onLanguage:demetrios"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "demetrios",
+        "aliases": [
+          "Demetrios",
+          "demetrios",
+          "D"
+        ],
+        "extensions": [
+          ".d",
+          ".dem"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "demetrios",
+        "scopeName": "source.demetrios",
+        "path": "./syntaxes/demetrios.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Demetrios",
+      "properties": {
+        "demetrios.serverPath": {
+          "type": "string",
+          "default": "demetrios-lsp",
+          "description": "Path to the Demetrios language server executable"
+        },
+        "demetrios.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the language server"
+        },
+        "demetrios.inlayHints.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inlay hints"
+        },
+        "demetrios.inlayHints.typeHints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show type hints for let bindings"
+        },
+        "demetrios.inlayHints.effectHints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show effect hints for function calls"
+        },
+        "demetrios.inlayHints.unitHints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show unit type hints"
+        },
+        "demetrios.checkOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run type checking on save"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "demetrios.restartServer",
+        "title": "Demetrios: Restart Language Server"
+      },
+      {
+        "command": "demetrios.showHir",
+        "title": "Demetrios: Show HIR"
+      },
+      {
+        "command": "demetrios.showHlir",
+        "title": "Demetrios: Show HLIR"
+      },
+      {
+        "command": "demetrios.runFile",
+        "title": "Demetrios: Run Current File"
+      },
+      {
+        "command": "demetrios.runFileJit",
+        "title": "Demetrios: Run Current File (JIT)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "demetrios.runFile",
+        "key": "f5",
+        "when": "editorLangId == demetrios"
+      },
+      {
+        "command": "demetrios.runFileJit",
+        "key": "shift+f5",
+        "when": "editorLangId == demetrios"
+      }
+    ],
+    "semanticTokenTypes": [
+      {
+        "id": "effect",
+        "description": "Effect type (IO, Mut, etc.)"
+      },
+      {
+        "id": "unit",
+        "description": "Unit of measure (kg, mL, etc.)"
+      },
+      {
+        "id": "refinement",
+        "description": "Refinement type predicate"
+      },
+      {
+        "id": "lifetime",
+        "description": "Lifetime parameter"
+      }
+    ],
+    "semanticTokenModifiers": [
+      {
+        "id": "mutable",
+        "description": "Mutable binding"
+      },
+      {
+        "id": "linear",
+        "description": "Linear type (must be consumed exactly once)"
+      },
+      {
+        "id": "affine",
+        "description": "Affine type (can be consumed at most once)"
+      },
+      {
+        "id": "unsafe",
+        "description": "Unsafe code"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "scopes": {
+          "effect": ["entity.name.type.effect.demetrios"],
+          "unit": ["constant.numeric.unit.demetrios"]
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.0"
+  }
+}
