@@ -51,6 +51,7 @@ pub mod hir;
 pub mod hlir;
 pub mod interp;
 pub mod lexer;
+pub mod linear;
 pub mod lint;
 pub mod llm;
 #[cfg(feature = "lsp")]
