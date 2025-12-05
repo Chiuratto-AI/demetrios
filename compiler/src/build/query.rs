@@ -311,7 +311,6 @@ pub struct QueryStats {
 
 /// Example query types for the Demetrios compiler
 pub mod queries {
-    use super::*;
     use std::path::PathBuf;
 
     /// Input: source file path

@@ -24,7 +24,7 @@
 //! (can be used where less is required).
 
 use super::TypeContext;
-use super::predicates::{ConfidencePredicate, OntologyPredicate, Predicate};
+use super::predicates::{ConfidencePredicate, Predicate};
 use super::proofs::Proof;
 use super::types::{ConfidenceType, EpistemicType, OntologyType};
 

@@ -7,7 +7,7 @@
 //! - Naming conventions
 //! - Documentation completeness
 
-use super::{GeneratedAxiom, GeneratedClass, GeneratedOntologyFragment, GeneratedProperty};
+use super::{GeneratedAxiom, GeneratedOntologyFragment};
 use std::collections::{HashMap, HashSet};
 
 /// Configuration for validation

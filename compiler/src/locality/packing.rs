@@ -250,7 +250,7 @@ impl CacheLinePacker {
         patterns: &HashMap<String, AccessPattern>,
     ) -> PackedLayout {
         // Build field list
-        let mut field_list: Vec<Field> = fields
+        let field_list: Vec<Field> = fields
             .iter()
             .enumerate()
             .map(|(i, (name, size, sem_type))| {

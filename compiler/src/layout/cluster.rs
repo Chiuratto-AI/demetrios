@@ -3,7 +3,6 @@
 //! Clusters concepts by semantic proximity using hierarchical agglomerative clustering.
 //! We use a simple implementation rather than external crates for control.
 
-use std::collections::HashMap;
 
 use super::distance::DistanceMatrix;
 use super::extract::ConceptUsage;

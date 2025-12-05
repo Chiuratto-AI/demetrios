@@ -17,7 +17,7 @@
 //! - **Runtime**: `runtime_check(P)` defers to runtime (gradual typing)
 //! - **Trusted**: `trusted(reason)` escape hatch (requires annotation)
 
-use super::predicates::{CausalPredicate, ConfidencePredicate, Predicate, PredicateKind};
+use super::predicates::{CausalPredicate, Predicate, PredicateKind};
 use super::types::{CausalGraphType, ConfidenceType};
 use std::collections::HashSet;
 use std::sync::Arc;

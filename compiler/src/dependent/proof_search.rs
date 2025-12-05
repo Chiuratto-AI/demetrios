@@ -17,7 +17,7 @@ use super::predicates::{
     TemporalPredicate,
 };
 use super::proofs::{ArithDerivation, CausalProof, Proof, ProofKind};
-use super::types::{CausalGraphType, ConfidenceType, OntologyType};
+use super::types::{CausalGraphType, ConfidenceType};
 use std::collections::HashSet;
 
 /// Result of proof search

@@ -31,7 +31,7 @@ use crate::epistemic::composition::{
     CombinationStrategy, ConfidenceValue, EpistemicValue, Fusible, ProvenanceNode,
     combine_confidence,
 };
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use std::collections::HashSet;
 
 /// Result of temporal join operation
@@ -416,6 +416,7 @@ pub fn temporal_tensor_all<T: Clone>(
 mod tests {
     use super::*;
     use crate::temporal::decay::TimeUnit;
+    use chrono::Duration;
 
     #[test]
     fn test_temporal_tensor() {

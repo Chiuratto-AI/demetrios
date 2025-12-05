@@ -5,10 +5,7 @@
 //! - Causal join: merges knowledge with same causal structure
 //! - Graph compatibility checking
 
-use std::collections::HashSet;
-use std::fmt;
-
-use super::graph::{CausalGraph, GraphError};
+use super::graph::GraphError;
 use super::identification::IdentificationStatus;
 use super::knowledge::{CausalError, CausalKnowledge};
 use crate::epistemic::composition::ConfidenceValue;
@@ -388,7 +385,7 @@ impl<T: Clone + PartialEq> Default for CausalMetaAnalysis<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::causal::graph::{CausalNode, EdgeType};
+    use crate::causal::graph::{CausalGraph, CausalNode, EdgeType};
     use crate::epistemic::composition::EpistemicValue;
     use crate::temporal::TemporalKnowledge;
 

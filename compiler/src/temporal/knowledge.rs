@@ -29,7 +29,6 @@ use super::decay::{DecayFunction, TimeUnit};
 use super::types::Temporal;
 use crate::epistemic::composition::{ConfidenceValue, EpistemicValue, ProvenanceNode, SourceInfo};
 use chrono::{DateTime, Duration, Utc};
-use std::collections::HashSet;
 
 /// Temporal Knowledge type - extends EpistemicValue with time dimension
 #[derive(Clone, Debug)]

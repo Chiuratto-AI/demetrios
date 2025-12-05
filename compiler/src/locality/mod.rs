@@ -14,6 +14,7 @@
 
 pub mod access;
 pub mod codegen;
+pub mod hir_analysis;
 pub mod numa;
 pub mod packing;
 pub mod prefetch;
@@ -22,93 +23,26 @@ pub mod types;
 
 pub use access::{AccessAnalyzer, AccessPattern, FieldAccess};
 pub use codegen::{PrefetchCodegen, PrefetchInstruction};
+pub use hir_analysis::{
+    HirLocalityAnalyzer, LocalityAnalysisResult, PackingRecommendation, PrefetchPoint,
+};
 pub use numa::{NumaNode, NumaTopology, PlacementStrategy, SemanticPlacement};
 pub use packing::{CacheLinePacker, FieldGroup, PackedLayout};
 pub use prefetch::{PrefetchHint, PrefetchTable, SemanticDistance};
 pub use subtyping::{LocalityLattice, SubtypeResult};
 pub use types::{Locality, LocalityBound, LocalityConstraint, LocalityParam};
 
+// Re-export ontology types for locality analysis
+pub use crate::ontology::{NativeOntologyAdapter, OntologyAccess, OntologyConcept};
+
 use std::collections::HashMap;
 
-/// A concept from an ontology for locality analysis.
-#[derive(Debug, Clone)]
-pub struct Concept {
-    /// The CURIE identifier (e.g., "CHEBI:15365")
-    pub curie: String,
-    /// Human-readable label
-    pub label: String,
-}
+/// Type alias for backward compatibility - use OntologyConcept from crate::ontology
+pub type Concept = OntologyConcept;
 
-impl Concept {
-    /// Create a new concept.
-    pub fn new(curie: impl Into<String>, label: impl Into<String>) -> Self {
-        Self {
-            curie: curie.into(),
-            label: label.into(),
-        }
-    }
-
-    /// Get the CURIE.
-    pub fn curie(&self) -> &str {
-        &self.curie
-    }
-}
-
-/// Trait for ontology access in locality analysis.
-/// This provides the minimal interface needed for semantic prefetch generation.
-pub trait Ontology {
-    /// Search for concepts matching a query.
-    fn search(&self, query: &str, limit: usize) -> Vec<Concept>;
-
-    /// Get ancestors of a concept.
-    fn ancestors(&self, curie: &str) -> Vec<String>;
-
-    /// Get descendants of a concept.
-    fn descendants(&self, curie: &str) -> Vec<String>;
-
-    /// Check if child is a subclass of parent.
-    fn is_subclass(&self, child: &str, parent: &str) -> bool;
-}
-
-/// Adapter to use NativeOntology with the Ontology trait.
-pub struct NativeOntologyAdapter {
-    ontology: crate::ontology::native::NativeOntology,
-}
-
-impl NativeOntologyAdapter {
-    /// Create a new adapter.
-    pub fn new(ontology: crate::ontology::native::NativeOntology) -> Self {
-        Self { ontology }
-    }
-}
-
-impl Ontology for NativeOntologyAdapter {
-    fn search(&self, query: &str, limit: usize) -> Vec<Concept> {
-        self.ontology
-            .search(query, limit)
-            .into_iter()
-            .map(|(curie, label)| Concept::new(curie, label))
-            .collect()
-    }
-
-    fn ancestors(&self, curie: &str) -> Vec<String> {
-        self.ontology
-            .get_ancestors(curie)
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect()
-    }
-
-    fn descendants(&self, curie: &str) -> Vec<String> {
-        // NativeOntology doesn't have a descendants method
-        // Return empty for now
-        Vec::new()
-    }
-
-    fn is_subclass(&self, child: &str, parent: &str) -> bool {
-        self.ontology.is_subclass(child, parent)
-    }
-}
+/// Type alias for backward compatibility - use OntologyAccess from crate::ontology
+pub trait Ontology: OntologyAccess {}
+impl<T: OntologyAccess> Ontology for T {}
 
 /// The semantic-physical bridge: connects ontology knowledge to memory optimization.
 pub struct SemanticPhysicalBridge {

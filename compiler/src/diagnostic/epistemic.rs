@@ -25,7 +25,7 @@ use std::fmt;
 
 use crate::diagnostic::{Diagnostic, DiagnosticLevel, Span};
 use crate::epistemic::{
-    Confidence, EpistemicStatus, HeterogeneityResolver, ResolutionStrategy, Revisability, Source,
+    EpistemicStatus, HeterogeneityResolver, ResolutionStrategy, Revisability, Source,
 };
 
 /// Epistemic diagnostic code categories
@@ -814,7 +814,7 @@ pub fn check_combination_integrity(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::epistemic::Evidence;
+    use crate::epistemic::{Confidence, Evidence};
 
     #[test]
     fn test_low_confidence_warning() {

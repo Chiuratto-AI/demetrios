@@ -339,7 +339,7 @@ impl<'a> CausalIdentifier<'a> {
 
         // 2. Exclusion: Z affects Y only through X
         // In graph with X removed, Z and Y should be d-separated
-        let mut g_no_x = self.graph.clone();
+        let g_no_x = self.graph.clone();
         // Simplified: check if all paths from Z to Y go through X
         if !self.all_paths_through(z, outcome, treatment) {
             return false;

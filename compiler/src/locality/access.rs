@@ -499,6 +499,35 @@ impl AccessAnalyzer {
         self.patterns.values()
     }
 
+    /// Get co-access relationships for a specific type.
+    /// Returns tuples of (field_a, field_b, correlation).
+    pub fn co_access_for(&self, type_name: &str) -> Vec<(String, String, f64)> {
+        let prefix = format!("{}.", type_name);
+        let mut result = Vec::new();
+
+        for pattern in self.patterns.values() {
+            for co in &pattern.co_accesses {
+                // Check if this co-access involves the requested type
+                if co.field_a.starts_with(&prefix) || co.field_b.starts_with(&prefix) {
+                    // Extract just the field names
+                    let field_a = co
+                        .field_a
+                        .strip_prefix(&prefix)
+                        .unwrap_or(&co.field_a)
+                        .to_string();
+                    let field_b = co
+                        .field_b
+                        .strip_prefix(&prefix)
+                        .unwrap_or(&co.field_b)
+                        .to_string();
+                    result.push((field_a, field_b, co.correlation));
+                }
+            }
+        }
+
+        result
+    }
+
     /// Generate optimization recommendations.
     pub fn recommendations(&self) -> Vec<OptimizationRecommendation> {
         let mut recs = Vec::new();

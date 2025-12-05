@@ -115,7 +115,7 @@ impl ExtractFunction {
         source: &str,
         selection: &std::ops::Range<usize>,
     ) -> SelectionAnalysis {
-        let mut analyzer = SelectionAnalyzer::new(source, selection.clone());
+        let analyzer = SelectionAnalyzer::new(source, selection.clone());
 
         // Simple heuristic analysis based on text
         let selected = &source[selection.clone()];

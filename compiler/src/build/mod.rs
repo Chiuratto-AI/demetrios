@@ -46,7 +46,7 @@ pub use graph::{BuildGraph, CompilationUnit, ContentHash, UnitId};
 pub use parallel::{BuildTask, JobServer, ParallelExecutor};
 pub use query::{QueryDb, QueryKey, Revision};
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Instant;
 
 /// High-level build manager that orchestrates the entire build process

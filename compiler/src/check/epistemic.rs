@@ -24,7 +24,7 @@
 use std::collections::HashMap;
 
 use crate::epistemic::{
-    Confidence, EpistemicStatus, Evidence, OntologyBinding, Revisability, Source, TermId,
+    Confidence, EpistemicStatus, Evidence, OntologyBinding, Revisability, Source,
 };
 use crate::ontology::{FoundationOntologies, OntologyResolver, ParsedTermRef, SubsumptionResult};
 

@@ -285,7 +285,7 @@ struct VarInfo {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum NameKind {
+pub enum NameKind {
     Function,
     Type,
     Variable,

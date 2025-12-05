@@ -5,7 +5,6 @@
 //! - Causal effect identification
 //! - Adjustment-based estimation
 
-use std::collections::HashSet;
 use std::fmt;
 
 use super::graph::{CausalGraph, GraphError};

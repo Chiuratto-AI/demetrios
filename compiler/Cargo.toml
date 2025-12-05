@@ -166,8 +166,12 @@ distributed = [
 ontology = ["dep:rusqlite"]
 # Enable LLM integration for ontology generation and epistemic agents
 llm = ["dep:regex", "dep:lazy_static"]
+# Enable remote cache for distributed builds
+remote-cache = ["distributed"]
+# Enable cryptographic signatures for ontology versioning
+crypto = []
 # Enable all features
-full = ["llvm", "jit", "gpu", "smt", "lsp", "distributed", "ontology", "llm"]
+full = ["llvm", "jit", "gpu", "smt", "lsp", "distributed", "ontology", "llm", "remote-cache", "crypto"]
 
 [profile.release]
 lto = true
@@ -206,4 +210,8 @@ required-features = ["lsp"]
 
 [[bench]]
 name = "layout_bench"
+harness = false
+
+[[bench]]
+name = "locality_bench"
 harness = false

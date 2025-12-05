@@ -24,7 +24,6 @@
 //! 3. At runtime, check fails → panic with clear message
 
 use super::predicates::Predicate;
-use super::types::{ConfidenceType, OntologyType};
 
 /// Gradual typing mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

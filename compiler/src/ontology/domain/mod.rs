@@ -28,9 +28,8 @@ pub mod loader;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
-use crate::epistemic::{Confidence, EpistemicStatus, Source, TermId};
+use crate::epistemic::{EpistemicStatus, TermId};
 use crate::ontology::OntologyError;
 
 /// L3 Domain Ontologies collection

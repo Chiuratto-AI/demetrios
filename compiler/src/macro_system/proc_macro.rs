@@ -6,7 +6,6 @@ use std::iter::FromIterator;
 
 use super::token_tree::*;
 use crate::common::Span;
-use crate::lexer::{Token, TokenKind};
 
 /// A stream of tokens for procedural macros
 #[derive(Debug, Clone, Default)]

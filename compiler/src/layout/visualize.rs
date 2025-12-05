@@ -4,7 +4,6 @@
 //! - ASCII diagrams for terminal output
 //! - Mermaid diagrams for documentation
 
-use super::cluster::Cluster;
 use super::plan::{LayoutPlan, MemoryRegion};
 
 /// Generate a Mermaid flowchart diagram of the layout

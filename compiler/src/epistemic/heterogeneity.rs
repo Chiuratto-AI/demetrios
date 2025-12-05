@@ -21,7 +21,7 @@
 
 use std::collections::HashMap;
 
-use super::{Confidence, EpistemicStatus, Evidence, EvidenceKind, Revisability, Source};
+use super::{Confidence, EpistemicStatus, Evidence, Revisability, Source};
 
 /// Strategy for resolving epistemic heterogeneity
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -33,7 +33,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, BufRead, Write};
+use std::io::{self};
 use std::path::Path;
 
 use super::{Checksum, OntologyVersion};

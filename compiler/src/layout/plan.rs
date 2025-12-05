@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use super::cluster::{Cluster, ClusteringResult};
+use super::cluster::ClusteringResult;
 
 /// Memory region classification
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

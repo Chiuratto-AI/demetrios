@@ -13,11 +13,10 @@
 //! - **Predicate**: P must be provable
 
 use super::TypeContext;
-use super::predicates::{ConfidencePredicate, Predicate, PredicateKind};
+use super::predicates::Predicate;
 use super::proof_search::{ProofResult, ProofSearchConfig, ProofSearcher};
 use super::types::{ConfidenceType, EpistemicType, OntologyType};
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::collections::HashMap;
 
 /// A type variable
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

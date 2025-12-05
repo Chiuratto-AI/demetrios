@@ -21,10 +21,9 @@
 //! | Resolved | 0.05 ≤ κ < θ | avg × (1-κ) (penalty) | Merged value |
 //! | Irreconcilable | κ ≥ θ | - | Both preserved |
 
-use super::confidence::{CombinationStrategy, ConfidenceValue, combine_confidence};
-use super::knowledge::{EpistemicValue, OntologyRef};
+use super::confidence::{CombinationStrategy, combine_confidence};
+use super::knowledge::EpistemicValue;
 use super::provenance::ProvenanceNode;
-use std::collections::HashSet;
 use std::fmt;
 
 /// Conflict level between two values

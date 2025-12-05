@@ -456,7 +456,7 @@ impl SourceMap {
     fn decode_mappings(&self) -> Vec<DecodedMapping> {
         let mut result = Vec::new();
         let mut gen_line = 0u32;
-        let mut gen_col = 0i64;
+        let mut gen_col: i64;
         let mut source = 0i64;
         let mut orig_line = 0i64;
         let mut orig_col = 0i64;

@@ -7,7 +7,7 @@
 //! physical optimization (memory prefetching).
 
 use super::types::Locality;
-use super::{Concept, Ontology};
+use super::Ontology;
 use std::collections::HashMap;
 
 /// Semantic distance between concepts, normalized to [0.0, 1.0].

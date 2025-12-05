@@ -2223,7 +2223,7 @@ impl<'a> Parser<'a> {
 
     /// Parse macro arguments (token tree inside delimiters)
     fn parse_macro_args(&mut self) -> Result<Vec<crate::macro_system::token_tree::TokenTree>> {
-        use crate::macro_system::token_tree::{Delimiter, TokenTree, TokenWithCtx};
+        use crate::macro_system::token_tree::Delimiter;
 
         match self.peek() {
             TokenKind::LParen => self.parse_delimited_macro_args(Delimiter::Parenthesis),
@@ -2241,7 +2241,7 @@ impl<'a> Parser<'a> {
         &mut self,
         delim: crate::macro_system::token_tree::Delimiter,
     ) -> Result<Vec<crate::macro_system::token_tree::TokenTree>> {
-        use crate::macro_system::token_tree::{Delimiter, TokenTree};
+        use crate::macro_system::token_tree::Delimiter;
 
         let open_delim = match delim {
             Delimiter::Parenthesis => TokenKind::LParen,

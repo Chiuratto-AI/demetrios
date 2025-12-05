@@ -9,7 +9,7 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
-use super::graph::{BuildGraph, ContentHash, UnitId};
+use super::graph::{BuildGraph, ContentHash};
 
 /// Tracks the state of source files for change detection
 #[derive(Debug, Clone, Serialize, Deserialize)]

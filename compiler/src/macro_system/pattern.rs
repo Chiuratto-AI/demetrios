@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 
 use super::token_tree::*;
-use crate::common::Span;
 use crate::lexer::TokenKind;
 
 /// A macro pattern

@@ -24,8 +24,7 @@
 //! //               ^^^ expected `int`, found `float`
 //! ```
 
-use super::{Diagnostic, DiagnosticLevel, Label, Span, Suggestion, SuggestionApplicability};
-use std::fmt;
+use super::{Diagnostic, DiagnosticLevel, Label, Span};
 
 /// Represents a difference between two types
 #[derive(Debug, Clone, PartialEq)]

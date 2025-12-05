@@ -3,7 +3,6 @@
 //! Provides compile-time unit checking using the type system.
 //! Based on: "Types for Units-of-Measure" (Kennedy, 1994)
 
-use std::collections::HashMap;
 
 use crate::common::Span;
 use crate::lexer::TokenKind;

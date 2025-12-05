@@ -2,7 +2,6 @@
 
 use super::proc_macro::*;
 use super::token_tree::*;
-use crate::common::Span;
 use crate::lexer::TokenKind;
 
 /// Parsed derive input

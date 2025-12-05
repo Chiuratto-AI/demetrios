@@ -3,7 +3,6 @@
 //! Downloads ontologies from OBO Foundry, Schema.org, and FHIR,
 //! then converts them to the compact .dontology format.
 
-use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -275,12 +274,11 @@ impl OntologyDownloader {
         }
 
         #[cfg(not(feature = "ontology"))]
-        {
-            return Err(OntologyError::OntologyNotAvailable(
-                "Ontology download requires --features ontology".to_string(),
-            ));
-        }
+        return Err(OntologyError::OntologyNotAvailable(
+            "Ontology download requires --features ontology".to_string(),
+        ));
 
+        #[cfg(feature = "ontology")]
         Ok(raw_path)
     }
 
@@ -447,7 +445,7 @@ impl OntologyDownloader {
         source: &OntologySource,
         concepts: &[ParsedConcept],
     ) -> OntologyResult<()> {
-        use super::storage::{ConceptEntry, NativeStoreHeader, StringTable};
+        use super::storage::{ConceptEntry, StringTable};
         use super::{DONTOLOGY_MAGIC, DONTOLOGY_VERSION};
 
         let mut file = File::create(path)

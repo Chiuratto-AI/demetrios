@@ -6,7 +6,6 @@
 
 use std::collections::HashMap;
 
-use crate::common::Span;
 use crate::lexer::TokenKind;
 use crate::macro_system::proc_macro::*;
 use crate::macro_system::token_tree::*;

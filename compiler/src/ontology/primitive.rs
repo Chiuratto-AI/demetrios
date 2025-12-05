@@ -26,7 +26,7 @@
 //! );
 //! ```
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 /// Static BFO 2020 data
 pub static PRIMITIVE_BFO: PrimitiveStore<BfoClass> = PrimitiveStore::bfo();

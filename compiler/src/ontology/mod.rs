@@ -320,6 +320,164 @@ impl OntologyStats {
     }
 }
 
+// ============================================================================
+// General Ontology Trait
+// ============================================================================
+
+/// A concept from an ontology.
+///
+/// This is a simplified representation used for querying and analysis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OntologyConcept {
+    /// The CURIE identifier (e.g., "CHEBI:15365")
+    pub curie: String,
+    /// Human-readable label
+    pub label: String,
+}
+
+impl OntologyConcept {
+    /// Create a new concept.
+    pub fn new(curie: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            curie: curie.into(),
+            label: label.into(),
+        }
+    }
+
+    /// Get the CURIE.
+    pub fn curie(&self) -> &str {
+        &self.curie
+    }
+
+    /// Get the label.
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+}
+
+/// Trait for ontology access.
+///
+/// This provides a unified interface for querying ontology data across
+/// all layers (primitive, foundation, domain, federated). Implementations
+/// can be backed by in-memory stores, SQLite databases, or network services.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use demetrios::ontology::{OntologyAccess, OntologyConcept};
+///
+/// fn find_related_concepts<O: OntologyAccess>(ont: &O, term: &str) {
+///     let ancestors = ont.ancestors(term);
+///     let descendants = ont.descendants(term);
+///
+///     for anc in &ancestors {
+///         if ont.is_subclass(term, anc) {
+///             println!("{} is a subclass of {}", term, anc);
+///         }
+///     }
+/// }
+/// ```
+pub trait OntologyAccess {
+    /// Search for concepts matching a query string.
+    ///
+    /// Returns up to `limit` concepts whose labels or CURIEs match the query.
+    fn search(&self, query: &str, limit: usize) -> Vec<OntologyConcept>;
+
+    /// Get all ancestors of a concept.
+    ///
+    /// Returns the CURIEs of all superclasses in the ontology hierarchy.
+    fn ancestors(&self, curie: &str) -> Vec<String>;
+
+    /// Get all descendants of a concept.
+    ///
+    /// Returns the CURIEs of all subclasses in the ontology hierarchy.
+    fn descendants(&self, curie: &str) -> Vec<String>;
+
+    /// Check if `child` is a subclass of `parent`.
+    ///
+    /// This performs a transitive subclass check through the ontology hierarchy.
+    fn is_subclass(&self, child: &str, parent: &str) -> bool;
+
+    /// Get a concept by its CURIE.
+    ///
+    /// Returns `None` if the concept is not found.
+    fn get(&self, curie: &str) -> Option<OntologyConcept> {
+        self.search(curie, 1).into_iter().find(|c| c.curie == curie)
+    }
+
+    /// Get the distance between two concepts in the hierarchy.
+    ///
+    /// Returns `None` if no path exists between them.
+    fn distance(&self, from: &str, to: &str) -> Option<usize> {
+        // Check direct relationship
+        if from == to {
+            return Some(0);
+        }
+
+        // Check if `to` is an ancestor of `from`
+        let ancestors = self.ancestors(from);
+        for (i, anc) in ancestors.iter().enumerate() {
+            if anc == to {
+                return Some(i + 1);
+            }
+        }
+
+        // Check if `to` is a descendant of `from`
+        let descendants = self.descendants(from);
+        for (i, desc) in descendants.iter().enumerate() {
+            if desc == to {
+                return Some(i + 1);
+            }
+        }
+
+        None
+    }
+}
+
+/// Adapter to convert NativeOntology to OntologyAccess trait.
+pub struct NativeOntologyAdapter {
+    ontology: native::NativeOntology,
+}
+
+impl NativeOntologyAdapter {
+    /// Create a new adapter wrapping a NativeOntology.
+    pub fn new(ontology: native::NativeOntology) -> Self {
+        Self { ontology }
+    }
+
+    /// Get a reference to the underlying NativeOntology.
+    pub fn inner(&self) -> &native::NativeOntology {
+        &self.ontology
+    }
+}
+
+impl OntologyAccess for NativeOntologyAdapter {
+    fn search(&self, query: &str, limit: usize) -> Vec<OntologyConcept> {
+        self.ontology
+            .search(query, limit)
+            .into_iter()
+            .map(|(curie, label)| OntologyConcept::new(curie, label))
+            .collect()
+    }
+
+    fn ancestors(&self, curie: &str) -> Vec<String> {
+        self.ontology
+            .get_ancestors(curie)
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    fn descendants(&self, _curie: &str) -> Vec<String> {
+        // NativeOntology doesn't have descendants method - return empty
+        Vec::new()
+    }
+
+    fn is_subclass(&self, child: &str, parent: &str) -> bool {
+        self.ontology.is_subclass(child, parent)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

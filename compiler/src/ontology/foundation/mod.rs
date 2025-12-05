@@ -20,7 +20,7 @@ pub mod uo;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::epistemic::{Confidence, EpistemicStatus, OntologyBinding, Source, TermId};
+use crate::epistemic::{EpistemicStatus, OntologyBinding, TermId};
 
 use super::OntologyError;
 

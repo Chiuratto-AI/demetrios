@@ -559,7 +559,6 @@ pub fn load_sssom_mappings(path: impl AsRef<Path>) -> OntologyResult<SssomMappin
 
     let mut mapping_set = SssomMappingSet::new();
     let mut header_columns: Vec<String> = vec![];
-    let mut in_metadata = true;
 
     for line in reader.lines() {
         let line =
@@ -598,8 +597,6 @@ pub fn load_sssom_mappings(path: impl AsRef<Path>) -> OntologyResult<SssomMappin
             }
             continue;
         }
-
-        in_metadata = false;
 
         // First non-comment line is the header
         if header_columns.is_empty() {

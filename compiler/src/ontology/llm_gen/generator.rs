@@ -5,7 +5,7 @@
 
 use super::{GenerationError, GenerationResult};
 use crate::llm::{
-    ConfidenceIndicators, LLMClientRegistry, LLMError, LLMRequest, OntologyTask, PromptTemplates,
+    LLMClientRegistry, OntologyTask,
 };
 use std::collections::HashMap;
 

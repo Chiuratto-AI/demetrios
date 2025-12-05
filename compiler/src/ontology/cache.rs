@@ -17,12 +17,11 @@
 //! let cache = OntologyCache::new(config);
 //! ```
 
-use std::hash::Hash;
 use std::time::{Duration, Instant};
 
 use lru::LruCache;
 
-use super::{OntologyError, OntologyLayer, OntologyResult, ParsedTermRef};
+use super::OntologyLayer;
 
 /// Configuration for the ontology cache
 #[derive(Debug, Clone)]

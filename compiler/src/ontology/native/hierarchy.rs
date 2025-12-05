@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 
 use super::storage::NativeStore;
-use crate::ontology::{OntologyError, OntologyResult};
+use crate::ontology::OntologyResult;
 
 /// Query interface for LCA operations
 pub trait LcaQuery {

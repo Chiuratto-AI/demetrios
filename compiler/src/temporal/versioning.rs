@@ -29,7 +29,7 @@
 
 use super::knowledge::TemporalKnowledge;
 use super::types::{Temporal, Version, VersionInfo, VersionRelation};
-use crate::epistemic::composition::{ConfidenceValue, EpistemicValue, ProvenanceNode};
+use crate::epistemic::composition::{ConfidenceValue, EpistemicValue};
 use chrono::{DateTime, Utc};
 
 /// Versioned knowledge with full history
