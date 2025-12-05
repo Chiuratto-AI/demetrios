@@ -6,9 +6,11 @@
 //! - Algebraic effects
 //! - Refinement types
 //! - Units of measure with inference
+//! - Epistemic types (Knowledge[T, ε, Φ, τ])
 
 pub mod core;
 pub mod effects;
+pub mod epistemic;
 pub mod ownership;
 pub mod refinement;
 pub mod unit_infer;
@@ -24,3 +26,10 @@ pub use refinement::{
 };
 pub use unit_infer::{UnitExpr, UnitInference, UnitInferenceError, UnitVar};
 pub use units::{Unit, UnitChecker, UnitError, UnitOp};
+
+// Epistemic types - the key differentiator of Demetrios
+pub use epistemic::{
+    ConfidenceAnalysisError, ConfidenceBound, ConfidenceFlowAnalysis, ConfidenceOp,
+    EpistemicCheckResult, EpistemicChecker, KnowledgeType, PropagationRule, PropagationRules,
+    ProvenanceConstraint, TemporalConstraint,
+};

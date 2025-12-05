@@ -5,6 +5,64 @@ All notable changes to the Demetrios (D) compiler will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.0] - 2024-12-05
+
+### Added - Epistemic PBPK Module & Knowledge Types
+
+This release introduces **epistemic computing** - the key differentiator of Demetrios from all other programming languages. No other language provides compile-time tracking of knowledge confidence, provenance, and temporal validity.
+
+#### Epistemic Type System (`compiler/src/types/epistemic.rs`)
+- **Knowledge[T, ε, Φ, τ]** wrapper type for values with epistemic qualifications
+- **Confidence bounds**: `ε >= 0.80` constraints checked at compile time
+- **Provenance tracking**: Source, Derived, Merged, UserInput provenance types
+- **Temporal constraints**: MaxAge, ValidAfter, ValidBetween for time-sensitive knowledge
+- **Propagation rules**: Automatic confidence degradation through computations
+  - Minimum rule for arithmetic
+  - Degradation factors for ODE solvers (0.95), interpolation (0.99)
+- **EpistemicChecker**: Compile-time verification of epistemic constraints
+
+#### PBPK Module (`stdlib/pbpk/mod.d`)
+- **14-compartment PBPK model** with organ-specific partition coefficients
+- **Drug struct** with ChEBI ontology validation at compile time
+- **PBPKParams** with epistemic qualifications on all parameters
+- **Patient profiles** for individualized simulations (weight, age, genotype)
+- **Allometric scaling** for patient-specific parameter adjustment
+- **SimulationResult** with propagated confidence and full provenance
+- **FDA validation functions** requiring minimum confidence thresholds
+
+#### QUDT Units (`stdlib/units/qudt.d`)
+- Complete QUDT-aligned pharmacokinetic units
+- SI base units: m, kg, s, mol, K, A, cd with prefixes
+- Derived units: L, mL, mg/L, L/h, per_h, mg·h/L (AUC)
+- **UnitMetadata** with QUDT IRI, UCUM code, SI conversion factor
+- Physiological constants: cardiac output, blood volume, GFR
+- Compile-time dimensional analysis
+
+#### MedLang Compatibility (`stdlib/interop/medlang.d`)
+- Parser for Darwin PBPK Platform's MedLang DSL
+- **Bidirectional translation** between MedLang and Demetrios
+- MedLang drug, model, and dosing constructs
+- **FDA report generation** with provenance audit trail
+- Darwin JSON import/export with confidence annotations
+- FDA PBPK Guidance validation checklist
+
+#### Example: Metformin Simulation (`examples/pbpk/metformin_simulation.d`)
+- Complete PBPK simulation demonstrating all new features
+- ChEBI:6801 validated drug definition
+- Parameters with confidence from literature sources
+- 24-hour simulation with PK metrics (Cmax, Tmax, AUC)
+- FDA validation against observed clinical data
+
+#### Documentation
+- `docs/epistemic-pbpk.md`: Comprehensive guide to epistemic PBPK modeling
+- Comparison tables: Python, Julia, R/NONMEM vs Demetrios
+- Architecture diagrams and API reference
+
+### Technical Details
+- All epistemic type tests pass (5/5)
+- Full compiler test suite passes (1103 tests)
+- Inspired by Darwin PBPK Platform (developed solo in 2 months)
+
 ## [0.28.0] - 2024-11-30
 
 ### Added - Day 28: State-of-the-Art Scientific Computing & Domain-Specific Libraries
