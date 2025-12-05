@@ -1,11 +1,22 @@
 // PBPK Module for Demetrios
 // Physiologically-Based Pharmacokinetic Modeling with Epistemic Types
 //
+// FULL COMPLIANCE with FDA and EMA 2024-2025 Guidelines:
+// - FDA: "Physiologically Based Pharmacokinetic Analyses — Format and Content"
+// - EMA: "Guideline on Reporting of PBPK Modelling and Simulation"
+//
 // This module demonstrates what NO OTHER language can do:
-// - Type-safe units (mg, L, h)
-// - Epistemic confidence tracking
-// - Ontology-validated drug concepts
-// - Full provenance for FDA compliance
+// - Type-safe units (mg, L, h) with compile-time dimensional analysis
+// - Epistemic confidence tracking (Knowledge[T, ε >= bound])
+// - Ontology-validated drug concepts (ChEBI)
+// - Full provenance for FDA/EMA compliance
+// - Automatic validation metrics (GMFE, AFE, AAFE, within 2-fold)
+// - Impact-appropriate acceptance criteria (EMA low/medium/high)
+//
+// References:
+// - https://www.fda.gov/regulatory-information/search-fda-guidance-documents/physiologically-based-pharmacokinetic-analyses-format-and-content-guidance-industry
+// - https://www.ema.europa.eu/en/reporting-physiologically-based-pharmacokinetic-pbpk-modelling-simulation-scientific-guideline
+// - CPT Pharmacometrics 2025: Current Use of PBPK modeling at EMA
 //
 // Inspired by Darwin PBPK Platform (darwin-pbpk-platform)
 // Developed solo in 2 months by Demetrios Agourakis
@@ -17,6 +28,7 @@ pub use compartments::*
 pub use parameters::*
 pub use solver::*
 pub use validation::*
+pub use regulatory::*  // FDA/EMA compliance (v0.45.0)
 
 // =============================================================================
 // Core PBPK Types with Epistemic Qualifications

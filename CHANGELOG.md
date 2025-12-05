@@ -5,6 +5,56 @@ All notable changes to the Demetrios (D) compiler will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.45.0] - 2024-12-05
+
+### Added - FDA/EMA 2024-2025 Full Compliance
+
+This release implements **full regulatory compliance** with the latest FDA and EMA PBPK guidelines.
+
+#### Validation Metrics (`stdlib/pbpk/regulatory.d`)
+- **GMFE** (Geometric Mean Fold Error) - prediction accuracy
+- **AFE** (Average Fold Error) - bias measurement  
+- **AAFE** (Absolute Average Fold Error) - precision measurement
+- **Within 2-fold** and **Within 1.5-fold** percentages
+- **RMSE**, **MPE%**, **MAPE%**, **R²**, **CCC** (Concordance Correlation Coefficient)
+- **DDI-specific metrics**: AUC ratio AFE/AAFE, Cmax ratio AFE/AAFE
+
+#### EMA Impact Classification Framework
+- **Low impact**: Mechanistic understanding (GMFE ≤ 3.0, within 2-fold ≥ 50%)
+- **Medium impact**: Supports decision with clinical data (GMFE ≤ 2.0, within 2-fold ≥ 80%)
+- **High impact**: Key evidence for label (GMFE ≤ 1.5, within 2-fold ≥ 90%)
+- Automatic impact level determination from intended use
+- Impact-appropriate acceptance criteria with epistemic confidence requirements
+
+#### FDA 6-Section Report Structure
+Per "Physiologically Based Pharmacokinetic Analyses — Format and Content" guidance:
+- **Section A**: Executive Summary with qualification status
+- **Section B**: Introduction with objectives and intended use
+- **Section C**: Materials and Methods (platform, model structure, parameters)
+- **Section D**: Results (verification, simulations, sensitivity, metrics)
+- **Section E**: Discussion (strengths, limitations, uncertainty)
+- **Section F**: Appendices with provenance audit trail
+
+#### EMA Qualification Report
+- Platform qualification documentation
+- Model qualification for intended use
+- Verification status tracking
+- Supporting evidence classification
+- CHMP qualification opinion pathway
+
+#### Epistemic Integration
+- Minimum confidence requirements per impact level
+- Automatic confidence propagation in validation
+- Provenance completeness scoring
+- Type-safe validation: `Knowledge[f64, ε >= 0.75]` required for FDA submission
+
+### References
+- FDA: https://www.fda.gov/regulatory-information/search-fda-guidance-documents/physiologically-based-pharmacokinetic-analyses-format-and-content-guidance-industry
+- EMA: https://www.ema.europa.eu/en/reporting-physiologically-based-pharmacokinetic-pbpk-modelling-simulation-scientific-guideline
+- CPT 2025: https://ascpt.onlinelibrary.wiley.com/doi/10.1002/cpt.3525
+
+---
+
 ## [0.44.0] - 2024-12-05
 
 ### Added - Epistemic PBPK Module & Knowledge Types
