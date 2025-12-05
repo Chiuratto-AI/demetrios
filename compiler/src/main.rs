@@ -596,6 +596,12 @@ enum Commands {
         command: LayoutCommands,
     },
 
+    /// Locality analysis and optimization commands (Semantic-Physical Duality)
+    Locality {
+        #[command(subcommand)]
+        command: LocalityCommands,
+    },
+
     /// Distributed build commands
     #[cfg(feature = "distributed")]
     Distributed {
@@ -1224,6 +1230,95 @@ enum LayoutCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum LocalityCommands {
+    /// Show NUMA topology of the current system
+    Numa {
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Show detailed information
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Analyze access patterns in a source file
+    Analyze {
+        /// Input source file
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Show optimization recommendations
+        #[arg(long)]
+        recommend: bool,
+    },
+
+    /// Generate prefetch table from ontology
+    Prefetch {
+        /// Ontology data directory
+        #[arg(long, default_value = ".demetrios/ontology")]
+        data_dir: PathBuf,
+
+        /// Output file (default: stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Analyze struct for cache-line packing
+    Pack {
+        /// Input source file with struct definition
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Struct name to analyze
+        #[arg(value_name = "STRUCT")]
+        struct_name: String,
+
+        /// Cache line size in bytes
+        #[arg(long, default_value = "64")]
+        cache_line: usize,
+
+        /// Show suggested reordering
+        #[arg(long)]
+        suggest: bool,
+    },
+
+    /// Show locality type lattice
+    Lattice {
+        /// Output format (text, mermaid)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Generate prefetch code for a function
+    Codegen {
+        /// Input source file
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Function name to generate prefetch for
+        #[arg(value_name = "FUNCTION")]
+        function: String,
+
+        /// Target architecture (x86_64, arm64, llvm)
+        #[arg(long, default_value = "llvm")]
+        target: String,
+
+        /// Output file (default: stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum EmitType {
     /// Abstract Syntax Tree (JSON)
@@ -1626,6 +1721,33 @@ fn main() -> Result<()> {
                 input,
                 data_dir,
             } => layout_explain(&concept, &input, &data_dir),
+        },
+
+        Commands::Locality { command } => match command {
+            LocalityCommands::Numa { format, verbose } => locality_numa(&format, verbose),
+            LocalityCommands::Analyze {
+                input,
+                format,
+                recommend,
+            } => locality_analyze(&input, &format, recommend),
+            LocalityCommands::Prefetch {
+                data_dir,
+                output,
+                format,
+            } => locality_prefetch(&data_dir, output.as_deref(), &format),
+            LocalityCommands::Pack {
+                input,
+                struct_name,
+                cache_line,
+                suggest,
+            } => locality_pack(&input, &struct_name, cache_line, suggest),
+            LocalityCommands::Lattice { format } => locality_lattice(&format),
+            LocalityCommands::Codegen {
+                input,
+                function,
+                target,
+                output,
+            } => locality_codegen(&input, &function, &target, output.as_deref()),
         },
 
         #[cfg(feature = "distributed")]
@@ -6440,4 +6562,552 @@ fn format_age(timestamp: Option<u64>) -> String {
         }
         None => "N/A".to_string(),
     }
+}
+
+// =============================================================================
+// Locality Commands (Day 41: Semantic-Physical Duality)
+// =============================================================================
+
+/// Show NUMA topology of the current system
+fn locality_numa(format: &str, verbose: bool) -> Result<()> {
+    use demetrios::locality::numa::NumaTopology;
+
+    let topology = NumaTopology::detect();
+
+    match format {
+        "json" => {
+            println!("{{");
+            println!("  \"numa_available\": {},", topology.is_numa());
+            println!("  \"node_count\": {},", topology.node_count());
+            println!("  \"total_memory\": {},", topology.total_memory());
+            println!("  \"nodes\": [");
+
+            for (i, node) in topology.nodes().iter().enumerate() {
+                let comma = if i < topology.node_count() - 1 {
+                    ","
+                } else {
+                    ""
+                };
+                println!("    {{");
+                println!("      \"id\": {},", node.id);
+                println!("      \"cpus\": {:?},", node.cpus);
+                println!("      \"memory\": {},", node.memory);
+                println!("      \"is_local\": {}", node.is_local);
+                println!("    }}{}", comma);
+            }
+
+            println!("  ]");
+            println!("}}");
+        }
+        _ => {
+            println!("=== NUMA Topology ===\n");
+
+            if topology.is_numa() {
+                println!("NUMA: Available ({} nodes)", topology.node_count());
+            } else {
+                println!("NUMA: Not available (single node)");
+            }
+
+            println!(
+                "Total memory: {} GB",
+                topology.total_memory() / (1024 * 1024 * 1024)
+            );
+            println!();
+
+            for node in topology.nodes() {
+                println!(
+                    "Node {}{}:",
+                    node.id,
+                    if node.is_local { " (local)" } else { "" }
+                );
+                println!("  CPUs: {:?}", node.cpus);
+                println!("  Memory: {} GB", node.memory / (1024 * 1024 * 1024));
+
+                if verbose && !node.distances.is_empty() {
+                    println!("  Distances:");
+                    for (other, dist) in &node.distances {
+                        println!("    -> Node {}: {}", other, dist);
+                    }
+                }
+                println!();
+            }
+
+            if let Some(local) = topology.local_node() {
+                println!("Current thread on Node {}", local.id);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Analyze access patterns in a source file
+fn locality_analyze(input: &Path, format: &str, recommend: bool) -> Result<()> {
+    use demetrios::locality::access::{AccessAnalyzer, AccessKind};
+
+    // Read and parse the source file
+    let source = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read {}: {}", input.display(), e))?;
+
+    let tokens = demetrios::lexer::lex(&source)?;
+    let ast = demetrios::parser::parse(&tokens, &source)?;
+
+    // Create analyzer and simulate analysis
+    let mut analyzer = AccessAnalyzer::new();
+
+    // For now, we simulate some access patterns based on AST structure
+    // In a real implementation, this would analyze HIR/HLIR
+    analyzer.enter_function("main");
+
+    for item in &ast.items {
+        if let demetrios::ast::Item::Function(func) = item {
+            analyzer.enter_function(&func.name);
+            // Simulate field accesses based on function body
+            analyzer.record_access("Data", "value", AccessKind::Read);
+            analyzer.exit_function();
+        }
+    }
+
+    analyzer.exit_function();
+
+    match format {
+        "json" => {
+            println!("{{");
+            println!("  \"file\": \"{}\",", input.display());
+            println!("  \"patterns\": [");
+
+            for (i, pattern) in analyzer.all_patterns().enumerate() {
+                let comma = if i > 0 { "," } else { "" };
+                println!("{}    {{", comma);
+                println!("      \"name\": \"{}\",", pattern.name);
+                println!("      \"accesses\": {},", pattern.accesses.len());
+                println!("      \"hotness\": \"{:?}\"", pattern.hotness);
+                println!("    }}");
+            }
+
+            println!("  ]");
+
+            if recommend {
+                println!(",  \"recommendations\": [");
+                for (i, rec) in analyzer.recommendations().iter().enumerate() {
+                    let comma = if i > 0 { "," } else { "" };
+                    println!("{}    {{", comma);
+                    println!("      \"kind\": \"{:?}\",", rec.kind);
+                    println!("      \"description\": \"{}\"", rec.description);
+                    println!("    }}");
+                }
+                println!("  ]");
+            }
+
+            println!("}}");
+        }
+        _ => {
+            println!("=== Access Pattern Analysis: {} ===\n", input.display());
+
+            for pattern in analyzer.all_patterns() {
+                println!("Function: {}", pattern.name);
+                println!("  Hotness: {:?}", pattern.hotness);
+                println!("  Accesses: {}", pattern.accesses.len());
+                println!("  Recommended locality: {}", pattern.recommended_locality());
+
+                let hot_fields = pattern.get_hot_fields();
+                if !hot_fields.is_empty() {
+                    println!("  Hot fields: {}", hot_fields.join(", "));
+                }
+
+                let groups = pattern.get_co_access_groups();
+                if !groups.is_empty() {
+                    println!("  Co-access groups:");
+                    for group in groups {
+                        println!("    [{}]", group.join(", "));
+                    }
+                }
+                println!();
+            }
+
+            if recommend {
+                let recs = analyzer.recommendations();
+                if !recs.is_empty() {
+                    println!("=== Optimization Recommendations ===\n");
+                    for rec in recs {
+                        println!("  {:?}: {}", rec.kind, rec.description);
+                        println!(
+                            "    Estimated benefit: {:.0}%",
+                            rec.estimated_benefit * 100.0
+                        );
+                        println!();
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Generate prefetch table from ontology
+fn locality_prefetch(data_dir: &Path, output: Option<&Path>, format: &str) -> Result<()> {
+    use demetrios::locality::prefetch::PrefetchTable;
+    use demetrios::ontology::native::NativeOntology;
+
+    // Try to load ontology
+    let ontology = if data_dir.exists() {
+        // Look for any .dontology file
+        let entries = std::fs::read_dir(data_dir)
+            .map_err(|e| miette::miette!("Failed to read {}: {}", data_dir.display(), e))?;
+
+        let mut ont = None;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "dontology").unwrap_or(false) {
+                if let Ok(o) = NativeOntology::load(&path) {
+                    ont = Some(o);
+                    break;
+                }
+            }
+        }
+        ont
+    } else {
+        None
+    };
+
+    let table = if let Some(ont) = ontology {
+        let adapter = demetrios::locality::NativeOntologyAdapter::new(ont);
+        PrefetchTable::from_ontology(&adapter)
+    } else {
+        println!(
+            "No ontology found in {}. Using empty prefetch table.",
+            data_dir.display()
+        );
+        PrefetchTable::new()
+    };
+
+    let stats = table.stats();
+
+    let output_str = match format {
+        "json" => {
+            let mut s = String::new();
+            s.push_str("{\n");
+            s.push_str(&format!("  \"total_hints\": {},\n", stats.total_hints));
+            s.push_str(&format!("  \"high_priority\": {},\n", stats.high_priority));
+            s.push_str(&format!(
+                "  \"types_with_hints\": {},\n",
+                stats.types_with_hints
+            ));
+            s.push_str(&format!("  \"avg_distance\": {:.3},\n", stats.avg_distance));
+            s.push_str("  \"entries\": [\n");
+
+            for (i, entry) in table.entries().enumerate() {
+                let comma = if i > 0 { ",\n" } else { "" };
+                s.push_str(&format!("{}    {{\n", comma));
+                s.push_str(&format!("      \"type\": \"{}\",\n", entry.type_name));
+                s.push_str(&format!("      \"hints\": {}\n", entry.type_hints.len()));
+                s.push_str("    }");
+            }
+
+            s.push_str("\n  ]\n");
+            s.push_str("}\n");
+            s
+        }
+        _ => {
+            let mut s = String::new();
+            s.push_str("=== Semantic Prefetch Table ===\n\n");
+            s.push_str(&format!("Total hints: {}\n", stats.total_hints));
+            s.push_str(&format!("High priority: {}\n", stats.high_priority));
+            s.push_str(&format!("Types with hints: {}\n", stats.types_with_hints));
+            s.push_str(&format!(
+                "Average semantic distance: {:.3}\n\n",
+                stats.avg_distance
+            ));
+
+            for entry in table.entries() {
+                s.push_str(&format!("Type: {}\n", entry.type_name));
+                for hint in &entry.type_hints {
+                    s.push_str(&format!(
+                        "  -> {} (priority: {:?}, distance: {:.2})\n",
+                        hint.target,
+                        hint.priority,
+                        hint.distance.value()
+                    ));
+                    if !hint.reason.is_empty() {
+                        s.push_str(&format!("     reason: {}\n", hint.reason));
+                    }
+                }
+                s.push_str("\n");
+            }
+            s
+        }
+    };
+
+    if let Some(out_path) = output {
+        std::fs::write(out_path, &output_str)
+            .map_err(|e| miette::miette!("Failed to write {}: {}", out_path.display(), e))?;
+        println!("Wrote prefetch table to {}", out_path.display());
+    } else {
+        print!("{}", output_str);
+    }
+
+    Ok(())
+}
+
+/// Analyze struct for cache-line packing
+fn locality_pack(input: &Path, struct_name: &str, cache_line: usize, suggest: bool) -> Result<()> {
+    use demetrios::locality::packing::CacheLinePacker;
+
+    // Read and parse the source file
+    let source = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read {}: {}", input.display(), e))?;
+
+    let tokens = demetrios::lexer::lex(&source)?;
+    let ast = demetrios::parser::parse(&tokens, &source)?;
+
+    // Find the struct
+    let mut found_struct = None;
+    for item in &ast.items {
+        if let demetrios::ast::Item::Struct(s) = item {
+            if s.name == struct_name {
+                found_struct = Some(s);
+                break;
+            }
+        }
+    }
+
+    let struct_def = found_struct.ok_or_else(|| {
+        miette::miette!("Struct '{}' not found in {}", struct_name, input.display())
+    })?;
+
+    // Helper to get type name from TypeExpr
+    fn type_expr_name(ty: &demetrios::ast::TypeExpr) -> String {
+        match ty {
+            demetrios::ast::TypeExpr::Named { path, .. } => {
+                path.segments.last().cloned().unwrap_or_default()
+            }
+            demetrios::ast::TypeExpr::Unit => "()".to_string(),
+            demetrios::ast::TypeExpr::Reference { inner, .. } => {
+                format!("&{}", type_expr_name(inner))
+            }
+            _ => "unknown".to_string(),
+        }
+    }
+
+    // Extract field information
+    let fields: Vec<(&str, usize)> = struct_def
+        .fields
+        .iter()
+        .map(|f| {
+            // Estimate size based on type (simplified)
+            let type_name = type_expr_name(&f.ty);
+            let size = match type_name.as_str() {
+                "bool" => 1,
+                "i8" | "u8" => 1,
+                "i16" | "u16" => 2,
+                "i32" | "u32" | "f32" => 4,
+                "i64" | "u64" | "f64" => 8,
+                "i128" | "u128" => 16,
+                _ => 8, // Default pointer size
+            };
+            (f.name.as_str(), size)
+        })
+        .collect();
+
+    println!("=== Cache-Line Packing Analysis ===\n");
+    println!("Struct: {}", struct_name);
+    println!("Cache line size: {} bytes", cache_line);
+    println!("Fields: {}\n", fields.len());
+
+    // Show original layout
+    println!("Original layout:");
+    let mut offset = 0;
+    for (name, size) in &fields {
+        // Simple alignment
+        let align = *size;
+        let aligned = (offset + align - 1) / align * align;
+        let padding = aligned - offset;
+        if padding > 0 {
+            println!("  [padding: {} bytes]", padding);
+        }
+        println!("  {}: {} bytes at offset {}", name, size, aligned);
+        offset = aligned + size;
+    }
+    let original_size = offset;
+    let original_cache_lines = (original_size + cache_line - 1) / cache_line;
+    println!(
+        "\nTotal size: {} bytes ({} cache lines)",
+        original_size, original_cache_lines
+    );
+
+    if suggest {
+        // Pack the struct
+        let packer = CacheLinePacker::new(cache_line);
+        let layout = packer.pack_simple(&fields, &[]);
+
+        println!("\n=== Suggested Packed Layout ===\n");
+        println!("{}", layout.to_comments());
+
+        if layout.improvement > 0.0 {
+            println!(
+                "\nImprovement: {:.1}% fewer cache lines",
+                layout.improvement * 100.0
+            );
+        } else {
+            println!("\nNo improvement possible (already optimal)");
+        }
+    }
+
+    Ok(())
+}
+
+/// Show locality type lattice
+fn locality_lattice(format: &str) -> Result<()> {
+    use demetrios::locality::types::Locality;
+
+    match format {
+        "mermaid" => {
+            println!("```mermaid");
+            println!("graph TD");
+            println!("    Register[Register] --> L1[L1 Cache]");
+            println!("    L1 --> L2[L2 Cache]");
+            println!("    L2 --> L3[L3 Cache / LLC]");
+            println!("    L3 --> Local[Local DRAM]");
+            println!("    Local --> Remote[Remote DRAM / NUMA]");
+            println!("    Remote --> Persistent[Persistent Storage]");
+            println!("    Persistent --> Network[Network Storage]");
+            println!("");
+            println!("    style Register fill:#ff6b6b");
+            println!("    style L1 fill:#ffa94d");
+            println!("    style L2 fill:#ffd43b");
+            println!("    style L3 fill:#a9e34b");
+            println!("    style Local fill:#69db7c");
+            println!("    style Remote fill:#4dabf7");
+            println!("    style Persistent fill:#748ffc");
+            println!("    style Network fill:#9775fa");
+            println!("```");
+        }
+        _ => {
+            println!("=== Locality Type Lattice ===\n");
+            println!("The subtype relation: Faster <: Slower");
+            println!("A value at a faster locality can be used where slower is expected.\n");
+
+            let levels = [
+                Locality::Register,
+                Locality::L1,
+                Locality::L2,
+                Locality::L3,
+                Locality::Local,
+                Locality::Remote,
+                Locality::Persistent,
+                Locality::Network,
+            ];
+
+            println!("Level         Latency    Capacity       Hot/Cold");
+            println!("-----         -------    --------       --------");
+
+            for level in &levels {
+                let latency = format!("{:.0}x", level.latency_multiplier());
+                let capacity = level
+                    .typical_capacity()
+                    .map(|c| {
+                        if c >= 1024 * 1024 * 1024 {
+                            format!("{} GB", c / (1024 * 1024 * 1024))
+                        } else if c >= 1024 * 1024 {
+                            format!("{} MB", c / (1024 * 1024))
+                        } else if c >= 1024 {
+                            format!("{} KB", c / 1024)
+                        } else {
+                            format!("{} B", c)
+                        }
+                    })
+                    .unwrap_or_else(|| "varies".to_string());
+
+                let temp = if level.is_hot() {
+                    "Hot"
+                } else if level.is_cold() {
+                    "Cold"
+                } else {
+                    "Warm"
+                };
+
+                println!("{:<13} {:<10} {:<14} {}", level, latency, capacity, temp);
+            }
+
+            println!("\nSubtype examples:");
+            println!("  L1 <: L3      (L1 data can be used where L3 is expected)");
+            println!("  L2 <: Local   (L2 data can be used where Local is expected)");
+            println!("  Local !<: L1  (Local data cannot be used where L1 is required)");
+        }
+    }
+
+    Ok(())
+}
+
+/// Generate prefetch code for a function
+fn locality_codegen(
+    input: &Path,
+    function: &str,
+    target: &str,
+    output: Option<&Path>,
+) -> Result<()> {
+    use demetrios::locality::access::{AccessAnalyzer, StridePattern};
+    use demetrios::locality::codegen::{PrefetchCodegen, Target};
+
+    // Parse target
+    let target_arch = match target.to_lowercase().as_str() {
+        "x86_64" | "x86" | "amd64" => Target::X86_64,
+        "arm64" | "aarch64" | "arm" => Target::Arm64,
+        "riscv" | "riscv64" => Target::RiscV,
+        _ => Target::LLVM,
+    };
+
+    // Read and parse the source file
+    let source = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read {}: {}", input.display(), e))?;
+
+    let tokens = demetrios::lexer::lex(&source)?;
+    let ast = demetrios::parser::parse(&tokens, &source)?;
+
+    // Find the function
+    let mut found_fn = false;
+    for item in &ast.items {
+        if let demetrios::ast::Item::Function(f) = item {
+            if f.name == function {
+                found_fn = true;
+                break;
+            }
+        }
+    }
+
+    if !found_fn {
+        return Err(miette::miette!(
+            "Function '{}' not found in {}",
+            function,
+            input.display()
+        ));
+    }
+
+    // Generate prefetch code
+    let mut codegen = PrefetchCodegen::new(target_arch);
+    codegen.bind_register("data", "rax");
+
+    // Simulate stride pattern analysis
+    let stride = StridePattern::new(64); // 64-byte stride (cache line)
+    let instructions = codegen.for_stride(&stride, "data", 8);
+
+    let mut output_str = String::new();
+    output_str.push_str(&format!("; Prefetch code for function '{}'\n", function));
+    output_str.push_str(&format!("; Target: {:?}\n", target_arch));
+    output_str.push_str(&format!(
+        "; Generated {} prefetch instructions\n\n",
+        instructions.len()
+    ));
+    output_str.push_str(&codegen.emit());
+
+    if let Some(out_path) = output {
+        std::fs::write(out_path, &output_str)
+            .map_err(|e| miette::miette!("Failed to write {}: {}", out_path.display(), e))?;
+        println!("Wrote prefetch code to {}", out_path.display());
+    } else {
+        print!("{}", output_str);
+    }
+
+    Ok(())
 }

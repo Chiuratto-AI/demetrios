@@ -55,6 +55,7 @@ pub mod lexer;
 pub mod linear;
 pub mod lint;
 pub mod llm;
+pub mod locality;
 #[cfg(feature = "lsp")]
 pub mod lsp;
 pub mod macro_system;
