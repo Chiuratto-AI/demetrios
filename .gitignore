@@ -3,8 +3,8 @@
 /compiler/target/
 **/target/
 
-# Cargo lock for libraries (keep for binaries)
-# Cargo.lock
+# Cargo
+# Cargo.lock  # Keep for reproducible builds
 
 # IDE
 .idea/
@@ -12,18 +12,24 @@
 *.swp
 *.swo
 *~
+.project
+.classpath
+.settings/
 
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Debug
 *.pdb
+*.dSYM/
 
 # Temporary files
 *.tmp
 *.temp
 *.bak
+*.orig
 
 # Coverage
 *.gcno
@@ -31,13 +37,16 @@ Thumbs.db
 *.gcov
 tarpaulin-report.html
 lcov.info
+coverage/
 
 # Profiling
 perf.data
 perf.data.old
 flamegraph.svg
+*.profraw
+*.profdata
 
-# SQLite databases (domain ontologies)
+# SQLite databases
 *.db
 *.sqlite
 *.sqlite3
@@ -45,9 +54,39 @@ flamegraph.svg
 # Log files
 *.log
 
-# Generated documentation
-/docs/api/
+# Generated documentation (keep docs/api/*.md)
+/compiler/docs/api/generated/
 /docs/book/
 
 # Test outputs
 test-results/
+test-output/
+
+# Benchmark results
+criterion/
+
+# Archive (development artifacts)
+/archive/
+
+# Editor backups
+*~
+\#*\#
+.\#*
+
+# LLVM/Compiler intermediates
+*.ll
+*.bc
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# D language build outputs
+*.do
+*.di
+
+# Node modules (for VS Code extension)
+node_modules/
+*.vsix

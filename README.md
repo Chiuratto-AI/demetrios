@@ -1,260 +1,244 @@
 # Demetrios (D)
 
-A novel L0 systems + scientific programming language.
+**A novel systems + scientific programming language with epistemic computing.**
 
-[![Version](https://img.shields.io/badge/version-0.30.0-blue.svg)](CHANGELOG.md)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.42.0-blue.svg)](CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green.svg)](LICENSE-MIT)
+[![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 
-## Features
+---
 
-### 🧠 **The Epistemic Paradigm Shift (v0.30.0)**
-- **Knowledge[τ, ε, δ, Φ] Types**: Every value carries its epistemic history
-- **4-Layer Ontology Architecture**: From 850 primitives to 15M federated terms
-- **Dependent Ontological Types**: Types encode confidence requirements
-- **Epistemic Heterogeneity Resolution**: Bayesian, AGM, consensus strategies
-- **Integrity Warnings**: Compile-time diagnostics for uncertain knowledge
-- **LSP Extensions**: IDE hints for confidence levels and provenance
+## Overview
 
-### 🔬 **Scientific Computing (v0.28.0)**
-- **Linear Algebra**: BLAS/LAPACK integration with matrix decompositions
-- **Numerical Methods**: ODE solvers, optimization, integration, FFT
-- **Automatic Differentiation**: Forward/reverse mode with higher-order derivatives
-- **Probabilistic Programming**: MCMC, variational inference, 15+ distributions
-- **Pharmacokinetic Modeling**: Compartment models, population PK, NCA
-- **Interoperability**: NumPy/R bridges with zero-copy array sharing
+Demetrios is a new programming language designed for systems programming and scientific computing, with first-class support for:
 
-### 🚀 **Core Language Features**
-- **Novel Syntax**: Designed for scientific and medical computing
-- **Full Algebraic Effects**: IO, Mut, Alloc, GPU, Prob with handlers
-- **Linear/Affine Types**: Safe resource management
-- **Units of Measure**: Compile-time dimensional analysis
-- **Refinement Types**: SMT-backed constraint verification
-- **GPU-Native**: First-class GPU memory and kernels
+- **Algebraic Effects** - Composable effect handlers for IO, mutation, allocation, GPU, and more
+- **Linear/Affine Types** - Compile-time resource management without garbage collection
+- **Units of Measure** - Dimensional analysis catches unit errors at compile time
+- **Refinement Types** - SMT-backed verification of value constraints
+- **Epistemic Computing** - Track confidence, provenance, and uncertainty through computations
+- **GPU-Native** - First-class GPU memory regions and kernel syntax
 
-### 🛠️ **Developer Experience**
-- **IDE Support**: Full LSP server with VS Code extension
-- **LLVM Backend**: Native AOT compilation with optimizations
-- **Documentation Generator**: HTML docs, mdBook integration, doctests
-
-## Building
+## Quick Start
 
 ```bash
+# Build the compiler
 cd compiler
 cargo build --release
 
-# With all features
-cargo build --release --features "jit,smt,lsp"
-```
-
-## Usage
-
-```bash
-# Compile
-dc compile program.d -o program
-
-# Build native executable (requires --features llvm)
-dc build program.d -O2
-
-# Type check only
-dc check program.d
+# Check a program
+./target/release/dc check examples/hello.d
 
 # Run with JIT (requires --features jit)
-dc run program.d
+./target/release/dc run examples/hello.d
 
-# REPL
-dc repl
-
-# Generate documentation
-dc doc --open
-
-# Generate mdBook
-dc doc-book
-
-# Run doctests
-dc doctest
-
-# Start LSP server (requires --features lsp)
-demetrios-lsp --stdio
+# Start REPL
+./target/release/dc repl
 ```
 
-## IDE Support
-
-Demetrios includes a full-featured Language Server Protocol (LSP) implementation:
-
-- **Real-time Diagnostics**: Syntax, type, effect, and ownership errors
-- **Hover Information**: Type info, documentation, and effect signatures
-- **Go to Definition**: Navigate to function, type, and variable definitions
-- **Find References**: Find all usages across the codebase
-- **Code Completion**: Context-aware completions with snippets
-- **Semantic Highlighting**: Rich syntax highlighting with custom token types
-
-### VS Code Extension
-
-Install the VS Code extension from `editors/vscode/`:
-
-```bash
-cd editors/vscode
-npm install
-npm run compile
-# Then install the .vsix or use VS Code's "Developer: Install Extension from Location"
-```
-
-See [docs/lsp.md](docs/lsp.md) for detailed LSP documentation.
-
-## Scientific Computing Examples
-
-### Linear Algebra & Automatic Differentiation
+## Example
 
 ```d
-use scientific::linalg::{Matrix, Vector};
-use scientific::autodiff::{Var, gradient};
+module pharmacokinetics
 
-fn main() with IO, Alloc {
-    // Create matrices
-    let a = Matrix::from_nested(&[
-        [1.0, 2.0],
-        [3.0, 4.0],
-    ]);
+use units::{mg, mL, h}
 
-    // Matrix operations with BLAS backend
-    let eigenvals = linalg::eig(&a)?.values_real;
-    println!("Eigenvalues: {:?}", eigenvals);
+/// Two-compartment PK model with effect tracking
+fn simulate_pk(
+    dose: mg,
+    volume: mL,
+    clearance: mL/h,
+) -> Vec<(h, mg/mL)> with Alloc, Prob {
+    let initial_conc = dose / volume
+    let eta = sample(Normal(0.0, 0.3))  // Random effect
+    
+    // Simulate with variability
+    (0..24).map(|t| {
+        let time = t as f64 : h
+        let conc = initial_conc * exp(-clearance/volume * time * (1.0 + eta))
+        (time, conc)
+    }).collect()
+}
 
-    // Automatic differentiation
-    let f = |x: &Vector<Var>| -> Var {
-        x[0] * x[0] + x[1] * x[1]  // f(x,y) = x² + y²
-    };
-
-    let x = Vector::from_slice(&[1.0, 2.0]);
-    let grad = gradient(f, &x);  // [2.0, 4.0]
-    println!("Gradient: {:?}", grad);
+kernel fn parallel_solve(data: &[f32], out: &mut [f32]) {
+    let i = gpu.thread_id.x
+    out[i] = expensive_computation(data[i])
 }
 ```
 
-### Pharmacokinetic Modeling
+## Repository Structure
+
+```
+demetrios/
+├── compiler/           # Rust compiler implementation
+│   ├── src/            # Compiler source
+│   │   ├── lexer/      # Tokenization (Logos)
+│   │   ├── parser/     # Recursive descent + Pratt parsing
+│   │   ├── ast/        # Abstract syntax tree
+│   │   ├── check/      # Type checking
+│   │   ├── effects/    # Algebraic effect system
+│   │   ├── hir/        # High-level IR
+│   │   ├── hlir/       # SSA-based IR
+│   │   ├── codegen/    # LLVM/Cranelift/GPU backends
+│   │   ├── epistemic/  # Epistemic computing support
+│   │   ├── locality/   # Cache optimization
+│   │   └── ontology/   # Scientific ontology integration
+│   ├── benches/        # Performance benchmarks
+│   └── tests/          # Compiler unit tests
+├── stdlib/             # Standard library (D code)
+│   ├── core/           # Core types and traits
+│   ├── collections/    # Data structures
+│   ├── iter/           # Iterators
+│   ├── sync/           # Synchronization primitives
+│   └── ...
+├── spec/               # Language specification
+├── docs/               # Documentation
+│   ├── README.md       # Documentation index
+│   ├── api/            # API reference
+│   └── releases/       # Release notes
+├── examples/           # Example programs
+├── editors/            # Editor integrations
+│   └── vscode/         # VS Code extension
+├── tools/              # Development tools
+└── tests/              # Language test suite
+    ├── ui/             # Error message tests
+    ├── run-pass/       # Should compile and run
+    └── compile-fail/   # Should fail to compile
+```
+
+## Key Features
+
+### Algebraic Effects
 
 ```d
-use scientific::pkpd::{PKParameters, simulate_pk, DoseEvent};
-use units::{mg, L, h, L_h};
+fn read_config(path: string) -> Config with IO, Panic {
+    let content = read_file(path)?
+    parse_config(content)
+}
 
-fn main() with IO, Alloc {
-    // 2-compartment PK model
-    let params = PKParameters::two_compartment(
-        10.0: L_h,  // Clearance
-        50.0: L,    // Central volume
-        100.0: L,   // Peripheral volume
-        5.0: L_h    // Inter-compartmental clearance
-    );
-
-    // IV bolus dose
-    let dose = DoseEvent::iv_bolus(0.0: h, 100.0: mg);
-    let times = vec![0.0, 1.0, 2.0, 4.0, 8.0, 12.0, 24.0];
-
-    // Simulate concentration-time profile
-    let result = simulate_pk(&params, &[dose], &times);
-    println!("Cmax: {:.2} mg/L at {:.1} h", result.cmax, result.tmax);
-    println!("Half-life: {:.1} h", params.half_life());
+// Handle effects at call site
+handle read_config("app.toml") {
+    IO => filesystem_handler,
+    Panic => |e| default_config(),
 }
 ```
 
-### Probabilistic Programming & MCMC
+### Units of Measure
 
 ```d
-use scientific::prob::{Normal, MetropolisHastings};
-
-fn main() with IO, Prob {
-    // Define log-posterior for Bayesian inference
-    let log_posterior = |x: &Vector<f64>| -> f64 {
-        // Prior: x ~ Normal(0, 1)
-        let prior = Normal::new(0.0, 1.0).log_pdf(x[0]);
-
-        // Likelihood: data ~ Normal(x, 0.5)
-        let data = vec![0.5, 1.2, 0.8, 1.1, 0.9];
-        let likelihood: f64 = data.iter()
-            .map(|&y| Normal::new(x[0], 0.5).log_pdf(y))
-            .sum();
-
-        prior + likelihood
-    };
-
-    // MCMC sampling
-    let mut sampler = MetropolisHastings::new(1);
-    let x0 = Vector::from_slice(&[0.0]);
-    let mut rng = rand::thread_rng();
-
-    let samples = sampler.sample(log_posterior, &x0, 10000, &!rng);
-    println!("Posterior mean: {:.3}", samples.samples.mean());
-    println!("Acceptance rate: {:.1}%", samples.acceptance_rate * 100.0);
-}
-```
-
-## Basic Language Example
-
-```d
-module example
-
 let dose: mg = 500.0
 let volume: mL = 10.0
-let concentration: mg/mL = dose / volume
+let concentration: mg/mL = dose / volume  // Type-checked!
 
-fn simulate(params: PKParams) -> Vec<f64> with Prob, Alloc {
-    let eta = sample(Normal(0.0, 0.3))
-    // ...
-}
-
-kernel fn matmul(a: &[f32], b: &[f32], c: &mut [f32]) {
-    let i = gpu.thread_id.x
-    // ...
-}
+// Compile error: incompatible units
+// let bad: kg = dose + volume
 ```
 
-## Architecture
-
-```
-Source -> Lexer -> Parser -> AST -> Type Checker -> HIR -> HLIR -> Codegen
-                                           |
-                                           v
-                                    LSP Server (IDE)
-```
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
-
-## Documentation
-
-Demetrios includes a comprehensive documentation generator:
+### Linear Types
 
 ```d
-/// Calculate drug concentration from dose and volume.
-///
-/// @param dose The drug dose in milligrams
-/// @param volume The solution volume in milliliters
-/// @returns Concentration in mg/mL
-///
-/// @example
-/// ```d
-/// let conc = calculate_concentration(500_mg, 10_mL)
-/// assert(conc == 50_mg/mL)
-/// ```
-fn calculate_concentration(dose: mg, volume: mL) -> mg/mL {
-    dose / volume
+linear struct FileHandle {
+    fd: i32,
+}
+
+fn process(file: FileHandle) {
+    // file must be used exactly once
+    file.close()
+}  // Compile error if file not consumed
+```
+
+### Refinement Types
+
+```d
+type Positive = { x: i32 | x > 0 }
+type Percentage = { x: f64 | 0.0 <= x && x <= 100.0 }
+
+fn divide(a: i32, b: { x: i32 | x != 0 }) -> i32 {
+    a / b  // Division by zero impossible
 }
 ```
 
-- **HTML Documentation**: Responsive, themed API documentation
-- **mdBook Integration**: Generate readable guides and tutorials
-- **Doctests**: Run code examples from documentation as tests
-- **Coverage**: Track documentation coverage statistics
+### Epistemic Computing
 
-## Feature Flags
+```d
+// Values carry confidence and provenance
+let measurement: Knowledge<f64> = Knowledge::new(
+    value: 98.6,
+    confidence: 0.95,
+    source: Source::Measurement("thermometer"),
+)
+
+// Confidence propagates through computations
+let derived = measurement.map(|t| (t - 32.0) * 5.0/9.0)
+assert(derived.confidence <= measurement.confidence)
+```
+
+## Building from Source
+
+### Prerequisites
+
+- Rust 1.75+ (edition 2024)
+- Optional: LLVM 15+ (for native compilation)
+- Optional: Z3 (for refinement type verification)
+
+### Build Commands
+
+```bash
+cd compiler
+
+# Development build
+cargo build
+
+# Release build
+cargo build --release
+
+# With all features
+cargo build --release --features full
+
+# Run tests
+cargo test
+
+# Run benchmarks
+cargo bench
+```
+
+### Feature Flags
 
 | Feature | Description |
 |---------|-------------|
-| `jit`   | Cranelift JIT backend for fast development |
-| `llvm`  | LLVM backend for optimized native code |
-| `smt`   | Z3 SMT solver for refinement type verification |
-| `lsp`   | Language Server Protocol for IDE integration |
-| `full`  | Enable all features |
+| `jit` | Cranelift JIT for fast development iteration |
+| `llvm` | LLVM backend for optimized native binaries |
+| `gpu` | GPU codegen (PTX and SPIR-V) |
+| `smt` | Z3 SMT solver for refinement types |
+| `lsp` | Language Server Protocol for IDE support |
+| `distributed` | Distributed build support |
+| `ontology` | Scientific ontology integration |
+| `full` | Enable all features |
+
+## IDE Support
+
+Full LSP implementation with:
+- Real-time diagnostics
+- Hover information with types and effects
+- Go to definition
+- Find references
+- Code completion
+- Semantic highlighting
+
+Install VS Code extension from `editors/vscode/`.
+
+## Documentation
+
+- **[Language Specification](spec/LANGUAGE_SPECIFICATION.md)** - Formal language definition
+- **[Documentation Index](docs/README.md)** - All documentation
+- **[Architecture](docs/ARCHITECTURE.md)** - Compiler design
+- **[Contributing](CONTRIBUTING.md)** - How to contribute
 
 ## License
 
-MIT OR Apache-2.0
+Dual-licensed under MIT and Apache 2.0. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
+
+## Authors
+
+- Demetrios Chiuratto Agourakis
+- Dionisio Chiuratto Agourakis
