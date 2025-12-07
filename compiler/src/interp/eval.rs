@@ -483,6 +483,77 @@ impl Interpreter {
             HirExprKind::Perform { .. } | HirExprKind::Handle { .. } | HirExprKind::Sample(_) => {
                 Ok(Value::Unit)
             }
+
+            // ==================== EPISTEMIC EXPRESSIONS ====================
+            HirExprKind::Knowledge {
+                value,
+                epsilon,
+                validity,
+                provenance,
+            } => {
+                // For interpreter, evaluate the inner value and wrap with epistemic metadata
+                let val = self.eval_expr(value)?;
+                let eps = self.eval_expr(epsilon)?;
+                // Return the value for now - a full implementation would return a Knowledge struct
+                Ok(val)
+            }
+
+            HirExprKind::Do { variable, value } => {
+                // Do intervention - in interpreter, just evaluate the value
+                // A full implementation would track causal graph modifications
+                let val = self.eval_expr(value)?;
+                Ok(val)
+            }
+
+            HirExprKind::Counterfactual {
+                factual,
+                intervention,
+                outcome,
+            } => {
+                // Counterfactual reasoning requires:
+                // 1. Abduction: infer latent variables from factual
+                // 2. Action: apply intervention
+                // 3. Prediction: compute outcome under modified model
+                // For now, just evaluate the outcome expression
+                self.eval_expr(outcome)
+            }
+
+            HirExprKind::Query {
+                target,
+                given,
+                interventions,
+            } => {
+                // Probabilistic query - P(target | given, do(interventions))
+                // For interpreter, just evaluate the target
+                // A full implementation would compute the probability
+                self.eval_expr(target)
+            }
+
+            HirExprKind::Observe { variable, value } => {
+                // Observe for probabilistic programming
+                // Just evaluate the value for now
+                self.eval_expr(value)
+            }
+
+            HirExprKind::EpsilonOf(expr) => {
+                // Extract epsilon - return 1.0 (perfect confidence) for now
+                Ok(Value::Float(1.0))
+            }
+
+            HirExprKind::ProvenanceOf(expr) => {
+                // Extract provenance - return unit for now
+                Ok(Value::Unit)
+            }
+
+            HirExprKind::ValidityOf(expr) => {
+                // Extract validity - return unit for now
+                Ok(Value::Unit)
+            }
+
+            HirExprKind::Unwrap(expr) => {
+                // Unwrap Knowledge to get inner value
+                self.eval_expr(expr)
+            }
         }
     }
 

@@ -1,0 +1,25 @@
+[package]
+name = "demetrios-gpu"
+version = "0.1.0"
+edition = "2021"
+authors = ["Demetrios Chiuratto Agourakis"]
+description = "GPU backend for the Demetrios programming language"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/demetrios-lang/demetrios"
+
+[dependencies]
+thiserror = "1.0"
+rustc-hash = "2.0"
+indexmap = "2.2"
+
+# Optional CUDA/GPU dependencies (feature-gated)
+# cudarc = { version = "0.10", optional = true }
+
+[dev-dependencies]
+# Test utilities
+
+[features]
+default = []
+# cuda = ["cudarc"]
+# vulkan = []
+# metal = []

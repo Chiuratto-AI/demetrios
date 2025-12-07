@@ -694,6 +694,84 @@ impl Formatter {
                 Doc::Concat(parts)
             }
             TypeExpr::Infer => Doc::Text("_".to_string()),
+
+            // Epistemic types
+            TypeExpr::Knowledge { value_type, .. } => {
+                let mut parts = Vec::new();
+                parts.push(Doc::Text("Knowledge[".to_string()));
+                parts.push(self.type_to_doc(value_type));
+                parts.push(Doc::Text("]".to_string()));
+                Doc::Concat(parts)
+            }
+            TypeExpr::Quantity { numeric_type, unit } => {
+                let unit_str = unit
+                    .base_units
+                    .iter()
+                    .map(|(name, exp)| {
+                        if *exp == 1 {
+                            name.clone()
+                        } else {
+                            format!("{}^{}", name, exp)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("*");
+                let mut parts = Vec::new();
+                parts.push(Doc::Text("Quantity[".to_string()));
+                parts.push(self.type_to_doc(numeric_type));
+                parts.push(Doc::Text(format!(", {}]", unit_str)));
+                Doc::Concat(parts)
+            }
+            TypeExpr::Tensor {
+                element_type,
+                shape,
+            } => {
+                let shape_str = shape
+                    .iter()
+                    .map(|d| match d {
+                        crate::ast::TensorDim::Named(n) => n.clone(),
+                        crate::ast::TensorDim::Fixed(s) => s.to_string(),
+                        crate::ast::TensorDim::Dynamic => "_".to_string(),
+                        crate::ast::TensorDim::Expr(_) => "<expr>".to_string(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let mut parts = Vec::new();
+                parts.push(Doc::Text("Tensor[".to_string()));
+                parts.push(self.type_to_doc(element_type));
+                parts.push(Doc::Text(format!(", ({})]", shape_str)));
+                Doc::Concat(parts)
+            }
+            TypeExpr::Ontology { ontology, term } => {
+                if let Some(t) = term {
+                    Doc::Text(format!("OntologyTerm[{}:{}]", ontology, t))
+                } else {
+                    Doc::Text(format!("OntologyTerm[{}]", ontology))
+                }
+            }
+            TypeExpr::Linear { inner, linearity } => {
+                let kind = match linearity {
+                    crate::ast::LinearityKind::Linear => "linear",
+                    crate::ast::LinearityKind::Affine => "affine",
+                    crate::ast::LinearityKind::Relevant => "relevant",
+                    crate::ast::LinearityKind::Unrestricted => "",
+                };
+                if kind.is_empty() {
+                    self.type_to_doc(inner)
+                } else {
+                    Doc::Concat(vec![
+                        self.type_to_doc(inner),
+                        Doc::Text(format!(" @ {}", kind)),
+                    ])
+                }
+            }
+            TypeExpr::Effected { inner, effects } => {
+                let effects_str = effects.effects.join(", ");
+                Doc::Concat(vec![
+                    self.type_to_doc(inner),
+                    Doc::Text(format!(" ! {{{}}}", effects_str)),
+                ])
+            }
         }
     }
 

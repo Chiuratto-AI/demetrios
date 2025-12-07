@@ -566,6 +566,185 @@ pub enum TypeExpr {
     },
     /// Infer type: _
     Infer,
+
+    // ==================== DEMETRIOS EPISTEMIC TYPES ====================
+    /// Knowledge type: Knowledge[T, ε < 0.05, Valid(duration), Derived]
+    /// The core epistemic type tracking uncertainty, validity, and provenance
+    Knowledge {
+        /// The underlying value type (τ)
+        value_type: Box<TypeExpr>,
+        /// Uncertainty bound (ε)
+        epsilon: Option<EpsilonBound>,
+        /// Temporal validity condition (δ)
+        validity: Option<ValidityCondition>,
+        /// Data provenance marker (Φ)
+        provenance: Option<ProvenanceMarker>,
+    },
+
+    /// Quantity type: Quantity[f64, meters] or f64@kg
+    /// Value with physical units for dimensional analysis
+    Quantity {
+        /// The numeric type (f32, f64, i32, etc.)
+        numeric_type: Box<TypeExpr>,
+        /// The physical unit expression
+        unit: UnitExpr,
+    },
+
+    /// Tensor type: Tensor[f32, (batch, channels, height, width)]
+    /// Multi-dimensional array with named dimensions
+    Tensor {
+        /// Element type
+        element_type: Box<TypeExpr>,
+        /// Shape dimensions (can be expressions or named dimensions)
+        shape: Vec<TensorDim>,
+    },
+
+    /// Ontology type: OntologyTerm[SNOMED:12345]
+    /// Reference to an ontology term for semantic interoperability
+    Ontology {
+        /// Ontology namespace (SNOMED, ICD10, NIDM, etc.)
+        ontology: String,
+        /// Optional specific term within the ontology
+        term: Option<String>,
+    },
+
+    /// Linear/affine type annotation: T @ linear
+    /// For GPU memory safety and resource tracking
+    Linear {
+        inner: Box<TypeExpr>,
+        linearity: LinearityKind,
+    },
+
+    /// Effect row type: T ! {IO, GPU, Random}
+    /// Type annotated with computational effects
+    Effected {
+        inner: Box<TypeExpr>,
+        effects: EffectRow,
+    },
+}
+
+// ==================== EPISTEMIC TYPE COMPONENTS ====================
+
+/// Uncertainty bound: ε < 0.05, ε = σ
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EpsilonBound {
+    /// Comparison operator: "<", "<=", "=", ">", ">="
+    pub operator: ComparisonOp,
+    /// The bound value (can be a literal or expression)
+    pub value: Box<Expr>,
+}
+
+/// Comparison operators for epsilon bounds
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ComparisonOp {
+    Lt,
+    Le,
+    Eq,
+    Ge,
+    Gt,
+}
+
+/// Validity condition: Valid(duration), ValidUntil(date), ValidWhile(condition)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidityCondition {
+    /// Kind of validity: "Valid", "ValidUntil", "ValidWhile"
+    pub kind: ValidityKind,
+    /// The condition expression
+    pub condition: Box<Expr>,
+}
+
+/// Kinds of temporal validity
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ValidityKind {
+    /// Valid for a duration
+    Valid,
+    /// Valid until a specific time
+    ValidUntil,
+    /// Valid while a condition holds
+    ValidWhile,
+}
+
+/// Provenance marker: Derived, Source(name), Computed, Literature(citation)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProvenanceMarker {
+    /// Kind of provenance
+    pub kind: ProvenanceKind,
+    /// Optional source reference
+    pub source: Option<Box<Expr>>,
+}
+
+/// Kinds of data provenance
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProvenanceKind {
+    /// Derived from other data
+    Derived,
+    /// Primary source data
+    Source,
+    /// Computed/calculated value
+    Computed,
+    /// From published literature
+    Literature,
+    /// Experimentally measured
+    Measured,
+    /// User-provided input
+    Input,
+}
+
+/// Physical unit expression: meters, kg*m/s^2
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnitExpr {
+    /// Base units with exponents: [(unit_name, exponent), ...]
+    /// e.g., kg*m/s^2 = [("kg", 1), ("m", 1), ("s", -2)]
+    pub base_units: Vec<(String, i32)>,
+}
+
+impl UnitExpr {
+    /// Create a simple unit
+    pub fn simple(name: &str) -> Self {
+        Self {
+            base_units: vec![(name.to_string(), 1)],
+        }
+    }
+
+    /// Create a dimensionless unit
+    pub fn dimensionless() -> Self {
+        Self { base_units: vec![] }
+    }
+}
+
+/// Tensor dimension (can be named or sized)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TensorDim {
+    /// Named dimension: batch, channels, height, width
+    Named(String),
+    /// Fixed size dimension
+    Fixed(usize),
+    /// Dynamic/inferred dimension
+    Dynamic,
+    /// Expression-based dimension
+    Expr(Box<Expr>),
+}
+
+/// Linearity kind for resource types
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LinearityKind {
+    /// Normal unrestricted type
+    Unrestricted,
+    /// Must be used exactly once
+    Linear,
+    /// Must be used at most once
+    Affine,
+    /// Must be used at least once
+    Relevant,
+}
+
+/// Effect row: {IO, GPU, Random, ...}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EffectRow {
+    /// List of effects
+    pub effects: Vec<String>,
+    /// Whether this is an open row (can have more effects)
+    pub is_open: bool,
 }
 
 // ==================== EXPRESSIONS ====================
@@ -722,6 +901,107 @@ pub enum Expr {
     Join { id: NodeId, futures: Vec<Expr> },
     /// Macro invocation
     MacroInvocation(MacroInvocation),
+
+    // ==================== DEMETRIOS EPISTEMIC EXPRESSIONS ====================
+    /// Causal do expression: do(X = 1)
+    /// Represents intervention in causal inference (Pearl's do-calculus)
+    Do {
+        id: NodeId,
+        /// List of interventions: [(variable, value), ...]
+        interventions: Vec<(String, Box<Expr>)>,
+    },
+
+    /// Counterfactual expression: counterfactual { factual; do(X=1); outcome }
+    /// Three-step counterfactual computation (abduction, action, prediction)
+    Counterfactual {
+        id: NodeId,
+        /// The factual observation
+        factual: Box<Expr>,
+        /// The intervention to apply
+        intervention: Box<Expr>,
+        /// The outcome query
+        outcome: Box<Expr>,
+    },
+
+    /// Knowledge construction: Knowledge::new(value, epsilon, validity, provenance)
+    KnowledgeExpr {
+        id: NodeId,
+        /// The underlying value
+        value: Box<Expr>,
+        /// Optional uncertainty bound
+        epsilon: Option<Box<Expr>>,
+        /// Optional validity condition
+        validity: Option<Box<Expr>>,
+        /// Optional provenance marker
+        provenance: Option<Box<Expr>>,
+    },
+
+    /// Uncertainty propagation: x ± σ or x.with_uncertainty(σ)
+    Uncertain {
+        id: NodeId,
+        /// The central value
+        value: Box<Expr>,
+        /// The uncertainty/standard deviation
+        uncertainty: Box<Expr>,
+    },
+
+    /// GPU-annotated expression: expr @ gpu.epistemic
+    GpuAnnotated {
+        id: NodeId,
+        /// The inner expression
+        expr: Box<Expr>,
+        /// GPU annotation kind
+        annotation: GpuAnnotation,
+    },
+
+    /// Observe expression for probabilistic programming: observe(data ~ distribution)
+    Observe {
+        id: NodeId,
+        /// The observed data
+        data: Box<Expr>,
+        /// The distribution it's drawn from
+        distribution: Box<Expr>,
+    },
+
+    /// Query expression: P(Y | X, do(Z))
+    /// Probabilistic query with optional conditioning and intervention
+    Query {
+        id: NodeId,
+        /// The target variable/expression
+        target: Box<Expr>,
+        /// Conditioning variables
+        given: Vec<Expr>,
+        /// Interventions (do-expressions)
+        interventions: Vec<(String, Box<Expr>)>,
+    },
+}
+
+// ==================== GPU ANNOTATIONS ====================
+
+/// GPU annotation: @gpu, @gpu.epistemic, @gpu.reduction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GpuAnnotation {
+    /// Annotation kind
+    pub kind: GpuAnnotationKind,
+    /// Optional parameters
+    pub params: Vec<(String, Expr)>,
+}
+
+/// Kinds of GPU annotations
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GpuAnnotationKind {
+    /// Basic GPU execution
+    Gpu,
+    /// Epistemic-aware GPU (uncertainty propagation)
+    GpuEpistemic,
+    /// GPU reduction operation
+    GpuReduction,
+    /// GPU parallel execution
+    GpuParallel,
+    /// GPU shared memory
+    GpuShared,
+    /// GPU device memory
+    GpuDevice,
 }
 
 /// Literal values

@@ -455,6 +455,54 @@ impl HirConceptExtractor {
             | HirExprKind::Local(_)
             | HirExprKind::Global(_)
             | HirExprKind::Continue => {}
+
+            // Epistemic expressions
+            HirExprKind::Knowledge {
+                value,
+                epsilon,
+                validity,
+                ..
+            } => {
+                self.visit_expr(value);
+                self.visit_expr(epsilon);
+                if let Some(v) = validity {
+                    self.visit_expr(v);
+                }
+            }
+            HirExprKind::Do { value, .. } => {
+                self.visit_expr(value);
+            }
+            HirExprKind::Counterfactual {
+                factual,
+                intervention,
+                outcome,
+            } => {
+                self.visit_expr(factual);
+                self.visit_expr(intervention);
+                self.visit_expr(outcome);
+            }
+            HirExprKind::Query {
+                target,
+                given,
+                interventions,
+            } => {
+                self.visit_expr(target);
+                for g in given {
+                    self.visit_expr(g);
+                }
+                for i in interventions {
+                    self.visit_expr(i);
+                }
+            }
+            HirExprKind::Observe { value, .. } => {
+                self.visit_expr(value);
+            }
+            HirExprKind::EpsilonOf(e)
+            | HirExprKind::ProvenanceOf(e)
+            | HirExprKind::ValidityOf(e)
+            | HirExprKind::Unwrap(e) => {
+                self.visit_expr(e);
+            }
         }
     }
 

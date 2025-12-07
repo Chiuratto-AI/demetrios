@@ -859,6 +859,82 @@ impl DocExtractor {
                 s
             }
             TypeExpr::Infer => "_".to_string(),
+
+            // Epistemic types
+            TypeExpr::Knowledge {
+                value_type,
+                epsilon,
+                validity,
+                provenance,
+            } => {
+                let mut s = format!("Knowledge[{}", self.type_expr_to_string(value_type));
+                // Epsilon, validity, provenance would be added here if needed
+                s.push(']');
+                s
+            }
+            TypeExpr::Quantity { numeric_type, unit } => {
+                let unit_str = unit
+                    .base_units
+                    .iter()
+                    .map(|(name, exp)| {
+                        if *exp == 1 {
+                            name.clone()
+                        } else {
+                            format!("{}^{}", name, exp)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("*");
+                format!(
+                    "Quantity[{}, {}]",
+                    self.type_expr_to_string(numeric_type),
+                    unit_str
+                )
+            }
+            TypeExpr::Tensor {
+                element_type,
+                shape,
+            } => {
+                let shape_str = shape
+                    .iter()
+                    .map(|d| match d {
+                        ast::TensorDim::Named(n) => n.clone(),
+                        ast::TensorDim::Fixed(s) => s.to_string(),
+                        ast::TensorDim::Dynamic => "_".to_string(),
+                        ast::TensorDim::Expr(_) => "<expr>".to_string(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "Tensor[{}, ({})]",
+                    self.type_expr_to_string(element_type),
+                    shape_str
+                )
+            }
+            TypeExpr::Ontology { ontology, term } => {
+                if let Some(t) = term {
+                    format!("OntologyTerm[{}:{}]", ontology, t)
+                } else {
+                    format!("OntologyTerm[{}]", ontology)
+                }
+            }
+            TypeExpr::Linear { inner, linearity } => {
+                let kind = match linearity {
+                    ast::LinearityKind::Linear => "linear",
+                    ast::LinearityKind::Affine => "affine",
+                    ast::LinearityKind::Relevant => "relevant",
+                    ast::LinearityKind::Unrestricted => "",
+                };
+                if kind.is_empty() {
+                    self.type_expr_to_string(inner)
+                } else {
+                    format!("{} @ {}", self.type_expr_to_string(inner), kind)
+                }
+            }
+            TypeExpr::Effected { inner, effects } => {
+                let effects_str = effects.effects.join(", ");
+                format!("{} ! {{{}}}", self.type_expr_to_string(inner), effects_str)
+            }
         }
     }
 

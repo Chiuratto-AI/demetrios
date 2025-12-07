@@ -174,6 +174,18 @@ impl HlirType {
                 return_type: Box::new(Self::from_hir(return_type)),
             },
             HirType::Var(_) | HirType::Error | HirType::Never => HlirType::Void,
+
+            // Epistemic types - lower to their inner representation
+            HirType::Knowledge { inner, .. } => Self::from_hir(inner),
+            HirType::Quantity { numeric, .. } => Self::from_hir(numeric),
+            HirType::Tensor { element, dims } => {
+                // Tensor becomes a struct with pointer to data and shape info
+                HlirType::Struct(format!("Tensor_{}", dims.len()))
+            }
+            HirType::Ontology { namespace, term } => {
+                // Ontology terms become a struct with namespace and term id
+                HlirType::Struct(format!("Ontology_{}", namespace))
+            }
         }
     }
 

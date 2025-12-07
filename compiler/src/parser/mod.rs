@@ -2,6 +2,11 @@
 //!
 //! A recursive descent parser that produces an AST from a token stream.
 
+pub mod recovery;
+
+#[cfg(test)]
+mod tests;
+
 use crate::ast::*;
 use crate::common::{IdGenerator, NodeId, Span};
 use crate::lexer::{Token, TokenKind};
@@ -14,7 +19,7 @@ pub fn parse(tokens: &[Token], _source: &str) -> Result<Ast> {
 }
 
 /// Parser state
-struct Parser<'a> {
+pub struct Parser<'a> {
     tokens: &'a [Token],
     pos: usize,
     id_gen: IdGenerator,
@@ -24,7 +29,7 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn new(tokens: &'a [Token]) -> Self {
+    pub fn new(tokens: &'a [Token]) -> Self {
         Self {
             tokens,
             pos: 0,
@@ -114,7 +119,7 @@ impl<'a> Parser<'a> {
 
     // ==================== ITEMS ====================
 
-    fn parse_item(&mut self) -> Result<Item> {
+    pub fn parse_item(&mut self) -> Result<Item> {
         // Check for macro invocation at item level (identifier followed by !)
         if self.at(TokenKind::Ident) && self.peek_n(1) == TokenKind::Bang {
             let macro_inv = self.parse_macro_invocation()?;
@@ -1105,7 +1110,7 @@ impl<'a> Parser<'a> {
 
     // ==================== TYPES ====================
 
-    fn parse_type(&mut self) -> Result<TypeExpr> {
+    pub fn parse_type(&mut self) -> Result<TypeExpr> {
         self.parse_type_with_precedence(0)
     }
 
@@ -1234,13 +1239,321 @@ impl<'a> Parser<'a> {
                 Ok(TypeExpr::Infer)
             }
 
+            // Knowledge type: Knowledge[T, ε < 0.05, Valid(duration), Derived]
+            TokenKind::Knowledge => self.parse_knowledge_type(),
+
+            // Quantity type: Quantity[f64, meters]
+            TokenKind::Quantity => self.parse_quantity_type(),
+
+            // Tensor type: Tensor[f32, (batch, channels, height, width)]
+            TokenKind::Tensor => self.parse_tensor_type(),
+
+            // Ontology type: OntologyTerm[SNOMED:12345]
+            TokenKind::OntologyTerm => self.parse_ontology_type(),
+
             _ => Err(miette::miette!("Expected type, found {:?}", self.peek())),
         }
     }
 
+    // ==================== DEMETRIOS EPISTEMIC TYPE PARSING ====================
+
+    /// Parse Knowledge[T, ε < 0.05, Valid(duration), Derived]
+    fn parse_knowledge_type(&mut self) -> Result<TypeExpr> {
+        self.expect(TokenKind::Knowledge)?;
+        self.expect(TokenKind::LBracket)?;
+
+        // Parse the value type
+        let value_type = Box::new(self.parse_type()?);
+
+        let mut epsilon = None;
+        let mut validity = None;
+        let mut provenance = None;
+
+        // Parse optional epistemic parameters
+        while self.at(TokenKind::Comma) {
+            self.advance();
+            if self.at(TokenKind::RBracket) {
+                break;
+            }
+
+            // Check what kind of parameter this is
+            match self.peek() {
+                // Epsilon bound: ε < 0.05 or epsilon < 0.05
+                TokenKind::Ident
+                    if self.current().text == "ε" || self.current().text == "epsilon" =>
+                {
+                    epsilon = Some(self.parse_epsilon_bound()?);
+                }
+                // Validity conditions
+                TokenKind::Valid | TokenKind::ValidUntil | TokenKind::ValidWhile => {
+                    validity = Some(self.parse_validity_condition()?);
+                }
+                // Provenance markers
+                TokenKind::Derived
+                | TokenKind::SourceProv
+                | TokenKind::Computed
+                | TokenKind::Literature
+                | TokenKind::Measured
+                | TokenKind::InputProv => {
+                    provenance = Some(self.parse_provenance_marker()?);
+                }
+                _ => {
+                    // Skip unknown parameter
+                    self.advance();
+                }
+            }
+        }
+
+        self.expect(TokenKind::RBracket)?;
+
+        Ok(TypeExpr::Knowledge {
+            value_type,
+            epsilon,
+            validity,
+            provenance,
+        })
+    }
+
+    /// Parse ε < 0.05 or epsilon <= value
+    fn parse_epsilon_bound(&mut self) -> Result<EpsilonBound> {
+        self.advance(); // skip ε or epsilon
+
+        let operator = match self.peek() {
+            TokenKind::Lt => {
+                self.advance();
+                ComparisonOp::Lt
+            }
+            TokenKind::Le => {
+                self.advance();
+                ComparisonOp::Le
+            }
+            TokenKind::Gt => {
+                self.advance();
+                ComparisonOp::Gt
+            }
+            TokenKind::Ge => {
+                self.advance();
+                ComparisonOp::Ge
+            }
+            TokenKind::Eq => {
+                self.advance();
+                ComparisonOp::Eq
+            }
+            TokenKind::EqEq => {
+                self.advance();
+                ComparisonOp::Eq
+            }
+            _ => return Err(miette::miette!("Expected comparison operator after ε")),
+        };
+
+        let value = Box::new(self.parse_expr()?);
+
+        Ok(EpsilonBound { operator, value })
+    }
+
+    /// Parse Valid(duration), ValidUntil(date), ValidWhile(condition)
+    fn parse_validity_condition(&mut self) -> Result<ValidityCondition> {
+        let kind = match self.peek() {
+            TokenKind::Valid => {
+                self.advance();
+                ValidityKind::Valid
+            }
+            TokenKind::ValidUntil => {
+                self.advance();
+                ValidityKind::ValidUntil
+            }
+            TokenKind::ValidWhile => {
+                self.advance();
+                ValidityKind::ValidWhile
+            }
+            _ => return Err(miette::miette!("Expected validity keyword")),
+        };
+
+        self.expect(TokenKind::LParen)?;
+        let condition = Box::new(self.parse_expr()?);
+        self.expect(TokenKind::RParen)?;
+
+        Ok(ValidityCondition { kind, condition })
+    }
+
+    /// Parse Derived, Source(name), Computed, Literature(citation)
+    fn parse_provenance_marker(&mut self) -> Result<ProvenanceMarker> {
+        let kind = match self.peek() {
+            TokenKind::Derived => {
+                self.advance();
+                ProvenanceKind::Derived
+            }
+            TokenKind::SourceProv => {
+                self.advance();
+                ProvenanceKind::Source
+            }
+            TokenKind::Computed => {
+                self.advance();
+                ProvenanceKind::Computed
+            }
+            TokenKind::Literature => {
+                self.advance();
+                ProvenanceKind::Literature
+            }
+            TokenKind::Measured => {
+                self.advance();
+                ProvenanceKind::Measured
+            }
+            TokenKind::InputProv => {
+                self.advance();
+                ProvenanceKind::Input
+            }
+            _ => return Err(miette::miette!("Expected provenance keyword")),
+        };
+
+        let source = if self.at(TokenKind::LParen) {
+            self.advance();
+            let expr = self.parse_expr()?;
+            self.expect(TokenKind::RParen)?;
+            Some(Box::new(expr))
+        } else {
+            None
+        };
+
+        Ok(ProvenanceMarker { kind, source })
+    }
+
+    /// Parse Quantity[f64, meters]
+    fn parse_quantity_type(&mut self) -> Result<TypeExpr> {
+        self.expect(TokenKind::Quantity)?;
+        self.expect(TokenKind::LBracket)?;
+
+        let numeric_type = Box::new(self.parse_type()?);
+        self.expect(TokenKind::Comma)?;
+        let unit = self.parse_unit_expr()?;
+
+        self.expect(TokenKind::RBracket)?;
+
+        Ok(TypeExpr::Quantity { numeric_type, unit })
+    }
+
+    /// Parse unit expression: meters, kg*m/s^2
+    fn parse_unit_expr(&mut self) -> Result<UnitExpr> {
+        let mut base_units = Vec::new();
+
+        // Parse first unit
+        let name = self.parse_ident()?;
+        let mut exp = 1i32;
+        if self.at(TokenKind::Caret) {
+            self.advance();
+            let neg = if self.at(TokenKind::Minus) {
+                self.advance();
+                true
+            } else {
+                false
+            };
+            if self.at(TokenKind::IntLit) {
+                exp = self.advance().text.parse().unwrap_or(1);
+                if neg {
+                    exp = -exp;
+                }
+            }
+        }
+        base_units.push((name, exp));
+
+        // Parse more units with * or /
+        while self.at(TokenKind::Star) || self.at(TokenKind::Slash) {
+            let is_div = self.at(TokenKind::Slash);
+            self.advance();
+
+            let name = self.parse_ident()?;
+            let mut exp = 1i32;
+            if self.at(TokenKind::Caret) {
+                self.advance();
+                let neg = if self.at(TokenKind::Minus) {
+                    self.advance();
+                    true
+                } else {
+                    false
+                };
+                if self.at(TokenKind::IntLit) {
+                    exp = self.advance().text.parse().unwrap_or(1);
+                    if neg {
+                        exp = -exp;
+                    }
+                }
+            }
+            if is_div {
+                exp = -exp;
+            }
+            base_units.push((name, exp));
+        }
+
+        Ok(UnitExpr { base_units })
+    }
+
+    /// Parse Tensor[f32, (batch, channels, height, width)]
+    fn parse_tensor_type(&mut self) -> Result<TypeExpr> {
+        self.expect(TokenKind::Tensor)?;
+        self.expect(TokenKind::LBracket)?;
+
+        let element_type = Box::new(self.parse_type()?);
+        self.expect(TokenKind::Comma)?;
+
+        // Parse shape tuple
+        self.expect(TokenKind::LParen)?;
+        let mut shape = Vec::new();
+        while !self.at(TokenKind::RParen) {
+            let dim = if self.at(TokenKind::Ident) {
+                TensorDim::Named(self.advance().text.clone())
+            } else if self.at(TokenKind::IntLit) {
+                let size: usize = self.advance().text.parse().unwrap_or(0);
+                TensorDim::Fixed(size)
+            } else if self.at(TokenKind::Underscore) {
+                self.advance();
+                TensorDim::Dynamic
+            } else {
+                TensorDim::Expr(Box::new(self.parse_expr()?))
+            };
+            shape.push(dim);
+
+            if !self.at(TokenKind::RParen) {
+                self.expect(TokenKind::Comma)?;
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+
+        self.expect(TokenKind::RBracket)?;
+
+        Ok(TypeExpr::Tensor {
+            element_type,
+            shape,
+        })
+    }
+
+    /// Parse OntologyTerm[SNOMED:12345]
+    fn parse_ontology_type(&mut self) -> Result<TypeExpr> {
+        self.expect(TokenKind::OntologyTerm)?;
+        self.expect(TokenKind::LBracket)?;
+
+        let ontology = self.parse_ident()?;
+        let term = if self.at(TokenKind::Colon) {
+            self.advance();
+            // Term can be an identifier or a number (like ICD10:E11 or SNOMED:12345)
+            if self.at(TokenKind::Ident) {
+                Some(self.advance().text.clone())
+            } else if self.at(TokenKind::IntLit) {
+                Some(self.advance().text.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        self.expect(TokenKind::RBracket)?;
+
+        Ok(TypeExpr::Ontology { ontology, term })
+    }
+
     // ==================== EXPRESSIONS ====================
 
-    fn parse_expr(&mut self) -> Result<Expr> {
+    pub fn parse_expr(&mut self) -> Result<Expr> {
         self.parse_expr_with_precedence(0)
     }
 
@@ -1741,11 +2054,278 @@ impl<'a> Parser<'a> {
                 })
             }
 
+            // ==================== DEMETRIOS EPISTEMIC EXPRESSIONS ====================
+
+            // do(X = 1) - Pearl's causal intervention
+            TokenKind::Do => self.parse_do_expr(),
+
+            // counterfactual { factual; do(X=1); outcome }
+            TokenKind::Counterfactual => self.parse_counterfactual_expr(),
+
+            // query P(Y | X, do(Z))
+            TokenKind::Query => self.parse_query_expr(),
+
+            // observe(data ~ distribution)
+            TokenKind::Observe => self.parse_observe_expr(),
+
+            // Knowledge type constructor: Knowledge { value, epsilon, validity, provenance }
+            TokenKind::Knowledge => self.parse_knowledge_expr(),
+
             _ => Err(miette::miette!(
                 "Unexpected token {:?} in expression",
                 self.peek()
             )),
         }
+    }
+
+    // ==================== DEMETRIOS EPISTEMIC EXPRESSION PARSING ====================
+
+    /// Parse do(X = value, Y = value, ...) - causal intervention expression
+    fn parse_do_expr(&mut self) -> Result<Expr> {
+        self.expect(TokenKind::Do)?;
+        self.expect(TokenKind::LParen)?;
+
+        let mut interventions = Vec::new();
+        while !self.at(TokenKind::RParen) {
+            let var_name = self.parse_ident()?;
+            self.expect(TokenKind::Eq)?;
+            let value = Box::new(self.parse_expr()?);
+            interventions.push((var_name, value));
+
+            if !self.at(TokenKind::RParen) {
+                self.expect(TokenKind::Comma)?;
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+
+        Ok(Expr::Do {
+            id: self.next_id(),
+            interventions,
+        })
+    }
+
+    /// Parse counterfactual { factual; intervention; outcome }
+    fn parse_counterfactual_expr(&mut self) -> Result<Expr> {
+        self.expect(TokenKind::Counterfactual)?;
+        self.expect(TokenKind::LBrace)?;
+
+        // Parse factual observation
+        let factual = Box::new(self.parse_expr()?);
+        self.expect(TokenKind::Semi)?;
+
+        // Parse intervention (typically a do expression)
+        let intervention = Box::new(self.parse_expr()?);
+        self.expect(TokenKind::Semi)?;
+
+        // Parse outcome query
+        let outcome = Box::new(self.parse_expr()?);
+
+        // Optional trailing semicolon
+        if self.at(TokenKind::Semi) {
+            self.advance();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Expr::Counterfactual {
+            id: self.next_id(),
+            factual,
+            intervention,
+            outcome,
+        })
+    }
+
+    /// Parse query P(Y | X, do(Z)) - probabilistic query with conditioning and intervention
+    fn parse_query_expr(&mut self) -> Result<Expr> {
+        self.expect(TokenKind::Query)?;
+
+        // Check for P( syntax for probability query
+        let target = if self.at(TokenKind::Ident) && self.current().text == "P" {
+            self.advance();
+            self.expect(TokenKind::LParen)?;
+            // Parse target as primary only (so | is not consumed as binary OR)
+            let t = Box::new(self.parse_primary()?);
+
+            let mut given = Vec::new();
+            let mut interventions = Vec::new();
+
+            // Parse conditioning: | X, Y, do(Z)
+            if self.at(TokenKind::Pipe) {
+                self.advance();
+                while !self.at(TokenKind::RParen) {
+                    // Check for do() intervention
+                    if self.at(TokenKind::Do) {
+                        self.advance();
+                        self.expect(TokenKind::LParen)?;
+                        while !self.at(TokenKind::RParen) {
+                            let var_name = self.parse_ident()?;
+                            self.expect(TokenKind::Eq)?;
+                            let value = Box::new(self.parse_primary()?);
+                            interventions.push((var_name, value));
+                            if !self.at(TokenKind::RParen) {
+                                self.expect(TokenKind::Comma)?;
+                            }
+                        }
+                        self.expect(TokenKind::RParen)?;
+                    } else {
+                        // Parse given variable as primary only
+                        given.push(self.parse_primary()?);
+                    }
+
+                    if !self.at(TokenKind::RParen) {
+                        self.expect(TokenKind::Comma)?;
+                    }
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+
+            return Ok(Expr::Query {
+                id: self.next_id(),
+                target: t,
+                given,
+                interventions,
+            });
+        } else {
+            // Simple query expression
+            Box::new(self.parse_expr()?)
+        };
+
+        Ok(Expr::Query {
+            id: self.next_id(),
+            target,
+            given: Vec::new(),
+            interventions: Vec::new(),
+        })
+    }
+
+    /// Parse observe(data ~ distribution) - probabilistic observation
+    fn parse_observe_expr(&mut self) -> Result<Expr> {
+        self.expect(TokenKind::Observe)?;
+        self.expect(TokenKind::LParen)?;
+
+        let data = Box::new(self.parse_expr()?);
+
+        // Expect ~ for distribution relationship
+        if self.at(TokenKind::Tilde) {
+            self.advance();
+        } else {
+            // Allow comma as alternative syntax: observe(data, distribution)
+            self.expect(TokenKind::Comma)?;
+        }
+
+        let distribution = Box::new(self.parse_expr()?);
+        self.expect(TokenKind::RParen)?;
+
+        Ok(Expr::Observe {
+            id: self.next_id(),
+            data,
+            distribution,
+        })
+    }
+
+    /// Parse Knowledge expression: Knowledge { value: x, epsilon: 0.05, ... }
+    /// or Knowledge::new(value, epsilon, validity, provenance)
+    fn parse_knowledge_expr(&mut self) -> Result<Expr> {
+        self.expect(TokenKind::Knowledge)?;
+
+        // Check for struct-like syntax: Knowledge { ... }
+        if self.at(TokenKind::LBrace) {
+            self.advance();
+            let mut value = None;
+            let mut epsilon = None;
+            let mut validity = None;
+            let mut provenance = None;
+
+            while !self.at(TokenKind::RBrace) {
+                let field_name = self.parse_ident()?;
+                self.expect(TokenKind::Colon)?;
+                let field_value = self.parse_expr()?;
+
+                match field_name.as_str() {
+                    "value" => value = Some(Box::new(field_value)),
+                    "epsilon" => epsilon = Some(Box::new(field_value)),
+                    "validity" => validity = Some(Box::new(field_value)),
+                    "provenance" => provenance = Some(Box::new(field_value)),
+                    _ => return Err(miette::miette!("Unknown Knowledge field: {}", field_name)),
+                }
+
+                if !self.at(TokenKind::RBrace) {
+                    self.expect(TokenKind::Comma)?;
+                }
+            }
+            self.expect(TokenKind::RBrace)?;
+
+            let value =
+                value.ok_or_else(|| miette::miette!("Knowledge requires a 'value' field"))?;
+
+            return Ok(Expr::KnowledgeExpr {
+                id: self.next_id(),
+                value,
+                epsilon,
+                validity,
+                provenance,
+            });
+        }
+
+        // Check for constructor syntax: Knowledge::new(...)
+        if self.at(TokenKind::ColonColon) {
+            self.advance();
+            let method = self.parse_ident()?;
+            if method != "new" {
+                return Err(miette::miette!("Expected 'new' after Knowledge::"));
+            }
+
+            self.expect(TokenKind::LParen)?;
+            let value = Box::new(self.parse_expr()?);
+
+            let epsilon = if self.at(TokenKind::Comma) {
+                self.advance();
+                if !self.at(TokenKind::RParen) {
+                    Some(Box::new(self.parse_expr()?))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let validity = if self.at(TokenKind::Comma) {
+                self.advance();
+                if !self.at(TokenKind::RParen) {
+                    Some(Box::new(self.parse_expr()?))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let provenance = if self.at(TokenKind::Comma) {
+                self.advance();
+                if !self.at(TokenKind::RParen) {
+                    Some(Box::new(self.parse_expr()?))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            self.expect(TokenKind::RParen)?;
+
+            return Ok(Expr::KnowledgeExpr {
+                id: self.next_id(),
+                value,
+                epsilon,
+                validity,
+                provenance,
+            });
+        }
+
+        Err(miette::miette!(
+            "Expected '{{' or '::' after Knowledge, found {:?}",
+            self.peek()
+        ))
     }
 
     fn parse_struct_literal(&mut self, path: Path) -> Result<Expr> {
@@ -1980,7 +2560,7 @@ impl<'a> Parser<'a> {
         Ok(Block { stmts })
     }
 
-    fn parse_stmt(&mut self) -> Result<Stmt> {
+    pub fn parse_stmt(&mut self) -> Result<Stmt> {
         match self.peek() {
             TokenKind::Let => self.parse_let_stmt(),
             TokenKind::Semi => {

@@ -233,6 +233,80 @@ pub enum HirType {
     Never,
     /// Error type (for error recovery)
     Error,
+
+    // ==================== EPISTEMIC TYPES ====================
+    /// Knowledge type: Knowledge[T, ε >= bound]
+    Knowledge {
+        inner: Box<HirType>,
+        epsilon_bound: Option<f64>,
+        provenance: Option<HirProvenanceConstraint>,
+    },
+    /// Physical quantity with unit: Quantity[f64, kg*m/s^2]
+    Quantity {
+        numeric: Box<HirType>,
+        unit: HirUnit,
+    },
+    /// Tensor with named dimensions: Tensor[f32, (batch, channels, height, width)]
+    Tensor {
+        element: Box<HirType>,
+        dims: Vec<HirTensorDim>,
+    },
+    /// Ontology term: OntologyTerm[SNOMED:12345]
+    Ontology {
+        namespace: String,
+        term: String,
+    },
+}
+
+/// HIR unit expression for physical quantities
+#[derive(Debug, Clone, PartialEq)]
+pub struct HirUnit {
+    /// Numerator units with exponents: [(kg, 1), (m, 1)]
+    pub numerator: Vec<(String, i32)>,
+    /// Denominator units with exponents: [(s, 2)]
+    pub denominator: Vec<(String, i32)>,
+}
+
+impl HirUnit {
+    pub fn dimensionless() -> Self {
+        Self {
+            numerator: Vec::new(),
+            denominator: Vec::new(),
+        }
+    }
+
+    pub fn simple(unit: &str) -> Self {
+        Self {
+            numerator: vec![(unit.to_string(), 1)],
+            denominator: Vec::new(),
+        }
+    }
+}
+
+/// HIR tensor dimension
+#[derive(Debug, Clone, PartialEq)]
+pub enum HirTensorDim {
+    /// Named dimension (e.g., "batch", "channels")
+    Named(String),
+    /// Fixed size dimension
+    Fixed(usize),
+    /// Dynamic dimension (size known at runtime)
+    Dynamic,
+}
+
+/// HIR provenance constraint
+#[derive(Debug, Clone, PartialEq)]
+pub enum HirProvenanceConstraint {
+    /// Must come from specific source
+    FromSource(String),
+    /// Must be derived from listed sources
+    DerivedFrom(Vec<String>),
+    /// Must be user input
+    UserInput,
+    /// Must be peer reviewed
+    PeerReviewed,
+    /// Must comply with regulatory standard
+    RegulatoryCompliant(String),
 }
 
 impl HirType {
@@ -406,6 +480,60 @@ pub enum HirExprKind {
     Handle { expr: Box<HirExpr>, handler: String },
     /// Sample from distribution
     Sample(Box<HirExpr>),
+
+    // ==================== EPISTEMIC EXPRESSIONS ====================
+    /// Knowledge construction: Knowledge::new(value, epsilon, validity, provenance)
+    Knowledge {
+        value: Box<HirExpr>,
+        epsilon: Box<HirExpr>,
+        validity: Option<Box<HirExpr>>,
+        provenance: Option<HirProvenance>,
+    },
+    /// Do intervention: do(X = value)
+    Do {
+        variable: String,
+        value: Box<HirExpr>,
+    },
+    /// Counterfactual expression: counterfactual { factual; intervention; outcome }
+    Counterfactual {
+        factual: Box<HirExpr>,
+        intervention: Box<HirExpr>,
+        outcome: Box<HirExpr>,
+    },
+    /// Query expression: P(target | given, do(interventions))
+    Query {
+        target: Box<HirExpr>,
+        given: Vec<HirExpr>,
+        interventions: Vec<HirExpr>,
+    },
+    /// Observe expression: observe variable = value
+    Observe {
+        variable: String,
+        value: Box<HirExpr>,
+    },
+    /// Extract epsilon (confidence) from Knowledge value
+    EpsilonOf(Box<HirExpr>),
+    /// Extract provenance from Knowledge value
+    ProvenanceOf(Box<HirExpr>),
+    /// Extract validity from Knowledge value
+    ValidityOf(Box<HirExpr>),
+    /// Unwrap Knowledge to get inner value
+    Unwrap(Box<HirExpr>),
+}
+
+/// HIR provenance marker
+#[derive(Debug, Clone, PartialEq)]
+pub enum HirProvenance {
+    /// Measured from sensor/instrument
+    Measured { source: String },
+    /// Derived from computation
+    Derived { sources: Vec<String> },
+    /// User input
+    UserInput,
+    /// From peer-reviewed source
+    PeerReviewed { citation: String },
+    /// Regulatory compliant
+    RegulatoryCompliant { standard: String },
 }
 
 /// HIR literal

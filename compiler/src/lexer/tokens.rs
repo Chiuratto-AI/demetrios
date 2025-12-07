@@ -122,6 +122,40 @@ pub enum TokenKind {
     Infer,
     #[token("proof")]
     Proof,
+
+    // Epistemic/causal keywords
+    #[token("Knowledge")]
+    Knowledge,
+    #[token("Quantity")]
+    Quantity,
+    #[token("Tensor")]
+    Tensor,
+    #[token("OntologyTerm")]
+    OntologyTerm,
+    #[token("do")]
+    Do,
+    #[token("counterfactual")]
+    Counterfactual,
+    #[token("Valid")]
+    Valid,
+    #[token("ValidUntil")]
+    ValidUntil,
+    #[token("ValidWhile")]
+    ValidWhile,
+    #[token("Derived")]
+    Derived,
+    #[token("Source")]
+    SourceProv,
+    #[token("Computed")]
+    Computed,
+    #[token("Literature")]
+    Literature,
+    #[token("Measured")]
+    Measured,
+    #[token("Input")]
+    InputProv,
+    #[token("query")]
+    Query,
     #[token("invariant")]
     Invariant,
     #[token("requires")]
@@ -372,6 +406,23 @@ impl TokenKind {
                 | TokenKind::Extern
                 | TokenKind::True
                 | TokenKind::False
+                // Epistemic/causal keywords
+                | TokenKind::Knowledge
+                | TokenKind::Quantity
+                | TokenKind::Tensor
+                | TokenKind::OntologyTerm
+                | TokenKind::Do
+                | TokenKind::Counterfactual
+                | TokenKind::Valid
+                | TokenKind::ValidUntil
+                | TokenKind::ValidWhile
+                | TokenKind::Derived
+                | TokenKind::SourceProv
+                | TokenKind::Computed
+                | TokenKind::Literature
+                | TokenKind::Measured
+                | TokenKind::InputProv
+                | TokenKind::Query
         )
     }
 
@@ -551,6 +602,23 @@ impl TokenKind {
             TokenKind::DocBlockOuter => "<doc_block>",
             TokenKind::DocBlockInner => "<doc_block_inner>",
             TokenKind::Eof => "<eof>",
+            // Epistemic/causal keywords
+            TokenKind::Knowledge => "Knowledge",
+            TokenKind::Quantity => "Quantity",
+            TokenKind::Tensor => "Tensor",
+            TokenKind::OntologyTerm => "OntologyTerm",
+            TokenKind::Do => "do",
+            TokenKind::Counterfactual => "counterfactual",
+            TokenKind::Valid => "Valid",
+            TokenKind::ValidUntil => "ValidUntil",
+            TokenKind::ValidWhile => "ValidWhile",
+            TokenKind::Derived => "Derived",
+            TokenKind::SourceProv => "Source",
+            TokenKind::Computed => "Computed",
+            TokenKind::Literature => "Literature",
+            TokenKind::Measured => "Measured",
+            TokenKind::InputProv => "Input",
+            TokenKind::Query => "query",
         }
     }
 }

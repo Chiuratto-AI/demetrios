@@ -445,6 +445,24 @@ impl Resolver {
                 }
             }
             TypeExpr::Unit | TypeExpr::SelfType | TypeExpr::Infer => {}
+
+            // Epistemic types
+            TypeExpr::Knowledge { value_type, .. } => {
+                self.resolve_type_expr(value_type);
+            }
+            TypeExpr::Quantity { numeric_type, .. } => {
+                self.resolve_type_expr(numeric_type);
+            }
+            TypeExpr::Tensor { element_type, .. } => {
+                self.resolve_type_expr(element_type);
+            }
+            TypeExpr::Ontology { .. } => {}
+            TypeExpr::Linear { inner, .. } => {
+                self.resolve_type_expr(inner);
+            }
+            TypeExpr::Effected { inner, .. } => {
+                self.resolve_type_expr(inner);
+            }
         }
     }
 
@@ -733,6 +751,76 @@ impl Resolver {
             }
 
             Expr::MacroInvocation(_) => {}
+
+            // Epistemic expressions
+            Expr::Do { interventions, .. } => {
+                for (_, value) in interventions {
+                    self.resolve_expr(value);
+                }
+            }
+
+            Expr::Counterfactual {
+                factual,
+                intervention,
+                outcome,
+                ..
+            } => {
+                self.resolve_expr(factual);
+                self.resolve_expr(intervention);
+                self.resolve_expr(outcome);
+            }
+
+            Expr::KnowledgeExpr {
+                value,
+                epsilon,
+                validity,
+                provenance,
+                ..
+            } => {
+                self.resolve_expr(value);
+                if let Some(e) = epsilon {
+                    self.resolve_expr(e);
+                }
+                if let Some(v) = validity {
+                    self.resolve_expr(v);
+                }
+                if let Some(p) = provenance {
+                    self.resolve_expr(p);
+                }
+            }
+
+            Expr::Uncertain {
+                value, uncertainty, ..
+            } => {
+                self.resolve_expr(value);
+                self.resolve_expr(uncertainty);
+            }
+
+            Expr::GpuAnnotated { expr, .. } => {
+                self.resolve_expr(expr);
+            }
+
+            Expr::Observe {
+                data, distribution, ..
+            } => {
+                self.resolve_expr(data);
+                self.resolve_expr(distribution);
+            }
+
+            Expr::Query {
+                target,
+                given,
+                interventions,
+                ..
+            } => {
+                self.resolve_expr(target);
+                for g in given {
+                    self.resolve_expr(g);
+                }
+                for (_, value) in interventions {
+                    self.resolve_expr(value);
+                }
+            }
         }
     }
 

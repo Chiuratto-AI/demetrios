@@ -441,6 +441,117 @@ impl<'a> EffectChecker<'a> {
             }
 
             Expr::MacroInvocation(_) => EffectSet::new(),
+
+            // Epistemic expressions
+            Expr::Do { interventions, .. } => {
+                let mut effects = EffectSet::new();
+                // Causal interventions have a Causal effect
+                effects.add(Effect {
+                    name: "Causal".to_string(),
+                    args: Vec::new(),
+                });
+                for (_, value) in interventions {
+                    effects = effects.union(&self.infer_expr(value));
+                }
+                effects
+            }
+
+            Expr::Counterfactual {
+                factual,
+                intervention,
+                outcome,
+                ..
+            } => {
+                let mut effects = EffectSet::new();
+                // Counterfactuals have a Causal effect
+                effects.add(Effect {
+                    name: "Causal".to_string(),
+                    args: Vec::new(),
+                });
+                effects = effects.union(&self.infer_expr(factual));
+                effects = effects.union(&self.infer_expr(intervention));
+                effects = effects.union(&self.infer_expr(outcome));
+                effects
+            }
+
+            Expr::KnowledgeExpr {
+                value,
+                epsilon,
+                validity,
+                provenance,
+                ..
+            } => {
+                let mut effects = self.infer_expr(value);
+                if let Some(e) = epsilon {
+                    effects = effects.union(&self.infer_expr(e));
+                }
+                if let Some(v) = validity {
+                    effects = effects.union(&self.infer_expr(v));
+                }
+                if let Some(p) = provenance {
+                    effects = effects.union(&self.infer_expr(p));
+                }
+                effects
+            }
+
+            Expr::Uncertain {
+                value, uncertainty, ..
+            } => {
+                let mut effects = self.infer_expr(value);
+                effects = effects.union(&self.infer_expr(uncertainty));
+                effects
+            }
+
+            Expr::GpuAnnotated { expr, .. } => {
+                let mut effects = self.infer_expr(expr);
+                // GPU annotated expressions have GPU effect
+                effects.add(Effect {
+                    name: "GPU".to_string(),
+                    args: Vec::new(),
+                });
+                effects
+            }
+
+            Expr::Observe {
+                data, distribution, ..
+            } => {
+                let mut effects = self.infer_expr(data);
+                effects = effects.union(&self.infer_expr(distribution));
+                // Observe has Prob effect
+                effects.add(Effect {
+                    name: "Prob".to_string(),
+                    args: Vec::new(),
+                });
+                effects
+            }
+
+            Expr::Query {
+                target,
+                given,
+                interventions,
+                ..
+            } => {
+                let mut effects = self.infer_expr(target);
+                // Query has Prob effect
+                effects.add(Effect {
+                    name: "Prob".to_string(),
+                    args: Vec::new(),
+                });
+                for g in given {
+                    effects = effects.union(&self.infer_expr(g));
+                }
+                for (_, value) in interventions {
+                    effects = effects.union(&self.infer_expr(value));
+                }
+                // If there are interventions, also add Causal effect
+                if !interventions.is_empty() {
+                    effects.add(Effect {
+                        name: "Causal".to_string(),
+                        args: Vec::new(),
+                    });
+                }
+                effects
+            }
         }
     }
 

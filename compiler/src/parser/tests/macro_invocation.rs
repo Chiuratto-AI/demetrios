@@ -3,27 +3,24 @@
 #[cfg(test)]
 mod tests {
     use crate::ast::{Expr, Item, MacroInvocation, Stmt};
-    use crate::lexer::Lexer;
+    use crate::lexer::lex;
     use crate::parser::Parser;
 
     fn parse_expr(input: &str) -> Result<Expr, String> {
-        let lexer = Lexer::new(input);
-        let tokens = lexer.tokenize().map_err(|e| format!("{:?}", e))?;
-        let mut parser = Parser::new(tokens);
+        let tokens = lex(input).map_err(|e| format!("{:?}", e))?;
+        let mut parser = Parser::new(&tokens);
         parser.parse_expr().map_err(|e| format!("{:?}", e))
     }
 
     fn parse_stmt(input: &str) -> Result<Stmt, String> {
-        let lexer = Lexer::new(input);
-        let tokens = lexer.tokenize().map_err(|e| format!("{:?}", e))?;
-        let mut parser = Parser::new(tokens);
+        let tokens = lex(input).map_err(|e| format!("{:?}", e))?;
+        let mut parser = Parser::new(&tokens);
         parser.parse_stmt().map_err(|e| format!("{:?}", e))
     }
 
     fn parse_item(input: &str) -> Result<Item, String> {
-        let lexer = Lexer::new(input);
-        let tokens = lexer.tokenize().map_err(|e| format!("{:?}", e))?;
-        let mut parser = Parser::new(tokens);
+        let tokens = lex(input).map_err(|e| format!("{:?}", e))?;
+        let mut parser = Parser::new(&tokens);
         parser.parse_item().map_err(|e| format!("{:?}", e))
     }
 

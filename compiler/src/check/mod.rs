@@ -851,6 +851,206 @@ impl TypeChecker {
 
             Expr::Continue { id } => (HirExprKind::Continue, HirType::Never),
 
+            // ==================== EPISTEMIC EXPRESSIONS ====================
+
+            // Do expression: do(X=1, Y=2) - list of interventions
+            Expr::Do { id, interventions } => {
+                // Lower each intervention as a sequence
+                let mut do_exprs = Vec::new();
+                for (var, val) in interventions {
+                    let value_expr = self.check_expr(val, None)?;
+                    do_exprs.push(HirExpr {
+                        id: NodeId::dummy(),
+                        kind: HirExprKind::Do {
+                            variable: var.clone(),
+                            value: Box::new(value_expr),
+                        },
+                        ty: HirType::Unit,
+                    });
+                }
+
+                // If multiple interventions, wrap in a block
+                if do_exprs.len() == 1 {
+                    (do_exprs.pop().unwrap().kind, HirType::Unit)
+                } else {
+                    (
+                        HirExprKind::Block(HirBlock {
+                            stmts: do_exprs.into_iter().map(HirStmt::Expr).collect(),
+                            ty: HirType::Unit,
+                        }),
+                        HirType::Unit,
+                    )
+                }
+            }
+
+            Expr::Counterfactual {
+                id,
+                factual,
+                intervention,
+                outcome,
+            } => {
+                let factual_expr = self.check_expr(factual, None)?;
+                let intervention_expr = self.check_expr(intervention, None)?;
+                let outcome_expr = self.check_expr(outcome, None)?;
+                let outcome_ty = outcome_expr.ty.clone();
+
+                (
+                    HirExprKind::Counterfactual {
+                        factual: Box::new(factual_expr),
+                        intervention: Box::new(intervention_expr),
+                        outcome: Box::new(outcome_expr),
+                    },
+                    outcome_ty,
+                )
+            }
+
+            Expr::KnowledgeExpr {
+                id,
+                value,
+                epsilon,
+                validity,
+                provenance,
+            } => {
+                let value_expr = self.check_expr(value, None)?;
+
+                // Epsilon is optional
+                let epsilon_expr = if let Some(eps) = epsilon {
+                    self.check_expr(eps, Some(&Type::F64))?
+                } else {
+                    // Default epsilon of 1.0 (perfect confidence)
+                    HirExpr {
+                        id: NodeId::dummy(),
+                        kind: HirExprKind::Literal(HirLiteral::Float(1.0)),
+                        ty: HirType::F64,
+                    }
+                };
+
+                let validity_expr = validity
+                    .as_ref()
+                    .map(|v| self.check_expr(v, None))
+                    .transpose()?;
+
+                let inner_ty = value_expr.ty.clone();
+                let result_ty = HirType::Knowledge {
+                    inner: Box::new(inner_ty),
+                    epsilon_bound: None, // Could extract from epsilon if constant
+                    provenance: None,
+                };
+
+                // Provenance is an expression, not a ProvenanceMarker - convert it
+                let prov = provenance
+                    .as_ref()
+                    .map(|_| HirProvenance::Derived { sources: vec![] });
+
+                (
+                    HirExprKind::Knowledge {
+                        value: Box::new(value_expr),
+                        epsilon: Box::new(epsilon_expr),
+                        validity: validity_expr.map(Box::new),
+                        provenance: prov,
+                    },
+                    result_ty,
+                )
+            }
+
+            Expr::Query {
+                id,
+                target,
+                given,
+                interventions,
+            } => {
+                let target_expr = self.check_expr(target, None)?;
+                let given_exprs: Vec<_> = given
+                    .iter()
+                    .map(|g| self.check_expr(g, None))
+                    .collect::<Result<_>>()?;
+
+                // Interventions are (variable, value) pairs - lower each value
+                let intervention_exprs: Vec<_> = interventions
+                    .iter()
+                    .map(|(var, val)| {
+                        let val_expr = self.check_expr(val, None)?;
+                        Ok(HirExpr {
+                            id: NodeId::dummy(),
+                            kind: HirExprKind::Do {
+                                variable: var.clone(),
+                                value: Box::new(val_expr),
+                            },
+                            ty: HirType::Unit,
+                        })
+                    })
+                    .collect::<Result<_>>()?;
+
+                // Query returns a probability (Knowledge[f64])
+                let result_ty = HirType::Knowledge {
+                    inner: Box::new(HirType::F64),
+                    epsilon_bound: None,
+                    provenance: None,
+                };
+
+                (
+                    HirExprKind::Query {
+                        target: Box::new(target_expr),
+                        given: given_exprs,
+                        interventions: intervention_exprs,
+                    },
+                    result_ty,
+                )
+            }
+
+            // Observe expression: observe(data ~ distribution) for probabilistic programming
+            Expr::Observe {
+                id,
+                data,
+                distribution,
+            } => {
+                let data_expr = self.check_expr(data, None)?;
+                let dist_expr = self.check_expr(distribution, None)?;
+
+                // Create an observe expression - the variable is derived from the data expression
+                let var_name = match &data_expr.kind {
+                    HirExprKind::Local(name) => name.clone(),
+                    _ => "_observed".to_string(),
+                };
+
+                (
+                    HirExprKind::Observe {
+                        variable: var_name,
+                        value: Box::new(dist_expr),
+                    },
+                    HirType::Unit,
+                )
+            }
+
+            // Uncertain expression: value with uncertainty (e.g., 5.0 ± 0.1)
+            Expr::Uncertain {
+                id,
+                value,
+                uncertainty,
+            } => {
+                let value_expr = self.check_expr(value, None)?;
+                let uncertainty_expr = self.check_expr(uncertainty, None)?;
+                let inner_ty = value_expr.ty.clone();
+
+                // Convert uncertainty to epsilon (confidence bound)
+                // For now, assume 2-sigma gives ~95% confidence
+                let result_ty = HirType::Knowledge {
+                    inner: Box::new(inner_ty),
+                    epsilon_bound: Some(0.95),
+                    provenance: None,
+                };
+
+                (
+                    HirExprKind::Knowledge {
+                        value: Box::new(value_expr),
+                        epsilon: Box::new(uncertainty_expr), // Use uncertainty as epsilon proxy
+                        validity: None,
+                        provenance: Some(HirProvenance::Derived { sources: vec![] }),
+                    },
+                    result_ty,
+                )
+            }
+
             // Simplified handling for other expressions
             _ => {
                 // For now, return a placeholder
@@ -1032,6 +1232,38 @@ impl TypeChecker {
             },
             TypeExpr::Infer => Type::Unknown,
             TypeExpr::SelfType => Type::SelfType,
+
+            // Epistemic types - map to Unknown for now, will be properly implemented later
+            TypeExpr::Knowledge { value_type, .. } => {
+                // For now, treat Knowledge[T] as just T for type checking purposes
+                self.lower_type_expr(value_type)
+            }
+            TypeExpr::Quantity { numeric_type, .. } => {
+                // For now, treat Quantity[T, unit] as just T
+                self.lower_type_expr(numeric_type)
+            }
+            TypeExpr::Tensor { element_type, .. } => {
+                // Tensor becomes array-like
+                Type::Array {
+                    element: Box::new(self.lower_type_expr(element_type)),
+                    size: None,
+                }
+            }
+            TypeExpr::Ontology { ontology, term } => {
+                // Ontology terms are string-like for now
+                Type::Named {
+                    name: format!("OntologyTerm<{}>", ontology),
+                    args: vec![],
+                }
+            }
+            TypeExpr::Linear { inner, .. } => {
+                // Linear types pass through the inner type
+                self.lower_type_expr(inner)
+            }
+            TypeExpr::Effected { inner, .. } => {
+                // Effected types pass through the inner type
+                self.lower_type_expr(inner)
+            }
         }
     }
 
@@ -1131,6 +1363,18 @@ impl TypeChecker {
             HirType::Var(v) => Type::Var(TypeVar(*v)),
             HirType::Never => Type::Never,
             HirType::Error => Type::Error,
+
+            // Epistemic types - map back to their inner types for now
+            HirType::Knowledge { inner, .. } => self.hir_type_to_type(inner),
+            HirType::Quantity { numeric, .. } => self.hir_type_to_type(numeric),
+            HirType::Tensor { element, .. } => Type::Array {
+                element: Box::new(self.hir_type_to_type(element)),
+                size: None,
+            },
+            HirType::Ontology { namespace, term } => Type::Named {
+                name: format!("{}:{}", namespace, term),
+                args: vec![],
+            },
         }
     }
 
@@ -1139,6 +1383,26 @@ impl TypeChecker {
             Pattern::Binding { name, .. } => name.clone(),
             Pattern::Wildcard => "_".to_string(),
             _ => "_".to_string(),
+        }
+    }
+
+    /// Lower AST provenance marker to HIR provenance
+    fn lower_provenance(&self, prov: &ProvenanceMarker) -> HirProvenance {
+        match prov.kind {
+            ProvenanceKind::Derived => HirProvenance::Derived { sources: vec![] },
+            ProvenanceKind::Source => HirProvenance::Measured {
+                source: "source".to_string(),
+            },
+            ProvenanceKind::Computed => HirProvenance::Derived {
+                sources: vec!["computed".to_string()],
+            },
+            ProvenanceKind::Literature => HirProvenance::PeerReviewed {
+                citation: String::new(),
+            },
+            ProvenanceKind::Measured => HirProvenance::Measured {
+                source: "measurement".to_string(),
+            },
+            ProvenanceKind::Input => HirProvenance::UserInput,
         }
     }
 

@@ -745,6 +745,70 @@ impl DeadCodeAnalyzer {
             }
             // Literals and other simple expressions have no references
             Expr::Literal { .. } | Expr::Continue { .. } | Expr::MacroInvocation(_) => {}
+
+            // Epistemic expressions
+            Expr::Do { interventions, .. } => {
+                for (_, value) in interventions {
+                    self.collect_expr_references(value);
+                }
+            }
+            Expr::Counterfactual {
+                factual,
+                intervention,
+                outcome,
+                ..
+            } => {
+                self.collect_expr_references(factual);
+                self.collect_expr_references(intervention);
+                self.collect_expr_references(outcome);
+            }
+            Expr::KnowledgeExpr {
+                value,
+                epsilon,
+                validity,
+                provenance,
+                ..
+            } => {
+                self.collect_expr_references(value);
+                if let Some(e) = epsilon {
+                    self.collect_expr_references(e);
+                }
+                if let Some(v) = validity {
+                    self.collect_expr_references(v);
+                }
+                if let Some(p) = provenance {
+                    self.collect_expr_references(p);
+                }
+            }
+            Expr::Uncertain {
+                value, uncertainty, ..
+            } => {
+                self.collect_expr_references(value);
+                self.collect_expr_references(uncertainty);
+            }
+            Expr::GpuAnnotated { expr, .. } => {
+                self.collect_expr_references(expr);
+            }
+            Expr::Observe {
+                data, distribution, ..
+            } => {
+                self.collect_expr_references(data);
+                self.collect_expr_references(distribution);
+            }
+            Expr::Query {
+                target,
+                given,
+                interventions,
+                ..
+            } => {
+                self.collect_expr_references(target);
+                for g in given {
+                    self.collect_expr_references(g);
+                }
+                for (_, value) in interventions {
+                    self.collect_expr_references(value);
+                }
+            }
         }
     }
 
@@ -809,6 +873,24 @@ impl DeadCodeAnalyzer {
                 self.collect_type_references(inner);
             }
             TypeExpr::Unit | TypeExpr::SelfType | TypeExpr::Infer => {}
+
+            // Epistemic types
+            TypeExpr::Knowledge { value_type, .. } => {
+                self.collect_type_references(value_type);
+            }
+            TypeExpr::Quantity { numeric_type, .. } => {
+                self.collect_type_references(numeric_type);
+            }
+            TypeExpr::Tensor { element_type, .. } => {
+                self.collect_type_references(element_type);
+            }
+            TypeExpr::Ontology { .. } => {}
+            TypeExpr::Linear { inner, .. } => {
+                self.collect_type_references(inner);
+            }
+            TypeExpr::Effected { inner, .. } => {
+                self.collect_type_references(inner);
+            }
         }
     }
 

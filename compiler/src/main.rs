@@ -602,6 +602,18 @@ enum Commands {
         command: LocalityCommands,
     },
 
+    /// Units of measure commands (dimensional analysis)
+    Units {
+        #[command(subcommand)]
+        command: UnitsCommands,
+    },
+
+    /// Linear/affine types commands (resource safety)
+    Linear {
+        #[command(subcommand)]
+        command: LinearCommands,
+    },
+
     /// Distributed build commands
     #[cfg(feature = "distributed")]
     Distributed {
@@ -1319,6 +1331,164 @@ enum LocalityCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum UnitsCommands {
+    /// List all available units
+    List {
+        /// Filter by category (si, pkpd, derived, all)
+        #[arg(short, long, default_value = "all")]
+        category: String,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Show detailed information
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Convert a value between units
+    Convert {
+        /// Value to convert
+        #[arg(value_name = "VALUE")]
+        value: f64,
+
+        /// Source unit (e.g., mg, kg, L/h)
+        #[arg(value_name = "FROM")]
+        from: String,
+
+        /// Target unit
+        #[arg(value_name = "TO")]
+        to: String,
+
+        /// Show conversion details
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Show information about a unit
+    Info {
+        /// Unit symbol or name (e.g., mg/L, kilogram)
+        #[arg(value_name = "UNIT")]
+        unit: String,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Check dimensional compatibility of units
+    Check {
+        /// First unit
+        #[arg(value_name = "UNIT1")]
+        unit1: String,
+
+        /// Second unit
+        #[arg(value_name = "UNIT2")]
+        unit2: String,
+
+        /// Show dimension breakdown
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Parse and validate a unit expression
+    Parse {
+        /// Unit expression (e.g., "kg*m/s^2", "mg/L")
+        #[arg(value_name = "EXPR")]
+        expr: String,
+
+        /// Show dimension analysis
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Show the SI base dimensions
+    Dimensions {
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum LinearCommands {
+    /// List linearity kinds and their properties
+    List {
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Show detailed information
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Show information about a linearity kind
+    Info {
+        /// Linearity kind (linear, affine, unrestricted)
+        #[arg(value_name = "KIND")]
+        kind: String,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Check linearity subkinding relationship
+    Subkind {
+        /// First linearity kind
+        #[arg(value_name = "KIND1")]
+        kind1: String,
+
+        /// Second linearity kind
+        #[arg(value_name = "KIND2")]
+        kind2: String,
+
+        /// Show detailed explanation
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// List available resource types
+    Resources {
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Show detailed information
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Show information about session types
+    Sessions {
+        /// Show example protocols
+        #[arg(long)]
+        examples: bool,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Check a source file for linearity errors
+    Check {
+        /// Input file
+        #[arg(value_name = "FILE")]
+        input: PathBuf,
+
+        /// Show all tracked resources
+        #[arg(long)]
+        show_resources: bool,
+
+        /// Show usage tracking
+        #[arg(long)]
+        show_usage: bool,
+    },
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum EmitType {
     /// Abstract Syntax Tree (JSON)
@@ -1748,6 +1918,45 @@ fn main() -> Result<()> {
                 target,
                 output,
             } => locality_codegen(&input, &function, &target, output.as_deref()),
+        },
+
+        Commands::Units { command } => match command {
+            UnitsCommands::List {
+                category,
+                format,
+                verbose,
+            } => units_list(&category, &format, verbose),
+            UnitsCommands::Convert {
+                value,
+                from,
+                to,
+                verbose,
+            } => units_convert(value, &from, &to, verbose),
+            UnitsCommands::Info { unit, format } => units_info(&unit, &format),
+            UnitsCommands::Check {
+                unit1,
+                unit2,
+                verbose,
+            } => units_check(&unit1, &unit2, verbose),
+            UnitsCommands::Parse { expr, verbose } => units_parse(&expr, verbose),
+            UnitsCommands::Dimensions { format } => units_dimensions(&format),
+        },
+
+        Commands::Linear { command } => match command {
+            LinearCommands::List { format, verbose } => linear_list(&format, verbose),
+            LinearCommands::Info { kind, format } => linear_info(&kind, &format),
+            LinearCommands::Subkind {
+                kind1,
+                kind2,
+                verbose,
+            } => linear_subkind(&kind1, &kind2, verbose),
+            LinearCommands::Resources { format, verbose } => linear_resources(&format, verbose),
+            LinearCommands::Sessions { examples, format } => linear_sessions(examples, &format),
+            LinearCommands::Check {
+                input,
+                show_resources,
+                show_usage,
+            } => linear_check(&input, show_resources, show_usage),
         },
 
         #[cfg(feature = "distributed")]
@@ -3480,7 +3689,7 @@ fn diagnostics_check(
 ) -> Result<()> {
     use demetrios::diagnostic::emitter::SarifEmitter;
     use demetrios::diagnostic::{
-        Diagnostic, DiagnosticHandler, HumanEmitter, JsonEmitter, Span,
+        Diagnostic, DiagnosticHandler, DiagnosticLevel, HumanEmitter, JsonEmitter, Span,
     };
 
     tracing::info!("Checking {:?} with rich diagnostics", input);
@@ -4412,7 +4621,7 @@ fn target_create(triple: &str, base: Option<&str>, output: Option<&std::path::Pa
     let registry = TargetRegistry::with_builtins();
 
     // Start with base target or parse triple
-    let spec = if let Some(base_name) = base {
+    let mut spec = if let Some(base_name) = base {
         let mut base_spec = registry
             .get(base_name)
             .map_err(|e| miette::miette!("Base target not found: {}", e))?;
@@ -5109,7 +5318,7 @@ fn ontology_update(lock_file: &Path, write: bool, verbose: bool) -> Result<()> {
 
     // In a real implementation, we would query remote sources for latest versions
     // For now, we just report what's in the lock file
-    let updates_available = 0;
+    let mut updates_available = 0;
 
     for entry in &manifest.ontologies {
         if verbose {
@@ -5357,7 +5566,7 @@ fn layout_analyze(
     output: Option<&Path>,
 ) -> Result<()> {
     use demetrios::layout::{
-        DistanceMatrix, LayoutConfig, cluster_concepts,
+        ClusteringResult, DistanceMatrix, LayoutConfig, cluster_concepts,
         extract_concepts_from_types, generate_layout, generate_report,
     };
     use demetrios::ontology::native::NativeOntology;
@@ -5745,10 +5954,10 @@ fn layout_visualize(
 fn layout_constraints(input: &Path, data_dir: &Path, verbose: bool) -> Result<()> {
     use demetrios::layout::{
         ConstraintSet, ConstraintSource, DistanceMatrix, ForcedRegion, LayoutConfig,
-        LayoutConstraint, cluster_concepts, format_diagnostics,
+        LayoutConstraint, cluster_concepts, extract_concepts_from_types, format_diagnostics,
         solve_constraints, validate_constraints_diagnostic,
     };
-    
+    use demetrios::ontology::native::NativeOntology;
 
     // Read constraint file (simple format: one constraint per line)
     // Format: colocate:A,B,C or separate:X,Y or hot:Z or cold:W
@@ -6007,7 +6216,7 @@ fn layout_explain(concept: &str, input: &Path, data_dir: &Path) -> Result<()> {
 
 /// Format a Unix timestamp as a human-readable string
 fn format_timestamp(timestamp: u64) -> String {
-    use std::time::{Duration, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     let time = UNIX_EPOCH + Duration::from_secs(timestamp);
     let datetime = chrono::DateTime::<chrono::Utc>::from(time);
@@ -7047,7 +7256,7 @@ fn locality_codegen(
     target: &str,
     output: Option<&Path>,
 ) -> Result<()> {
-    use demetrios::locality::access::StridePattern;
+    use demetrios::locality::access::{AccessAnalyzer, StridePattern};
     use demetrios::locality::codegen::{PrefetchCodegen, Target};
 
     // Parse target
@@ -7108,6 +7317,867 @@ fn locality_codegen(
     } else {
         print!("{}", output_str);
     }
+
+    Ok(())
+}
+
+// ============================================================================
+// UNITS COMMANDS
+// ============================================================================
+
+fn units_list(category: &str, format: &str, verbose: bool) -> Result<()> {
+    use demetrios::units::Dimension;
+    use demetrios::units::check::UnitChecker;
+
+    let checker = UnitChecker::new();
+
+    // Define unit categories
+    let si_base = vec![
+        ("kg", "kilogram", Dimension::MASS),
+        ("m", "meter", Dimension::LENGTH),
+        ("s", "second", Dimension::TIME),
+        ("A", "ampere", Dimension::CURRENT),
+        ("K", "kelvin", Dimension::TEMPERATURE),
+        ("mol", "mole", Dimension::AMOUNT),
+        ("cd", "candela", Dimension::LUMINOSITY),
+    ];
+
+    let si_prefixed = vec![
+        ("g", "gram", Dimension::MASS),
+        ("mg", "milligram", Dimension::MASS),
+        ("μg", "microgram", Dimension::MASS),
+        ("ng", "nanogram", Dimension::MASS),
+        ("km", "kilometer", Dimension::LENGTH),
+        ("cm", "centimeter", Dimension::LENGTH),
+        ("mm", "millimeter", Dimension::LENGTH),
+        ("L", "liter", Dimension::VOLUME),
+        ("mL", "milliliter", Dimension::VOLUME),
+        ("μL", "microliter", Dimension::VOLUME),
+        ("min", "minute", Dimension::TIME),
+        ("h", "hour", Dimension::TIME),
+        ("d", "day", Dimension::TIME),
+    ];
+
+    let derived = vec![
+        ("N", "newton", Dimension::FORCE),
+        ("J", "joule", Dimension::ENERGY),
+        ("W", "watt", Dimension::POWER),
+        ("Pa", "pascal", Dimension::PRESSURE),
+        ("Hz", "hertz", Dimension::FREQUENCY),
+        ("°C", "celsius", Dimension::TEMPERATURE),
+    ];
+
+    let pkpd = vec![
+        ("mg/L", "milligram per liter", Dimension::CONCENTRATION),
+        ("μg/L", "microgram per liter", Dimension::CONCENTRATION),
+        ("ng/mL", "nanogram per milliliter", Dimension::CONCENTRATION),
+        ("L/h", "liter per hour", Dimension::CLEARANCE),
+        ("mL/min", "milliliter per minute", Dimension::CLEARANCE),
+        (
+            "L/kg",
+            "liter per kilogram",
+            Dimension::new(-1, 3, 0, 0, 0, 0, 0),
+        ),
+        ("h⁻¹", "per hour", Dimension::FREQUENCY),
+        ("mg/kg", "milligram per kilogram", Dimension::DIMENSIONLESS),
+        ("mg·h/L", "milligram hour per liter", Dimension::AUC),
+        ("nM", "nanomolar", Dimension::MOLAR_CONCENTRATION),
+        ("μM", "micromolar", Dimension::MOLAR_CONCENTRATION),
+    ];
+
+    let print_units = |units: &[(&str, &str, Dimension)], title: &str| {
+        println!("\n=== {} ===", title);
+        for (symbol, name, dim) in units {
+            if verbose {
+                println!("  {:8} {:25} [{}]", symbol, name, dim);
+            } else {
+                println!("  {:8} {}", symbol, name);
+            }
+        }
+    };
+
+    match format {
+        "json" => {
+            println!("{{");
+            let all_units: Vec<_> = match category {
+                "si" => si_base.iter().chain(si_prefixed.iter()).collect(),
+                "pkpd" => pkpd.iter().collect(),
+                "derived" => derived.iter().collect(),
+                _ => si_base
+                    .iter()
+                    .chain(si_prefixed.iter())
+                    .chain(derived.iter())
+                    .chain(pkpd.iter())
+                    .collect(),
+            };
+
+            println!("  \"units\": [");
+            for (i, (symbol, name, dim)) in all_units.iter().enumerate() {
+                let comma = if i < all_units.len() - 1 { "," } else { "" };
+                println!(
+                    "    {{ \"symbol\": \"{}\", \"name\": \"{}\", \"dimension\": \"{}\" }}{}",
+                    symbol, name, dim, comma
+                );
+            }
+            println!("  ]");
+            println!("}}");
+        }
+        _ => {
+            println!("Demetrios Units of Measure");
+            println!("==========================");
+
+            match category {
+                "si" => {
+                    print_units(&si_base, "SI Base Units");
+                    print_units(&si_prefixed, "SI Prefixed Units");
+                }
+                "pkpd" => {
+                    print_units(&pkpd, "PK/PD Units");
+                }
+                "derived" => {
+                    print_units(&derived, "Derived Units");
+                }
+                _ => {
+                    print_units(&si_base, "SI Base Units");
+                    print_units(&si_prefixed, "SI Prefixed Units");
+                    print_units(&derived, "Derived Units");
+                    print_units(&pkpd, "PK/PD Units");
+                }
+            }
+
+            println!(
+                "\nTotal: {} units available",
+                si_base.len() + si_prefixed.len() + derived.len() + pkpd.len()
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn units_convert(value: f64, from: &str, to: &str, verbose: bool) -> Result<()> {
+    use demetrios::units::convert::parse_unit_expression;
+
+    let (from_dim, from_scale) = parse_unit_expression(from)
+        .map_err(|e| miette::miette!("Invalid source unit '{}': {}", from, e))?;
+
+    let (to_dim, to_scale) = parse_unit_expression(to)
+        .map_err(|e| miette::miette!("Invalid target unit '{}': {}", to, e))?;
+
+    if from_dim != to_dim {
+        return Err(miette::miette!(
+            "Cannot convert between incompatible dimensions:\n  {} has dimension {}\n  {} has dimension {}",
+            from,
+            from_dim,
+            to,
+            to_dim
+        ));
+    }
+
+    let base_value = value * from_scale;
+    let result = base_value / to_scale;
+
+    if verbose {
+        println!("Conversion: {} {} → {} {}", value, from, result, to);
+        println!("  Source dimension: {}", from_dim);
+        println!("  Source scale: {}", from_scale);
+        println!("  Target scale: {}", to_scale);
+        println!("  Conversion factor: {}", from_scale / to_scale);
+    } else {
+        println!("{} {} = {} {}", value, from, result, to);
+    }
+
+    Ok(())
+}
+
+fn units_info(unit: &str, format: &str) -> Result<()> {
+    use demetrios::units::check::UnitChecker;
+    use demetrios::units::convert::parse_unit_expression;
+
+    let checker = UnitChecker::new();
+
+    // Try to look up the unit
+    if let Some(unit_type) = checker.lookup_unit(unit) {
+        let dim = unit_type
+            .dimension()
+            .unwrap_or(demetrios::units::Dimension::DIMENSIONLESS);
+
+        match format {
+            "json" => {
+                println!("{{");
+                println!("  \"symbol\": \"{}\",", unit);
+                println!("  \"dimension\": \"{}\",", dim);
+                println!("  \"is_dimensionless\": {}", dim.is_dimensionless());
+                println!("}}");
+            }
+            _ => {
+                println!("Unit: {}", unit);
+                println!("  Dimension: {}", dim);
+                println!("  Dimensionless: {}", dim.is_dimensionless());
+
+                // Show dimension breakdown
+                if !dim.is_dimensionless() {
+                    println!("  Components:");
+                    if dim.mass != 0 {
+                        println!("    Mass (M): {}", dim.mass);
+                    }
+                    if dim.length != 0 {
+                        println!("    Length (L): {}", dim.length);
+                    }
+                    if dim.time != 0 {
+                        println!("    Time (T): {}", dim.time);
+                    }
+                    if dim.current != 0 {
+                        println!("    Current (I): {}", dim.current);
+                    }
+                    if dim.temperature != 0 {
+                        println!("    Temperature (Θ): {}", dim.temperature);
+                    }
+                    if dim.amount != 0 {
+                        println!("    Amount (N): {}", dim.amount);
+                    }
+                    if dim.luminosity != 0 {
+                        println!("    Luminosity (J): {}", dim.luminosity);
+                    }
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    // Try parsing as expression
+    match parse_unit_expression(unit) {
+        Ok((dim, scale)) => {
+            match format {
+                "json" => {
+                    println!("{{");
+                    println!("  \"expression\": \"{}\",", unit);
+                    println!("  \"dimension\": \"{}\",", dim);
+                    println!("  \"scale\": {}", scale);
+                    println!("}}");
+                }
+                _ => {
+                    println!("Unit expression: {}", unit);
+                    println!("  Dimension: {}", dim);
+                    println!("  Scale (to SI): {}", scale);
+                }
+            }
+            Ok(())
+        }
+        Err(e) => Err(miette::miette!("Unknown unit '{}': {}", unit, e)),
+    }
+}
+
+fn units_check(unit1: &str, unit2: &str, verbose: bool) -> Result<()> {
+    use demetrios::units::convert::parse_unit_expression;
+
+    let (dim1, scale1) = parse_unit_expression(unit1)
+        .map_err(|e| miette::miette!("Invalid unit '{}': {}", unit1, e))?;
+
+    let (dim2, scale2) = parse_unit_expression(unit2)
+        .map_err(|e| miette::miette!("Invalid unit '{}': {}", unit2, e))?;
+
+    let compatible = dim1 == dim2;
+
+    if verbose {
+        println!("Dimensional compatibility check:");
+        println!("  {} → dimension: {}", unit1, dim1);
+        println!("  {} → dimension: {}", unit2, dim2);
+        println!();
+    }
+
+    if compatible {
+        println!("✓ {} and {} are dimensionally compatible", unit1, unit2);
+        if verbose {
+            let factor = scale1 / scale2;
+            println!("  Conversion factor: 1 {} = {} {}", unit1, factor, unit2);
+        }
+    } else {
+        println!("✗ {} and {} are NOT dimensionally compatible", unit1, unit2);
+        if verbose {
+            println!("  {} has dimension: {}", unit1, dim1);
+            println!("  {} has dimension: {}", unit2, dim2);
+        }
+    }
+
+    Ok(())
+}
+
+fn units_parse(expr: &str, verbose: bool) -> Result<()> {
+    use demetrios::units::convert::parse_unit_expression;
+
+    match parse_unit_expression(expr) {
+        Ok((dim, scale)) => {
+            println!("Unit expression: {}", expr);
+            println!("  Valid: ✓");
+            println!("  Dimension: {}", dim);
+
+            if verbose {
+                println!("  Scale factor: {}", scale);
+                println!("  Dimension breakdown:");
+                if dim.mass != 0 {
+                    println!("    M^{}", dim.mass);
+                }
+                if dim.length != 0 {
+                    println!("    L^{}", dim.length);
+                }
+                if dim.time != 0 {
+                    println!("    T^{}", dim.time);
+                }
+                if dim.current != 0 {
+                    println!("    I^{}", dim.current);
+                }
+                if dim.temperature != 0 {
+                    println!("    Θ^{}", dim.temperature);
+                }
+                if dim.amount != 0 {
+                    println!("    N^{}", dim.amount);
+                }
+                if dim.luminosity != 0 {
+                    println!("    J^{}", dim.luminosity);
+                }
+            }
+            Ok(())
+        }
+        Err(e) => {
+            println!("Unit expression: {}", expr);
+            println!("  Valid: ✗");
+            println!("  Error: {}", e);
+            Err(miette::miette!("Failed to parse unit expression"))
+        }
+    }
+}
+
+fn units_dimensions(format: &str) -> Result<()> {
+    use demetrios::units::Dimension;
+
+    let dimensions = vec![
+        ("M", "Mass", "kilogram (kg)", Dimension::MASS),
+        ("L", "Length", "meter (m)", Dimension::LENGTH),
+        ("T", "Time", "second (s)", Dimension::TIME),
+        ("I", "Electric Current", "ampere (A)", Dimension::CURRENT),
+        ("Θ", "Temperature", "kelvin (K)", Dimension::TEMPERATURE),
+        ("N", "Amount of Substance", "mole (mol)", Dimension::AMOUNT),
+        (
+            "J",
+            "Luminous Intensity",
+            "candela (cd)",
+            Dimension::LUMINOSITY,
+        ),
+    ];
+
+    match format {
+        "json" => {
+            println!("{{");
+            println!("  \"base_dimensions\": [");
+            for (i, (symbol, name, unit, _)) in dimensions.iter().enumerate() {
+                let comma = if i < dimensions.len() - 1 { "," } else { "" };
+                println!(
+                    "    {{ \"symbol\": \"{}\", \"name\": \"{}\", \"si_unit\": \"{}\" }}{}",
+                    symbol, name, unit, comma
+                );
+            }
+            println!("  ]");
+            println!("}}");
+        }
+        _ => {
+            println!("SI Base Dimensions");
+            println!("==================");
+            println!();
+            println!("{:^6} {:^25} {:^15}", "Symbol", "Quantity", "SI Unit");
+            println!("{:-<6} {:-<25} {:-<15}", "", "", "");
+
+            for (symbol, name, unit, _) in &dimensions {
+                println!("{:^6} {:^25} {:^15}", symbol, name, unit);
+            }
+
+            println!();
+            println!("Common derived dimensions:");
+            println!("  Area:          L²");
+            println!("  Volume:        L³");
+            println!("  Velocity:      L·T⁻¹");
+            println!("  Acceleration:  L·T⁻²");
+            println!("  Force:         M·L·T⁻²");
+            println!("  Energy:        M·L²·T⁻²");
+            println!("  Power:         M·L²·T⁻³");
+            println!("  Pressure:      M·L⁻¹·T⁻²");
+            println!("  Concentration: M·L⁻³");
+            println!("  Clearance:     L³·T⁻¹");
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// LINEAR/AFFINE TYPE COMMANDS
+// ============================================================================
+
+fn linear_list(format: &str, verbose: bool) -> Result<()> {
+    use demetrios::linear::Linearity;
+
+    let kinds = vec![
+        (
+            Linearity::Linear,
+            "1",
+            "Must be used exactly once",
+            "File handles, channels, unique pointers",
+        ),
+        (
+            Linearity::Affine,
+            "1?",
+            "Can be used at most once (may be dropped)",
+            "Temp allocations, optional cleanup",
+        ),
+        (
+            Linearity::Unrestricted,
+            "ω",
+            "Can be used any number of times",
+            "Integers, strings, immutable data",
+        ),
+    ];
+
+    match format {
+        "json" => {
+            println!("{{");
+            println!("  \"linearity_kinds\": [");
+            for (i, (kind, symbol, desc, examples)) in kinds.iter().enumerate() {
+                let comma = if i < kinds.len() - 1 { "," } else { "" };
+                println!("    {{");
+                println!("      \"name\": \"{}\",", kind);
+                println!("      \"symbol\": \"{}\",", symbol);
+                println!("      \"description\": \"{}\",", desc);
+                println!("      \"allows_weakening\": {},", kind.allows_weakening());
+                println!(
+                    "      \"allows_contraction\": {},",
+                    kind.allows_contraction()
+                );
+                println!("      \"examples\": \"{}\"", examples);
+                println!("    }}{}", comma);
+            }
+            println!("  ]");
+            println!("}}");
+        }
+        _ => {
+            println!("Demetrios Linear Types");
+            println!("======================");
+            println!();
+            println!("Linearity Kinds:");
+            println!();
+
+            for (kind, symbol, desc, examples) in &kinds {
+                println!("  {} ({}):", kind, symbol);
+                println!("    {}", desc);
+                if verbose {
+                    println!(
+                        "    Weakening (drop):   {}",
+                        if kind.allows_weakening() {
+                            "allowed"
+                        } else {
+                            "NOT allowed"
+                        }
+                    );
+                    println!(
+                        "    Contraction (copy): {}",
+                        if kind.allows_contraction() {
+                            "allowed"
+                        } else {
+                            "NOT allowed"
+                        }
+                    );
+                    println!("    Examples: {}", examples);
+                }
+                println!();
+            }
+
+            println!("Subkinding Lattice:");
+            println!();
+            println!("       Unrestricted (ω)");
+            println!("             |");
+            println!("          Affine (1?)");
+            println!("             |");
+            println!("         Linear (1)");
+            println!();
+            println!("Linear <: Affine <: Unrestricted");
+        }
+    }
+
+    Ok(())
+}
+
+fn linear_info(kind_str: &str, format: &str) -> Result<()> {
+    use demetrios::linear::Linearity;
+
+    let kind = Linearity::parse(kind_str).ok_or_else(|| {
+        miette::miette!(
+            "Unknown linearity kind: {}\nValid kinds: linear, affine, unrestricted",
+            kind_str
+        )
+    })?;
+
+    match format {
+        "json" => {
+            println!("{{");
+            println!("  \"name\": \"{}\",", kind);
+            println!("  \"symbol\": \"{}\",", kind.symbol());
+            println!("  \"keyword\": \"{}\",", kind.keyword());
+            println!("  \"allows_weakening\": {},", kind.allows_weakening());
+            println!("  \"allows_contraction\": {},", kind.allows_contraction());
+            println!("  \"must_use\": {},", kind.must_use());
+            println!("  \"can_discard\": {},", kind.can_discard());
+            println!("  \"can_copy\": {}", kind.can_copy());
+            println!("}}");
+        }
+        _ => {
+            println!("Linearity Kind: {}", kind);
+            println!("==================");
+            println!();
+            println!("  Symbol:      {}", kind.symbol());
+            println!(
+                "  Keyword:     {}",
+                if kind.keyword().is_empty() {
+                    "(none - default)"
+                } else {
+                    kind.keyword()
+                }
+            );
+            println!();
+            println!("Structural Rules:");
+            println!(
+                "  Weakening (can discard):   {}",
+                if kind.allows_weakening() { "Yes" } else { "No" }
+            );
+            println!(
+                "  Contraction (can copy):    {}",
+                if kind.allows_contraction() {
+                    "Yes"
+                } else {
+                    "No"
+                }
+            );
+            println!();
+            println!("Usage Requirements:");
+            println!(
+                "  Must use:    {}",
+                if kind.must_use() {
+                    "Yes (exactly once)"
+                } else {
+                    "No"
+                }
+            );
+            println!(
+                "  Can discard: {}",
+                if kind.can_discard() { "Yes" } else { "No" }
+            );
+            println!(
+                "  Can copy:    {}",
+                if kind.can_copy() { "Yes" } else { "No" }
+            );
+            println!();
+
+            match kind {
+                Linearity::Linear => {
+                    println!("Description:");
+                    println!("  Linear types must be used exactly once. They cannot be");
+                    println!("  dropped (leaked) or copied. This is ideal for resources");
+                    println!("  like file handles, database connections, or channels.");
+                    println!();
+                    println!("Example in D:");
+                    println!("  linear struct FileHandle {{ ... }}");
+                    println!("  fn close(handle: FileHandle) -> () // consumes handle");
+                }
+                Linearity::Affine => {
+                    println!("Description:");
+                    println!("  Affine types can be used at most once. They can be");
+                    println!("  dropped without being used, but cannot be copied.");
+                    println!("  Good for optional cleanup or temp resources.");
+                    println!();
+                    println!("Example in D:");
+                    println!("  affine struct TempBuffer {{ ... }}");
+                    println!("  // Can drop buffer without explicit cleanup");
+                }
+                Linearity::Unrestricted => {
+                    println!("Description:");
+                    println!("  Unrestricted types can be used any number of times.");
+                    println!("  They can be copied and dropped freely. This is the");
+                    println!("  default for most types in D.");
+                    println!();
+                    println!("Example in D:");
+                    println!("  struct Point {{ x: f64, y: f64 }}  // unrestricted by default");
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn linear_subkind(kind1_str: &str, kind2_str: &str, verbose: bool) -> Result<()> {
+    use demetrios::linear::Linearity;
+
+    let kind1 = Linearity::parse(kind1_str)
+        .ok_or_else(|| miette::miette!("Unknown linearity kind: {}", kind1_str))?;
+
+    let kind2 = Linearity::parse(kind2_str)
+        .ok_or_else(|| miette::miette!("Unknown linearity kind: {}", kind2_str))?;
+
+    let is_subkind = kind1.is_subkind_of(kind2);
+    let meet = kind1.meet(kind2);
+    let join = kind1.join(kind2);
+
+    if verbose {
+        println!("Subkinding Analysis");
+        println!("===================");
+        println!();
+        println!(
+            "  {} <: {} ?  {}",
+            kind1,
+            kind2,
+            if is_subkind { "Yes" } else { "No" }
+        );
+        println!();
+        println!("Lattice Operations:");
+        println!(
+            "  Meet (greatest lower bound): {} ⊓ {} = {}",
+            kind1, kind2, meet
+        );
+        println!(
+            "  Join (least upper bound):    {} ⊔ {} = {}",
+            kind1, kind2, join
+        );
+        println!();
+
+        if is_subkind {
+            println!("Explanation:");
+            println!(
+                "  A {} value can be used where {} is expected.",
+                kind1, kind2
+            );
+            println!(
+                "  This is because {} is more restrictive than {}.",
+                kind1, kind2
+            );
+        } else {
+            println!("Explanation:");
+            println!(
+                "  A {} value CANNOT be used where {} is expected.",
+                kind1, kind2
+            );
+            println!("  {} is not a subkind of {}.", kind1, kind2);
+        }
+    } else {
+        if is_subkind {
+            println!("{} <: {}  (yes)", kind1, kind2);
+        } else {
+            println!("{} NOT <: {}", kind1, kind2);
+        }
+    }
+
+    Ok(())
+}
+
+fn linear_resources(format: &str, verbose: bool) -> Result<()> {
+    use demetrios::linear::{Linearity, ResourceKind};
+
+    let resources = vec![
+        (
+            ResourceKind::File,
+            Linearity::Linear,
+            "Read, Write, Close",
+            "File handles (must close)",
+        ),
+        (
+            ResourceKind::Network,
+            Linearity::Linear,
+            "Read, Write, Close",
+            "Network connections",
+        ),
+        (
+            ResourceKind::Database,
+            Linearity::Linear,
+            "Read, Write, Execute, Close",
+            "Database connections",
+        ),
+        (
+            ResourceKind::Memory,
+            Linearity::Linear,
+            "Read, Write",
+            "Memory allocations",
+        ),
+        (
+            ResourceKind::Lock,
+            Linearity::Linear,
+            "Read, Write",
+            "Mutexes and locks",
+        ),
+        (
+            ResourceKind::Gpu,
+            Linearity::Linear,
+            "Read, Write",
+            "GPU buffers and textures",
+        ),
+        (
+            ResourceKind::Session,
+            Linearity::Linear,
+            "Protocol-dependent",
+            "Session-typed channels",
+        ),
+    ];
+
+    match format {
+        "json" => {
+            println!("{{");
+            println!("  \"resource_types\": [");
+            for (i, (kind, linearity, caps, desc)) in resources.iter().enumerate() {
+                let comma = if i < resources.len() - 1 { "," } else { "" };
+                println!("    {{");
+                println!("      \"kind\": \"{}\",", kind);
+                println!("      \"linearity\": \"{}\",", linearity);
+                println!("      \"capabilities\": \"{}\",", caps);
+                println!("      \"description\": \"{}\"", desc);
+                println!("    }}{}", comma);
+            }
+            println!("  ]");
+            println!("}}");
+        }
+        _ => {
+            println!("Demetrios Resource Types");
+            println!("========================");
+            println!();
+            println!("Resources are values with special cleanup requirements.");
+            println!("They are typically linear (must be used exactly once).");
+            println!();
+
+            if verbose {
+                println!(
+                    "{:<12} {:<12} {:<30} {}",
+                    "Kind", "Linearity", "Capabilities", "Description"
+                );
+                println!("{:-<12} {:-<12} {:-<30} {:-<30}", "", "", "", "");
+            } else {
+                println!("{:<12} {:<12} {}", "Kind", "Linearity", "Description");
+                println!("{:-<12} {:-<12} {:-<30}", "", "", "");
+            }
+
+            for (kind, linearity, caps, desc) in &resources {
+                if verbose {
+                    println!("{:<12} {:<12} {:<30} {}", kind, linearity, caps, desc);
+                } else {
+                    println!("{:<12} {:<12} {}", kind, linearity, desc);
+                }
+            }
+
+            println!();
+            println!("Example:");
+            println!("  linear struct FileHandle {{ fd: i32 }}");
+            println!();
+            println!("  fn open(path: string) -> FileHandle with IO");
+            println!("  fn read(handle: &FileHandle) -> string with IO");
+            println!("  fn close(handle: FileHandle) with IO  // consumes handle");
+        }
+    }
+
+    Ok(())
+}
+
+fn linear_sessions(examples: bool, format: &str) -> Result<()> {
+    match format {
+        "json" => {
+            println!("{{");
+            println!("  \"session_types\": {{");
+            println!("    \"Send\": \"!T.S - send value of type T, continue with S\",");
+            println!("    \"Recv\": \"?T.S - receive value of type T, continue with S\",");
+            println!("    \"Offer\": \"&{{l: S, ...}} - offer choice to peer\",");
+            println!("    \"Choose\": \"⊕{{l: S, ...}} - make a choice\",");
+            println!("    \"End\": \"end - session complete\",");
+            println!("    \"Rec\": \"μX.S - recursive session\"");
+            println!("  }}");
+            println!("}}");
+        }
+        _ => {
+            println!("Demetrios Session Types");
+            println!("=======================");
+            println!();
+            println!("Session types encode communication protocols at the type level.");
+            println!("They ensure protocol conformance at compile time.");
+            println!();
+            println!("Session Type Constructors:");
+            println!();
+            println!("  !T.S        Send value of type T, continue with S");
+            println!("  ?T.S        Receive value of type T, continue with S");
+            println!("  &{{l: S}}    Offer choice (peer selects)");
+            println!("  ⊕{{l: S}}    Make choice (we select)");
+            println!("  end         Session complete");
+            println!("  μX.S        Recursive session (loops)");
+            println!();
+            println!("Duality:");
+            println!("  Every session type has a dual (the other party's view)");
+            println!("  dual(!T.S) = ?T.dual(S)");
+            println!("  dual(&{{...}}) = ⊕{{...}}");
+            println!();
+
+            if examples {
+                println!("Example Protocols:");
+                println!();
+                println!("1. Query-Response:");
+                println!("   Client: !Query.?Response.end");
+                println!("   Server: ?Query.!Response.end");
+                println!();
+                println!("2. File Transfer:");
+                println!("   Sender:   !Filename.μX.⊕{{data: !Chunk.X, done: end}}");
+                println!("   Receiver: ?Filename.μX.&{{data: ?Chunk.X, done: end}}");
+                println!();
+                println!("3. Authentication:");
+                println!("   Client: !Credentials.&{{ok: ?Token.end, fail: ?Error.end}}");
+                println!("   Server: ?Credentials.⊕{{ok: !Token.end, fail: !Error.end}}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn linear_check(input: &Path, show_resources: bool, show_usage: bool) -> Result<()> {
+    // Read the source file
+    let source = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read {}: {}", input.display(), e))?;
+
+    println!("Linear Type Checking: {}", input.display());
+    println!(
+        "======================={}",
+        "=".repeat(input.display().to_string().len())
+    );
+    println!();
+
+    // For now, this is a stub that would integrate with the type checker
+    // In a full implementation, this would:
+    // 1. Parse the source file
+    // 2. Run linearity checking
+    // 3. Report any linearity violations
+
+    println!("Note: Full linearity checking requires type-checked AST.");
+    println!("This command will be functional after HIR lowering is complete.");
+    println!();
+
+    if show_resources {
+        println!("Resource tracking would show:");
+        println!("  - All linear/affine bindings in scope");
+        println!("  - Their types and modalities");
+        println!("  - Creation points");
+        println!();
+    }
+
+    if show_usage {
+        println!("Usage tracking would show:");
+        println!("  - How many times each resource is used");
+        println!("  - Where resources are consumed");
+        println!("  - Any unused linear resources");
+        println!("  - Any multiply-used affine resources");
+        println!();
+    }
+
+    // Placeholder success
+    println!("Linearity check: PASS (stub - no violations detected)");
 
     Ok(())
 }

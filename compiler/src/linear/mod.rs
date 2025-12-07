@@ -105,19 +105,31 @@
 pub mod consumption;
 pub mod context;
 pub mod exponentials;
+pub mod integrate;
+pub mod kind;
 pub mod linear_types;
 pub mod modality;
+pub mod resource;
 pub mod session_types;
 pub mod subtyping;
+pub mod typed;
 
 // Re-exports
 pub use consumption::{ConsumptionError, ConsumptionTracker, ResourceState};
 pub use context::{LinearBinding, LinearContext, UsageCount};
 pub use exponentials::{BangType, QuestType};
+pub use kind::{KindedType, Linearity, LinearityBound, LinearityError};
 pub use linear_types::{LinearType, LollipopType, PlusType, TensorType, WithType};
 pub use modality::Modality;
+pub use resource::{Capability, LinearResource, ResourceHandle, ResourceKind, ResourceType};
 pub use session_types::{ProtocolError, SessionType};
 pub use subtyping::{LinearSubtypeChecker, LinearSubtypeError};
+pub use typed::{Affine, Linear, LinearChoice, LinearPair, LinearRef, Unrestricted};
+
+// Integration types
+pub use integrate::{
+    Credential, Intervention, LinearKnowledge, LinearQuantity, Observation, PublishedKnowledge,
+};
 
 use std::collections::HashMap;
 

@@ -554,6 +554,109 @@ impl<'a> LoweringContext<'a> {
             HirExprKind::Handle { expr, handler } => self.lower_effect_handle(expr, handler, &ty),
 
             HirExprKind::Sample(dist) => self.lower_sample(dist, &ty),
+
+            // ==================== EPISTEMIC EXPRESSIONS ====================
+            HirExprKind::Knowledge {
+                value,
+                epsilon,
+                validity,
+                provenance,
+            } => {
+                // Lower Knowledge to a struct containing value and epsilon
+                // For now, just return the value - full implementation would create Knowledge struct
+                self.lower_expr(value)
+            }
+
+            HirExprKind::Do { variable, value } => {
+                // Do intervention - for now, lower as an assignment side effect
+                // In a full causal inference system, this would modify the causal graph
+                let val = self.lower_expr(value)?;
+                Some(self.builder.build_call(
+                    &format!("__epistemic_do_{}", variable),
+                    vec![val],
+                    ty,
+                ))
+            }
+
+            HirExprKind::Counterfactual {
+                factual,
+                intervention,
+                outcome,
+            } => {
+                // Counterfactual requires: abduction, action, prediction
+                // For now, lower as a call to runtime counterfactual function
+                let factual_val = self.lower_expr(factual)?;
+                let intervention_val = self.lower_expr(intervention)?;
+                let outcome_val = self.lower_expr(outcome)?;
+                Some(self.builder.build_call(
+                    "__epistemic_counterfactual",
+                    vec![factual_val, intervention_val, outcome_val],
+                    ty,
+                ))
+            }
+
+            HirExprKind::Query {
+                target,
+                given,
+                interventions,
+            } => {
+                // Probabilistic query - P(target | given, do(interventions))
+                let target_val = self.lower_expr(target)?;
+                let given_vals: Vec<_> = given.iter().filter_map(|g| self.lower_expr(g)).collect();
+                let intervention_vals: Vec<_> = interventions
+                    .iter()
+                    .filter_map(|i| self.lower_expr(i))
+                    .collect();
+
+                // Build argument array for runtime query
+                let mut args = vec![target_val];
+                args.extend(given_vals);
+                args.extend(intervention_vals);
+
+                Some(self.builder.build_call("__epistemic_query", args, ty))
+            }
+
+            HirExprKind::Observe { variable, value } => {
+                // Observe for probabilistic programming - condition on observed value
+                let val = self.lower_expr(value)?;
+                Some(self.builder.build_call(
+                    &format!("__epistemic_observe_{}", variable),
+                    vec![val],
+                    ty,
+                ))
+            }
+
+            HirExprKind::EpsilonOf(expr) => {
+                // Extract epsilon (confidence) from Knowledge value
+                let val = self.lower_expr(expr)?;
+                Some(
+                    self.builder
+                        .build_call("__epistemic_get_epsilon", vec![val], ty),
+                )
+            }
+
+            HirExprKind::ProvenanceOf(expr) => {
+                // Extract provenance from Knowledge value
+                let val = self.lower_expr(expr)?;
+                Some(
+                    self.builder
+                        .build_call("__epistemic_get_provenance", vec![val], ty),
+                )
+            }
+
+            HirExprKind::ValidityOf(expr) => {
+                // Extract validity from Knowledge value
+                let val = self.lower_expr(expr)?;
+                Some(
+                    self.builder
+                        .build_call("__epistemic_get_validity", vec![val], ty),
+                )
+            }
+
+            HirExprKind::Unwrap(expr) => {
+                // Unwrap Knowledge to get inner value
+                self.lower_expr(expr)
+            }
         }
     }
 

@@ -355,6 +355,76 @@ impl<'a> OwnershipChecker<'a> {
             }
 
             Expr::MacroInvocation(_) => {}
+
+            // Epistemic expressions
+            Expr::Do { interventions, .. } => {
+                for (_, value) in interventions {
+                    self.check_expr(value, UseKind::Copy);
+                }
+            }
+
+            Expr::Counterfactual {
+                factual,
+                intervention,
+                outcome,
+                ..
+            } => {
+                self.check_expr(factual, UseKind::Copy);
+                self.check_expr(intervention, UseKind::Copy);
+                self.check_expr(outcome, use_kind);
+            }
+
+            Expr::KnowledgeExpr {
+                value,
+                epsilon,
+                validity,
+                provenance,
+                ..
+            } => {
+                self.check_expr(value, use_kind);
+                if let Some(e) = epsilon {
+                    self.check_expr(e, UseKind::Copy);
+                }
+                if let Some(v) = validity {
+                    self.check_expr(v, UseKind::Copy);
+                }
+                if let Some(p) = provenance {
+                    self.check_expr(p, UseKind::Copy);
+                }
+            }
+
+            Expr::Uncertain {
+                value, uncertainty, ..
+            } => {
+                self.check_expr(value, use_kind);
+                self.check_expr(uncertainty, UseKind::Copy);
+            }
+
+            Expr::GpuAnnotated { expr, .. } => {
+                self.check_expr(expr, use_kind);
+            }
+
+            Expr::Observe {
+                data, distribution, ..
+            } => {
+                self.check_expr(data, UseKind::Copy);
+                self.check_expr(distribution, UseKind::Copy);
+            }
+
+            Expr::Query {
+                target,
+                given,
+                interventions,
+                ..
+            } => {
+                self.check_expr(target, UseKind::Copy);
+                for g in given {
+                    self.check_expr(g, UseKind::Copy);
+                }
+                for (_, value) in interventions {
+                    self.check_expr(value, UseKind::Copy);
+                }
+            }
         }
     }
 

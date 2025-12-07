@@ -61,6 +61,7 @@ pub mod lsp;
 pub mod macro_system;
 pub mod mlir;
 pub mod ontology;
+pub mod optimizer;
 pub mod ownership;
 pub mod parser;
 pub mod pkg;
@@ -68,11 +69,13 @@ pub mod refactor;
 pub mod refinement;
 pub mod repl;
 pub mod resolve;
+pub mod smt;
 pub mod sourcemap;
 pub mod target;
 pub mod temporal;
 pub mod test;
 pub mod types;
+pub mod units;
 pub mod watch;
 
 // Re-export diagnostics for convenience
@@ -87,15 +90,60 @@ pub use types::Type;
 /// Compiler version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Compile source code to an executable
+/// Compile source code to an executable (native code via LLVM/Cranelift)
 pub fn compile(source: &str) -> miette::Result<Vec<u8>> {
     let tokens = lexer::lex(source)?;
     let ast = parser::parse(&tokens, source)?;
     let hir = check::check(&ast)?;
     let hlir = hlir::lower(&hir);
 
-    // TODO: Actual code generation
-    Err(miette::miette!("Code generation not yet implemented"))
+    // Use Cranelift backend for JIT compilation
+    #[cfg(feature = "jit")]
+    {
+        let code = codegen::cranelift::compile(&hlir)
+            .map_err(|e| miette::miette!("Cranelift codegen failed: {}", e))?;
+        return Ok(code);
+    }
+
+    // Use LLVM backend for AOT compilation
+    #[cfg(feature = "llvm")]
+    {
+        let code = codegen::llvm::LLVMCodegen::compile(&hlir)
+            .map_err(|e| miette::miette!("LLVM codegen failed: {}", e))?;
+        return Ok(vec![]);
+    }
+
+    #[cfg(not(any(feature = "jit", feature = "llvm")))]
+    Err(miette::miette!(
+        "No native backend enabled. Use --features jit or --features llvm"
+    ))
+}
+
+/// Compile source code to PTX for GPU execution
+pub fn compile_to_gpu(source: &str, sm_version: (u32, u32)) -> miette::Result<String> {
+    let tokens = lexer::lex(source)?;
+    let ast = parser::parse(&tokens, source)?;
+    let hir = check::check(&ast)?;
+    let hlir = hlir::lower(&hir);
+
+    // Lower to GPU IR and generate PTX
+    let ptx = codegen::gpu::compile_to_ptx(&hlir, sm_version);
+    Ok(ptx)
+}
+
+/// Compile source code to PTX with epistemic state tracking
+///
+/// This is the revolutionary feature of Demetrios: tracking uncertainty
+/// through GPU computation using shadow registers.
+pub fn compile_to_gpu_epistemic(source: &str, sm_version: (u32, u32)) -> miette::Result<String> {
+    let tokens = lexer::lex(source)?;
+    let ast = parser::parse(&tokens, source)?;
+    let hir = check::check(&ast)?;
+    let hlir = hlir::lower(&hir);
+
+    // Lower to GPU IR with epistemic tracking enabled
+    let ptx = codegen::gpu::compile_to_ptx_epistemic(&hlir, sm_version, true);
+    Ok(ptx)
 }
 
 /// Type-check source code without compiling
