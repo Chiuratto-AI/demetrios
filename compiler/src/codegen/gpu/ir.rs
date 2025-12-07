@@ -40,11 +40,82 @@ pub enum GpuTarget {
     /// OpenCL SPIR-V
     OpenCL { version: (u32, u32) },
 
+    /// Apple Metal (MSL)
+    Metal { gpu_family: MetalGpuFamily },
+
     /// AMD ROCm (future)
     Rocm,
 
     /// Intel oneAPI (future)
     OneApi,
+}
+
+/// Apple GPU family for Metal
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MetalGpuFamily {
+    /// Apple 7 (M1, A14) - First Apple Silicon
+    Apple7,
+    /// Apple 8 (M2, A15, A16) - Enhanced ML
+    Apple8,
+    /// Apple 9 (M3, A17) - Dynamic caching, ray tracing
+    Apple9,
+    /// Mac 2 (Intel discrete GPU)
+    Mac2,
+    /// Common subset (portable)
+    Common,
+}
+
+impl MetalGpuFamily {
+    /// Maximum threads per threadgroup
+    pub fn max_threads_per_threadgroup(&self) -> u32 {
+        match self {
+            MetalGpuFamily::Apple7 => 1024,
+            MetalGpuFamily::Apple8 => 1024,
+            MetalGpuFamily::Apple9 => 1024,
+            MetalGpuFamily::Mac2 => 1024,
+            MetalGpuFamily::Common => 512,
+        }
+    }
+
+    /// Maximum threadgroup memory (bytes)
+    pub fn max_threadgroup_memory(&self) -> u32 {
+        match self {
+            MetalGpuFamily::Apple7 => 32768,
+            MetalGpuFamily::Apple8 => 32768,
+            MetalGpuFamily::Apple9 => 32768,
+            MetalGpuFamily::Mac2 => 65536,
+            MetalGpuFamily::Common => 16384,
+        }
+    }
+
+    /// Supports simdgroup operations
+    pub fn supports_simdgroup(&self) -> bool {
+        true // All modern Metal GPUs support simdgroup
+    }
+
+    /// Supports simdgroup matrix (for ML)
+    pub fn supports_simdgroup_matrix(&self) -> bool {
+        matches!(
+            self,
+            MetalGpuFamily::Apple7 | MetalGpuFamily::Apple8 | MetalGpuFamily::Apple9
+        )
+    }
+
+    /// SIMD width (threads per simdgroup)
+    pub fn simd_width(&self) -> u32 {
+        32 // Apple GPUs use 32-wide SIMD
+    }
+
+    /// MSL version string
+    pub fn msl_version(&self) -> &'static str {
+        match self {
+            MetalGpuFamily::Apple7 => "2.4",
+            MetalGpuFamily::Apple8 => "3.0",
+            MetalGpuFamily::Apple9 => "3.1",
+            MetalGpuFamily::Mac2 => "2.4",
+            MetalGpuFamily::Common => "2.3",
+        }
+    }
 }
 
 impl Default for GpuTarget {
@@ -70,6 +141,14 @@ impl fmt::Display for GpuTarget {
             }
             GpuTarget::OpenCL { version } => {
                 write!(f, "OpenCL {}.{}", version.0, version.1)
+            }
+            GpuTarget::Metal { gpu_family } => {
+                write!(
+                    f,
+                    "Metal {:?} (MSL {})",
+                    gpu_family,
+                    gpu_family.msl_version()
+                )
             }
             GpuTarget::Rocm => write!(f, "ROCm"),
             GpuTarget::OneApi => write!(f, "oneAPI"),

@@ -3,6 +3,7 @@
 //! Supports:
 //! - PTX (NVIDIA CUDA)
 //! - SPIR-V (Vulkan, OpenCL)
+//! - MSL (Apple Metal)
 //!
 //! Architecture:
 //! ```text
@@ -27,10 +28,13 @@
 //! ```
 
 pub mod counterfactual;
+pub mod counterfactual_metal;
 pub mod epistemic_ptx;
 pub mod hlir_to_gpu;
 pub mod intrinsics;
 pub mod ir;
+pub mod metal;
+pub mod metal_runtime;
 pub mod ptx;
 pub mod runtime;
 #[cfg(feature = "gpu")]
@@ -40,8 +44,8 @@ pub mod tensor_epistemic;
 pub use intrinsics::{GpuIntrinsic, all_intrinsics, get_intrinsic, is_gpu_intrinsic};
 pub use ir::{
     BlockId, GpuBlock, GpuConstValue, GpuConstant, GpuFunction, GpuKernel, GpuModule, GpuOp,
-    GpuParam, GpuTarget, GpuTerminator, GpuType, MemorySpace, SharedMemDecl, ValueId, WarpReduceOp,
-    WarpVoteOp,
+    GpuParam, GpuTarget, GpuTerminator, GpuType, MemorySpace, MetalGpuFamily, SharedMemDecl,
+    ValueId, WarpReduceOp, WarpVoteOp,
 };
 pub use ptx::PtxCodegen;
 pub use runtime::{
@@ -68,4 +72,19 @@ pub use epistemic_ptx::{
 pub use counterfactual::{
     CounterfactualContext, CounterfactualPtxConfig, CounterfactualPtxEmitter, CounterfactualValue,
     Intervention, StructuralEqType, WorldDivergence, WorldId, WorldSnapshot,
+};
+
+// Metal Shading Language (MSL) codegen - native Apple GPU support
+pub use metal::{MetalCodegen, MetalCodegenConfig, compile_to_msl, compile_to_msl_epistemic};
+
+// Counterfactual Metal execution - Pearl's do-calculus for Apple Silicon
+pub use counterfactual_metal::{
+    CounterfactualMetalConfig, CounterfactualMetalEmitter, compile_counterfactual_metal,
+    generate_counterfactual_metal_library,
+};
+
+// Metal runtime - native Apple GPU execution
+pub use metal_runtime::{
+    EpistemicMetalRunner, MetalBuffer, MetalCommandBuffer, MetalDeviceInfo, MetalDispatchSize,
+    MetalError, MetalKernel, MetalLibrary, MetalResourceOptions, MetalRuntime, MetalStorageMode,
 };

@@ -1186,7 +1186,8 @@ pub fn compile_to_ptx_epistemic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hlir::{HlirBlock, HlirFunction, HlirInstr, HlirParam, HlirTerminator};
+    use crate::hlir::{FunctionId, HlirBlock, HlirFunction, HlirInstr, HlirParam, HlirTerminator};
+    use std::collections::HashMap;
 
     fn create_test_module() -> HlirModule {
         let mut module = HlirModule::new("test");
