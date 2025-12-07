@@ -50,6 +50,7 @@ mod metal_target {
             MetalGpuFamily::Apple7,
             MetalGpuFamily::Apple8,
             MetalGpuFamily::Apple9,
+            MetalGpuFamily::Apple10,
             MetalGpuFamily::Mac2,
             MetalGpuFamily::Common,
         ];
@@ -75,6 +76,13 @@ mod metal_target {
         assert_eq!(MetalGpuFamily::Apple9.max_threads_per_threadgroup(), 1024);
         assert_eq!(MetalGpuFamily::Apple9.msl_version(), "3.1");
         assert!(MetalGpuFamily::Apple9.supports_simdgroup_matrix());
+
+        // Apple10 (M4/A18) - futureproof
+        assert_eq!(MetalGpuFamily::Apple10.max_threads_per_threadgroup(), 1024);
+        assert_eq!(MetalGpuFamily::Apple10.msl_version(), "3.2");
+        assert!(MetalGpuFamily::Apple10.supports_simdgroup_matrix());
+        assert!(MetalGpuFamily::Apple10.supports_mesh_shaders());
+        assert!(MetalGpuFamily::Apple10.supports_ray_tracing());
     }
 
     #[test]

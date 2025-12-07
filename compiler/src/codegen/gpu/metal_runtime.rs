@@ -331,9 +331,10 @@ impl MetalDeviceInfo {
     /// Create default info for a GPU family
     pub fn default_for(family: MetalGpuFamily) -> Self {
         let (name, apple_silicon, simdgroup_matrix) = match family {
-            MetalGpuFamily::Apple7 => ("Apple M1 GPU", true, false),
+            MetalGpuFamily::Apple7 => ("Apple M1 GPU", true, true),
             MetalGpuFamily::Apple8 => ("Apple M2 GPU", true, true),
             MetalGpuFamily::Apple9 => ("Apple M3 GPU", true, true),
+            MetalGpuFamily::Apple10 => ("Apple M4 GPU", true, true),
             MetalGpuFamily::Mac2 => ("Intel Mac GPU", false, false),
             MetalGpuFamily::Common => ("Metal Common GPU", false, false),
         };
@@ -342,10 +343,11 @@ impl MetalDeviceInfo {
             name: name.to_string(),
             family,
             recommended_max_working_set_size: match family {
-                MetalGpuFamily::Apple9 => 48 * 1024 * 1024 * 1024, // 48 GB
-                MetalGpuFamily::Apple8 => 32 * 1024 * 1024 * 1024, // 32 GB
-                MetalGpuFamily::Apple7 => 16 * 1024 * 1024 * 1024, // 16 GB
-                _ => 8 * 1024 * 1024 * 1024,                       // 8 GB
+                MetalGpuFamily::Apple10 => 64 * 1024 * 1024 * 1024, // 64 GB (M4 Max)
+                MetalGpuFamily::Apple9 => 48 * 1024 * 1024 * 1024,  // 48 GB
+                MetalGpuFamily::Apple8 => 32 * 1024 * 1024 * 1024,  // 32 GB
+                MetalGpuFamily::Apple7 => 16 * 1024 * 1024 * 1024,  // 16 GB
+                _ => 8 * 1024 * 1024 * 1024,                        // 8 GB
             },
             max_buffer_length: 1024 * 1024 * 1024, // 1 GB
             max_threads_per_threadgroup: family.max_threads_per_threadgroup(),

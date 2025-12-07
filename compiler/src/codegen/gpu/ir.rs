@@ -59,6 +59,8 @@ pub enum MetalGpuFamily {
     Apple8,
     /// Apple 9 (M3, A17) - Dynamic caching, ray tracing
     Apple9,
+    /// Apple 10 (M4, A18) - Enhanced ray tracing, mesh shaders (futureproof)
+    Apple10,
     /// Mac 2 (Intel discrete GPU)
     Mac2,
     /// Common subset (portable)
@@ -72,6 +74,7 @@ impl MetalGpuFamily {
             MetalGpuFamily::Apple7 => 1024,
             MetalGpuFamily::Apple8 => 1024,
             MetalGpuFamily::Apple9 => 1024,
+            MetalGpuFamily::Apple10 => 1024,
             MetalGpuFamily::Mac2 => 1024,
             MetalGpuFamily::Common => 512,
         }
@@ -83,6 +86,7 @@ impl MetalGpuFamily {
             MetalGpuFamily::Apple7 => 32768,
             MetalGpuFamily::Apple8 => 32768,
             MetalGpuFamily::Apple9 => 32768,
+            MetalGpuFamily::Apple10 => 65536, // M4 has more threadgroup memory
             MetalGpuFamily::Mac2 => 65536,
             MetalGpuFamily::Common => 16384,
         }
@@ -97,8 +101,21 @@ impl MetalGpuFamily {
     pub fn supports_simdgroup_matrix(&self) -> bool {
         matches!(
             self,
-            MetalGpuFamily::Apple7 | MetalGpuFamily::Apple8 | MetalGpuFamily::Apple9
+            MetalGpuFamily::Apple7
+                | MetalGpuFamily::Apple8
+                | MetalGpuFamily::Apple9
+                | MetalGpuFamily::Apple10
         )
+    }
+
+    /// Supports mesh shaders (Apple10+)
+    pub fn supports_mesh_shaders(&self) -> bool {
+        matches!(self, MetalGpuFamily::Apple10)
+    }
+
+    /// Supports hardware ray tracing
+    pub fn supports_ray_tracing(&self) -> bool {
+        matches!(self, MetalGpuFamily::Apple9 | MetalGpuFamily::Apple10)
     }
 
     /// SIMD width (threads per simdgroup)
@@ -112,6 +129,7 @@ impl MetalGpuFamily {
             MetalGpuFamily::Apple7 => "2.4",
             MetalGpuFamily::Apple8 => "3.0",
             MetalGpuFamily::Apple9 => "3.1",
+            MetalGpuFamily::Apple10 => "3.2", // Future MSL version
             MetalGpuFamily::Mac2 => "2.4",
             MetalGpuFamily::Common => "2.3",
         }

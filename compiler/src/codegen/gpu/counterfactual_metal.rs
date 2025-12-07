@@ -487,6 +487,7 @@ impl CounterfactualMetalEmitter {
                 MetalGpuFamily::Apple7 => "Apple7 (M1/A14)",
                 MetalGpuFamily::Apple8 => "Apple8 (M2/A15/A16)",
                 MetalGpuFamily::Apple9 => "Apple9 (M3/A17)",
+                MetalGpuFamily::Apple10 => "Apple10 (M4/A18)",
                 MetalGpuFamily::Mac2 => "Mac2 (Intel)",
                 MetalGpuFamily::Common => "Common (Portable)",
             },
