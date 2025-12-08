@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::Once;
+
 use std::time::{Duration, Instant};
 
 // ============================================================================
@@ -36,22 +36,11 @@ pub struct TestHarness {
 impl TestHarness {
     /// Create a new test harness
     pub fn new() -> Self {
-        static INIT: Once = Once::new();
-        INIT.call_once(|| {
-            // Ensure compiler is built
-            let status = Command::new("cargo")
-                .args(["build", "--release"])
-                .current_dir(env!("CARGO_MANIFEST_DIR"))
-                .status()
-                .expect("Failed to build compiler");
-            assert!(status.success(), "Compiler build failed");
-        });
+        // Use debug binary (dc is the compiler binary name)
+        // Assumes compiler is already built via `cargo build`
+        let compiler_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/dc");
 
-        let compiler_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("target/release/demetrios");
-
-        let temp_dir = std::env::temp_dir()
-            .join(format!("demetrios_test_{}", std::process::id()));
+        let temp_dir = std::env::temp_dir().join(format!("demetrios_test_{}", std::process::id()));
         fs::create_dir_all(&temp_dir).expect("Failed to create temp dir");
 
         Self {
@@ -113,12 +102,9 @@ impl TestHarness {
 
     /// Compile a source file
     pub fn compile_file(&self, path: &Path) -> CompileResult {
-        let output_path = self.temp_dir.join("output");
-
         let mut cmd = Command::new(&self.compiler_path);
-        cmd.arg(path)
-           .arg("-o")
-           .arg(&output_path);
+        // Use 'check' subcommand for type checking
+        cmd.arg("check").arg(path);
 
         // Add ontology paths
         for onto_path in &self.ontology_paths {
@@ -301,7 +287,9 @@ impl CompileResult {
 
     /// Assert no errors were emitted
     pub fn assert_no_errors(&self) -> &Self {
-        let errors: Vec<_> = self.diagnostics.iter()
+        let errors: Vec<_> = self
+            .diagnostics
+            .iter()
             .filter(|d| d.level == DiagnosticLevel::Error)
             .collect();
         assert!(
@@ -315,11 +303,7 @@ impl CompileResult {
     /// Assert exact number of errors
     pub fn assert_error_count(&self, count: usize) -> &Self {
         let actual = self.error_count();
-        assert_eq!(
-            actual, count,
-            "Expected {} errors, found {}",
-            count, actual
-        );
+        assert_eq!(actual, count, "Expected {} errors, found {}", count, actual);
         self
     }
 
@@ -329,27 +313,33 @@ impl CompileResult {
         assert!(
             stderr.contains(text),
             "Expected error output to contain '{}'\nActual output:\n{}",
-            text, stderr
+            text,
+            stderr
         );
         self
     }
 
     /// Assert error at specific location
     pub fn assert_error_at(&self, code: &str, line: u32, column: u32) -> &Self {
-        let matching = self.diagnostics.iter()
+        let matching = self
+            .diagnostics
+            .iter()
             .filter(|d| d.level == DiagnosticLevel::Error)
             .filter(|d| d.code.as_deref() == Some(code))
             .filter(|d| {
-                d.location.as_ref().map_or(false, |loc| {
-                    loc.line == line && loc.column == column
-                })
+                d.location
+                    .as_ref()
+                    .map_or(false, |loc| loc.line == line && loc.column == column)
             })
             .count();
 
         assert!(
             matching > 0,
             "Expected error '{}' at line {}, column {}, but not found.\nActual diagnostics: {:?}",
-            code, line, column, self.diagnostics
+            code,
+            line,
+            column,
+            self.diagnostics
         );
         self
     }
@@ -382,7 +372,8 @@ impl CompileResult {
                     assert!(
                         sd.distance <= max_distance,
                         "Semantic distance {} exceeds maximum {}",
-                        sd.distance, max_distance
+                        sd.distance,
+                        max_distance
                     );
                 }
             }
@@ -398,7 +389,8 @@ impl CompileResult {
             assert!(
                 duration <= max,
                 "Compilation took {:?}, exceeds limit of {:?}",
-                duration, max
+                duration,
+                max
             );
         }
         self
@@ -410,7 +402,8 @@ impl CompileResult {
             assert!(
                 duration >= min,
                 "Compilation took {:?}, under minimum of {:?}",
-                duration, min
+                duration,
+                min
             );
         }
         self
@@ -424,7 +417,8 @@ impl CompileResult {
         assert!(
             stdout.contains(text),
             "Expected stdout to contain '{}'\nActual:\n{}",
-            text, stdout
+            text,
+            stdout
         );
         self
     }
@@ -435,7 +429,8 @@ impl CompileResult {
         assert!(
             stderr.contains(text),
             "Expected stderr to contain '{}'\nActual:\n{}",
-            text, stderr
+            text,
+            stderr
         );
         self
     }
@@ -463,8 +458,7 @@ impl CompileResult {
             if let Some(parent) = golden_path.parent() {
                 fs::create_dir_all(parent).ok();
             }
-            fs::write(golden_path, &actual_normalized)
-                .expect("Failed to write golden file");
+            fs::write(golden_path, &actual_normalized).expect("Failed to write golden file");
             return self;
         }
 
@@ -475,8 +469,7 @@ impl CompileResult {
             );
         }
 
-        let expected = fs::read_to_string(golden_path)
-            .expect("Failed to read golden file");
+        let expected = fs::read_to_string(golden_path).expect("Failed to read golden file");
         let expected_normalized = normalize_output(&expected);
 
         if actual_normalized != expected_normalized {
@@ -518,38 +511,44 @@ impl CompileResult {
     }
 
     pub fn error_count(&self) -> usize {
-        self.diagnostics.iter()
+        self.diagnostics
+            .iter()
             .filter(|d| d.level == DiagnosticLevel::Error)
             .count()
     }
 
     pub fn warning_count(&self) -> usize {
-        self.diagnostics.iter()
+        self.diagnostics
+            .iter()
             .filter(|d| d.level == DiagnosticLevel::Warning)
             .count()
     }
 
     fn has_error(&self, code: &str) -> bool {
-        self.diagnostics.iter()
+        self.diagnostics
+            .iter()
             .filter(|d| d.level == DiagnosticLevel::Error)
             .any(|d| d.code.as_deref() == Some(code))
     }
 
     fn has_warning(&self, code: &str) -> bool {
-        self.diagnostics.iter()
+        self.diagnostics
+            .iter()
             .filter(|d| d.level == DiagnosticLevel::Warning)
             .any(|d| d.code.as_deref() == Some(code))
     }
 
     fn error_codes(&self) -> Vec<&str> {
-        self.diagnostics.iter()
+        self.diagnostics
+            .iter()
             .filter(|d| d.level == DiagnosticLevel::Error)
             .filter_map(|d| d.code.as_deref())
             .collect()
     }
 
     fn warning_codes(&self) -> Vec<&str> {
-        self.diagnostics.iter()
+        self.diagnostics
+            .iter()
             .filter(|d| d.level == DiagnosticLevel::Warning)
             .filter_map(|d| d.code.as_deref())
             .collect()
@@ -753,7 +752,8 @@ macro_rules! golden_test {
         #[test]
         fn $name() {
             let harness = $crate::integration::common::TestHarness::new();
-            harness.compile_str(stringify!($name), $source)
+            harness
+                .compile_str(stringify!($name), $source)
                 .assert_stderr_matches_golden($golden);
         }
     };
