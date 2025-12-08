@@ -224,6 +224,7 @@ impl<'a> Parser<'a> {
                 is_unsafe: modifiers.is_unsafe,
                 is_kernel,
             },
+            attributes: Vec::new(),
             name,
             generics,
             params,
@@ -269,6 +270,7 @@ impl<'a> Parser<'a> {
                     mutable: false,
                 },
                 ty: TypeExpr::SelfType, // Special self type
+                attributes: Vec::new(),
             });
         }
 
@@ -294,6 +296,7 @@ impl<'a> Parser<'a> {
                         mutable: is_ref_mut,
                         inner: Box::new(TypeExpr::SelfType),
                     },
+                    attributes: Vec::new(),
                 });
             }
             // Not &self, backtrack is tricky - for now just error
@@ -309,6 +312,7 @@ impl<'a> Parser<'a> {
             is_mut,
             pattern,
             ty,
+            attributes: Vec::new(),
         })
     }
 
@@ -381,6 +385,7 @@ impl<'a> Parser<'a> {
                 linear: modifiers.linear,
                 affine: modifiers.affine,
             },
+            attributes: Vec::new(),
             name,
             generics,
             where_clause,
@@ -398,6 +403,7 @@ impl<'a> Parser<'a> {
         Ok(FieldDef {
             id: self.next_id(),
             visibility,
+            attributes: Vec::new(),
             name,
             ty,
         })
@@ -1207,6 +1213,31 @@ impl<'a> Parser<'a> {
                 } else {
                     Vec::new()
                 };
+
+                // Check for compound unit as standalone type: mL/min, kg*m/s2
+                // This is shorthand for f64@mL/min
+                if args.is_empty()
+                    && path.segments.len() == 1
+                    && (self.at(TokenKind::Slash) || self.at(TokenKind::Star))
+                {
+                    let mut unit_str = path.segments[0].clone();
+                    // Parse the rest of the compound unit
+                    while self.at(TokenKind::Slash) || self.at(TokenKind::Star) {
+                        let op = self.advance().text.clone();
+                        unit_str.push_str(&op);
+                        if self.at(TokenKind::Ident) || self.at(TokenKind::IntLit) {
+                            unit_str.push_str(&self.advance().text);
+                        }
+                    }
+                    // Return as f64 with unit annotation (shorthand expansion)
+                    return Ok(TypeExpr::Named {
+                        path: Path {
+                            segments: vec!["f64".to_string()],
+                        },
+                        args: Vec::new(),
+                        unit: Some(unit_str),
+                    });
+                }
 
                 // Check for unit annotation: Type@unit (e.g., f64@kg, i32@m/s)
                 let unit = if self.at(TokenKind::At) {
@@ -2364,7 +2395,9 @@ impl<'a> Parser<'a> {
 
     fn parse_if(&mut self) -> Result<Expr> {
         self.expect(TokenKind::If)?;
-        let condition = Box::new(self.parse_expr()?);
+        // Use parse_expr_no_struct to avoid ambiguity with `if x { ... }`
+        // being parsed as struct literal `x { ... }`
+        let condition = Box::new(self.parse_expr_no_struct()?);
         let then_branch = self.parse_block()?;
         let else_branch = if self.at(TokenKind::Else) {
             self.advance();
@@ -2436,7 +2469,9 @@ impl<'a> Parser<'a> {
 
     fn parse_while(&mut self) -> Result<Expr> {
         self.expect(TokenKind::While)?;
-        let condition = Box::new(self.parse_expr()?);
+        // Use parse_expr_no_struct to avoid ambiguity with `while x { ... }`
+        // being parsed as struct literal `x { ... }`
+        let condition = Box::new(self.parse_expr_no_struct()?);
         let body = self.parse_block()?;
         Ok(Expr::While {
             id: self.next_id(),

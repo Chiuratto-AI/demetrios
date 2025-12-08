@@ -1,0 +1,12 @@
+error[E0412]: cannot find ontology `undefined_ontology` in this scope
+ --> undefined_onto.dm:1:13
+  |
+1 | type Drug = undefined_ontology:drug;
+  |             ^^^^^^^^^^^^^^^^^^ not found
+  |
+  = help: consider importing the ontology:
+          `ontology undefined_ontology from "path/to/ontology.owl";`
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `demetrios --explain E0412`.

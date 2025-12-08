@@ -1,0 +1,19 @@
+error[E0308]: mismatched types
+  --> align_suggest.dm:13:13
+   |
+13 |     analyze(db);
+   |             ^^ expected `ChEBIDrug`, found `DrugBankDrug`
+   |
+   = note: expected type `chebi:drug`
+              found type `drugbank:drug`
+   = note: no alignment declared between these ontologies
+   = help: if these types represent equivalent concepts, declare an alignment:
+           `align chebi:drug ~ drugbank:drug with distance <value>;`
+   = help: recommended distance values:
+           - 0.0-0.1: exact or near-exact equivalence
+           - 0.1-0.3: closely related concepts
+           - 0.3-0.5: moderately related concepts
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `demetrios --explain E0308`.

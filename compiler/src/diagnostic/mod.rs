@@ -5,6 +5,8 @@
 //! - Source code highlighting
 //! - Suggestions and fixes
 //! - Machine-readable output
+//! - Semantic annotations for ontological types
+//! - Progress reporting for long compilations
 //!
 //! # Example
 //!
@@ -22,6 +24,9 @@
 pub mod codes;
 pub mod emitter;
 pub mod epistemic;
+pub mod progress;
+pub mod render;
+pub mod semantic;
 pub mod suggestion;
 pub mod type_diff;
 pub mod typo;
@@ -33,6 +38,15 @@ use std::path::PathBuf;
 /// Re-exports
 pub use codes::{ErrorCode, ErrorIndex};
 pub use emitter::{DiagnosticEmitter, HumanEmitter, JsonEmitter};
+pub use progress::{
+    CompilationProgress, Progress, ProgressStyle, StatusLine, format_bytes, format_duration,
+};
+pub use render::{
+    DiagnosticStyle, DistanceSuggestion, RichRenderer, TerminalCaps, render_distance_suggestions,
+};
+pub use semantic::{
+    DistanceComponents, SemanticAnnotator, SemanticContext, SemanticSuggestion, TermInfo,
+};
 pub use suggestion::{Suggestion, SuggestionApplicability};
 pub use type_diff::{TypeDiff, TypeErrorBuilder, render_type_diff};
 pub use typo::{SuggestionBuilder as TypoSuggestionBuilder, TypoDetector, TypoSuggestion};

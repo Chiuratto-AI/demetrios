@@ -1,0 +1,20 @@
+error[E0308]: semantic distance exceeds threshold (transitive)
+  --> coercion_chain.dm:15:13
+   |
+15 |     process(rx);
+   |             ^^ total distance 0.30 exceeds threshold 0.25
+   |
+   = note: expected type `ChEBIDrug` (chebi:drug)
+              found type `RxNormDrug` (rxnorm:clinical_drug)
+   = note: coercion requires transitive path through alignments:
+           rxnorm:clinical_drug -> drugbank:drug (0.15)
+           drugbank:drug -> chebi:drug (0.15)
+           total distance: 0.30
+   = help: increase the threshold to allow transitive coercion:
+           `#[compat(threshold = 0.30)]`
+   = note: consider declaring a direct alignment for better performance:
+           `align chebi:drug ~ rxnorm:clinical_drug with distance 0.30;`
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `demetrios --explain E0308`.

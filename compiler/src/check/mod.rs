@@ -8,7 +8,10 @@
 //! - Ownership/borrow checking
 //! - Unit checking
 //! - Epistemic type constraints
+//! - Semantic type compatibility
 
+pub mod compatibility;
+pub mod diagnostics;
 pub mod epistemic;
 
 use crate::ast::*;
@@ -536,6 +539,10 @@ impl TypeChecker {
                     if let Some(binding) = self.env.lookup(name) {
                         let ty = binding.ty.clone();
                         (HirExprKind::Local(name.clone()), self.type_to_hir(&ty))
+                    } else if self.is_builtin_function(name) {
+                        // Builtin function - return a function type
+                        let builtin_ty = self.get_builtin_type(name);
+                        (HirExprKind::Global(name.clone()), builtin_ty)
                     } else {
                         self.error(format!("Unknown variable: {}", name), Span::dummy());
                         (HirExprKind::Local(name.clone()), HirType::Error)
@@ -559,7 +566,8 @@ impl TypeChecker {
                 let right_expr =
                     self.check_expr(right, Some(&self.hir_type_to_type(&left_expr.ty)))?;
 
-                let result_ty = self.binary_result_type(*op, &left_expr.ty, &right_expr.ty);
+                // Check unit compatibility for arithmetic operations
+                let result_ty = self.check_binary_units(*op, &left_expr.ty, &right_expr.ty);
                 let hir_op = self.lower_binary_op(*op);
 
                 (
@@ -1083,11 +1091,298 @@ impl TypeChecker {
             Literal::Float(f) => (HirLiteral::Float(*f), HirType::F64),
             Literal::Char(c) => (HirLiteral::Char(*c), HirType::Char),
             Literal::String(s) => (HirLiteral::String(s.clone()), HirType::String),
-            // Unit literals: for now, treat as the base numeric type
-            // Full unit checking will be done in a separate pass
-            Literal::IntUnit(i, _unit) => (HirLiteral::Int(*i), HirType::I64),
-            Literal::FloatUnit(f, _unit) => (HirLiteral::Float(*f), HirType::F64),
+            // Unit literals: create Quantity type with unit information
+            Literal::IntUnit(i, unit) => {
+                let hir_unit = self.parse_unit_string(unit);
+                (
+                    HirLiteral::Int(*i),
+                    HirType::Quantity {
+                        numeric: Box::new(HirType::I64),
+                        unit: hir_unit,
+                    },
+                )
+            }
+            Literal::FloatUnit(f, unit) => {
+                let hir_unit = self.parse_unit_string(unit);
+                (
+                    HirLiteral::Float(*f),
+                    HirType::Quantity {
+                        numeric: Box::new(HirType::F64),
+                        unit: hir_unit,
+                    },
+                )
+            }
         }
+    }
+
+    /// Check unit compatibility for binary operations and compute result type
+    fn check_binary_units(&mut self, op: BinaryOp, left: &HirType, right: &HirType) -> HirType {
+        // Extract units from quantity types
+        let (left_numeric, left_unit) = self.extract_quantity(left);
+        let (right_numeric, right_unit) = self.extract_quantity(right);
+
+        match op {
+            BinaryOp::Add | BinaryOp::Sub => {
+                // Addition/subtraction requires compatible units
+                match (&left_unit, &right_unit) {
+                    (Some(lu), Some(ru)) => {
+                        if !lu.is_compatible(ru) {
+                            self.error(
+                                format!(
+                                    "Unit mismatch in {}: cannot {} {} and {}",
+                                    if op == BinaryOp::Add {
+                                        "addition"
+                                    } else {
+                                        "subtraction"
+                                    },
+                                    if op == BinaryOp::Add {
+                                        "add"
+                                    } else {
+                                        "subtract"
+                                    },
+                                    lu.format(),
+                                    ru.format()
+                                ),
+                                Span::dummy(),
+                            );
+                            return HirType::Error;
+                        }
+                        // Result has same unit as operands
+                        HirType::Quantity {
+                            numeric: Box::new(left_numeric.clone()),
+                            unit: lu.clone(),
+                        }
+                    }
+                    (Some(_), None) | (None, Some(_)) => {
+                        self.error(
+                            format!(
+                                "Cannot {} values with and without units",
+                                if op == BinaryOp::Add {
+                                    "add"
+                                } else {
+                                    "subtract"
+                                }
+                            ),
+                            Span::dummy(),
+                        );
+                        HirType::Error
+                    }
+                    (None, None) => left_numeric.clone(),
+                }
+            }
+            BinaryOp::Mul => {
+                // Multiplication: units multiply
+                match (&left_unit, &right_unit) {
+                    (Some(lu), Some(ru)) => {
+                        let result_unit = lu.multiply(ru);
+                        HirType::Quantity {
+                            numeric: Box::new(left_numeric.clone()),
+                            unit: result_unit,
+                        }
+                    }
+                    (Some(lu), None) => HirType::Quantity {
+                        numeric: Box::new(left_numeric.clone()),
+                        unit: lu.clone(),
+                    },
+                    (None, Some(ru)) => HirType::Quantity {
+                        numeric: Box::new(left_numeric.clone()),
+                        unit: ru.clone(),
+                    },
+                    (None, None) => left_numeric.clone(),
+                }
+            }
+            BinaryOp::Div => {
+                // Division: units divide
+                match (&left_unit, &right_unit) {
+                    (Some(lu), Some(ru)) => {
+                        let result_unit = lu.divide(ru);
+                        if result_unit.is_dimensionless() {
+                            left_numeric.clone()
+                        } else {
+                            HirType::Quantity {
+                                numeric: Box::new(left_numeric.clone()),
+                                unit: result_unit,
+                            }
+                        }
+                    }
+                    (Some(lu), None) => HirType::Quantity {
+                        numeric: Box::new(left_numeric.clone()),
+                        unit: lu.clone(),
+                    },
+                    (None, Some(ru)) => {
+                        // Dividing dimensionless by unit gives inverse unit
+                        let result_unit = HirUnit::dimensionless().divide(ru);
+                        HirType::Quantity {
+                            numeric: Box::new(left_numeric.clone()),
+                            unit: result_unit,
+                        }
+                    }
+                    (None, None) => left_numeric.clone(),
+                }
+            }
+            BinaryOp::Rem => {
+                // Remainder: same rules as division for compatibility, result has left's unit
+                match (&left_unit, &right_unit) {
+                    (Some(lu), Some(ru)) => {
+                        if !lu.is_compatible(ru) {
+                            self.error(
+                                format!(
+                                    "Unit mismatch in remainder: incompatible units {} and {}",
+                                    lu.format(),
+                                    ru.format()
+                                ),
+                                Span::dummy(),
+                            );
+                            return HirType::Error;
+                        }
+                        HirType::Quantity {
+                            numeric: Box::new(left_numeric.clone()),
+                            unit: lu.clone(),
+                        }
+                    }
+                    (Some(_), None) | (None, Some(_)) => {
+                        self.error(
+                            "Cannot compute remainder of values with and without units".to_string(),
+                            Span::dummy(),
+                        );
+                        HirType::Error
+                    }
+                    (None, None) => left_numeric.clone(),
+                }
+            }
+            // Comparison operators: units must be compatible, result is bool
+            BinaryOp::Eq
+            | BinaryOp::Ne
+            | BinaryOp::Lt
+            | BinaryOp::Le
+            | BinaryOp::Gt
+            | BinaryOp::Ge => {
+                if let (Some(lu), Some(ru)) = (&left_unit, &right_unit) {
+                    if !lu.is_compatible(ru) {
+                        self.error(
+                            format!(
+                                "Unit mismatch in comparison: cannot compare {} and {}",
+                                lu.format(),
+                                ru.format()
+                            ),
+                            Span::dummy(),
+                        );
+                    }
+                }
+                HirType::Bool
+            }
+            // Logical operators
+            BinaryOp::And | BinaryOp::Or => HirType::Bool,
+            // Bitwise operators: no unit handling
+            BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::Shl
+            | BinaryOp::Shr => left.clone(),
+        }
+    }
+
+    /// Extract the numeric type and optional unit from a type
+    fn extract_quantity(&self, ty: &HirType) -> (HirType, Option<HirUnit>) {
+        match ty {
+            HirType::Quantity { numeric, unit } => (*numeric.clone(), Some(unit.clone())),
+            _ => (ty.clone(), None),
+        }
+    }
+
+    /// Check if a name is a builtin function
+    fn is_builtin_function(&self, name: &str) -> bool {
+        matches!(
+            name,
+            "print"
+                | "println"
+                | "assert"
+                | "assert_eq"
+                | "len"
+                | "type_of"
+                | "Some"
+                | "None"
+                | "Ok"
+                | "Err"
+                | "dbg"
+                | "panic"
+                | "format"
+                | "read_line"
+                | "parse_int"
+                | "parse_float"
+                | "to_string"
+                | "sqrt"
+                | "abs"
+                | "sin"
+                | "cos"
+                | "tan"
+                | "exp"
+                | "log"
+                | "pow"
+                | "floor"
+                | "ceil"
+                | "round"
+                | "min"
+                | "max"
+        )
+    }
+
+    /// Get the type of a builtin function
+    fn get_builtin_type(&self, name: &str) -> HirType {
+        // For simplicity, most builtins are treated as functions that take any args and return unit or the appropriate type
+        match name {
+            "print" | "println" | "dbg" | "panic" | "assert" | "assert_eq" => {
+                // These return unit
+                HirType::Fn {
+                    params: vec![], // Variadic, but we'll be lenient
+                    return_type: Box::new(HirType::Unit),
+                }
+            }
+            "len" => HirType::Fn {
+                params: vec![],
+                return_type: Box::new(HirType::I64),
+            },
+            "type_of" | "format" | "to_string" | "read_line" => HirType::Fn {
+                params: vec![],
+                return_type: Box::new(HirType::String),
+            },
+            "parse_int" | "parse_float" => HirType::Fn {
+                params: vec![HirType::String],
+                return_type: Box::new(HirType::Unit), // Actually returns Option, simplified
+            },
+            "sqrt" | "abs" | "sin" | "cos" | "tan" | "exp" | "log" | "pow" | "floor" | "ceil"
+            | "round" | "min" | "max" => HirType::Fn {
+                params: vec![HirType::F64],
+                return_type: Box::new(HirType::F64),
+            },
+            "Some" | "Ok" | "Err" => HirType::Fn {
+                params: vec![],
+                return_type: Box::new(HirType::Unit), // Generic, simplified
+            },
+            "None" => HirType::Unit,
+            _ => HirType::Error,
+        }
+    }
+
+    /// Parse a unit string (e.g., "mg", "mL/min") into HirUnit
+    fn parse_unit_string(&self, unit_str: &str) -> HirUnit {
+        // Handle compound units with / and *
+        if let Some(pos) = unit_str.find('/') {
+            let num = &unit_str[..pos];
+            let den = &unit_str[pos + 1..];
+            let num_unit = self.parse_unit_string(num);
+            let den_unit = self.parse_unit_string(den);
+            return num_unit.divide(&den_unit);
+        }
+        if let Some(pos) = unit_str.find('*') {
+            let left = &unit_str[..pos];
+            let right = &unit_str[pos + 1..];
+            let left_unit = self.parse_unit_string(left);
+            let right_unit = self.parse_unit_string(right);
+            return left_unit.multiply(&right_unit);
+        }
+        // Simple unit
+        HirUnit::simple(unit_str)
     }
 
     fn binary_result_type(&self, op: BinaryOp, left: &HirType, right: &HirType) -> HirType {
@@ -1175,8 +1470,8 @@ impl TypeChecker {
     fn lower_type_expr(&self, ty: &TypeExpr) -> Type {
         match ty {
             TypeExpr::Unit => Type::Unit,
-            TypeExpr::Named { path, args, .. } => {
-                if path.segments.len() == 1 {
+            TypeExpr::Named { path, args, unit } => {
+                let base_type = if path.segments.len() == 1 {
                     let name = &path.segments[0];
                     match name.as_str() {
                         "bool" => Type::Bool,
@@ -1207,6 +1502,15 @@ impl TypeChecker {
                         name: path.to_string(),
                         args: args.iter().map(|a| self.lower_type_expr(a)).collect(),
                     }
+                };
+                // If there's a unit annotation, wrap in Quantity type
+                if let Some(unit_str) = unit {
+                    Type::Quantity {
+                        numeric: Box::new(base_type),
+                        unit: unit_str.clone(),
+                    }
+                } else {
+                    base_type
                 }
             }
             TypeExpr::Reference { mutable, inner } => Type::Ref {
@@ -1310,6 +1614,10 @@ impl TypeChecker {
                 name: name.clone(),
                 args: args.iter().map(|a| self.type_to_hir(a)).collect(),
             },
+            Type::Quantity { numeric, unit } => HirType::Quantity {
+                numeric: Box::new(self.type_to_hir(numeric)),
+                unit: self.parse_unit_string(unit),
+            },
             Type::Var(v) => HirType::Var(v.0),
             Type::Forall { inner, .. } => self.type_to_hir(inner),
             Type::Never | Type::Unknown | Type::Error | Type::SelfType => HirType::Error,
@@ -1366,7 +1674,10 @@ impl TypeChecker {
 
             // Epistemic types - map back to their inner types for now
             HirType::Knowledge { inner, .. } => self.hir_type_to_type(inner),
-            HirType::Quantity { numeric, .. } => self.hir_type_to_type(numeric),
+            HirType::Quantity { numeric, unit } => Type::Quantity {
+                numeric: Box::new(self.hir_type_to_type(numeric)),
+                unit: unit.format(),
+            },
             HirType::Tensor { element, .. } => Type::Array {
                 element: Box::new(self.hir_type_to_type(element)),
                 size: None,

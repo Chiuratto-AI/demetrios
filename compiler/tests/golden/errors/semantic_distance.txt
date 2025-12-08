@@ -1,0 +1,20 @@
+error[E0308]: semantic distance exceeds threshold
+  --> distance_error.dm:14:21
+   |
+14 |     strict_analysis(db);
+   |                     ^^ distance 0.4 exceeds threshold 0.2
+   |
+   = note: expected type `ChEBIDrug` (chebi:drug)
+              found type `DrugBankDrug` (drugbank:drug)
+   = note: semantic distance breakdown:
+           - path distance: 0.15
+           - IC distance: 0.12
+           - embedding distance: 0.13
+           - total: 0.40
+   = help: increase the threshold in the `#[compat]` attribute:
+           `#[compat(threshold = 0.4)]`
+   = help: or use an explicit conversion if the mismatch is intentional
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `demetrios --explain E0308`.

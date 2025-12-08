@@ -1,0 +1,10 @@
+warning: unused import: `go`
+ --> unused_import.dm:3:1
+  |
+3 | ontology go from "https://purl.obolibrary.org/obo/go.owl";
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+  = help: remove the unused import or use it in your code
+
+warning: 1 warning emitted

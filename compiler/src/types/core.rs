@@ -55,6 +55,11 @@ pub enum Type {
         name: String,
         args: Vec<Type>,
     },
+    /// Physical quantity with unit: f64@kg, i32@m/s
+    Quantity {
+        numeric: Box<Type>,
+        unit: String,
+    },
 
     // Polymorphism
     /// Type variable

@@ -51,6 +51,8 @@ pub enum Value {
     Ok(Box<Value>),
     /// Result::Err(value)
     Err(Box<Value>),
+    /// Builtin function (by name)
+    Builtin(String),
 }
 
 impl Value {
@@ -72,6 +74,7 @@ impl Value {
             Value::Some(_) => "Some",
             Value::Ok(_) => "Ok",
             Value::Err(_) => "Err",
+            Value::Builtin(_) => "builtin",
         }
     }
 
@@ -182,6 +185,7 @@ impl fmt::Debug for Value {
             Value::Some(v) => write!(f, "Some({:?})", v),
             Value::Ok(v) => write!(f, "Ok({:?})", v),
             Value::Err(v) => write!(f, "Err({:?})", v),
+            Value::Builtin(name) => write!(f, "<builtin {}>", name),
         }
     }
 }
@@ -249,6 +253,7 @@ impl fmt::Display for Value {
             Value::Some(v) => write!(f, "Some({})", v),
             Value::Ok(v) => write!(f, "Ok({})", v),
             Value::Err(v) => write!(f, "Err({})", v),
+            Value::Builtin(name) => write!(f, "<builtin {}>", name),
         }
     }
 }
@@ -289,6 +294,7 @@ impl PartialEq for Value {
                     fields: f2,
                 },
             ) => e1 == e2 && v1 == v2 && f1 == f2,
+            (Value::Builtin(a), Value::Builtin(b)) => a == b,
             _ => false,
         }
     }

@@ -5,6 +5,109 @@
 use crate::common::{NodeId, Span};
 use serde::{Deserialize, Serialize};
 
+// ==================== ATTRIBUTES ====================
+
+/// Attribute applied to items, expressions, or types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Attribute {
+    pub id: NodeId,
+    /// Attribute name (e.g., "compat", "derive", "cfg")
+    pub name: String,
+    /// Attribute arguments
+    pub args: AttributeArgs,
+    /// Attribute span
+    pub span: Span,
+}
+
+/// Attribute arguments
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AttributeArgs {
+    /// No arguments: #[inline]
+    Empty,
+    /// Single value: #[compat(0.15)]
+    Value(AttributeValue),
+    /// Named arguments: #[cfg(target_os = "linux")]
+    Named(Vec<(String, AttributeValue)>),
+    /// List of values: #[derive(Debug, Clone)]
+    List(Vec<AttributeValue>),
+}
+
+/// Attribute value
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AttributeValue {
+    /// String literal: "value"
+    String(String),
+    /// Integer: 42
+    Int(i64),
+    /// Float: 0.15
+    Float(f64),
+    /// Boolean: true/false
+    Bool(bool),
+    /// Path/identifier: Debug, std::fmt::Display
+    Path(Path),
+    /// Nested attribute: cfg(all(unix, not(target_os = "macos")))
+    Nested(String, Box<AttributeArgs>),
+}
+
+impl Attribute {
+    /// Create a simple attribute with no arguments
+    pub fn simple(name: &str) -> Self {
+        Self {
+            id: NodeId::dummy(),
+            name: name.to_string(),
+            args: AttributeArgs::Empty,
+            span: Span::dummy(),
+        }
+    }
+
+    /// Create a compat attribute with a threshold
+    pub fn compat(threshold: f64) -> Self {
+        Self {
+            id: NodeId::dummy(),
+            name: "compat".to_string(),
+            args: AttributeArgs::Value(AttributeValue::Float(threshold)),
+            span: Span::dummy(),
+        }
+    }
+
+    /// Create a compat attribute with a named level
+    pub fn compat_level(level: &str) -> Self {
+        Self {
+            id: NodeId::dummy(),
+            name: "compat".to_string(),
+            args: AttributeArgs::Value(AttributeValue::Path(Path::simple(level))),
+            span: Span::dummy(),
+        }
+    }
+
+    /// Check if this is a compat attribute
+    pub fn is_compat(&self) -> bool {
+        self.name == "compat"
+    }
+
+    /// Get compat threshold if this is a compat attribute
+    pub fn compat_threshold(&self) -> Option<f64> {
+        if !self.is_compat() {
+            return None;
+        }
+
+        match &self.args {
+            AttributeArgs::Value(AttributeValue::Float(f)) => Some(*f),
+            AttributeArgs::Value(AttributeValue::Path(p)) => {
+                // Parse named levels
+                match p.segments.first().map(|s| s.as_str()) {
+                    Some("exact") => Some(0.0),
+                    Some("strict") => Some(0.05),
+                    Some("default") => Some(0.15),
+                    Some("loose") => Some(0.25),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Top-level AST
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Ast {
@@ -68,6 +171,8 @@ pub struct FnDef {
     pub id: NodeId,
     pub visibility: Visibility,
     pub modifiers: FnModifiers,
+    /// Attributes (e.g., #[compat(strict)], #[inline])
+    pub attributes: Vec<Attribute>,
     pub name: String,
     pub generics: Generics,
     pub params: Vec<Param>,
@@ -85,6 +190,8 @@ pub struct Param {
     pub is_mut: bool,
     pub pattern: Pattern,
     pub ty: TypeExpr,
+    /// Attributes (e.g., #[compat(0.15)] for parameter-level compatibility)
+    pub attributes: Vec<Attribute>,
 }
 
 // ==================== STRUCTS ====================
@@ -95,6 +202,8 @@ pub struct StructDef {
     pub id: NodeId,
     pub visibility: Visibility,
     pub modifiers: TypeModifiers,
+    /// Attributes (e.g., #[derive(Debug)], #[repr(C)])
+    pub attributes: Vec<Attribute>,
     pub name: String,
     pub generics: Generics,
     pub where_clause: Vec<WherePredicate>,
@@ -107,6 +216,8 @@ pub struct StructDef {
 pub struct FieldDef {
     pub id: NodeId,
     pub visibility: Visibility,
+    /// Attributes (e.g., #[compat(strict)] for field-level compatibility)
+    pub attributes: Vec<Attribute>,
     pub name: String,
     pub ty: TypeExpr,
 }

@@ -281,6 +281,102 @@ impl HirUnit {
             denominator: Vec::new(),
         }
     }
+
+    /// Check if two units are compatible (same dimensions) for addition/subtraction
+    pub fn is_compatible(&self, other: &HirUnit) -> bool {
+        // Normalize both units to maps for comparison
+        let self_dims = self.to_dimension_map();
+        let other_dims = other.to_dimension_map();
+        self_dims == other_dims
+    }
+
+    /// Convert to a dimension map (unit -> exponent)
+    fn to_dimension_map(&self) -> std::collections::HashMap<String, i32> {
+        let mut dims = std::collections::HashMap::new();
+        for (unit, exp) in &self.numerator {
+            *dims.entry(unit.clone()).or_insert(0) += exp;
+        }
+        for (unit, exp) in &self.denominator {
+            *dims.entry(unit.clone()).or_insert(0) -= exp;
+        }
+        // Remove zero exponents
+        dims.retain(|_, v| *v != 0);
+        dims
+    }
+
+    /// Multiply two units (for multiplication operations)
+    pub fn multiply(&self, other: &HirUnit) -> HirUnit {
+        let mut dims = self.to_dimension_map();
+        for (unit, exp) in other.to_dimension_map() {
+            *dims.entry(unit).or_insert(0) += exp;
+        }
+        dims.retain(|_, v| *v != 0);
+        Self::from_dimension_map(dims)
+    }
+
+    /// Divide two units (for division operations)
+    pub fn divide(&self, other: &HirUnit) -> HirUnit {
+        let mut dims = self.to_dimension_map();
+        for (unit, exp) in other.to_dimension_map() {
+            *dims.entry(unit).or_insert(0) -= exp;
+        }
+        dims.retain(|_, v| *v != 0);
+        Self::from_dimension_map(dims)
+    }
+
+    /// Create from dimension map
+    fn from_dimension_map(dims: std::collections::HashMap<String, i32>) -> HirUnit {
+        let mut numerator = Vec::new();
+        let mut denominator = Vec::new();
+        for (unit, exp) in dims {
+            if exp > 0 {
+                numerator.push((unit, exp));
+            } else if exp < 0 {
+                denominator.push((unit, -exp));
+            }
+        }
+        // Sort for consistent ordering
+        numerator.sort_by(|a, b| a.0.cmp(&b.0));
+        denominator.sort_by(|a, b| a.0.cmp(&b.0));
+        HirUnit {
+            numerator,
+            denominator,
+        }
+    }
+
+    /// Check if this is a dimensionless unit
+    pub fn is_dimensionless(&self) -> bool {
+        self.numerator.is_empty() && self.denominator.is_empty()
+    }
+
+    /// Format unit for display
+    pub fn format(&self) -> String {
+        if self.is_dimensionless() {
+            return "1".to_string();
+        }
+        let format_parts = |parts: &[(String, i32)]| -> String {
+            parts
+                .iter()
+                .map(|(u, e)| {
+                    if *e == 1 {
+                        u.clone()
+                    } else {
+                        format!("{}^{}", u, e)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("*")
+        };
+        let num = format_parts(&self.numerator);
+        let den = format_parts(&self.denominator);
+        if self.denominator.is_empty() {
+            num
+        } else if self.numerator.is_empty() {
+            format!("1/{}", den)
+        } else {
+            format!("{}/{}", num, den)
+        }
+    }
 }
 
 /// HIR tensor dimension

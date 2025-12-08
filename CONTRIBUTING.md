@@ -1,140 +1,130 @@
 # Contributing to Demetrios
 
-Thank you for your interest in contributing to the Demetrios programming language!
+Thank you for your interest in contributing to Demetrios! This document provides
+guidelines and instructions for contributing.
 
 ## Code of Conduct
 
-This project adheres to a code of conduct. By participating, you are expected to uphold this code.
-
-## Getting Started
-
-### Prerequisites
-
-- Rust 1.75+ (edition 2024)
-- Git
-- Optional: LLVM 15+ (for LLVM backend)
-- Optional: Z3 (for SMT-based refinement type verification)
-
-### Building from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/Chiuratto-AI/demetrios.git
-cd demetrios
-
-# Build the compiler
-cd compiler
-cargo build
-
-# Run tests
-cargo test
-
-# Build with all features
-cargo build --features full
-```
-
-### Project Structure
-
-```
-demetrios/
-├── compiler/          # Rust implementation of the D compiler
-│   ├── src/           # Compiler source code
-│   ├── benches/       # Benchmarks
-│   └── tests/         # Compiler tests
-├── stdlib/            # Standard library (D code)
-├── spec/              # Language specification
-├── docs/              # Documentation
-├── examples/          # Example programs
-├── editors/           # Editor integrations
-├── tools/             # Development tools
-└── tests/             # Language test suite
-    ├── ui/            # UI tests (error messages)
-    ├── run-pass/      # Tests that should compile and run
-    └── compile-fail/  # Tests that should fail to compile
-```
+Be respectful, constructive, and collaborative. We're building something new
+together.
 
 ## How to Contribute
 
-### Reporting Bugs
+### Reporting Issues
 
-1. Search existing issues to avoid duplicates
-2. Use the bug report template
+1. Check existing issues first
+2. Use the issue template
 3. Include:
    - Demetrios version (`dc --version`)
    - Operating system
-   - Minimal reproduction case
+   - Minimal reproduction code
    - Expected vs actual behavior
 
-### Suggesting Features
-
-1. Check the roadmap and existing proposals
-2. Open a discussion or issue
-3. Describe the use case and motivation
-
-### Submitting Code
+### Pull Requests
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Ensure tests pass: `cargo test`
-5. Ensure no warnings: `cargo clippy`
-6. Format code: `cargo fmt`
-7. Commit with a descriptive message
-8. Push and open a pull request
+4. Run tests (`cargo test`)
+5. Run lints (`cargo clippy`)
+6. Commit with clear messages
+7. Open a pull request
 
-### Commit Message Format
+### Development Setup
 
+```bash
+# Clone
+git clone https://github.com/Chiuratto-AI/demetrios
+cd demetrios
+
+# Build
+cargo build
+
+# Test
+cargo test
+
+# Run compiler
+cargo run -- check examples/hello.d
+
+# Run with all features
+cargo build --features full
 ```
-[component] Brief description
-
-- Detail 1
-- Detail 2
-
-Closes #issue (if applicable)
-```
-
-Components: `lexer`, `parser`, `ast`, `resolve`, `check`, `types`, `effects`, `hir`, `hlir`, `codegen`, `cli`, `docs`, `stdlib`, `tests`
 
 ### Code Style
 
 - Follow Rust idioms
-- Use `thiserror` for error types
-- Use `miette` for diagnostics
-- No `unwrap()` in library code
-- Document public APIs
-- Write tests for new functionality
+- Use `rustfmt` formatting
+- Write doc comments for public items
+- Add tests for new features
+- Use meaningful variable and function names
+- Keep functions focused and small
 
-## Areas to Contribute
+### Commit Messages
+
+Follow conventional commits:
+
+```
+feat: add semantic distance caching
+fix: correct bloom filter false positive rate
+docs: update ontology loading guide
+perf: optimize embedding similarity with SIMD
+test: add integration tests for cross-ontology coercion
+```
+
+## Areas for Contribution
 
 ### Good First Issues
 
-Look for issues labeled `good-first-issue` for beginner-friendly tasks.
+- Documentation improvements
+- Error message enhancements
+- Additional examples
+- Typo fixes
+- Test coverage improvements
 
-### Documentation
+### Medium Complexity
 
-- Improve existing documentation
-- Add examples
-- Write tutorials
-- Translate documentation
+- New ontology loaders (e.g., SNOMED-CT, ICD)
+- Performance optimizations
+- LSP features (hover, completion)
+- CLI improvements
 
-### Standard Library
+### Advanced
 
-- Implement missing functions
-- Add unit tests
-- Improve documentation
+- Type system extensions
+- Embedding model improvements
+- Cross-ontology mapping algorithms
+- GPU compute optimizations
+- Formal verification integration
 
-### Compiler
+## Project Structure
 
-- Optimize performance
-- Improve error messages
-- Add new features
-- Fix bugs
-
-### Tooling
-
-- Editor integrations
-- Build system improvements
-- Debugging tools
+```
+demetrios/
+├── compiler/           # The Demetrios compiler
+│   ├── src/
+│   │   ├── lexer/      # Tokenization
+│   │   ├── parser/     # Syntax analysis
+│   │   ├── ast/        # Abstract syntax tree
+│   │   ├── check/      # Type checking
+│   │   ├── ontology/   # Ontology infrastructure
+│   │   │   ├── loader/     # OWL/OBO loading
+│   │   │   ├── distance/   # Semantic distance
+│   │   │   ├── embedding/  # Vector embeddings
+│   │   │   └── storage/    # Backend storage
+│   │   ├── epistemic/  # Knowledge types
+│   │   ├── profiling/  # Performance profiling
+│   │   ├── diagnostics/# Error reporting
+│   │   └── codegen/    # Code generation
+│   ├── tests/          # Integration tests
+│   └── benches/        # Benchmarks
+├── std/                # Standard library
+├── examples/           # Example programs
+├── docs/               # Documentation
+│   ├── papers/         # Academic papers
+│   └── research/       # Research notes
+└── spec/               # Formal specifications
+    └── formal/         # LaTeX type theory
+```
 
 ## Testing
 
@@ -144,33 +134,84 @@ Look for issues labeled `good-first-issue` for beginner-friendly tasks.
 # All tests
 cargo test
 
-# Specific test
-cargo test test_name
+# Specific test file
+cargo test --test integration_ontology_e2e
 
 # With output
 cargo test -- --nocapture
+
+# Benchmarks
+cargo bench
 ```
 
 ### Writing Tests
 
 - Unit tests go in the same file as the code
 - Integration tests go in `tests/`
-- Language tests go in the top-level `tests/` directory
+- Use descriptive test names
+- Test edge cases and error conditions
+
+```rust
+#[test]
+fn test_semantic_distance_reflexivity() {
+    let index = build_test_index();
+    let d = index.distance(&iri("Drug"), &iri("Drug"));
+    assert!(d.is_exact(), "Self-distance should be zero");
+}
+```
+
+## Documentation
+
+### Doc Comments
+
+```rust
+/// Calculate semantic distance between two ontology terms.
+///
+/// # Arguments
+///
+/// * `from` - Source IRI
+/// * `to` - Target IRI
+///
+/// # Returns
+///
+/// A `SemanticDistance` with conceptual, path, IC, and embedding components.
+///
+/// # Example
+///
+/// ```
+/// let d = index.distance(&aspirin_iri, &drug_iri);
+/// assert!(d.conceptual < 0.3);
+/// ```
+pub fn distance(&self, from: &IRI, to: &IRI) -> SemanticDistance {
+    // ...
+}
+```
+
+### README Updates
+
+When adding features, update:
+- Feature list in README.md
+- Quick start guide if applicable
+- API documentation in docs/
 
 ## Review Process
 
-1. All changes require review
-2. CI must pass
+1. All PRs require at least one review
+2. CI must pass (tests, clippy, formatting)
 3. Documentation must be updated
-4. Tests must be added for new functionality
+4. Breaking changes need discussion
 
-## License
+## Release Process
 
-By contributing, you agree that your contributions will be licensed under the MIT OR Apache-2.0 license.
+1. Update version in `Cargo.toml`
+2. Update `CHANGELOG.md`
+3. Create git tag
+4. CI builds and publishes
 
 ## Questions?
 
 - Open a discussion on GitHub
-- Check the documentation at `docs/`
+- Check existing documentation
+- Review closed issues for similar questions
 
-Thank you for contributing!
+Thank you for helping make Demetrios better!

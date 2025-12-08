@@ -49,10 +49,16 @@
 //! let fhir_code = resolver.translate(&aspirin, "fhir")?;
 //! ```
 
+pub mod alignment;
+pub mod build;
 pub mod cache;
+pub mod distance;
 pub mod domain;
+pub mod embedding;
 pub mod foundation;
 pub mod llm_gen;
+pub mod loader;
+pub mod memory;
 pub mod native;
 #[cfg(feature = "ontology")]
 pub mod semantic_sql;
@@ -64,6 +70,12 @@ mod primitive;
 mod resolver;
 
 pub use cache::{CacheConfig, CacheStats, OntologyCache};
+pub use distance::{
+    DistanceConfig, PhysicalCost, SemanticDistance, SemanticDistanceIndex,
+    information_content::{ICConfig, ICIndex, ICSimilarity},
+    path::{HierarchyGraph, HierarchyStats, LCAResult, PathResult},
+    sssom::{MappingPredicate, SSSOMIndex, SSSOMMapping, SSSOMParser, SSSOMSet},
+};
 pub use domain::{
     DomainOntologies, DomainStats, DomainTerm, OntologyMetadata as DomainOntologyMetadata,
 };
@@ -72,6 +84,11 @@ pub use foundation::{
     CurationStatus, FoundationOntologies, FoundationTerm, OntologySource, TermEntry, TermMapping,
     augmentation::EpistemicAugmenter, fhir::FHIROntology, iao::IAOOntology, pato::PATOOntology,
     schema_org::SchemaOrgOntology, uo::UOOntology,
+};
+pub use loader::{
+    IRI, LoadedTerm, OntologyId, OntologyLoader, OntologyLoaderConfig,
+    bioportal::BioPortalClient,
+    obo_parser::{OboParseError, parse_obo_file},
 };
 pub use primitive::{
     BfoClass, CobClass, PRIMITIVE_BFO, PRIMITIVE_COB, PRIMITIVE_RO, PrimitiveStore, RoRelation,

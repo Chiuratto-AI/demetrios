@@ -155,6 +155,10 @@ impl Interpreter {
                         captures: HashMap::new(),
                     });
                 }
+                // Check if it's a builtin function
+                if self.is_builtin(name) {
+                    return Ok(Value::Builtin(name.clone()));
+                }
                 // Not found
                 Err(ControlFlow::Return(Value::Unit))
             }
@@ -166,6 +170,9 @@ impl Interpreter {
                         func,
                         captures: HashMap::new(),
                     })
+                } else if self.is_builtin(name) {
+                    // Check if it's a builtin function
+                    Ok(Value::Builtin(name.clone()))
                 } else {
                     self.env
                         .get(name)
@@ -716,12 +723,53 @@ impl Interpreter {
                     Err(cf) => Err(cf),
                 }
             }
+            Value::Builtin(name) => {
+                // Call the builtin function by name
+                self.call_builtin(&name, args)
+            }
             _ => {
                 // Check if it's a builtin by looking at the callee name
                 // For now, handle common cases
                 self.call_builtin_by_args(&args)
             }
         }
+    }
+
+    /// Check if a name is a builtin function
+    fn is_builtin(&self, name: &str) -> bool {
+        matches!(
+            name,
+            "print"
+                | "println"
+                | "assert"
+                | "assert_eq"
+                | "len"
+                | "type_of"
+                | "Some"
+                | "None"
+                | "Ok"
+                | "Err"
+                | "dbg"
+                | "panic"
+                | "format"
+                | "read_line"
+                | "parse_int"
+                | "parse_float"
+                | "to_string"
+                | "sqrt"
+                | "abs"
+                | "sin"
+                | "cos"
+                | "tan"
+                | "exp"
+                | "log"
+                | "pow"
+                | "floor"
+                | "ceil"
+                | "round"
+                | "min"
+                | "max"
+        )
     }
 
     /// Try calling a builtin function by examining arguments
@@ -804,6 +852,124 @@ impl Interpreter {
                     Ok(Value::Err(Box::new(Value::Unit)))
                 }
             }
+            "dbg" => {
+                // Debug print - shows value with type info
+                for arg in &args {
+                    let line = format!("[dbg] {:?}", arg);
+                    eprintln!("{}", line);
+                    self.output.push(line);
+                }
+                Ok(args.into_iter().next().unwrap_or(Value::Unit))
+            }
+            "panic" => {
+                let msg = args
+                    .first()
+                    .map(|v| format!("{}", v))
+                    .unwrap_or_else(|| "panic!".to_string());
+                eprintln!("panic: {}", msg);
+                Err(ControlFlow::Return(Value::Unit))
+            }
+            "format" => {
+                let output: Vec<String> = args.iter().map(|v| format!("{}", v)).collect();
+                Ok(Value::String(output.join("")))
+            }
+            "to_string" => {
+                let s = args.first().map(|v| format!("{}", v)).unwrap_or_default();
+                Ok(Value::String(s))
+            }
+            "parse_int" => {
+                if let Some(Value::String(s)) = args.first() {
+                    match s.trim().parse::<i64>() {
+                        Ok(n) => Ok(Value::Some(Box::new(Value::Int(n)))),
+                        Err(_) => Ok(Value::None),
+                    }
+                } else {
+                    Ok(Value::None)
+                }
+            }
+            "parse_float" => {
+                if let Some(Value::String(s)) = args.first() {
+                    match s.trim().parse::<f64>() {
+                        Ok(f) => Ok(Value::Some(Box::new(Value::Float(f)))),
+                        Err(_) => Ok(Value::None),
+                    }
+                } else {
+                    Ok(Value::None)
+                }
+            }
+            "read_line" => {
+                use std::io::{self, BufRead};
+                let mut line = String::new();
+                if io::stdin().lock().read_line(&mut line).is_ok() {
+                    // Remove trailing newline
+                    if line.ends_with('\n') {
+                        line.pop();
+                        if line.ends_with('\r') {
+                            line.pop();
+                        }
+                    }
+                    Ok(Value::String(line))
+                } else {
+                    Ok(Value::String(String::new()))
+                }
+            }
+            // Math functions
+            "sqrt" => {
+                let x = args.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                Ok(Value::Float(x.sqrt()))
+            }
+            "abs" => match args.first() {
+                Some(Value::Int(n)) => Ok(Value::Int(n.abs())),
+                Some(Value::Float(f)) => Ok(Value::Float(f.abs())),
+                _ => Ok(Value::Float(0.0)),
+            },
+            "sin" => {
+                let x = args.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                Ok(Value::Float(x.sin()))
+            }
+            "cos" => {
+                let x = args.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                Ok(Value::Float(x.cos()))
+            }
+            "tan" => {
+                let x = args.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                Ok(Value::Float(x.tan()))
+            }
+            "exp" => {
+                let x = args.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                Ok(Value::Float(x.exp()))
+            }
+            "log" => {
+                let x = args.first().and_then(|v| v.as_float()).unwrap_or(1.0);
+                Ok(Value::Float(x.ln()))
+            }
+            "pow" => {
+                let base = args.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                let exp = args.get(1).and_then(|v| v.as_float()).unwrap_or(1.0);
+                Ok(Value::Float(base.powf(exp)))
+            }
+            "floor" => {
+                let x = args.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                Ok(Value::Float(x.floor()))
+            }
+            "ceil" => {
+                let x = args.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                Ok(Value::Float(x.ceil()))
+            }
+            "round" => {
+                let x = args.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                Ok(Value::Float(x.round()))
+            }
+            "min" => match (args.first(), args.get(1)) {
+                (Some(Value::Int(a)), Some(Value::Int(b))) => Ok(Value::Int(*a.min(b))),
+                (Some(Value::Float(a)), Some(Value::Float(b))) => Ok(Value::Float(a.min(*b))),
+                _ => Ok(Value::Float(0.0)),
+            },
+            "max" => match (args.first(), args.get(1)) {
+                (Some(Value::Int(a)), Some(Value::Int(b))) => Ok(Value::Int(*a.max(b))),
+                (Some(Value::Float(a)), Some(Value::Float(b))) => Ok(Value::Float(a.max(*b))),
+                _ => Ok(Value::Float(0.0)),
+            },
             _ => {
                 // Try to find function by name
                 if let Some(func) = self.functions.get(name).cloned() {

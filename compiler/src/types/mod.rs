@@ -7,12 +7,17 @@
 //! - Refinement types
 //! - Units of measure with inference
 //! - Epistemic types (Knowledge[T, ε, Φ, τ])
+//! - Quantitative Type Theory (multiplicities for erasure)
 
 pub mod core;
 pub mod effects;
 pub mod epistemic;
+pub mod erasure;
+pub mod multiplicity;
+pub mod ontology_erasure;
 pub mod ownership;
 pub mod refinement;
+pub mod semantic;
 pub mod unit_infer;
 pub mod units;
 
@@ -32,4 +37,22 @@ pub use epistemic::{
     ConfidenceAnalysisError, ConfidenceBound, ConfidenceFlowAnalysis, ConfidenceOp,
     EpistemicCheckResult, EpistemicChecker, KnowledgeType, PropagationRule, PropagationRules,
     ProvenanceConstraint, TemporalConstraint,
+};
+
+// Semantic types - ontological type checking
+pub use semantic::{
+    SemanticCompatibility, SemanticType, SemanticTypeBuilder, SemanticTypeChecker,
+    SemanticTypeConfig, SemanticTypeError, SemanticTypeStats,
+};
+
+// Quantitative Type Theory - multiplicities for erasure semantics
+pub use multiplicity::{Multiplicity, MultiplicityContext, MultiplicityError, QType};
+
+// Erasure analysis
+pub use erasure::{
+    ErasureAnalyzer, ErasureCategory, ErasureConfig, ErasureInfo, ErasureSet, ErasureStats,
+};
+pub use ontology_erasure::{
+    CompilationErasure, ErasedRepresentation, FunctionErasureInfo, OntologicalType,
+    OntologyErasureAnalyzer, OntologyErasureStats,
 };

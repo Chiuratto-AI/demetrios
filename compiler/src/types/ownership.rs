@@ -83,6 +83,9 @@ pub fn ownership_of(ty: &Type) -> Ownership {
         // Named types default to Affine (could be overridden by type definition)
         Type::Named { .. } => Ownership::Affine,
 
+        // Quantity types: ownership follows the numeric type (usually Copy)
+        Type::Quantity { numeric, .. } => ownership_of(numeric),
+
         // Type variables are Affine by default
         Type::Var(_) | Type::Forall { .. } => Ownership::Affine,
 

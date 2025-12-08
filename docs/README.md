@@ -26,6 +26,12 @@ This directory contains comprehensive documentation for the Demetrios (D) progra
 
 - **[refinement-types.md](refinement-types.md)** - Refinement types with SMT verification for compile-time constraint checking
 
+### Ontological Type System
+
+- **[research/semantic_metric_types.md](research/semantic_metric_types.md)** - Semantic metric types integrating ontological knowledge into static type checking
+- **[papers/semantic_types_paper.md](papers/semantic_types_paper.md)** - Academic paper on semantic metric types (POPL/PLDI target)
+- **[spec/formal/semantic_types.tex](../spec/formal/semantic_types.tex)** - Formal type theory specification in LaTeX
+
 ### Scientific Computing
 
 - **[SCIENTIFIC_COMPUTING.md](SCIENTIFIC_COMPUTING.md)** - Units of measure, dimensional analysis, and scientific computing features
@@ -123,6 +129,10 @@ The compiler is organized into the following major modules:
 
 ### Domain-Specific
 - `ontology/` - Ontology integration for scientific computing
+  - `distance/` - Semantic distance calculation (path, IC, embedding)
+  - `embedding/` - Ontology embedding space with ANN index
+  - `loader/` - OWL/OBO ontology loading
+  - `storage/` - Backend storage (memory, SQLite, mmap)
 - `causal/` - Causal reasoning
 - `temporal/` - Temporal logic
 

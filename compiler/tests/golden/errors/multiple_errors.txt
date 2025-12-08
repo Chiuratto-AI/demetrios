@@ -1,0 +1,39 @@
+error[E0308]: mismatched types
+ --> multi_error.dm:7:19
+  |
+7 |     let a: Drug = 1;
+  |                   ^ expected `Drug`, found `i32`
+  |
+  = note: expected ontology type `chebi:drug`
+             found primitive type `i32`
+
+error[E0308]: mismatched types
+ --> multi_error.dm:8:19
+  |
+8 |     let b: Drug = "string";
+  |                   ^^^^^^^^ expected `Drug`, found `&str`
+  |
+  = note: expected ontology type `chebi:drug`
+             found primitive type `&str`
+
+error[E0308]: mismatched types
+ --> multi_error.dm:9:19
+  |
+9 |     let c: Drug = true;
+  |                   ^^^^ expected `Drug`, found `bool`
+  |
+  = note: expected ontology type `chebi:drug`
+             found primitive type `bool`
+
+error[E0412]: cannot find type `Unknown` in this scope
+  --> multi_error.dm:10:12
+   |
+10 |     let d: Unknown = chebi:15365;
+   |            ^^^^^^^ not found in this scope
+   |
+   = help: did you mean `Drug`?
+
+error: aborting due to 4 previous errors
+
+Some errors have detailed explanations: E0308, E0412.
+For more information about an error, try `demetrios --explain E0308`.

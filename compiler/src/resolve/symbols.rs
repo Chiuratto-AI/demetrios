@@ -48,6 +48,8 @@ pub enum DefKind {
     Kernel,
     /// Built-in type
     BuiltinType,
+    /// Built-in function (print, println, etc.)
+    BuiltinFunction,
 }
 
 /// Symbol information
@@ -180,6 +182,30 @@ impl SymbolTable {
                     def_id,
                     name: name.to_string(),
                     kind: DefKind::Effect,
+                    node_id: NodeId(0),
+                    span: Span::default(),
+                    parent: None,
+                },
+            );
+        }
+
+        // Built-in functions
+        let builtin_functions = [
+            "print",   // Print without newline
+            "println", // Print with newline
+            "assert",  // Runtime assertion
+            "panic",   // Abort with message
+        ];
+
+        for name in builtin_functions {
+            let def_id = self.fresh_def_id();
+            let _ = self.define(name.to_string(), def_id);
+            self.symbols.insert(
+                def_id,
+                Symbol {
+                    def_id,
+                    name: name.to_string(),
+                    kind: DefKind::BuiltinFunction,
                     node_id: NodeId(0),
                     span: Span::default(),
                     parent: None,

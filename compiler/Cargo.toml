@@ -1,13 +1,15 @@
 [package]
 name = "demetrios"
-version = "0.46.0"
+version = "0.52.0"
 edition = "2024"
 authors = ["Demetrios Chiuratto Agourakis", "Dionisio Chiuratto Agourakis"]
-description = "The Demetrios (D) programming language compiler"
+description = "A programming language where types have meaning - 15M+ ontological terms as first-class types"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Chiuratto-AI/demetrios"
-keywords = ["compiler", "language", "scientific", "effects", "linear-types"]
-categories = ["compilers", "development-tools"]
+documentation = "https://docs.rs/demetrios"
+readme = "README.md"
+keywords = ["compiler", "type-system", "ontology", "semantic", "biomedical"]
+categories = ["compilers", "development-tools", "science"]
 
 [[bin]]
 name = "dc"
@@ -72,6 +74,11 @@ chrono = "0.4"
 # Ontology support
 lru = "0.12"
 rusqlite = { version = "0.31", features = ["bundled"], optional = true }
+
+# Ontology parsing (RDF/OWL)
+rio_turtle = { version = "0.8", optional = true }
+rio_xml = { version = "0.8", optional = true }
+rio_api = { version = "0.8", optional = true }
 
 # LLM integration (optional)
 regex = { version = "1.10", optional = true }
@@ -164,12 +171,16 @@ distributed = [
 ]
 # Enable ontology support with SQLite backend
 ontology = ["dep:rusqlite"]
+# Enable ontology build tools (OWL/RDF parsing)
+ontology-build = ["dep:rio_turtle", "dep:rio_xml", "dep:rio_api"]
 # Enable LLM integration for ontology generation and epistemic agents
 llm = ["dep:regex", "dep:lazy_static"]
 # Enable remote cache for distributed builds
 remote-cache = ["distributed"]
 # Enable cryptographic signatures for ontology versioning
 crypto = []
+# Enable network access for BioPortal API
+network = ["dep:reqwest"]
 # Enable all features
 full = ["llvm", "jit", "gpu", "smt", "lsp", "distributed", "ontology", "llm", "remote-cache", "crypto"]
 
@@ -203,10 +214,18 @@ path = "tests/sourcemap_tests.rs"
 name = "refinement_tests"
 path = "tests/refinement_tests.rs"
 
+[[test]]
+name = "integration_semantic_types"
+path = "tests/integration_semantic_types.rs"
+
 [[bin]]
 name = "demetrios-lsp"
 path = "src/bin/lsp.rs"
 required-features = ["lsp"]
+
+[[bin]]
+name = "dc-ontology-build"
+path = "src/bin/dc-ontology-build.rs"
 
 [[bench]]
 name = "layout_bench"
@@ -215,3 +234,11 @@ harness = false
 [[bench]]
 name = "locality_bench"
 harness = false
+
+[[bench]]
+name = "ontology_bench"
+harness = false
+
+[[test]]
+name = "integration_ontology_e2e"
+path = "tests/integration_ontology_e2e.rs"

@@ -1,0 +1,11 @@
+warning: semantic compatibility threshold is very high
+ --> loose_thresh.dm:5:1
+  |
+5 | #[compat(threshold = 0.95)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: threshold 0.95 allows nearly any type to be coerced
+  = note: this may hide genuine type mismatches
+  = help: consider using a stricter threshold (recommended: 0.1-0.5)
+
+warning: 1 warning emitted

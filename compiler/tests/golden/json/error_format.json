@@ -1,0 +1,1 @@
+{"level":"error","code":"E0308","message":"mismatched types","location":{"file":"json_error.dm","line":7,"column":19,"end_line":7,"end_column":21},"related":[],"suggestions":[],"notes":["expected ontology type `chebi:drug`","found primitive type `i32`"]}

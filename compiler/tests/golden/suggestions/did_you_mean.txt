@@ -1,0 +1,14 @@
+error[E0412]: cannot find type `Drug` in this scope
+ --> did_you_mean.dm:6:12
+  |
+6 |     let d: Drug = chebi:15365;
+  |            ^^^^ not found in this scope
+  |
+  = help: did you mean `Durg`?
+  |
+4 | type Durg = chebi:drug;
+  | ---- similarly named type alias `Durg` defined here
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `demetrios --explain E0412`.
