@@ -91,6 +91,9 @@ pub fn ownership_of(ty: &Type) -> Ownership {
 
         // Error types and SelfType (resolved later)
         Type::Never | Type::Unknown | Type::Error | Type::SelfType => Ownership::Copy,
+
+        // Ontology types are Copy (they're essentially interned string identifiers)
+        Type::Ontology { .. } => Ownership::Copy,
     }
 }
 

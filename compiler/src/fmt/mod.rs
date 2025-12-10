@@ -265,6 +265,13 @@ impl Formatter {
             Item::Global(g) => self.global_to_doc(g),
             Item::Extern(e) => self.extern_to_doc(e),
             Item::MacroInvocation(m) => Doc::Text(format!("{}!(...)", m.name)),
+            Item::OntologyImport(o) => {
+                Doc::Text(format!("ontology {} from \"{}\";", o.prefix, o.source))
+            }
+            Item::AlignDecl(a) => Doc::Text(format!(
+                "align {}:{} ~ {}:{} with distance {};",
+                a.type1.prefix, a.type1.term, a.type2.prefix, a.type2.term, a.distance
+            )),
         }
     }
 

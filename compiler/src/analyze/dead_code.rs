@@ -424,7 +424,9 @@ impl DeadCodeAnalyzer {
             | Item::Effect(_)
             | Item::Handler(_)
             | Item::Extern(_)
-            | Item::MacroInvocation(_) => {}
+            | Item::MacroInvocation(_)
+            | Item::OntologyImport(_)
+            | Item::AlignDecl(_) => {}
         }
     }
 
@@ -523,7 +525,12 @@ impl DeadCodeAnalyzer {
                     let _ = i;
                 }
             }
-            Item::Effect(_) | Item::Handler(_) | Item::Extern(_) | Item::MacroInvocation(_) => {}
+            Item::Effect(_)
+            | Item::Handler(_)
+            | Item::Extern(_)
+            | Item::MacroInvocation(_)
+            | Item::OntologyImport(_)
+            | Item::AlignDecl(_) => {}
         }
     }
 
@@ -651,6 +658,14 @@ impl DeadCodeAnalyzer {
             Expr::Array { elements, .. } => {
                 for elem in elements {
                     self.collect_expr_references(elem);
+                }
+            }
+            Expr::Range { start, end, .. } => {
+                if let Some(s) = start {
+                    self.collect_expr_references(s);
+                }
+                if let Some(e) = end {
+                    self.collect_expr_references(e);
                 }
             }
             Expr::Tuple { elements, .. } => {
@@ -808,6 +823,11 @@ impl DeadCodeAnalyzer {
                 for (_, value) in interventions {
                     self.collect_expr_references(value);
                 }
+            }
+            Expr::OntologyTerm { ontology, term, .. } => {
+                // Track ontology term as a reference
+                self.referenced_items
+                    .insert(format!("{}:{}", ontology, term));
             }
         }
     }

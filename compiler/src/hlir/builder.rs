@@ -150,11 +150,12 @@ impl FunctionBuilder {
     }
 
     /// Load from a mutable variable
-    pub fn load_var(&mut self, name: &str, ty: HlirType) -> Option<ValueId> {
-        self.var_slots
-            .get(name)
-            .copied()
-            .map(|slot| self.build_load(slot, ty))
+    pub fn load_var(&mut self, name: &str, fallback_ty: HlirType) -> Option<ValueId> {
+        self.var_slots.get(name).copied().map(|slot| {
+            // Use the stored type from locals if available (more reliable than expr type)
+            let ty = self.func.locals.get(&slot).cloned().unwrap_or(fallback_ty);
+            self.build_load(slot, ty)
+        })
     }
 
     // ==================== Instruction Builders ====================

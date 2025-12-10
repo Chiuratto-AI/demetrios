@@ -551,6 +551,12 @@ pub enum HirExprKind {
     Tuple(Vec<HirExpr>),
     /// Array
     Array(Vec<HirExpr>),
+    /// Range expression (start..end or start..=end)
+    Range {
+        start: Option<Box<HirExpr>>,
+        end: Option<Box<HirExpr>>,
+        inclusive: bool,
+    },
     /// Struct literal
     Struct {
         name: String,
@@ -615,6 +621,10 @@ pub enum HirExprKind {
     ValidityOf(Box<HirExpr>),
     /// Unwrap Knowledge to get inner value
     Unwrap(Box<HirExpr>),
+
+    // ==================== ONTOLOGY EXPRESSIONS ====================
+    /// Ontology term literal: prefix:term (e.g., chebi:aspirin, drugbank:DB00945)
+    OntologyTerm { namespace: String, term: String },
 }
 
 /// HIR provenance marker
@@ -664,6 +674,21 @@ pub enum HirBinaryOp {
     BitXor,
     Shl,
     Shr,
+}
+
+impl HirBinaryOp {
+    /// Returns true if this is a comparison operator (returns bool)
+    pub fn is_comparison(&self) -> bool {
+        matches!(
+            self,
+            HirBinaryOp::Eq
+                | HirBinaryOp::Ne
+                | HirBinaryOp::Lt
+                | HirBinaryOp::Le
+                | HirBinaryOp::Gt
+                | HirBinaryOp::Ge
+        )
+    }
 }
 
 /// HIR unary operator

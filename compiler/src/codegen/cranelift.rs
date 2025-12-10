@@ -8,18 +8,15 @@ use crate::hlir::HlirModule;
 
 #[cfg(feature = "jit")]
 use crate::hlir::{
-    BinaryOp, BlockId, HlirConstant, HlirFunction, HlirTerminator, HlirType, Op, UnaryOp, ValueId,
+    BinaryOp, BlockId, HlirBlock, HlirConstant, HlirFunction, HlirTerminator, HlirType, Op,
+    UnaryOp, ValueId,
 };
 use std::collections::HashMap;
 
 #[cfg(feature = "jit")]
 use cranelift_codegen::Context;
 #[cfg(feature = "jit")]
-use cranelift_codegen::ir::{
-    AbiParam, Function, InstBuilder, MemFlags, Signature, UserFuncName, types,
-};
-#[cfg(feature = "jit")]
-use cranelift_codegen::isa::CallConv;
+use cranelift_codegen::ir::{AbiParam, InstBuilder, MemFlags, Signature, UserFuncName, types};
 #[cfg(feature = "jit")]
 use cranelift_codegen::settings::{self, Configurable};
 #[cfg(feature = "jit")]
@@ -27,7 +24,21 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 #[cfg(feature = "jit")]
 use cranelift_jit::{JITBuilder, JITModule};
 #[cfg(feature = "jit")]
-use cranelift_module::{DataDescription, Linkage, Module};
+use cranelift_module::{FuncId, Linkage, Module};
+
+/// Compile HLIR module to native code via Cranelift JIT
+#[cfg(feature = "jit")]
+pub fn compile(module: &HlirModule) -> Result<Vec<u8>, String> {
+    let jit = CraneliftJit::new();
+    let compiled = jit.compile(module)?;
+    // Return empty vec - the compiled code is held in memory by JITModule
+    Ok(vec![])
+}
+
+#[cfg(not(feature = "jit"))]
+pub fn compile(_module: &HlirModule) -> Result<Vec<u8>, String> {
+    Err("JIT backend not enabled. Compile with --features jit".to_string())
+}
 
 /// Cranelift JIT compiler
 pub struct CraneliftJit {
@@ -80,6 +91,7 @@ impl Default for CraneliftJit {
 /// Handle to compiled JIT code
 pub struct CompiledModule {
     #[cfg(feature = "jit")]
+    #[allow(dead_code)]
     jit_module: JITModule,
     /// Function entry points
     functions: HashMap<String, *const u8>,
@@ -112,6 +124,7 @@ impl CompiledModule {
     ///
     /// # Safety
     /// The caller must ensure the function signature matches.
+    #[allow(dead_code)]
     pub unsafe fn call_i64_i64(&self, name: &str, arg: i64) -> Result<i64, String> {
         let ptr = self
             .get_function(name)
@@ -125,6 +138,7 @@ impl CompiledModule {
     ///
     /// # Safety
     /// The caller must ensure the function signature matches.
+    #[allow(dead_code)]
     pub unsafe fn call_i64_i64_i64(&self, name: &str, a: i64, b: i64) -> Result<i64, String> {
         let ptr = self
             .get_function(name)
@@ -136,6 +150,7 @@ impl CompiledModule {
 }
 
 /// JIT compilation settings
+#[allow(dead_code)]
 pub struct JitSettings {
     /// Enable basic optimizations
     pub optimize: bool,
@@ -159,6 +174,7 @@ impl Default for JitSettings {
 }
 
 impl JitSettings {
+    #[allow(dead_code)]
     pub fn release() -> Self {
         Self {
             optimize: true,
@@ -177,7 +193,9 @@ struct JitCompiler {
     ctx: Context,
     func_ctx: FunctionBuilderContext,
     /// Map from HLIR function names to Cranelift function IDs
-    func_ids: HashMap<String, cranelift_module::FuncId>,
+    func_ids: HashMap<String, FuncId>,
+    /// Map from function names to their signatures (for calling)
+    func_sigs: HashMap<String, Signature>,
 }
 
 #[cfg(feature = "jit")]
@@ -210,6 +228,7 @@ impl JitCompiler {
             ctx,
             func_ctx: FunctionBuilderContext::new(),
             func_ids: HashMap::new(),
+            func_sigs: HashMap::new(),
         })
     }
 
@@ -222,6 +241,7 @@ impl JitCompiler {
                 .declare_function(&func.name, Linkage::Export, &sig)
                 .map_err(|e| format!("Failed to declare function {}: {}", func.name, e))?;
             self.func_ids.insert(func.name.clone(), func_id);
+            self.func_sigs.insert(func.name.clone(), sig);
         }
 
         // Second pass: compile all functions
@@ -238,35 +258,15 @@ impl JitCompiler {
 
         for param in &func.params {
             sig.params
-                .push(AbiParam::new(self.hlir_to_cranelift_type(&param.ty)));
+                .push(AbiParam::new(hlir_to_cranelift_type(&param.ty)));
         }
 
         if func.return_type != HlirType::Void {
-            sig.returns.push(AbiParam::new(
-                self.hlir_to_cranelift_type(&func.return_type),
-            ));
+            sig.returns
+                .push(AbiParam::new(hlir_to_cranelift_type(&func.return_type)));
         }
 
         sig
-    }
-
-    fn hlir_to_cranelift_type(&self, ty: &HlirType) -> types::Type {
-        match ty {
-            HlirType::Void => types::I64, // Use I64 for void to avoid issues
-            HlirType::Bool => types::I8,
-            HlirType::I8 | HlirType::U8 => types::I8,
-            HlirType::I16 | HlirType::U16 => types::I16,
-            HlirType::I32 | HlirType::U32 => types::I32,
-            HlirType::I64 | HlirType::U64 => types::I64,
-            HlirType::I128 | HlirType::U128 => types::I128,
-            HlirType::F32 => types::F32,
-            HlirType::F64 => types::F64,
-            HlirType::Ptr(_) => types::I64,
-            HlirType::Array(_, _) => types::I64, // Pointer to array
-            HlirType::Struct(_) => types::I64,   // Pointer to struct
-            HlirType::Tuple(_) => types::I64,    // Pointer to tuple or packed
-            HlirType::Function { .. } => types::I64, // Function pointer
-        }
     }
 
     fn compile_function(&mut self, func: &HlirFunction) -> Result<(), String> {
@@ -279,8 +279,23 @@ impl JitCompiler {
         // Build function body
         {
             let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.func_ctx);
-            let mut translator = FunctionTranslator::new(&mut builder, &self.func_ids, func);
-            translator.translate(func)?;
+
+            // Collect func_refs we need to declare
+            let mut needed_funcs: Vec<(String, FuncId)> = Vec::new();
+            for (name, &id) in &self.func_ids {
+                needed_funcs.push((name.clone(), id));
+            }
+
+            // Declare functions in this function's namespace
+            let mut local_func_refs = HashMap::new();
+            for (name, id) in &needed_funcs {
+                if let Some(sig) = self.func_sigs.get(name) {
+                    let local_ref = self.jit_module.declare_func_in_func(*id, builder.func);
+                    local_func_refs.insert(name.clone(), local_ref);
+                }
+            }
+
+            translate_function(&mut builder, func, &local_func_refs)?;
             builder.finalize();
         }
 
@@ -312,575 +327,548 @@ impl JitCompiler {
     }
 }
 
+/// Convert HLIR type to Cranelift type
 #[cfg(feature = "jit")]
-struct FunctionTranslator<'a> {
-    builder: &'a mut FunctionBuilder<'a>,
-    func_ids: &'a HashMap<String, cranelift_module::FuncId>,
-    /// Map from HLIR ValueId to Cranelift Value
-    values: HashMap<ValueId, cranelift_codegen::ir::Value>,
-    /// Map from HLIR BlockId to Cranelift Block
-    blocks: HashMap<BlockId, cranelift_codegen::ir::Block>,
-    /// Variables for mutable locals
-    variables: HashMap<ValueId, Variable>,
-    next_var: usize,
-    /// The HLIR function being compiled
-    hlir_func: &'a HlirFunction,
+fn hlir_to_cranelift_type(ty: &HlirType) -> types::Type {
+    match ty {
+        HlirType::Void => types::I64, // Use I64 for void to avoid issues
+        HlirType::Bool => types::I8,
+        HlirType::I8 | HlirType::U8 => types::I8,
+        HlirType::I16 | HlirType::U16 => types::I16,
+        HlirType::I32 | HlirType::U32 => types::I32,
+        HlirType::I64 | HlirType::U64 => types::I64,
+        HlirType::I128 | HlirType::U128 => types::I128,
+        HlirType::F32 => types::F32,
+        HlirType::F64 => types::F64,
+        HlirType::Ptr(_) => types::I64,
+        HlirType::Array(_, _) => types::I64, // Pointer to array
+        HlirType::Struct(_) => types::I64,   // Pointer to struct
+        HlirType::Tuple(_) => types::I64,    // Pointer to tuple or packed
+        HlirType::Function { .. } => types::I64, // Function pointer
+    }
+}
+
+/// Translate an entire HLIR function to Cranelift IR
+#[cfg(feature = "jit")]
+fn translate_function(
+    builder: &mut FunctionBuilder,
+    func: &HlirFunction,
+    func_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+) -> Result<(), String> {
+    let mut values: HashMap<ValueId, cranelift_codegen::ir::Value> = HashMap::new();
+    let mut blocks: HashMap<BlockId, cranelift_codegen::ir::Block> = HashMap::new();
+
+    // Create all blocks first
+    for block in &func.blocks {
+        let cl_block = builder.create_block();
+        blocks.insert(block.id, cl_block);
+    }
+
+    // Entry block parameters (function arguments)
+    if let Some(entry) = func.blocks.first() {
+        let entry_block = blocks[&entry.id];
+        builder.switch_to_block(entry_block);
+
+        // Add function parameters
+        for param in &func.params {
+            let ty = hlir_to_cranelift_type(&param.ty);
+            let val = builder.append_block_param(entry_block, ty);
+            values.insert(param.value, val);
+        }
+    }
+
+    // Translate each block (skip entry block switch since we're already there)
+    let mut first = true;
+    for block in &func.blocks {
+        translate_block(builder, block, &blocks, &mut values, func_refs, first)?;
+        first = false;
+    }
+
+    // Seal all blocks at the end
+    builder.seal_all_blocks();
+
+    Ok(())
 }
 
 #[cfg(feature = "jit")]
-impl<'a> FunctionTranslator<'a> {
-    fn new(
-        builder: &'a mut FunctionBuilder<'a>,
-        func_ids: &'a HashMap<String, cranelift_module::FuncId>,
-        hlir_func: &'a HlirFunction,
-    ) -> Self {
-        Self {
-            builder,
-            func_ids,
-            values: HashMap::new(),
-            blocks: HashMap::new(),
-            variables: HashMap::new(),
-            next_var: 0,
-            hlir_func,
+fn translate_block(
+    builder: &mut FunctionBuilder,
+    block: &HlirBlock,
+    blocks: &HashMap<BlockId, cranelift_codegen::ir::Block>,
+    values: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    func_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+    is_entry: bool,
+) -> Result<(), String> {
+    let cl_block = blocks[&block.id];
+
+    // Only switch if not already on this block (entry block is already active)
+    if !is_entry {
+        builder.switch_to_block(cl_block);
+    }
+
+    // Translate instructions
+    for instr in &block.instructions {
+        let result = translate_instruction(builder, instr, values, func_refs)?;
+        if let (Some(res_id), Some(val)) = (instr.result, result) {
+            values.insert(res_id, val);
         }
     }
 
-    fn translate(&mut self, func: &HlirFunction) -> Result<(), String> {
-        // Create all blocks first
-        for block in &func.blocks {
-            let cl_block = self.builder.create_block();
-            self.blocks.insert(block.id, cl_block);
+    // Translate terminator
+    translate_terminator(builder, &block.terminator, blocks, values)?;
+
+    Ok(())
+}
+
+#[cfg(feature = "jit")]
+fn translate_instruction(
+    builder: &mut FunctionBuilder,
+    instr: &crate::hlir::HlirInstr,
+    values: &HashMap<ValueId, cranelift_codegen::ir::Value>,
+    func_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+) -> Result<Option<cranelift_codegen::ir::Value>, String> {
+    let ty = hlir_to_cranelift_type(&instr.ty);
+
+    match &instr.op {
+        Op::Const(constant) => {
+            let val = translate_constant(builder, constant, &instr.ty, func_refs)?;
+            Ok(Some(val))
         }
 
-        // Entry block parameters (function arguments)
-        if let Some(entry) = func.blocks.first() {
-            let entry_block = self.blocks[&entry.id];
-            self.builder.switch_to_block(entry_block);
-            self.builder.seal_block(entry_block);
-
-            // Add function parameters
-            for (i, param) in func.params.iter().enumerate() {
-                let ty = self.hlir_to_type(&param.ty);
-                let val = self.builder.append_block_param(entry_block, ty);
-                self.values.insert(param.value, val);
-            }
+        Op::Copy(src) => {
+            let src_val = get_value(values, *src)?;
+            Ok(Some(src_val))
         }
 
-        // Translate each block
-        for block in &func.blocks {
-            self.translate_block(block)?;
+        Op::Binary { op, left, right } => {
+            let lhs = get_value(values, *left)?;
+            let rhs = get_value(values, *right)?;
+            let result = translate_binary_op(builder, *op, lhs, rhs, &instr.ty)?;
+            Ok(Some(result))
         }
 
-        Ok(())
-    }
-
-    fn translate_block(&mut self, block: &HlirBlock) -> Result<(), String> {
-        let cl_block = self.blocks[&block.id];
-
-        // Only switch if not already on this block
-        if self.builder.current_block() != Some(cl_block) {
-            self.builder.switch_to_block(cl_block);
+        Op::Unary { op, operand } => {
+            let val = get_value(values, *operand)?;
+            let result = translate_unary_op(builder, *op, val, &instr.ty)?;
+            Ok(Some(result))
         }
 
-        // Translate instructions
-        for instr in &block.instructions {
-            let result = self.translate_instruction(instr)?;
-            if let (Some(res_id), Some(val)) = (instr.result, result) {
-                self.values.insert(res_id, val);
-            }
-        }
+        Op::CallDirect { name, args } => {
+            let arg_vals: Vec<_> = args
+                .iter()
+                .map(|a| get_value(values, *a))
+                .collect::<Result<_, _>>()?;
 
-        // Translate terminator
-        self.translate_terminator(&block.terminator)?;
-
-        // Seal the block if all predecessors are known
-        self.builder.seal_block(cl_block);
-
-        Ok(())
-    }
-
-    fn translate_instruction(
-        &mut self,
-        instr: &crate::hlir::HlirInstr,
-    ) -> Result<Option<cranelift_codegen::ir::Value>, String> {
-        let ty = self.hlir_to_type(&instr.ty);
-
-        match &instr.op {
-            Op::Const(constant) => {
-                let val = self.translate_constant(constant, &instr.ty)?;
-                Ok(Some(val))
-            }
-
-            Op::Copy(src) => {
-                let src_val = self.get_value(*src)?;
-                Ok(Some(src_val))
-            }
-
-            Op::Binary { op, left, right } => {
-                let lhs = self.get_value(*left)?;
-                let rhs = self.get_value(*right)?;
-                let result = self.translate_binary_op(*op, lhs, rhs, &instr.ty)?;
-                Ok(Some(result))
-            }
-
-            Op::Unary { op, operand } => {
-                let val = self.get_value(*operand)?;
-                let result = self.translate_unary_op(*op, val, &instr.ty)?;
-                Ok(Some(result))
-            }
-
-            Op::CallDirect { name, args } => {
-                let arg_vals: Vec<_> = args
-                    .iter()
-                    .map(|a| self.get_value(*a))
-                    .collect::<Result<_, _>>()?;
-
-                if let Some(&func_id) = self.func_ids.get(name) {
-                    let func_ref = self.builder.ins().func_addr(types::I64, func_id.into());
-                    // For now, use direct call syntax
-                    let sig = self
-                        .builder
-                        .func
-                        .dfg
-                        .signatures
-                        .push(self.builder.func.signature.clone());
-                    let call = self.builder.ins().call_indirect(sig, func_ref, &arg_vals);
-                    let results = self.builder.inst_results(call);
-                    if results.is_empty() {
-                        Ok(None)
-                    } else {
-                        Ok(Some(results[0]))
-                    }
-                } else {
-                    // Unknown function - return zero
-                    let zero = self.builder.ins().iconst(ty, 0);
-                    Ok(Some(zero))
-                }
-            }
-
-            Op::Call { func, args } => {
-                let func_val = self.get_value(*func)?;
-                let arg_vals: Vec<_> = args
-                    .iter()
-                    .map(|a| self.get_value(*a))
-                    .collect::<Result<_, _>>()?;
-
-                // Indirect call
-                let sig = self
-                    .builder
-                    .func
-                    .dfg
-                    .signatures
-                    .push(self.builder.func.signature.clone());
-                let call = self.builder.ins().call_indirect(sig, func_val, &arg_vals);
-                let results = self.builder.inst_results(call);
+            if let Some(&func_ref) = func_refs.get(name) {
+                let call = builder.ins().call(func_ref, &arg_vals);
+                let results = builder.inst_results(call);
                 if results.is_empty() {
                     Ok(None)
                 } else {
                     Ok(Some(results[0]))
                 }
-            }
-
-            Op::Load { ptr } => {
-                let ptr_val = self.get_value(*ptr)?;
-                let loaded = self.builder.ins().load(ty, MemFlags::new(), ptr_val, 0);
-                Ok(Some(loaded))
-            }
-
-            Op::Store { ptr, value } => {
-                let ptr_val = self.get_value(*ptr)?;
-                let val = self.get_value(*value)?;
-                self.builder.ins().store(MemFlags::new(), val, ptr_val, 0);
-                Ok(None)
-            }
-
-            Op::Alloca { ty: alloc_ty } => {
-                let size = alloc_ty.size_bits() / 8;
-                let size = if size == 0 { 8 } else { size };
-                let slot = self.builder.create_sized_stack_slot(
-                    cranelift_codegen::ir::StackSlotData::new(
-                        cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
-                        size as u32,
-                        0,
-                    ),
-                );
-                let addr = self.builder.ins().stack_addr(types::I64, slot, 0);
-                Ok(Some(addr))
-            }
-
-            Op::GetFieldPtr { base, field } => {
-                let base_val = self.get_value(*base)?;
-                let offset = (*field * 8) as i32; // Assume 8-byte fields
-                let ptr = self.builder.ins().iadd_imm(base_val, offset as i64);
-                Ok(Some(ptr))
-            }
-
-            Op::GetElementPtr { base, index } => {
-                let base_val = self.get_value(*base)?;
-                let idx_val = self.get_value(*index)?;
-                let elem_size = 8i64; // Assume 8-byte elements
-                let offset = self.builder.ins().imul_imm(idx_val, elem_size);
-                let ptr = self.builder.ins().iadd(base_val, offset);
-                Ok(Some(ptr))
-            }
-
-            Op::Cast { value, target } => {
-                let val = self.get_value(*value)?;
-                let target_ty = self.hlir_to_type(target);
-                let val_ty = self.builder.func.dfg.value_type(val);
-
-                if val_ty == target_ty {
-                    Ok(Some(val))
-                } else if val_ty.bits() < target_ty.bits() {
-                    // Extend
-                    let extended = if target_ty.is_int() {
-                        self.builder.ins().sextend(target_ty, val)
-                    } else {
-                        self.builder.ins().fpromote(target_ty, val)
-                    };
-                    Ok(Some(extended))
-                } else {
-                    // Truncate
-                    let truncated = if target_ty.is_int() {
-                        self.builder.ins().ireduce(target_ty, val)
-                    } else {
-                        self.builder.ins().fdemote(target_ty, val)
-                    };
-                    Ok(Some(truncated))
-                }
-            }
-
-            Op::Phi { incoming } => {
-                // Phi nodes should be handled as block parameters in Cranelift
-                // For now, return first incoming value if available
-                if let Some((_, first_val)) = incoming.first() {
-                    let val = self.get_value(*first_val)?;
-                    Ok(Some(val))
-                } else {
-                    let zero = self.builder.ins().iconst(ty, 0);
-                    Ok(Some(zero))
-                }
-            }
-
-            Op::ExtractValue { base, index } => {
-                // For tuples/structs stored as aggregates
-                let base_val = self.get_value(*base)?;
-                // Simplified: treat as field access
-                let offset = (*index * 8) as i32;
-                let ptr = self.builder.ins().iadd_imm(base_val, offset as i64);
-                let loaded = self.builder.ins().load(ty, MemFlags::new(), ptr, 0);
-                Ok(Some(loaded))
-            }
-
-            Op::InsertValue { base, value, index } => {
-                let base_val = self.get_value(*base)?;
-                let val = self.get_value(*value)?;
-                // Simplified: treat as field store
-                let offset = (*index * 8) as i32;
-                let ptr = self.builder.ins().iadd_imm(base_val, offset as i64);
-                self.builder.ins().store(MemFlags::new(), val, ptr, 0);
-                Ok(Some(base_val))
-            }
-
-            Op::Tuple(vals) | Op::Array(vals) => {
-                // Allocate space and store values
-                let size = (vals.len() * 8) as u32;
-                let slot = self.builder.create_sized_stack_slot(
-                    cranelift_codegen::ir::StackSlotData::new(
-                        cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
-                        size,
-                        0,
-                    ),
-                );
-                let base = self.builder.ins().stack_addr(types::I64, slot, 0);
-
-                for (i, v) in vals.iter().enumerate() {
-                    let val = self.get_value(*v)?;
-                    let offset = (i * 8) as i32;
-                    self.builder.ins().store(MemFlags::new(), val, base, offset);
-                }
-
-                Ok(Some(base))
-            }
-
-            Op::Struct { name: _, fields } => {
-                // Similar to tuple
-                let size = (fields.len() * 8) as u32;
-                let slot = self.builder.create_sized_stack_slot(
-                    cranelift_codegen::ir::StackSlotData::new(
-                        cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
-                        size,
-                        0,
-                    ),
-                );
-                let base = self.builder.ins().stack_addr(types::I64, slot, 0);
-
-                for (i, (_, v)) in fields.iter().enumerate() {
-                    let val = self.get_value(*v)?;
-                    let offset = (i * 8) as i32;
-                    self.builder.ins().store(MemFlags::new(), val, base, offset);
-                }
-
-                Ok(Some(base))
-            }
-
-            Op::PerformEffect { .. } => {
-                // Effects not supported in JIT yet
-                let zero = self.builder.ins().iconst(ty, 0);
+            } else {
+                // Unknown function - return zero
+                let zero = builder.ins().iconst(ty, 0);
                 Ok(Some(zero))
             }
         }
-    }
 
-    fn translate_constant(
-        &mut self,
-        constant: &HlirConstant,
-        ty: &HlirType,
-    ) -> Result<cranelift_codegen::ir::Value, String> {
-        let cl_ty = self.hlir_to_type(ty);
+        Op::Call { func, args } => {
+            let func_val = get_value(values, *func)?;
+            let arg_vals: Vec<_> = args
+                .iter()
+                .map(|a| get_value(values, *a))
+                .collect::<Result<_, _>>()?;
 
-        match constant {
-            HlirConstant::Unit => Ok(self.builder.ins().iconst(types::I64, 0)),
-            HlirConstant::Bool(b) => Ok(self.builder.ins().iconst(types::I8, *b as i64)),
-            HlirConstant::Int(i, _) => Ok(self.builder.ins().iconst(cl_ty, *i)),
-            HlirConstant::Float(f, _) => {
-                if cl_ty == types::F32 {
-                    Ok(self.builder.ins().f32const(*f as f32))
-                } else {
-                    Ok(self.builder.ins().f64const(*f))
-                }
+            // Indirect call - need a signature
+            // For now, assume simple i64 -> i64 signature
+            let mut sig = Signature::new(cranelift_codegen::isa::CallConv::SystemV);
+            for _ in &arg_vals {
+                sig.params.push(AbiParam::new(types::I64));
             }
-            HlirConstant::String(_) => {
-                // Strings need special handling - for now return null ptr
-                Ok(self.builder.ins().iconst(types::I64, 0))
-            }
-            HlirConstant::Null(_) => Ok(self.builder.ins().iconst(types::I64, 0)),
-            HlirConstant::Undef(_) => Ok(self.builder.ins().iconst(cl_ty, 0)),
-            HlirConstant::FunctionRef(name) => {
-                if let Some(&func_id) = self.func_ids.get(name) {
-                    Ok(self.builder.ins().func_addr(types::I64, func_id.into()))
-                } else {
-                    Ok(self.builder.ins().iconst(types::I64, 0))
-                }
-            }
-            HlirConstant::GlobalRef(_) => Ok(self.builder.ins().iconst(types::I64, 0)),
-            HlirConstant::Array(_) | HlirConstant::Struct(_) => {
-                // Complex constants - return null for now
-                Ok(self.builder.ins().iconst(types::I64, 0))
+            sig.returns.push(AbiParam::new(types::I64));
+
+            let sig_ref = builder.import_signature(sig);
+            let call = builder.ins().call_indirect(sig_ref, func_val, &arg_vals);
+            let results = builder.inst_results(call);
+            if results.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(results[0]))
             }
         }
-    }
 
-    fn translate_binary_op(
-        &mut self,
-        op: BinaryOp,
-        lhs: cranelift_codegen::ir::Value,
-        rhs: cranelift_codegen::ir::Value,
-        result_ty: &HlirType,
-    ) -> Result<cranelift_codegen::ir::Value, String> {
-        use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
+        Op::Load { ptr } => {
+            let ptr_val = get_value(values, *ptr)?;
+            let loaded = builder.ins().load(ty, MemFlags::new(), ptr_val, 0);
+            Ok(Some(loaded))
+        }
 
-        let result = match op {
-            // Integer arithmetic
-            BinaryOp::Add => self.builder.ins().iadd(lhs, rhs),
-            BinaryOp::Sub => self.builder.ins().isub(lhs, rhs),
-            BinaryOp::Mul => self.builder.ins().imul(lhs, rhs),
-            BinaryOp::SDiv => self.builder.ins().sdiv(lhs, rhs),
-            BinaryOp::UDiv => self.builder.ins().udiv(lhs, rhs),
-            BinaryOp::SRem => self.builder.ins().srem(lhs, rhs),
-            BinaryOp::URem => self.builder.ins().urem(lhs, rhs),
+        Op::Store { ptr, value } => {
+            let ptr_val = get_value(values, *ptr)?;
+            let val = get_value(values, *value)?;
+            builder.ins().store(MemFlags::new(), val, ptr_val, 0);
+            Ok(None)
+        }
 
-            // Float arithmetic
-            BinaryOp::FAdd => self.builder.ins().fadd(lhs, rhs),
-            BinaryOp::FSub => self.builder.ins().fsub(lhs, rhs),
-            BinaryOp::FMul => self.builder.ins().fmul(lhs, rhs),
-            BinaryOp::FDiv => self.builder.ins().fdiv(lhs, rhs),
-            BinaryOp::FRem => {
-                // Cranelift doesn't have frem, use a workaround
-                let div = self.builder.ins().fdiv(lhs, rhs);
-                let trunc = self.builder.ins().trunc(div);
-                let mul = self.builder.ins().fmul(trunc, rhs);
-                self.builder.ins().fsub(lhs, mul)
-            }
+        Op::Alloca { ty: alloc_ty } => {
+            let size = alloc_ty.size_bits() / 8;
+            let size = if size == 0 { 8 } else { size };
+            let slot = builder.create_sized_stack_slot(cranelift_codegen::ir::StackSlotData::new(
+                cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+                size as u32,
+                0,
+            ));
+            let addr = builder.ins().stack_addr(types::I64, slot, 0);
+            Ok(Some(addr))
+        }
 
-            // Bitwise
-            BinaryOp::And => self.builder.ins().band(lhs, rhs),
-            BinaryOp::Or => self.builder.ins().bor(lhs, rhs),
-            BinaryOp::Xor => self.builder.ins().bxor(lhs, rhs),
-            BinaryOp::Shl => self.builder.ins().ishl(lhs, rhs),
-            BinaryOp::AShr => self.builder.ins().sshr(lhs, rhs),
-            BinaryOp::LShr => self.builder.ins().ushr(lhs, rhs),
+        Op::GetFieldPtr { base, field } => {
+            let base_val = get_value(values, *base)?;
+            let offset = (*field * 8) as i64; // Assume 8-byte fields
+            let ptr = builder.ins().iadd_imm(base_val, offset);
+            Ok(Some(ptr))
+        }
 
-            // Integer comparison
-            BinaryOp::Eq => self.builder.ins().icmp(IntCC::Equal, lhs, rhs),
-            BinaryOp::Ne => self.builder.ins().icmp(IntCC::NotEqual, lhs, rhs),
-            BinaryOp::SLt => self.builder.ins().icmp(IntCC::SignedLessThan, lhs, rhs),
-            BinaryOp::SLe => self
-                .builder
-                .ins()
-                .icmp(IntCC::SignedLessThanOrEqual, lhs, rhs),
-            BinaryOp::SGt => self.builder.ins().icmp(IntCC::SignedGreaterThan, lhs, rhs),
-            BinaryOp::SGe => self
-                .builder
-                .ins()
-                .icmp(IntCC::SignedGreaterThanOrEqual, lhs, rhs),
-            BinaryOp::ULt => self.builder.ins().icmp(IntCC::UnsignedLessThan, lhs, rhs),
-            BinaryOp::ULe => self
-                .builder
-                .ins()
-                .icmp(IntCC::UnsignedLessThanOrEqual, lhs, rhs),
-            BinaryOp::UGt => self
-                .builder
-                .ins()
-                .icmp(IntCC::UnsignedGreaterThan, lhs, rhs),
-            BinaryOp::UGe => self
-                .builder
-                .ins()
-                .icmp(IntCC::UnsignedGreaterThanOrEqual, lhs, rhs),
+        Op::GetElementPtr { base, index } => {
+            let base_val = get_value(values, *base)?;
+            let idx_val = get_value(values, *index)?;
+            let elem_size = 8i64; // Assume 8-byte elements
+            let offset = builder.ins().imul_imm(idx_val, elem_size);
+            let ptr = builder.ins().iadd(base_val, offset);
+            Ok(Some(ptr))
+        }
 
-            // Float comparison
-            BinaryOp::FOEq => self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs),
-            BinaryOp::FONe => self.builder.ins().fcmp(FloatCC::NotEqual, lhs, rhs),
-            BinaryOp::FOLt => self.builder.ins().fcmp(FloatCC::LessThan, lhs, rhs),
-            BinaryOp::FOLe => self.builder.ins().fcmp(FloatCC::LessThanOrEqual, lhs, rhs),
-            BinaryOp::FOGt => self.builder.ins().fcmp(FloatCC::GreaterThan, lhs, rhs),
-            BinaryOp::FOGe => self
-                .builder
-                .ins()
-                .fcmp(FloatCC::GreaterThanOrEqual, lhs, rhs),
-        };
+        Op::Cast { value, target } => {
+            let val = get_value(values, *value)?;
+            let target_ty = hlir_to_cranelift_type(target);
+            let val_ty = builder.func.dfg.value_type(val);
 
-        // Comparisons return i8, may need to extend for result type
-        let result_cl_ty = self.hlir_to_type(result_ty);
-        let result_ty_current = self.builder.func.dfg.value_type(result);
-
-        if result_ty_current != result_cl_ty && result_cl_ty.is_int() {
-            if result_ty_current.bits() < result_cl_ty.bits() {
-                Ok(self.builder.ins().uextend(result_cl_ty, result))
+            if val_ty == target_ty {
+                Ok(Some(val))
+            } else if val_ty.bits() < target_ty.bits() {
+                // Extend
+                let extended = if target_ty.is_int() {
+                    builder.ins().sextend(target_ty, val)
+                } else {
+                    builder.ins().fpromote(target_ty, val)
+                };
+                Ok(Some(extended))
             } else {
-                Ok(result)
+                // Truncate
+                let truncated = if target_ty.is_int() {
+                    builder.ins().ireduce(target_ty, val)
+                } else {
+                    builder.ins().fdemote(target_ty, val)
+                };
+                Ok(Some(truncated))
             }
+        }
+
+        Op::Phi { incoming } => {
+            // Phi nodes should be handled as block parameters in Cranelift
+            // For now, return first incoming value if available
+            if let Some((_, first_val)) = incoming.first() {
+                let val = get_value(values, *first_val)?;
+                Ok(Some(val))
+            } else {
+                let zero = builder.ins().iconst(ty, 0);
+                Ok(Some(zero))
+            }
+        }
+
+        Op::ExtractValue { base, index } => {
+            // For tuples/structs stored as aggregates
+            let base_val = get_value(values, *base)?;
+            // Simplified: treat as field access
+            let offset = (*index * 8) as i32;
+            let ptr = builder.ins().iadd_imm(base_val, offset as i64);
+            let loaded = builder.ins().load(ty, MemFlags::new(), ptr, 0);
+            Ok(Some(loaded))
+        }
+
+        Op::InsertValue { base, value, index } => {
+            let base_val = get_value(values, *base)?;
+            let val = get_value(values, *value)?;
+            // Simplified: treat as field store
+            let offset = (*index * 8) as i32;
+            let ptr = builder.ins().iadd_imm(base_val, offset as i64);
+            builder.ins().store(MemFlags::new(), val, ptr, 0);
+            Ok(Some(base_val))
+        }
+
+        Op::Tuple(vals) | Op::Array(vals) => {
+            // Allocate space and store values
+            let size = (vals.len() * 8) as u32;
+            let slot = builder.create_sized_stack_slot(cranelift_codegen::ir::StackSlotData::new(
+                cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+                size,
+                0,
+            ));
+            let base = builder.ins().stack_addr(types::I64, slot, 0);
+
+            for (i, v) in vals.iter().enumerate() {
+                let val = get_value(values, *v)?;
+                let offset = (i * 8) as i32;
+                builder.ins().store(MemFlags::new(), val, base, offset);
+            }
+
+            Ok(Some(base))
+        }
+
+        Op::Struct { name: _, fields } => {
+            // Similar to tuple
+            let size = (fields.len() * 8) as u32;
+            let slot = builder.create_sized_stack_slot(cranelift_codegen::ir::StackSlotData::new(
+                cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+                size,
+                0,
+            ));
+            let base = builder.ins().stack_addr(types::I64, slot, 0);
+
+            for (i, (_, v)) in fields.iter().enumerate() {
+                let val = get_value(values, *v)?;
+                let offset = (i * 8) as i32;
+                builder.ins().store(MemFlags::new(), val, base, offset);
+            }
+
+            Ok(Some(base))
+        }
+
+        Op::PerformEffect { .. } => {
+            // Effects not supported in JIT yet
+            let zero = builder.ins().iconst(ty, 0);
+            Ok(Some(zero))
+        }
+    }
+}
+
+#[cfg(feature = "jit")]
+fn translate_constant(
+    builder: &mut FunctionBuilder,
+    constant: &HlirConstant,
+    ty: &HlirType,
+    func_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+) -> Result<cranelift_codegen::ir::Value, String> {
+    let cl_ty = hlir_to_cranelift_type(ty);
+
+    match constant {
+        HlirConstant::Unit => Ok(builder.ins().iconst(types::I64, 0)),
+        HlirConstant::Bool(b) => Ok(builder.ins().iconst(types::I8, *b as i64)),
+        HlirConstant::Int(i, _) => Ok(builder.ins().iconst(cl_ty, *i)),
+        HlirConstant::Float(f, _) => {
+            if cl_ty == types::F32 {
+                Ok(builder.ins().f32const(*f as f32))
+            } else {
+                Ok(builder.ins().f64const(*f))
+            }
+        }
+        HlirConstant::String(_) => {
+            // Strings need special handling - for now return null ptr
+            Ok(builder.ins().iconst(types::I64, 0))
+        }
+        HlirConstant::Null(_) => Ok(builder.ins().iconst(types::I64, 0)),
+        HlirConstant::Undef(_) => Ok(builder.ins().iconst(cl_ty, 0)),
+        HlirConstant::FunctionRef(name) => {
+            if let Some(&func_ref) = func_refs.get(name) {
+                Ok(builder.ins().func_addr(types::I64, func_ref))
+            } else {
+                Ok(builder.ins().iconst(types::I64, 0))
+            }
+        }
+        HlirConstant::GlobalRef(_) => Ok(builder.ins().iconst(types::I64, 0)),
+        HlirConstant::Array(_) | HlirConstant::Struct(_) => {
+            // Complex constants - return null for now
+            Ok(builder.ins().iconst(types::I64, 0))
+        }
+    }
+}
+
+#[cfg(feature = "jit")]
+fn translate_binary_op(
+    builder: &mut FunctionBuilder,
+    op: BinaryOp,
+    lhs: cranelift_codegen::ir::Value,
+    rhs: cranelift_codegen::ir::Value,
+    result_ty: &HlirType,
+) -> Result<cranelift_codegen::ir::Value, String> {
+    use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
+
+    let result = match op {
+        // Integer arithmetic
+        BinaryOp::Add => builder.ins().iadd(lhs, rhs),
+        BinaryOp::Sub => builder.ins().isub(lhs, rhs),
+        BinaryOp::Mul => builder.ins().imul(lhs, rhs),
+        BinaryOp::SDiv => builder.ins().sdiv(lhs, rhs),
+        BinaryOp::UDiv => builder.ins().udiv(lhs, rhs),
+        BinaryOp::SRem => builder.ins().srem(lhs, rhs),
+        BinaryOp::URem => builder.ins().urem(lhs, rhs),
+
+        // Float arithmetic
+        BinaryOp::FAdd => builder.ins().fadd(lhs, rhs),
+        BinaryOp::FSub => builder.ins().fsub(lhs, rhs),
+        BinaryOp::FMul => builder.ins().fmul(lhs, rhs),
+        BinaryOp::FDiv => builder.ins().fdiv(lhs, rhs),
+        BinaryOp::FRem => {
+            // Cranelift doesn't have frem, use a workaround
+            let div = builder.ins().fdiv(lhs, rhs);
+            let trunc = builder.ins().trunc(div);
+            let mul = builder.ins().fmul(trunc, rhs);
+            builder.ins().fsub(lhs, mul)
+        }
+
+        // Bitwise
+        BinaryOp::And => builder.ins().band(lhs, rhs),
+        BinaryOp::Or => builder.ins().bor(lhs, rhs),
+        BinaryOp::Xor => builder.ins().bxor(lhs, rhs),
+        BinaryOp::Shl => builder.ins().ishl(lhs, rhs),
+        BinaryOp::AShr => builder.ins().sshr(lhs, rhs),
+        BinaryOp::LShr => builder.ins().ushr(lhs, rhs),
+
+        // Integer comparison
+        BinaryOp::Eq => builder.ins().icmp(IntCC::Equal, lhs, rhs),
+        BinaryOp::Ne => builder.ins().icmp(IntCC::NotEqual, lhs, rhs),
+        BinaryOp::SLt => builder.ins().icmp(IntCC::SignedLessThan, lhs, rhs),
+        BinaryOp::SLe => builder.ins().icmp(IntCC::SignedLessThanOrEqual, lhs, rhs),
+        BinaryOp::SGt => builder.ins().icmp(IntCC::SignedGreaterThan, lhs, rhs),
+        BinaryOp::SGe => builder
+            .ins()
+            .icmp(IntCC::SignedGreaterThanOrEqual, lhs, rhs),
+        BinaryOp::ULt => builder.ins().icmp(IntCC::UnsignedLessThan, lhs, rhs),
+        BinaryOp::ULe => builder.ins().icmp(IntCC::UnsignedLessThanOrEqual, lhs, rhs),
+        BinaryOp::UGt => builder.ins().icmp(IntCC::UnsignedGreaterThan, lhs, rhs),
+        BinaryOp::UGe => builder
+            .ins()
+            .icmp(IntCC::UnsignedGreaterThanOrEqual, lhs, rhs),
+
+        // Float comparison
+        BinaryOp::FOEq => builder.ins().fcmp(FloatCC::Equal, lhs, rhs),
+        BinaryOp::FONe => builder.ins().fcmp(FloatCC::NotEqual, lhs, rhs),
+        BinaryOp::FOLt => builder.ins().fcmp(FloatCC::LessThan, lhs, rhs),
+        BinaryOp::FOLe => builder.ins().fcmp(FloatCC::LessThanOrEqual, lhs, rhs),
+        BinaryOp::FOGt => builder.ins().fcmp(FloatCC::GreaterThan, lhs, rhs),
+        BinaryOp::FOGe => builder.ins().fcmp(FloatCC::GreaterThanOrEqual, lhs, rhs),
+    };
+
+    // Comparisons return i8, may need to extend for result type
+    let result_cl_ty = hlir_to_cranelift_type(result_ty);
+    let result_ty_current = builder.func.dfg.value_type(result);
+
+    if result_ty_current != result_cl_ty && result_cl_ty.is_int() {
+        if result_ty_current.bits() < result_cl_ty.bits() {
+            Ok(builder.ins().uextend(result_cl_ty, result))
         } else {
             Ok(result)
         }
+    } else {
+        Ok(result)
     }
+}
 
-    fn translate_unary_op(
-        &mut self,
-        op: UnaryOp,
-        val: cranelift_codegen::ir::Value,
-        ty: &HlirType,
-    ) -> Result<cranelift_codegen::ir::Value, String> {
-        match op {
-            UnaryOp::Neg => Ok(self.builder.ins().ineg(val)),
-            UnaryOp::FNeg => Ok(self.builder.ins().fneg(val)),
-            UnaryOp::Not => {
-                // Logical not: xor with all 1s
-                let ones = self.builder.ins().iconst(self.hlir_to_type(ty), -1);
-                Ok(self.builder.ins().bxor(val, ones))
-            }
+#[cfg(feature = "jit")]
+fn translate_unary_op(
+    builder: &mut FunctionBuilder,
+    op: UnaryOp,
+    val: cranelift_codegen::ir::Value,
+    ty: &HlirType,
+) -> Result<cranelift_codegen::ir::Value, String> {
+    match op {
+        UnaryOp::Neg => Ok(builder.ins().ineg(val)),
+        UnaryOp::FNeg => Ok(builder.ins().fneg(val)),
+        UnaryOp::Not => {
+            // Logical not: xor with all 1s
+            let ones = builder.ins().iconst(hlir_to_cranelift_type(ty), -1);
+            Ok(builder.ins().bxor(val, ones))
         }
     }
+}
 
-    fn translate_terminator(&mut self, term: &HlirTerminator) -> Result<(), String> {
-        match term {
-            HlirTerminator::Return(val) => {
-                if let Some(v) = val {
-                    let ret_val = self.get_value(*v)?;
-                    self.builder.ins().return_(&[ret_val]);
-                } else {
-                    self.builder.ins().return_(&[]);
-                }
-            }
-
-            HlirTerminator::Branch(target) => {
-                let target_block = self.blocks[target];
-                self.builder.ins().jump(target_block, &[]);
-            }
-
-            HlirTerminator::CondBranch {
-                condition,
-                then_block,
-                else_block,
-            } => {
-                let cond = self.get_value(*condition)?;
-                let then_b = self.blocks[then_block];
-                let else_b = self.blocks[else_block];
-                self.builder.ins().brif(cond, then_b, &[], else_b, &[]);
-            }
-
-            HlirTerminator::Switch {
-                value,
-                default,
-                cases,
-            } => {
-                let val = self.get_value(*value)?;
-                let default_block = self.blocks[default];
-
-                // Build switch using a chain of conditionals
-                // (Cranelift has br_table but it's more complex)
-                let mut current_block = self.builder.current_block().unwrap();
-
-                for (case_val, target) in cases {
-                    let target_block = self.blocks[target];
-                    let case_const = self.builder.ins().iconst(types::I64, *case_val);
-                    let cmp = self.builder.ins().icmp(
-                        cranelift_codegen::ir::condcodes::IntCC::Equal,
-                        val,
-                        case_const,
-                    );
-
-                    let next_block = self.builder.create_block();
-                    self.builder
-                        .ins()
-                        .brif(cmp, target_block, &[], next_block, &[]);
-                    self.builder.seal_block(next_block);
-                    self.builder.switch_to_block(next_block);
-                }
-
-                self.builder.ins().jump(default_block, &[]);
-            }
-
-            HlirTerminator::Unreachable => {
-                self.builder
-                    .ins()
-                    .trap(cranelift_codegen::ir::TrapCode::User(0));
+#[cfg(feature = "jit")]
+fn translate_terminator(
+    builder: &mut FunctionBuilder,
+    term: &HlirTerminator,
+    blocks: &HashMap<BlockId, cranelift_codegen::ir::Block>,
+    values: &HashMap<ValueId, cranelift_codegen::ir::Value>,
+) -> Result<(), String> {
+    match term {
+        HlirTerminator::Return(val) => {
+            if let Some(v) = val {
+                let ret_val = get_value(values, *v)?;
+                builder.ins().return_(&[ret_val]);
+            } else {
+                builder.ins().return_(&[]);
             }
         }
 
-        Ok(())
-    }
+        HlirTerminator::Branch(target) => {
+            let target_block = blocks[target];
+            builder.ins().jump(target_block, &[]);
+        }
 
-    fn get_value(&self, id: ValueId) -> Result<cranelift_codegen::ir::Value, String> {
-        self.values
-            .get(&id)
-            .copied()
-            .ok_or_else(|| format!("Value not found: {:?}", id))
-    }
+        HlirTerminator::CondBranch {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            let cond = get_value(values, *condition)?;
+            let then_b = blocks[then_block];
+            let else_b = blocks[else_block];
+            builder.ins().brif(cond, then_b, &[], else_b, &[]);
+        }
 
-    fn hlir_to_type(&self, ty: &HlirType) -> types::Type {
-        match ty {
-            HlirType::Void => types::I64,
-            HlirType::Bool => types::I8,
-            HlirType::I8 | HlirType::U8 => types::I8,
-            HlirType::I16 | HlirType::U16 => types::I16,
-            HlirType::I32 | HlirType::U32 => types::I32,
-            HlirType::I64 | HlirType::U64 => types::I64,
-            HlirType::I128 | HlirType::U128 => types::I128,
-            HlirType::F32 => types::F32,
-            HlirType::F64 => types::F64,
-            HlirType::Ptr(_) => types::I64,
-            HlirType::Array(_, _) => types::I64,
-            HlirType::Struct(_) => types::I64,
-            HlirType::Tuple(_) => types::I64,
-            HlirType::Function { .. } => types::I64,
+        HlirTerminator::Switch {
+            value,
+            default,
+            cases,
+        } => {
+            let val = get_value(values, *value)?;
+            let default_block = blocks[default];
+
+            // Build switch using a chain of conditionals
+            for (case_val, target) in cases {
+                let target_block = blocks[target];
+                let case_const = builder.ins().iconst(types::I64, *case_val);
+                let cmp = builder.ins().icmp(
+                    cranelift_codegen::ir::condcodes::IntCC::Equal,
+                    val,
+                    case_const,
+                );
+
+                let next_block = builder.create_block();
+                builder.ins().brif(cmp, target_block, &[], next_block, &[]);
+                builder.seal_block(next_block);
+                builder.switch_to_block(next_block);
+            }
+
+            builder.ins().jump(default_block, &[]);
+        }
+
+        HlirTerminator::Unreachable => {
+            builder
+                .ins()
+                .trap(cranelift_codegen::ir::TrapCode::unwrap_user(0));
         }
     }
+
+    Ok(())
+}
+
+#[cfg(feature = "jit")]
+fn get_value(
+    values: &HashMap<ValueId, cranelift_codegen::ir::Value>,
+    id: ValueId,
+) -> Result<cranelift_codegen::ir::Value, String> {
+    values
+        .get(&id)
+        .copied()
+        .ok_or_else(|| format!("Value not found: {:?}", id))
 }
 
 // Non-JIT placeholder implementation
 #[cfg(not(feature = "jit"))]
 impl CompiledModule {
+    #[allow(dead_code)]
     fn new_stub() -> Self {
         Self {
             functions: HashMap::new(),

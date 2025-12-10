@@ -17,6 +17,7 @@ pub mod epistemic;
 use crate::ast::*;
 use crate::common::{NodeId, Span};
 use crate::hir::*;
+use crate::macro_system::token_tree::{Delimiter, TokenTree};
 use crate::types::{self, Type, TypeVar, effects::EffectInference, units::UnitChecker};
 use miette::Result;
 use std::collections::HashMap;
@@ -43,6 +44,23 @@ pub struct TypeChecker {
     constraints: Vec<TypeConstraint>,
     /// Errors accumulated during checking
     errors: Vec<TypeError>,
+    /// Ontology alignments: (type1, type2) -> distance
+    /// Key is ordered tuple: (min(t1,t2), max(t1,t2)) for symmetric lookup
+    alignments: HashMap<(String, String), f64>,
+    /// Function-level compatibility thresholds from #[compat] annotations
+    fn_thresholds: HashMap<String, f64>,
+    /// Default compatibility threshold
+    default_threshold: f64,
+    /// Reference to the AST for span lookup
+    ast: Option<std::sync::Arc<Ast>>,
+    /// Current function being type-checked (for threshold lookup)
+    current_fn: Option<String>,
+    /// Declared ontology prefixes (from `ontology X from "..."` declarations)
+    ontology_prefixes: std::collections::HashSet<String>,
+    /// Used ontology prefixes (to detect unused imports)
+    used_ontology_prefixes: std::collections::HashSet<String>,
+    /// Warnings accumulated during checking
+    warnings: Vec<String>,
 }
 
 /// Type environment with scopes
@@ -89,10 +107,35 @@ struct TypeConstraint {
 }
 
 /// Type error
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeError {
     pub message: String,
     pub span: Span,
+}
+
+/// Structured type check result with detailed errors and warnings
+#[derive(Debug)]
+pub struct TypeCheckResult {
+    pub hir: Option<Hir>,
+    pub errors: Vec<TypeError>,
+    pub warnings: Vec<String>,
+}
+
+/// Type check an AST and return structured result with errors
+pub fn check_with_errors(ast: &Ast) -> TypeCheckResult {
+    let mut checker = TypeChecker::new();
+    match checker.check_program_internal(ast) {
+        Ok(hir) => TypeCheckResult {
+            hir: Some(hir),
+            errors: checker.errors,
+            warnings: checker.warnings,
+        },
+        Err(_) => TypeCheckResult {
+            hir: None,
+            errors: checker.errors,
+            warnings: checker.warnings,
+        },
+    }
 }
 
 impl TypeChecker {
@@ -105,6 +148,14 @@ impl TypeChecker {
             next_type_var: 0,
             constraints: Vec::new(),
             errors: Vec::new(),
+            alignments: HashMap::new(),
+            fn_thresholds: HashMap::new(),
+            default_threshold: 0.15, // Default threshold for semantic compatibility
+            ast: None,
+            current_fn: None,
+            ontology_prefixes: std::collections::HashSet::new(),
+            used_ontology_prefixes: std::collections::HashSet::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -132,13 +183,191 @@ impl TypeChecker {
         });
     }
 
+    /// Expand type aliases recursively
+    fn expand_type_alias(&self, ty: &Type) -> Type {
+        match ty {
+            Type::Named { name, args } => {
+                // Check if this is a type alias
+                if let Some(TypeDef::Alias(alias_ty)) = self.type_defs.get(name) {
+                    // Recursively expand the alias
+                    self.expand_type_alias(alias_ty)
+                } else {
+                    // Not an alias, but expand args recursively
+                    Type::Named {
+                        name: name.clone(),
+                        args: args.iter().map(|a| self.expand_type_alias(a)).collect(),
+                    }
+                }
+            }
+            Type::Array { element, size } => Type::Array {
+                element: Box::new(self.expand_type_alias(element)),
+                size: *size,
+            },
+            Type::Tuple(elems) => {
+                Type::Tuple(elems.iter().map(|e| self.expand_type_alias(e)).collect())
+            }
+            Type::Ref {
+                mutable,
+                lifetime,
+                inner,
+            } => Type::Ref {
+                mutable: *mutable,
+                lifetime: lifetime.clone(),
+                inner: Box::new(self.expand_type_alias(inner)),
+            },
+            Type::Function {
+                params,
+                return_type,
+                effects,
+            } => Type::Function {
+                params: params.iter().map(|p| self.expand_type_alias(p)).collect(),
+                return_type: Box::new(self.expand_type_alias(return_type)),
+                effects: effects.clone(),
+            },
+            // Primitive types don't need expansion
+            _ => ty.clone(),
+        }
+    }
+
+    /// Get human-readable display name for a type
+    fn type_display_name(&self, ty: &Type) -> String {
+        match ty {
+            Type::Unit => "()".to_string(),
+            Type::Bool => "bool".to_string(),
+            Type::I8 => "i8".to_string(),
+            Type::I16 => "i16".to_string(),
+            Type::I32 => "i32".to_string(),
+            Type::I64 => "i64".to_string(),
+            Type::U8 => "u8".to_string(),
+            Type::U16 => "u16".to_string(),
+            Type::U32 => "u32".to_string(),
+            Type::U64 => "u64".to_string(),
+            Type::F32 => "f32".to_string(),
+            Type::F64 => "f64".to_string(),
+            Type::String => "string".to_string(),
+            Type::Named { name, args } => {
+                if args.is_empty() {
+                    name.clone()
+                } else {
+                    format!(
+                        "{}<{}>",
+                        name,
+                        args.iter()
+                            .map(|a| self.type_display_name(a))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                }
+            }
+            Type::Ontology { namespace, term } => format!("{}:{}", namespace, term),
+            Type::Array { element, size } => {
+                format!(
+                    "[{}; {}]",
+                    self.type_display_name(element),
+                    size.unwrap_or(0)
+                )
+            }
+            Type::Tuple(types) => {
+                let inner: Vec<_> = types.iter().map(|t| self.type_display_name(t)).collect();
+                format!("({})", inner.join(", "))
+            }
+            Type::Function {
+                params,
+                return_type,
+                ..
+            } => {
+                let param_strs: Vec<_> = params.iter().map(|t| self.type_display_name(t)).collect();
+                format!(
+                    "fn({}) -> {}",
+                    param_strs.join(", "),
+                    self.type_display_name(return_type)
+                )
+            }
+            Type::Var(v) => format!("?T{}", v.0),
+            _ => format!("{:?}", ty),
+        }
+    }
+
+    /// Extract span from an AST expression using the AST's span map
+    fn expr_span(&self, expr: &Expr, ast: &Ast) -> Span {
+        let id = self.expr_id(expr);
+        ast.node_spans.get(&id).copied().unwrap_or_else(Span::dummy)
+    }
+
+    /// Extract NodeId from an AST expression
+    fn expr_id(&self, expr: &Expr) -> NodeId {
+        match expr {
+            Expr::Literal { id, .. } => *id,
+            Expr::Path { id, .. } => *id,
+            Expr::Binary { id, .. } => *id,
+            Expr::Unary { id, .. } => *id,
+            Expr::Call { id, .. } => *id,
+            Expr::MethodCall { id, .. } => *id,
+            Expr::Field { id, .. } => *id,
+            Expr::TupleField { id, .. } => *id,
+            Expr::Index { id, .. } => *id,
+            Expr::Cast { id, .. } => *id,
+            Expr::Block { id, .. } => *id,
+            Expr::If { id, .. } => *id,
+            Expr::Match { id, .. } => *id,
+            Expr::Loop { id, .. } => *id,
+            Expr::While { id, .. } => *id,
+            Expr::For { id, .. } => *id,
+            Expr::Return { id, .. } => *id,
+            Expr::Break { id, .. } => *id,
+            Expr::Continue { id } => *id,
+            Expr::Closure { id, .. } => *id,
+            Expr::Tuple { id, .. } => *id,
+            Expr::Array { id, .. } => *id,
+            Expr::Range { id, .. } => *id,
+            Expr::StructLit { id, .. } => *id,
+            Expr::Try { id, .. } => *id,
+            Expr::Perform { id, .. } => *id,
+            Expr::Handle { id, .. } => *id,
+            Expr::Sample { id, .. } => *id,
+            Expr::Await { id, .. } => *id,
+            Expr::AsyncBlock { id, .. } => *id,
+            Expr::AsyncClosure { id, .. } => *id,
+            Expr::Spawn { id, .. } => *id,
+            Expr::Select { id, .. } => *id,
+            Expr::Join { id, .. } => *id,
+            Expr::OntologyTerm { id, .. } => *id,
+            Expr::MacroInvocation(_) => NodeId(0),
+            Expr::Do { id, .. } => *id,
+            Expr::Counterfactual { id, .. } => *id,
+            Expr::KnowledgeExpr { id, .. } => *id,
+            _ => NodeId(0),
+        }
+    }
+
     pub fn check_program(&mut self, ast: &Ast) -> Result<Hir> {
+        self.check_program_internal(ast)
+    }
+
+    fn check_program_internal(&mut self, ast: &Ast) -> Result<Hir> {
+        // Store AST reference for span lookups
+        self.ast = Some(std::sync::Arc::new(ast.clone()));
+
         let mut items = Vec::new();
 
-        // First pass: collect type definitions
+        // First pass: collect ontology prefixes, type definitions, and alignments
+        for item in &ast.items {
+            self.collect_ontology_prefix(item);
+        }
         for item in &ast.items {
             self.collect_type_def(item);
+            self.collect_alignment(item);
+            self.collect_fn_threshold(item);
         }
+
+        // Validate that all ontology types use declared prefixes
+        self.check_undefined_ontology_prefixes();
+
+        // Check for circular type definitions
+        self.check_circular_types();
+
+        // Check for infinite-size structs (direct recursion without indirection)
+        self.check_infinite_size_types();
 
         // Second pass: register function signatures in environment
         self.env.push_scope();
@@ -175,12 +404,198 @@ impl TypeChecker {
         // Solve type constraints
         self.solve_constraints()?;
 
+        // Check for unused ontology imports and generate warnings
+        self.check_unused_imports();
+
         if !self.errors.is_empty() {
             let messages: Vec<_> = self.errors.iter().map(|e| e.message.clone()).collect();
             return Err(miette::miette!("Type errors:\n{}", messages.join("\n")));
         }
 
         Ok(Hir { items })
+    }
+
+    /// Check for unused ontology imports and add warnings
+    fn check_unused_imports(&mut self) {
+        for prefix in &self.ontology_prefixes {
+            if !self.used_ontology_prefixes.contains(prefix) {
+                self.warnings.push(format!(
+                    "unused_import: ontology prefix `{}` is declared but never used",
+                    prefix
+                ));
+            }
+        }
+    }
+
+    /// Parse vec! macro arguments into expressions
+    /// For vec![a, b, c], extract the comma-separated expressions
+    /// The args structure is: [Token("vec"), Token("!"), Delimited(Bracket, [...])]
+    /// or just: [Delimited(Bracket, [...])]
+    fn parse_vec_macro_args(&self, args: &[TokenTree]) -> Vec<Expr> {
+        use crate::lexer::TokenKind;
+
+        // Find the bracketed content - skip any leading vec! tokens
+        let bracket_content = self.find_bracket_content(args);
+
+        if bracket_content.is_empty() {
+            return Vec::new();
+        }
+
+        // Parse comma-separated expressions from bracket content
+        let mut exprs = Vec::new();
+        let mut current_tokens = Vec::new();
+
+        for tt in bracket_content {
+            match tt {
+                TokenTree::Token(tok) if tok.token.kind == TokenKind::Comma => {
+                    if !current_tokens.is_empty() {
+                        if let Some(expr) = self.tokens_to_simple_expr(&current_tokens) {
+                            exprs.push(expr);
+                        }
+                        current_tokens.clear();
+                    }
+                }
+                _ => {
+                    current_tokens.push(tt.clone());
+                }
+            }
+        }
+
+        // Handle last expression (no trailing comma)
+        if !current_tokens.is_empty() {
+            if let Some(expr) = self.tokens_to_simple_expr(&current_tokens) {
+                exprs.push(expr);
+            }
+        }
+
+        exprs
+    }
+
+    /// Find the bracket content in vec! macro args
+    /// The parser already unwraps the bracket, so args ARE the content.
+    /// This just returns args directly unless there's a wrapper Delimited.
+    fn find_bracket_content<'a>(&self, args: &'a [TokenTree]) -> &'a [TokenTree] {
+        // For vec![a, b, c], the parser gives us args = [Token(a), Token(,), Token(b), ...]
+        // directly (already unwrapped from the bracket).
+        //
+        // For recursive calls with [Delimited(Bracket, inner)], we need to unwrap.
+        if args.len() == 1 {
+            if let TokenTree::Delimited(Delimiter::Bracket, inner, _) = &args[0] {
+                return inner;
+            }
+        }
+
+        // Otherwise, args are the direct content
+        args
+    }
+
+    /// Convert a sequence of tokens to a simple expression (handles nested vec!)
+    fn tokens_to_simple_expr(&self, tokens: &[TokenTree]) -> Option<Expr> {
+        use crate::lexer::TokenKind;
+
+        if tokens.is_empty() {
+            return None;
+        }
+
+        // Check for nested vec! macro: [Token("vec"), Token("!"), Delimited(Bracket, ...)]
+        if tokens.len() >= 3 {
+            if let (TokenTree::Token(first), TokenTree::Token(second)) = (&tokens[0], &tokens[1]) {
+                if first.token.kind == TokenKind::Ident
+                    && first.token.text == "vec"
+                    && second.token.kind == TokenKind::Bang
+                {
+                    // This is a nested vec! macro - recursively parse it
+                    let nested_exprs = self.parse_vec_macro_args(&tokens[2..]);
+                    return Some(Expr::Array {
+                        id: NodeId::dummy(),
+                        elements: nested_exprs,
+                    });
+                }
+            }
+        }
+
+        // For single token, convert directly
+        if tokens.len() == 1 {
+            if let TokenTree::Token(tok) = &tokens[0] {
+                return self.token_to_expr(&tok.token);
+            }
+            // Handle delimited group (nested array without vec!)
+            if let TokenTree::Delimited(Delimiter::Bracket, inner, _) = &tokens[0] {
+                let mut inner_exprs = Vec::new();
+                let mut current = Vec::new();
+                for tt in inner.iter() {
+                    match tt {
+                        TokenTree::Token(tok) if tok.token.kind == TokenKind::Comma => {
+                            if !current.is_empty() {
+                                if let Some(e) = self.tokens_to_simple_expr(&current) {
+                                    inner_exprs.push(e);
+                                }
+                                current.clear();
+                            }
+                        }
+                        _ => current.push(tt.clone()),
+                    }
+                }
+                if !current.is_empty() {
+                    if let Some(e) = self.tokens_to_simple_expr(&current) {
+                        inner_exprs.push(e);
+                    }
+                }
+                return Some(Expr::Array {
+                    id: NodeId::dummy(),
+                    elements: inner_exprs,
+                });
+            }
+        }
+
+        None
+    }
+
+    /// Convert a single token to an expression
+    fn token_to_expr(&self, token: &crate::lexer::Token) -> Option<Expr> {
+        use crate::lexer::TokenKind;
+
+        match token.kind {
+            TokenKind::IntLit => {
+                let value = token.text.parse::<i64>().ok()?;
+                Some(Expr::Literal {
+                    id: NodeId::dummy(),
+                    value: Literal::Int(value),
+                })
+            }
+            TokenKind::FloatLit => {
+                let value = token.text.parse::<f64>().ok()?;
+                Some(Expr::Literal {
+                    id: NodeId::dummy(),
+                    value: Literal::Float(value),
+                })
+            }
+            TokenKind::StringLit => {
+                let text = token.text.clone();
+                Some(Expr::Literal {
+                    id: NodeId::dummy(),
+                    value: Literal::String(text),
+                })
+            }
+            TokenKind::True => Some(Expr::Literal {
+                id: NodeId::dummy(),
+                value: Literal::Bool(true),
+            }),
+            TokenKind::False => Some(Expr::Literal {
+                id: NodeId::dummy(),
+                value: Literal::Bool(false),
+            }),
+            TokenKind::Ident => {
+                let name = token.text.clone();
+                Some(Expr::Path {
+                    id: NodeId::dummy(),
+                    path: Path {
+                        segments: vec![name],
+                    },
+                })
+            }
+            _ => None,
+        }
     }
 
     fn collect_type_def(&mut self, item: &Item) {
@@ -234,6 +649,456 @@ impl TypeChecker {
         }
     }
 
+    /// Collect ontology alignment declarations
+    fn collect_alignment(&mut self, item: &Item) {
+        if let Item::AlignDecl(align) = item {
+            // Create canonical key (ordered pair for symmetric lookup)
+            let t1 = format!("{}:{}", align.type1.prefix, align.type1.term);
+            let t2 = format!("{}:{}", align.type2.prefix, align.type2.term);
+            let key = if t1 <= t2 { (t1, t2) } else { (t2, t1) };
+            self.alignments.insert(key, align.distance);
+        }
+    }
+
+    /// Collect function-level compatibility thresholds from #[compat] annotations
+    fn collect_fn_threshold(&mut self, item: &Item) {
+        if let Item::Function(f) = item {
+            // Check for #[compat(threshold = X)] attribute
+            for attr in &f.attributes {
+                if attr.name == "compat" {
+                    match &attr.args {
+                        AttributeArgs::Named(pairs) => {
+                            for (key, value) in pairs {
+                                if key == "threshold" {
+                                    if let AttributeValue::Float(threshold) = value {
+                                        self.validate_and_insert_threshold(&f.name, *threshold);
+                                    }
+                                }
+                            }
+                        }
+                        AttributeArgs::Value(AttributeValue::Float(threshold)) => {
+                            // Simple form: #[compat(0.2)]
+                            self.validate_and_insert_threshold(&f.name, *threshold);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    /// Validate threshold is in valid range [0.0, 1.0] and insert
+    fn validate_and_insert_threshold(&mut self, fn_name: &str, threshold: f64) {
+        if threshold < 0.0 {
+            self.error(
+                format!(
+                    "Invalid threshold {} for function `{}`: threshold cannot be negative",
+                    threshold, fn_name
+                ),
+                Span::dummy(),
+            );
+        } else if threshold > 1.0 {
+            self.error(
+                format!(
+                    "Invalid threshold {} for function `{}`: threshold must be between 0.0 and 1.0",
+                    threshold, fn_name
+                ),
+                Span::dummy(),
+            );
+        } else {
+            self.fn_thresholds.insert(fn_name.to_string(), threshold);
+        }
+    }
+
+    /// Collect ontology prefix declarations and check for duplicates
+    fn collect_ontology_prefix(&mut self, item: &Item) {
+        if let Item::OntologyImport(ont) = item {
+            // Check for duplicate prefix
+            if self.ontology_prefixes.contains(&ont.prefix) {
+                self.error(
+                    format!(
+                        "Duplicate ontology prefix `{}`. Each ontology prefix can only be declared once.",
+                        ont.prefix
+                    ),
+                    Span::dummy(),
+                );
+            } else {
+                self.ontology_prefixes.insert(ont.prefix.clone());
+            }
+        }
+    }
+
+    /// Check that all ontology types reference declared prefixes
+    fn check_undefined_ontology_prefixes(&mut self) {
+        for (name, def) in &self.type_defs.clone() {
+            match def {
+                TypeDef::Alias(ty) => {
+                    self.check_type_for_undefined_ontology(ty, name);
+                }
+                TypeDef::Struct { fields, .. } => {
+                    for (field_name, field_ty) in fields {
+                        self.check_type_for_undefined_ontology(
+                            field_ty,
+                            &format!("{}.{}", name, field_name),
+                        );
+                    }
+                }
+                TypeDef::Enum { variants, .. } => {
+                    for (variant_name, types) in variants {
+                        for ty in types {
+                            self.check_type_for_undefined_ontology(
+                                ty,
+                                &format!("{}::{}", name, variant_name),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check a single type for undefined ontology prefixes
+    fn check_type_for_undefined_ontology(&mut self, ty: &Type, context: &str) {
+        match ty {
+            Type::Ontology { namespace, term } => {
+                if !self.ontology_prefixes.contains(namespace) {
+                    self.error(
+                        format!(
+                            "Undefined ontology prefix `{}` in type `{}:{}` (used in {}). Add `ontology {} from \"...\";` declaration.",
+                            namespace, namespace, term, context, namespace
+                        ),
+                        Span::dummy(),
+                    );
+                }
+            }
+            Type::Named { args, .. } => {
+                for arg in args {
+                    self.check_type_for_undefined_ontology(arg, context);
+                }
+            }
+            Type::Array { element, .. } => {
+                self.check_type_for_undefined_ontology(element, context);
+            }
+            Type::Tuple(types) => {
+                for t in types {
+                    self.check_type_for_undefined_ontology(t, context);
+                }
+            }
+            Type::Function {
+                params,
+                return_type,
+                ..
+            } => {
+                for p in params {
+                    self.check_type_for_undefined_ontology(p, context);
+                }
+                self.check_type_for_undefined_ontology(return_type, context);
+            }
+            Type::Ref { inner, .. } => {
+                self.check_type_for_undefined_ontology(inner, context);
+            }
+            _ => {}
+        }
+    }
+
+    /// Check for circular type alias definitions (e.g., type A = B; type B = A;)
+    fn check_circular_types(&mut self) {
+        use std::collections::HashSet;
+
+        // For each type alias, check if following the chain leads back to itself
+        for (name, def) in &self.type_defs.clone() {
+            if let TypeDef::Alias(ty) = def {
+                let mut visited = HashSet::new();
+                visited.insert(name.clone());
+
+                if self.type_creates_cycle(ty, &mut visited) {
+                    self.error(
+                        format!("Circular type definition detected: `{}` references itself through type aliases", name),
+                        Span::dummy(),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Helper to detect if a type creates a cycle through type aliases
+    fn type_creates_cycle(
+        &self,
+        ty: &Type,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> bool {
+        match ty {
+            Type::Named { name, .. } => {
+                if visited.contains(name) {
+                    return true;
+                }
+                if let Some(TypeDef::Alias(inner)) = self.type_defs.get(name) {
+                    visited.insert(name.clone());
+                    self.type_creates_cycle(inner, visited)
+                } else {
+                    false
+                }
+            }
+            Type::Array { element, .. } => self.type_creates_cycle(element, visited),
+            Type::Tuple(types) => types.iter().any(|t| self.type_creates_cycle(t, visited)),
+            Type::Function {
+                params,
+                return_type,
+                ..
+            } => {
+                params.iter().any(|t| self.type_creates_cycle(t, visited))
+                    || self.type_creates_cycle(return_type, visited)
+            }
+            _ => false,
+        }
+    }
+
+    /// Check for infinite-size types (structs that contain themselves without indirection)
+    fn check_infinite_size_types(&mut self) {
+        use std::collections::HashSet;
+
+        for (name, def) in &self.type_defs.clone() {
+            if let TypeDef::Struct { fields, .. } = def {
+                let mut visited = HashSet::new();
+                visited.insert(name.clone());
+
+                for (field_name, field_ty) in fields {
+                    if self.type_has_infinite_size(field_ty, &mut visited.clone()) {
+                        self.error(
+                            format!(
+                                "Struct `{}` has infinite size: field `{}` contains `{}` without indirection (use Box, &, or Option<Box<...>>)",
+                                name, field_name, name
+                            ),
+                            Span::dummy(),
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check if a type has infinite size (contains itself without indirection)
+    fn type_has_infinite_size(
+        &self,
+        ty: &Type,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> bool {
+        match ty {
+            Type::Named { name, .. } => {
+                if visited.contains(name) {
+                    return true;
+                }
+
+                if let Some(def) = self.type_defs.get(name) {
+                    match def {
+                        TypeDef::Struct { fields, .. } => {
+                            visited.insert(name.clone());
+                            fields
+                                .iter()
+                                .any(|(_, field_ty)| self.type_has_infinite_size(field_ty, visited))
+                        }
+                        TypeDef::Alias(inner) => {
+                            visited.insert(name.clone());
+                            self.type_has_infinite_size(inner, visited)
+                        }
+                        TypeDef::Enum { .. } => false, // Enums are sized by their largest variant
+                    }
+                } else {
+                    false
+                }
+            }
+            // References and pointers provide indirection - they break the cycle
+            Type::Ref { .. } => false,
+            // Box, Option<Box<T>>, etc. also provide indirection
+            // For now, we assume any generic type provides indirection (conservative)
+            Type::Array { element, .. } => self.type_has_infinite_size(element, visited),
+            Type::Tuple(types) => types
+                .iter()
+                .any(|t| self.type_has_infinite_size(t, visited)),
+            _ => false,
+        }
+    }
+
+    /// Get semantic distance between two ontology types
+    fn get_semantic_distance(&self, t1: &str, t2: &str) -> Option<f64> {
+        if t1 == t2 {
+            return Some(0.0);
+        }
+        let key = if t1 <= t2 {
+            (t1.to_string(), t2.to_string())
+        } else {
+            (t2.to_string(), t1.to_string())
+        };
+        self.alignments.get(&key).copied()
+    }
+
+    /// Check if two ontology types are compatible within given threshold
+    fn check_ontology_compatibility(
+        &self,
+        expected_ns: &str,
+        expected_term: &str,
+        found_ns: &str,
+        found_term: &str,
+        threshold: f64,
+    ) -> Result<f64, String> {
+        let expected = format!("{}:{}", expected_ns, expected_term);
+        let found = format!("{}:{}", found_ns, found_term);
+
+        if let Some(distance) = self.get_semantic_distance(&expected, &found) {
+            if distance <= threshold {
+                Ok(distance)
+            } else {
+                Err(format!(
+                    "semantic distance {} exceeds threshold {} between {} and {}",
+                    distance, threshold, expected, found
+                ))
+            }
+        } else {
+            // No alignment found - check if same ontology/term
+            if expected_ns == found_ns && expected_term == found_term {
+                Ok(0.0)
+            } else if expected_ns == found_ns {
+                // Same ontology, different term - assume related
+                Ok(0.5) // Default distance for same-ontology terms
+            } else {
+                // Different ontologies with no alignment
+                Err(format!(
+                    "no alignment found between {} and {} (different ontologies require explicit align declaration)",
+                    expected, found
+                ))
+            }
+        }
+    }
+
+    /// Check type compatibility with semantic distance threshold
+    fn check_type_compatibility_with_threshold(
+        &mut self,
+        expected: &HirType,
+        found: &HirType,
+        threshold: f64,
+        span: Span,
+    ) {
+        // Check if both types are ontology types
+        match (expected, found) {
+            (
+                HirType::Ontology {
+                    namespace: exp_ns,
+                    term: exp_term,
+                },
+                HirType::Ontology {
+                    namespace: found_ns,
+                    term: found_term,
+                },
+            ) => {
+                match self
+                    .check_ontology_compatibility(exp_ns, exp_term, found_ns, found_term, threshold)
+                {
+                    Ok(distance) => {
+                        // Types are compatible within threshold
+                        if distance > 0.0 {
+                            // Could add a note about semantic coercion here
+                        }
+                    }
+                    Err(msg) => {
+                        self.error(msg, span);
+                    }
+                }
+            }
+            // For named types, check if they resolve to ontology types
+            (
+                HirType::Named { name: exp_name, .. },
+                HirType::Named {
+                    name: found_name, ..
+                },
+            ) => {
+                // Look up if these are type aliases to ontology types
+                if let (Some(TypeDef::Alias(exp_ty)), Some(TypeDef::Alias(found_ty))) =
+                    (self.type_defs.get(exp_name), self.type_defs.get(found_name))
+                {
+                    if let (
+                        Type::Ontology {
+                            namespace: exp_ns,
+                            term: exp_term,
+                        },
+                        Type::Ontology {
+                            namespace: found_ns,
+                            term: found_term,
+                        },
+                    ) = (exp_ty, found_ty)
+                    {
+                        match self.check_ontology_compatibility(
+                            exp_ns, exp_term, found_ns, found_term, threshold,
+                        ) {
+                            Ok(_) => {}
+                            Err(msg) => {
+                                // Include type alias names in error message
+                                let full_msg = format!(
+                                    "type mismatch: expected `{}` ({}:{}), found `{}` ({}:{}): {}",
+                                    exp_name,
+                                    exp_ns,
+                                    exp_term,
+                                    found_name,
+                                    found_ns,
+                                    found_term,
+                                    msg
+                                );
+                                self.error(full_msg, span);
+                            }
+                        }
+                    }
+                }
+            }
+            // For mixed cases (named + ontology), also check
+            (
+                HirType::Named { name, .. },
+                HirType::Ontology {
+                    namespace: found_ns,
+                    term: found_term,
+                },
+            ) => {
+                if let Some(TypeDef::Alias(Type::Ontology {
+                    namespace: exp_ns,
+                    term: exp_term,
+                })) = self.type_defs.get(name)
+                {
+                    match self.check_ontology_compatibility(
+                        exp_ns, exp_term, found_ns, found_term, threshold,
+                    ) {
+                        Ok(_) => {}
+                        Err(msg) => {
+                            self.error(msg, span);
+                        }
+                    }
+                }
+            }
+            (
+                HirType::Ontology {
+                    namespace: exp_ns,
+                    term: exp_term,
+                },
+                HirType::Named { name, .. },
+            ) => {
+                if let Some(TypeDef::Alias(Type::Ontology {
+                    namespace: found_ns,
+                    term: found_term,
+                })) = self.type_defs.get(name)
+                {
+                    match self.check_ontology_compatibility(
+                        exp_ns, exp_term, found_ns, found_term, threshold,
+                    ) {
+                        Ok(_) => {}
+                        Err(msg) => {
+                            self.error(msg, span);
+                        }
+                    }
+                }
+            }
+            // Other types: no ontology checking needed
+            _ => {}
+        }
+    }
+
     fn check_item(&mut self, item: &Item) -> Result<Option<HirItem>> {
         match item {
             Item::Function(f) => {
@@ -265,6 +1130,9 @@ impl TypeChecker {
     }
 
     fn check_function(&mut self, f: &FnDef) -> Result<HirFn> {
+        // Set current function for threshold lookup
+        self.current_fn = Some(f.name.clone());
+
         self.env.push_scope();
 
         // Process parameters
@@ -297,6 +1165,9 @@ impl TypeChecker {
         let body = self.check_block(&f.body, Some(&return_type))?;
 
         self.env.pop_scope();
+
+        // Clear current function
+        self.current_fn = None;
 
         Ok(HirFn {
             id: f.id,
@@ -340,14 +1211,16 @@ impl TypeChecker {
             .map(|v| {
                 let fields = match &v.data {
                     VariantData::Unit => Vec::new(),
-                    VariantData::Tuple(types) => types
-                        .iter()
-                        .map(|t| self.type_to_hir(&self.lower_type_expr(t)))
-                        .collect(),
-                    VariantData::Struct(fields) => fields
-                        .iter()
-                        .map(|f| self.type_to_hir(&self.lower_type_expr(&f.ty)))
-                        .collect(),
+                    VariantData::Tuple(types) => {
+                        let lowered: Vec<_> =
+                            types.iter().map(|t| self.lower_type_expr(t)).collect();
+                        lowered.iter().map(|t| self.type_to_hir(t)).collect()
+                    }
+                    VariantData::Struct(fields) => {
+                        let lowered: Vec<_> =
+                            fields.iter().map(|f| self.lower_type_expr(&f.ty)).collect();
+                        lowered.iter().map(|t| self.type_to_hir(t)).collect()
+                    }
                 };
                 HirVariant {
                     id: v.id,
@@ -371,16 +1244,18 @@ impl TypeChecker {
             .operations
             .iter()
             .map(|op| {
-                let params: Vec<_> = op
+                let lowered_params: Vec<_> = op
                     .params
                     .iter()
-                    .map(|p| self.type_to_hir(&self.lower_type_expr(&p.ty)))
+                    .map(|p| self.lower_type_expr(&p.ty))
                     .collect();
-                let return_type = op
-                    .return_type
-                    .as_ref()
-                    .map(|t| self.type_to_hir(&self.lower_type_expr(t)))
-                    .unwrap_or(HirType::Unit);
+                let params: Vec<_> = lowered_params.iter().map(|t| self.type_to_hir(t)).collect();
+                let return_type = if let Some(t) = op.return_type.as_ref() {
+                    let lowered = self.lower_type_expr(t);
+                    self.type_to_hir(&lowered)
+                } else {
+                    HirType::Unit
+                };
 
                 HirEffectOp {
                     id: op.id,
@@ -474,10 +1349,47 @@ impl TypeChecker {
                         .map(|t| self.lower_type_expr(t))
                         .unwrap_or_else(|| self.fresh_type_var());
 
+                    // Expand type aliases before type checking (e.g., A -> Vec<Vec<...>>)
+                    let expanded_ty = self.expand_type_alias(&declared_ty);
+
                     let value_expr = value
                         .as_ref()
-                        .map(|v| self.check_expr(v, Some(&declared_ty)))
+                        .map(|v| self.check_expr(v, Some(&expanded_ty)))
                         .transpose()?;
+
+                    // CRITICAL: Verify type compatibility between declared type and value type
+                    if let Some(ref v_expr) = value_expr {
+                        let actual_ty = self.hir_type_to_type(&v_expr.ty);
+
+                        // Get threshold for current function (from #[compat] annotation or default)
+                        let threshold = self
+                            .current_fn
+                            .as_ref()
+                            .and_then(|name| self.fn_thresholds.get(name).copied())
+                            .unwrap_or(self.default_threshold);
+
+                        // First check structural compatibility (use expanded type for comparison)
+                        if !self.types_compatible(&expanded_ty, &actual_ty) {
+                            let decl_name = self.type_display_name(&expanded_ty);
+                            let actual_name = self.type_display_name(&actual_ty);
+                            self.error(
+                                format!(
+                                    "Type mismatch: expected `{}`, found `{}`",
+                                    decl_name, actual_name
+                                ),
+                                Span::dummy(), // TODO: get span from value expr
+                            );
+                        }
+
+                        // Also check semantic/ontology type compatibility with threshold
+                        let declared_hir = self.type_to_hir(&expanded_ty);
+                        self.check_type_compatibility_with_threshold(
+                            &declared_hir,
+                            &v_expr.ty,
+                            threshold,
+                            Span::dummy(), // TODO: get span from value expr
+                        );
+                    }
 
                     if let Pattern::Binding { name, .. } = pattern {
                         self.env.bind(name.clone(), declared_ty.clone(), *is_mut);
@@ -492,7 +1404,9 @@ impl TypeChecker {
                     });
                 }
                 Stmt::Expr { expr, has_semi } => {
-                    let expr_result = self.check_expr(expr, None)?;
+                    // Pass expected type for last expression without semicolon (implicit return)
+                    let expr_expected = if is_last && !has_semi { expected } else { None };
+                    let expr_result = self.check_expr(expr, expr_expected)?;
 
                     if is_last && !has_semi {
                         result_ty = self.hir_type_to_type(&expr_result.ty);
@@ -529,7 +1443,7 @@ impl TypeChecker {
     fn check_expr(&mut self, expr: &Expr, expected: Option<&Type>) -> Result<HirExpr> {
         let (kind, ty) = match expr {
             Expr::Literal { id, value } => {
-                let (lit, ty) = self.check_literal(value);
+                let (lit, ty) = self.check_literal_with_expected(value, expected);
                 (HirExprKind::Literal(lit), ty)
             }
 
@@ -543,6 +1457,10 @@ impl TypeChecker {
                         // Builtin function - return a function type
                         let builtin_ty = self.get_builtin_type(name);
                         (HirExprKind::Global(name.clone()), builtin_ty)
+                    } else if self.is_builtin_variant(name) {
+                        // Builtin enum variant (None, Some, Ok, Err)
+                        let variant_ty = self.get_builtin_variant_type(name, expected);
+                        (HirExprKind::Global(name.clone()), variant_ty)
                     } else {
                         self.error(format!("Unknown variable: {}", name), Span::dummy());
                         (HirExprKind::Local(name.clone()), HirType::Error)
@@ -562,22 +1480,46 @@ impl TypeChecker {
                 left,
                 right,
             } => {
-                let left_expr = self.check_expr(left, None)?;
-                let right_expr =
-                    self.check_expr(right, Some(&self.hir_type_to_type(&left_expr.ty)))?;
+                // Iteratively flatten left-associative binary chains to avoid stack overflow
+                // Collect chain: [(op, right_expr), ...] from innermost to outermost
+                let mut chain: Vec<(BinaryOp, &Expr)> = Vec::new();
+                let mut current = expr;
 
-                // Check unit compatibility for arithmetic operations
-                let result_ty = self.check_binary_units(*op, &left_expr.ty, &right_expr.ty);
-                let hir_op = self.lower_binary_op(*op);
+                // Walk down the left spine collecting operators and right operands
+                while let Expr::Binary {
+                    op: curr_op,
+                    left: curr_left,
+                    right: curr_right,
+                    ..
+                } = current
+                {
+                    chain.push((*curr_op, curr_right.as_ref()));
+                    current = curr_left.as_ref();
+                }
 
-                (
-                    HirExprKind::Binary {
-                        op: hir_op,
-                        left: Box::new(left_expr),
-                        right: Box::new(right_expr),
-                    },
-                    result_ty,
-                )
+                // Now 'current' is the leftmost non-binary expression
+                // Check it first
+                let mut result = self.check_expr(current, None)?;
+
+                // Process the chain in reverse (innermost to outermost)
+                for (chain_op, chain_right) in chain.into_iter().rev() {
+                    let right_expr =
+                        self.check_expr(chain_right, Some(&self.hir_type_to_type(&result.ty)))?;
+                    let result_ty = self.check_binary_units(chain_op, &result.ty, &right_expr.ty);
+                    let hir_op = self.lower_binary_op(chain_op);
+
+                    result = HirExpr {
+                        id: NodeId::dummy(),
+                        kind: HirExprKind::Binary {
+                            op: hir_op,
+                            left: Box::new(result),
+                            right: Box::new(right_expr),
+                        },
+                        ty: result_ty,
+                    };
+                }
+
+                (result.kind, result.ty)
             }
 
             Expr::Unary {
@@ -599,17 +1541,165 @@ impl TypeChecker {
             }
 
             Expr::Call { id, callee, args } => {
+                // Check if this is a method call disguised as Call(Field(...))
+                if let Expr::Field { base, field, .. } = callee.as_ref() {
+                    // This is a method call: base.field(args)
+                    let receiver_expr = self.check_expr(base, None)?;
+                    let receiver_ty = receiver_expr.ty.clone();
+
+                    let arg_exprs: Vec<_> = args
+                        .iter()
+                        .map(|a| self.check_expr(a, None))
+                        .collect::<Result<_>>()?;
+
+                    let result_ty = self.get_method_return_type(&receiver_ty, field, &arg_exprs);
+
+                    return Ok(HirExpr {
+                        id: *id,
+                        kind: HirExprKind::MethodCall {
+                            receiver: Box::new(receiver_expr),
+                            method: field.clone(),
+                            args: arg_exprs,
+                        },
+                        ty: result_ty,
+                    });
+                }
+
                 let callee_expr = self.check_expr(callee, None)?;
                 let checked_args: Vec<_> = args
                     .iter()
                     .map(|a| self.check_expr(a, None))
                     .collect::<Result<_>>()?;
 
-                // Extract return type from function type
-                let result_ty = match &callee_expr.ty {
-                    HirType::Fn { return_type, .. } => *return_type.clone(),
-                    _ => HirType::Unit,
+                // Extract function name for threshold lookup
+                let fn_name = match callee.as_ref() {
+                    Expr::Path { path, .. } => path.segments.last().cloned(),
+                    _ => None,
                 };
+
+                // Get threshold for this function (from #[compat] annotation or default)
+                let threshold = fn_name
+                    .as_ref()
+                    .and_then(|name| self.fn_thresholds.get(name).copied())
+                    .unwrap_or(self.default_threshold);
+
+                // Special handling for Option/Result constructors
+                // These need type inference from their arguments
+                let special_constructor_ty = match fn_name.as_deref() {
+                    Some("Some") => {
+                        // Some(value) -> Option<typeof(value)>
+                        let inner_ty = checked_args
+                            .first()
+                            .map(|a| a.ty.clone())
+                            .unwrap_or(HirType::Unit);
+                        Some(HirType::Named {
+                            name: "Option".to_string(),
+                            args: vec![inner_ty],
+                        })
+                    }
+                    Some("None") => {
+                        // None -> Option<T> where T is inferred from context
+                        // For now, use expected type if available
+                        if let Some(Type::Named { name, args }) = expected {
+                            if name == "Option" {
+                                Some(HirType::Named {
+                                    name: "Option".to_string(),
+                                    args: args.iter().map(|t| self.type_to_hir(t)).collect(),
+                                })
+                            } else {
+                                Some(HirType::Named {
+                                    name: "Option".to_string(),
+                                    args: vec![HirType::Unit],
+                                })
+                            }
+                        } else {
+                            Some(HirType::Named {
+                                name: "Option".to_string(),
+                                args: vec![HirType::Unit],
+                            })
+                        }
+                    }
+                    Some("Ok") => {
+                        // Ok(value) -> Result<typeof(value), E>
+                        let ok_ty = checked_args
+                            .first()
+                            .map(|a| a.ty.clone())
+                            .unwrap_or(HirType::Unit);
+                        // Try to get error type from context
+                        let err_ty = if let Some(Type::Named { name, args }) = expected {
+                            if name == "Result" && args.len() > 1 {
+                                self.type_to_hir(&args[1])
+                            } else {
+                                HirType::Unit
+                            }
+                        } else {
+                            HirType::Unit
+                        };
+                        Some(HirType::Named {
+                            name: "Result".to_string(),
+                            args: vec![ok_ty, err_ty],
+                        })
+                    }
+                    Some("Err") => {
+                        // Err(value) -> Result<T, typeof(value)>
+                        let err_ty = checked_args
+                            .first()
+                            .map(|a| a.ty.clone())
+                            .unwrap_or(HirType::Unit);
+                        // Try to get ok type from context
+                        let ok_ty = if let Some(Type::Named { name, args }) = expected {
+                            if name == "Result" && !args.is_empty() {
+                                self.type_to_hir(&args[0])
+                            } else {
+                                HirType::Unit
+                            }
+                        } else {
+                            HirType::Unit
+                        };
+                        Some(HirType::Named {
+                            name: "Result".to_string(),
+                            args: vec![ok_ty, err_ty],
+                        })
+                    }
+                    _ => None,
+                };
+
+                // Extract return type and parameter types from function type
+                let (result_ty, param_types) = if let Some(special_ty) = special_constructor_ty {
+                    // Use the specially inferred type for constructors
+                    (special_ty, vec![])
+                } else {
+                    match &callee_expr.ty {
+                        HirType::Fn {
+                            params,
+                            return_type,
+                            ..
+                        } => (*return_type.clone(), params.clone()),
+                        _ => (HirType::Unit, vec![]),
+                    }
+                };
+
+                // Check ontological compatibility for each argument
+                // We need to iterate with original args to get spans
+                for (i, (checked_arg, param_ty)) in
+                    checked_args.iter().zip(param_types.iter()).enumerate()
+                {
+                    // Get span from original AST argument
+                    let arg_span = if let Some(ast_ref) = &self.ast {
+                        args.get(i)
+                            .map(|a| self.expr_span(a, ast_ref.as_ref()))
+                            .unwrap_or_else(Span::dummy)
+                    } else {
+                        Span::dummy()
+                    };
+
+                    self.check_type_compatibility_with_threshold(
+                        param_ty,
+                        &checked_arg.ty,
+                        threshold,
+                        arg_span,
+                    );
+                }
 
                 (
                     HirExprKind::Call {
@@ -679,15 +1769,16 @@ impl TypeChecker {
             }
 
             Expr::Array { id, elements } => {
-                let elem_ty = expected
-                    .and_then(|t| {
-                        if let Type::Array { element, .. } = t {
-                            Some(element.as_ref().clone())
-                        } else {
-                            None
+                // Extract element type from expected type (either Array or Vec)
+                let (elem_ty, is_vec) = expected
+                    .and_then(|t| match t {
+                        Type::Array { element, .. } => Some((element.as_ref().clone(), false)),
+                        Type::Named { name, args } if name == "Vec" && args.len() == 1 => {
+                            Some((args[0].clone(), true))
                         }
+                        _ => None,
                     })
-                    .unwrap_or_else(|| self.fresh_type_var());
+                    .unwrap_or_else(|| (self.fresh_type_var(), false));
 
                 let exprs: Vec<_> = elements
                     .iter()
@@ -700,12 +1791,63 @@ impl TypeChecker {
                     exprs[0].ty.clone()
                 };
 
-                let result_ty = HirType::Array {
-                    element: Box::new(elem_hir_ty),
-                    size: Some(exprs.len()),
+                // Return Vec<T> if expected type was Vec, otherwise Array
+                let result_ty = if is_vec {
+                    HirType::Named {
+                        name: "Vec".to_string(),
+                        args: vec![elem_hir_ty.clone()],
+                    }
+                } else {
+                    HirType::Array {
+                        element: Box::new(elem_hir_ty),
+                        size: Some(exprs.len()),
+                    }
                 };
 
                 (HirExprKind::Array(exprs), result_ty)
+            }
+
+            Expr::Range {
+                id,
+                start,
+                end,
+                inclusive,
+            } => {
+                // Type check start and end if present
+                let start_expr = start
+                    .as_ref()
+                    .map(|e| self.check_expr(e, Some(&Type::I64)))
+                    .transpose()?;
+                let end_expr = end
+                    .as_ref()
+                    .map(|e| self.check_expr(e, Some(&Type::I64)))
+                    .transpose()?;
+
+                // Infer element type from start or end
+                let elem_ty = start_expr
+                    .as_ref()
+                    .map(|e| e.ty.clone())
+                    .or_else(|| end_expr.as_ref().map(|e| e.ty.clone()))
+                    .unwrap_or(HirType::I64);
+
+                // Range<T> type
+                let range_ty = HirType::Named {
+                    name: if *inclusive {
+                        "RangeInclusive".to_string()
+                    } else {
+                        "Range".to_string()
+                    },
+                    args: vec![elem_ty],
+                };
+
+                (
+                    HirExprKind::Range {
+                        start: start_expr.map(Box::new),
+                        end: end_expr.map(Box::new),
+                        inclusive: *inclusive,
+                    },
+                    range_ty,
+                )
             }
 
             Expr::Index { id, base, index } => {
@@ -1059,6 +2201,156 @@ impl TypeChecker {
                 )
             }
 
+            // Ontology term expression: prefix:term (e.g., chebi:aspirin, drugbank:DB00945)
+            Expr::OntologyTerm {
+                id: _,
+                ontology,
+                term,
+            } => {
+                // Track that this ontology prefix is used
+                self.used_ontology_prefixes.insert(ontology.clone());
+
+                let result_ty = HirType::Ontology {
+                    namespace: ontology.clone(),
+                    term: term.clone(),
+                };
+
+                (
+                    HirExprKind::OntologyTerm {
+                        namespace: ontology.clone(),
+                        term: term.clone(),
+                    },
+                    result_ty,
+                )
+            }
+
+            // Handle vec![] macro - treat as array literal with Vec type
+            Expr::MacroInvocation(macro_inv) if macro_inv.name == "vec" => {
+                // Parse vec! macro arguments as expressions
+                // For vec![a, b, c], the args contain the comma-separated expressions
+                let elements = self.parse_vec_macro_args(&macro_inv.args);
+
+                // Determine element type from expected type or first element
+                let (elem_ty, _is_vec) = expected
+                    .and_then(|t| match t {
+                        Type::Array { element, .. } => Some((element.as_ref().clone(), false)),
+                        Type::Named { name, args } if name == "Vec" && args.len() == 1 => {
+                            Some((args[0].clone(), true))
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| (self.fresh_type_var(), true)); // Default to Vec
+
+                let exprs: Vec<_> = elements
+                    .iter()
+                    .map(|e| self.check_expr(e, Some(&elem_ty)))
+                    .collect::<Result<_>>()?;
+
+                let elem_hir_ty = if exprs.is_empty() {
+                    self.type_to_hir(&elem_ty)
+                } else {
+                    exprs[0].ty.clone()
+                };
+
+                // vec! always produces Vec<T>
+                let result_ty = HirType::Named {
+                    name: "Vec".to_string(),
+                    args: vec![elem_hir_ty],
+                };
+
+                (HirExprKind::Array(exprs), result_ty)
+            }
+
+            // Handle method calls (e.g., vec.is_empty(), vec.len(), etc.)
+            Expr::MethodCall {
+                id: _,
+                receiver,
+                method,
+                args,
+                ..
+            } => {
+                // First, check the receiver to get its type
+                let receiver_expr = self.check_expr(receiver, None)?;
+                let receiver_ty = receiver_expr.ty.clone();
+
+                // Check arguments
+                let arg_exprs: Vec<_> = args
+                    .iter()
+                    .map(|a| self.check_expr(a, None))
+                    .collect::<Result<_>>()?;
+
+                // Determine return type based on method name and receiver type
+                let result_ty = self.get_method_return_type(&receiver_ty, method, &arg_exprs);
+
+                (
+                    HirExprKind::MethodCall {
+                        receiver: Box::new(receiver_expr),
+                        method: method.clone(),
+                        args: arg_exprs,
+                    },
+                    result_ty,
+                )
+            }
+
+            // Match expression handling
+            Expr::Match {
+                id: _,
+                scrutinee,
+                arms,
+            } => {
+                // Check the scrutinee expression
+                let scrutinee_expr = self.check_expr(scrutinee, None)?;
+                let scrutinee_ty = scrutinee_expr.ty.clone();
+
+                // Check each arm
+                let mut checked_arms = Vec::new();
+                let mut arm_types = Vec::new();
+
+                for arm in arms {
+                    // Bind pattern variables based on scrutinee type
+                    // For now, just check the body
+                    let body_expr = self.check_expr(&arm.body, None)?;
+                    arm_types.push(body_expr.ty.clone());
+
+                    checked_arms.push(HirMatchArm {
+                        pattern: self.lower_pattern(&arm.pattern),
+                        guard: None,
+                        body: body_expr,
+                    });
+                }
+
+                // Determine the result type:
+                // - If all arms return the same type, use that
+                // - If one arm returns Never, use the other arm's type
+                // - If arms differ and one is Unit (common with if-let without else), use Unit
+                let result_ty = if arm_types.is_empty() {
+                    HirType::Unit
+                } else if arm_types.iter().all(|t| t == &arm_types[0]) {
+                    arm_types[0].clone()
+                } else {
+                    // Check for Never type (for exhaustive patterns)
+                    let non_never: Vec<_> =
+                        arm_types.iter().filter(|t| **t != HirType::Never).collect();
+                    if non_never.len() == 1 {
+                        non_never[0].clone()
+                    } else if arm_types.iter().any(|t| *t == HirType::Unit) {
+                        // If any arm returns Unit (like if-let without else), the whole expression is Unit
+                        HirType::Unit
+                    } else {
+                        // Default to first arm's type
+                        arm_types[0].clone()
+                    }
+                };
+
+                (
+                    HirExprKind::Match {
+                        scrutinee: Box::new(scrutinee_expr),
+                        arms: checked_arms,
+                    },
+                    result_ty,
+                )
+            }
+
             // Simplified handling for other expressions
             _ => {
                 // For now, return a placeholder
@@ -1076,19 +2368,51 @@ impl TypeChecker {
             | Expr::Block { id, .. }
             | Expr::Return { id, .. }
             | Expr::Tuple { id, .. }
-            | Expr::Array { id, .. } => *id,
+            | Expr::Array { id, .. }
+            | Expr::OntologyTerm { id, .. } => *id,
             _ => NodeId::dummy(),
         };
 
         Ok(HirExpr { id, kind, ty })
     }
 
-    fn check_literal(&self, lit: &Literal) -> (HirLiteral, HirType) {
+    fn check_literal_with_expected(
+        &self,
+        lit: &Literal,
+        expected: Option<&Type>,
+    ) -> (HirLiteral, HirType) {
         match lit {
             Literal::Unit => (HirLiteral::Unit, HirType::Unit),
             Literal::Bool(b) => (HirLiteral::Bool(*b), HirType::Bool),
-            Literal::Int(i) => (HirLiteral::Int(*i), HirType::I64),
-            Literal::Float(f) => (HirLiteral::Float(*f), HirType::F64),
+            Literal::Int(i) => {
+                // Infer integer type from context if available
+                let ty = match expected {
+                    Some(Type::I8) => HirType::I8,
+                    Some(Type::I16) => HirType::I16,
+                    Some(Type::I32) => HirType::I32,
+                    Some(Type::I64) => HirType::I64,
+                    Some(Type::I128) => HirType::I128,
+                    Some(Type::Isize) => HirType::Isize,
+                    Some(Type::U8) => HirType::U8,
+                    Some(Type::U16) => HirType::U16,
+                    Some(Type::U32) => HirType::U32,
+                    Some(Type::U64) => HirType::U64,
+                    Some(Type::U128) => HirType::U128,
+                    Some(Type::Usize) => HirType::Usize,
+                    Some(Type::F32) => HirType::F32,
+                    Some(Type::F64) => HirType::F64,
+                    _ => HirType::I64, // Default to i64
+                };
+                (HirLiteral::Int(*i), ty)
+            }
+            Literal::Float(f) => {
+                // Infer float type from context if available
+                let ty = match expected {
+                    Some(Type::F32) => HirType::F32,
+                    _ => HirType::F64, // Default to f64
+                };
+                (HirLiteral::Float(*f), ty)
+            }
             Literal::Char(c) => (HirLiteral::Char(*c), HirType::Char),
             Literal::String(s) => (HirLiteral::String(s.clone()), HirType::String),
             // Unit literals: create Quantity type with unit information
@@ -1359,7 +2683,73 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(HirType::Unit), // Generic, simplified
             },
-            "None" => HirType::Unit,
+            // None without context - will be handled by get_builtin_variant_type with expected
+            "None" => HirType::Named {
+                name: "Option".to_string(),
+                args: vec![HirType::Unit],
+            },
+            _ => HirType::Error,
+        }
+    }
+
+    /// Check if a name is a builtin enum variant
+    fn is_builtin_variant(&self, name: &str) -> bool {
+        matches!(name, "None" | "Some" | "Ok" | "Err")
+    }
+
+    /// Get the type of a builtin variant, using expected type for inference
+    fn get_builtin_variant_type(&self, name: &str, expected: Option<&Type>) -> HirType {
+        match name {
+            "None" => {
+                // If we have an expected type that's Option<T>, use that
+                if let Some(Type::Named {
+                    name: type_name,
+                    args,
+                }) = expected
+                {
+                    if type_name == "Option" {
+                        return HirType::Named {
+                            name: "Option".to_string(),
+                            args: args.iter().map(|t| self.type_to_hir(t)).collect(),
+                        };
+                    }
+                }
+                // Default to Option<()>
+                HirType::Named {
+                    name: "Option".to_string(),
+                    args: vec![HirType::Unit],
+                }
+            }
+            "Some" => {
+                // Some is a constructor function - for now return a generic Option type
+                HirType::Fn {
+                    params: vec![HirType::Unit], // Takes one arg
+                    return_type: Box::new(HirType::Named {
+                        name: "Option".to_string(),
+                        args: vec![HirType::Unit],
+                    }),
+                }
+            }
+            "Ok" => {
+                // Ok is a constructor for Result<T, E>
+                HirType::Fn {
+                    params: vec![HirType::Unit],
+                    return_type: Box::new(HirType::Named {
+                        name: "Result".to_string(),
+                        args: vec![HirType::Unit, HirType::Unit],
+                    }),
+                }
+            }
+            "Err" => {
+                // Err is a constructor for Result<T, E>
+                HirType::Fn {
+                    params: vec![HirType::Unit],
+                    return_type: Box::new(HirType::Named {
+                        name: "Result".to_string(),
+                        args: vec![HirType::Unit, HirType::Unit],
+                    }),
+                }
+            }
             _ => HirType::Error,
         }
     }
@@ -1467,7 +2857,7 @@ impl TypeChecker {
         }
     }
 
-    fn lower_type_expr(&self, ty: &TypeExpr) -> Type {
+    fn lower_type_expr(&mut self, ty: &TypeExpr) -> Type {
         match ty {
             TypeExpr::Unit => Type::Unit,
             TypeExpr::Named { path, args, unit } => {
@@ -1554,10 +2944,12 @@ impl TypeChecker {
                 }
             }
             TypeExpr::Ontology { ontology, term } => {
-                // Ontology terms are string-like for now
-                Type::Named {
-                    name: format!("OntologyTerm<{}>", ontology),
-                    args: vec![],
+                // Track that this ontology prefix is used
+                self.used_ontology_prefixes.insert(ontology.clone());
+                // Ontology term as a semantic type
+                Type::Ontology {
+                    namespace: ontology.clone(),
+                    term: term.clone().unwrap_or_default(),
                 }
             }
             TypeExpr::Linear { inner, .. } => {
@@ -1620,6 +3012,10 @@ impl TypeChecker {
             },
             Type::Var(v) => HirType::Var(v.0),
             Type::Forall { inner, .. } => self.type_to_hir(inner),
+            Type::Ontology { namespace, term } => HirType::Ontology {
+                namespace: namespace.clone(),
+                term: term.clone(),
+            },
             Type::Never | Type::Unknown | Type::Error | Type::SelfType => HirType::Error,
         }
     }
@@ -1682,9 +3078,9 @@ impl TypeChecker {
                 element: Box::new(self.hir_type_to_type(element)),
                 size: None,
             },
-            HirType::Ontology { namespace, term } => Type::Named {
-                name: format!("{}:{}", namespace, term),
-                args: vec![],
+            HirType::Ontology { namespace, term } => Type::Ontology {
+                namespace: namespace.clone(),
+                term: term.clone(),
             },
         }
     }
@@ -1739,6 +3135,148 @@ impl TypeChecker {
             self.errors.push(TypeError { message: msg, span });
         }
         Ok(())
+    }
+
+    /// Get the return type of a method call based on receiver type and method name
+    fn get_method_return_type(
+        &self,
+        receiver_ty: &HirType,
+        method: &str,
+        _args: &[HirExpr],
+    ) -> HirType {
+        match receiver_ty {
+            // Vec<T> methods
+            HirType::Named { name, args } if name == "Vec" => {
+                match method {
+                    "is_empty" => HirType::Bool,
+                    "len" => HirType::Usize,
+                    "first" | "last" => {
+                        // Returns Option<&T>
+                        if let Some(elem_ty) = args.first() {
+                            HirType::Named {
+                                name: "Option".to_string(),
+                                args: vec![elem_ty.clone()],
+                            }
+                        } else {
+                            HirType::Error
+                        }
+                    }
+                    "get" => {
+                        // Returns Option<&T>
+                        if let Some(elem_ty) = args.first() {
+                            HirType::Named {
+                                name: "Option".to_string(),
+                                args: vec![elem_ty.clone()],
+                            }
+                        } else {
+                            HirType::Error
+                        }
+                    }
+                    "push" | "pop" | "clear" | "remove" | "insert" => HirType::Unit,
+                    "contains" => HirType::Bool,
+                    "iter" => receiver_ty.clone(), // Simplified - would be Iterator<T>
+                    _ => HirType::Error,
+                }
+            }
+            // String methods
+            HirType::String => match method {
+                "len" => HirType::Usize,
+                "is_empty" => HirType::Bool,
+                "contains" | "starts_with" | "ends_with" => HirType::Bool,
+                "trim" | "to_lowercase" | "to_uppercase" => HirType::String,
+                "chars" | "bytes" => HirType::Error, // Would be iterator
+                _ => HirType::Error,
+            },
+            // Option<T> methods
+            HirType::Named { name, args } if name == "Option" => match method {
+                "is_some" | "is_none" => HirType::Bool,
+                "unwrap" | "expect" => {
+                    if let Some(inner) = args.first() {
+                        inner.clone()
+                    } else {
+                        HirType::Error
+                    }
+                }
+                "unwrap_or" | "unwrap_or_else" => {
+                    if let Some(inner) = args.first() {
+                        inner.clone()
+                    } else {
+                        HirType::Error
+                    }
+                }
+                _ => HirType::Error,
+            },
+            // Result<T, E> methods
+            HirType::Named { name, args } if name == "Result" => match method {
+                "is_ok" | "is_err" => HirType::Bool,
+                "unwrap" | "expect" => {
+                    if let Some(ok_ty) = args.first() {
+                        ok_ty.clone()
+                    } else {
+                        HirType::Error
+                    }
+                }
+                "unwrap_err" | "expect_err" => {
+                    if args.len() > 1 {
+                        args[1].clone()
+                    } else {
+                        HirType::Error
+                    }
+                }
+                _ => HirType::Error,
+            },
+            // Default - unknown method
+            _ => HirType::Error,
+        }
+    }
+
+    /// Lower an AST Pattern to an HIR Pattern
+    fn lower_pattern(&self, pattern: &Pattern) -> HirPattern {
+        match pattern {
+            Pattern::Wildcard => HirPattern::Wildcard,
+            Pattern::Literal(lit) => {
+                let (hir_lit, _) = self.check_literal_with_expected(lit, None);
+                HirPattern::Literal(hir_lit)
+            }
+            Pattern::Binding { name, mutable } => HirPattern::Binding {
+                name: name.clone(),
+                mutable: *mutable,
+            },
+            Pattern::Tuple(patterns) => {
+                HirPattern::Tuple(patterns.iter().map(|p| self.lower_pattern(p)).collect())
+            }
+            Pattern::Struct { path, fields } => HirPattern::Struct {
+                name: path.segments.last().cloned().unwrap_or_default(),
+                fields: fields
+                    .iter()
+                    .map(|(name, pat)| (name.clone(), self.lower_pattern(pat)))
+                    .collect(),
+            },
+            Pattern::Enum { path, patterns } => {
+                let segments = &path.segments;
+                let (enum_name, variant) = if segments.len() >= 2 {
+                    (
+                        segments[segments.len() - 2].clone(),
+                        segments[segments.len() - 1].clone(),
+                    )
+                } else {
+                    (String::new(), segments.last().cloned().unwrap_or_default())
+                };
+                HirPattern::Variant {
+                    enum_name,
+                    variant,
+                    patterns: patterns
+                        .as_ref()
+                        .map(|ps| ps.iter().map(|p| self.lower_pattern(p)).collect())
+                        .unwrap_or_default(),
+                }
+            }
+            Pattern::Or(patterns) => {
+                HirPattern::Or(patterns.iter().map(|p| self.lower_pattern(p)).collect())
+            }
+            // For other patterns, default to wildcard
+            _ => HirPattern::Wildcard,
+        }
     }
 
     fn types_compatible(&self, t1: &Type, t2: &Type) -> bool {
@@ -1802,6 +3340,78 @@ impl TypeChecker {
                         .iter()
                         .zip(a2.iter())
                         .all(|(a, b)| self.types_compatible(a, b))
+            }
+            // Ontology type compatibility - check if within default threshold
+            (
+                Type::Ontology {
+                    namespace: ns1,
+                    term: t1,
+                },
+                Type::Ontology {
+                    namespace: ns2,
+                    term: t2,
+                },
+            ) => {
+                // Same type = compatible
+                if ns1 == ns2 && t1 == t2 {
+                    return true;
+                }
+                // Same namespace = compatible (within same ontology)
+                if ns1 == ns2 {
+                    return true;
+                }
+                // Check alignment
+                let key1 = format!("{}:{}", ns1, t1);
+                let key2 = format!("{}:{}", ns2, t2);
+                self.get_semantic_distance(&key1, &key2)
+                    .map(|d| d <= self.default_threshold)
+                    .unwrap_or(false)
+            }
+            // Named type (alias) compared with Ontology type - resolve alias
+            (Type::Named { name, .. }, Type::Ontology { namespace, term }) => {
+                if let Some(TypeDef::Alias(alias_ty)) = self.type_defs.get(name) {
+                    if let Type::Ontology {
+                        namespace: alias_ns,
+                        term: alias_term,
+                    } = alias_ty
+                    {
+                        // Same namespace = compatible
+                        if alias_ns == namespace {
+                            return true;
+                        }
+                        // Check alignment
+                        let key1 = format!("{}:{}", alias_ns, alias_term);
+                        let key2 = format!("{}:{}", namespace, term);
+                        return self
+                            .get_semantic_distance(&key1, &key2)
+                            .map(|d| d <= self.default_threshold)
+                            .unwrap_or(false);
+                    }
+                }
+                false
+            }
+            // Ontology type compared with Named type (alias) - resolve alias
+            (Type::Ontology { namespace, term }, Type::Named { name, .. }) => {
+                if let Some(TypeDef::Alias(alias_ty)) = self.type_defs.get(name) {
+                    if let Type::Ontology {
+                        namespace: alias_ns,
+                        term: alias_term,
+                    } = alias_ty
+                    {
+                        // Same namespace = compatible
+                        if alias_ns == namespace {
+                            return true;
+                        }
+                        // Check alignment
+                        let key1 = format!("{}:{}", namespace, term);
+                        let key2 = format!("{}:{}", alias_ns, alias_term);
+                        return self
+                            .get_semantic_distance(&key1, &key2)
+                            .map(|d| d <= self.default_threshold)
+                            .unwrap_or(false);
+                    }
+                }
+                false
             }
             _ => false,
         }

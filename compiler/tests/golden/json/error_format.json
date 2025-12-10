@@ -1,1 +1,3 @@
-{"level":"error","code":"E0308","message":"mismatched types","location":{"file":"json_error.dm","line":7,"column":19,"end_line":7,"end_column":21},"related":[],"suggestions":[],"notes":["expected ontology type `chebi:drug`","found primitive type `i32`"]}
+{"code":"E0308","level":"error","location":{"column":1,"file":"/tmp/demetrios_test_XXXX/json_error.dm","line":1},"message":"Type mismatch: expected `Drug`, found `i64`","notes":[],"related":[],"suggestions":[]}
+Error:   × Type errors:
+  │ Type mismatch: expected `Drug`, found `i64`

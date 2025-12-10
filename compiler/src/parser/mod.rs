@@ -26,6 +26,10 @@ pub struct Parser<'a> {
     /// When false, don't parse `Ident { ... }` as a struct literal
     /// This is needed to resolve ambiguity in contexts like `match x { ... }`
     allow_struct_literals: bool,
+    /// Mapping from NodeId to source spans
+    node_spans: std::collections::HashMap<NodeId, Span>,
+    /// Pending `>` from splitting a `>>` token (for nested generics like `Option<Box<T>>`)
+    pending_gt: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -35,11 +39,54 @@ impl<'a> Parser<'a> {
             pos: 0,
             id_gen: IdGenerator::new(),
             allow_struct_literals: true,
+            node_spans: std::collections::HashMap::new(),
+            pending_gt: false,
         }
     }
 
     fn next_id(&mut self) -> NodeId {
         self.id_gen.next()
+    }
+
+    /// Check if current token can be used as a macro name (identifier or keyword)
+    fn can_be_macro_name(&self) -> bool {
+        matches!(self.peek(), TokenKind::Ident) || self.peek().is_keyword()
+    }
+
+    /// Get the text of the current token as a macro name
+    fn get_macro_name(&self) -> String {
+        self.current().text.clone()
+    }
+
+    /// Record the span of a node for error reporting
+    fn record_span(&mut self, id: NodeId, span: Span) {
+        self.node_spans.insert(id, span);
+    }
+
+    /// Parse an expression and record its span
+    fn parse_expr_with_span(&mut self) -> Result<Expr> {
+        let start = self.current().span.start;
+        let expr = self.parse_expr()?;
+        let end = self
+            .tokens
+            .get(self.pos.saturating_sub(1))
+            .map(|t| t.span.end)
+            .unwrap_or(start);
+
+        let id = match &expr {
+            Expr::Literal { id, .. } => *id,
+            Expr::Path { id, .. } => *id,
+            Expr::Call { id, .. } => *id,
+            Expr::OntologyTerm { id, .. } => *id,
+            // For complex expressions, record the span
+            _ => {
+                return Ok(expr);
+            }
+        };
+
+        // Record span for the expression
+        self.record_span(id, Span::new(start, end));
+        Ok(expr)
     }
 
     fn current(&self) -> &Token {
@@ -95,6 +142,39 @@ impl<'a> Parser<'a> {
         self.current().span
     }
 
+    /// Check if we're at a `>` token (either real or from a pending split `>>`)
+    fn at_gt(&self) -> bool {
+        self.pending_gt || self.at(TokenKind::Gt)
+    }
+
+    /// Consume a `>` token in type context, splitting `>>` if necessary
+    fn expect_gt(&mut self) -> Result<()> {
+        if self.pending_gt {
+            // We already consumed half of a `>>`, just clear the pending flag
+            self.pending_gt = false;
+            Ok(())
+        } else if self.at(TokenKind::Gt) {
+            self.advance();
+            Ok(())
+        } else if self.at(TokenKind::Shr) {
+            // Split `>>` into two `>` tokens - consume the first `>`, leave second pending
+            self.advance();
+            self.pending_gt = true;
+            Ok(())
+        } else {
+            Err(miette::miette!(
+                "Expected '>', found {:?} at position {}",
+                self.peek(),
+                self.current().span.start
+            ))
+        }
+    }
+
+    /// Check if we're at `>` or `>>` (for lookahead in type parsing)
+    fn at_gt_or_shr(&self) -> bool {
+        self.pending_gt || self.at(TokenKind::Gt) || self.at(TokenKind::Shr)
+    }
+
     // ==================== PROGRAM ====================
 
     fn parse_program(&mut self) -> Result<Ast> {
@@ -114,14 +194,23 @@ impl<'a> Parser<'a> {
             items.push(self.parse_item()?);
         }
 
-        Ok(Ast { module_name, items })
+        Ok(Ast {
+            module_name,
+            items,
+            node_spans: self.node_spans.clone(),
+        })
     }
 
     // ==================== ITEMS ====================
 
     pub fn parse_item(&mut self) -> Result<Item> {
-        // Check for macro invocation at item level (identifier followed by !)
-        if self.at(TokenKind::Ident) && self.peek_n(1) == TokenKind::Bang {
+        // Skip doc comments (they are attached to following items)
+        while self.at(TokenKind::DocCommentOuter) || self.at(TokenKind::DocCommentInner) {
+            self.advance();
+        }
+
+        // Check for macro invocation at item level (identifier or keyword followed by !)
+        if self.can_be_macro_name() && self.peek_n(1) == TokenKind::Bang {
             let macro_inv = self.parse_macro_invocation()?;
             // Consume optional semicolon after macro invocation
             if self.at(TokenKind::Semi) {
@@ -130,6 +219,9 @@ impl<'a> Parser<'a> {
             return Ok(Item::MacroInvocation(macro_inv));
         }
 
+        // Parse attributes (e.g., #[compat(threshold = 0.2)])
+        let attributes = self.parse_item_attributes()?;
+
         // Parse visibility
         let visibility = self.parse_visibility();
 
@@ -137,7 +229,7 @@ impl<'a> Parser<'a> {
         let modifiers = self.parse_modifiers();
 
         match self.peek() {
-            TokenKind::Fn | TokenKind::Kernel => self.parse_fn(visibility, modifiers),
+            TokenKind::Fn | TokenKind::Kernel => self.parse_fn(visibility, modifiers, attributes),
             TokenKind::Let | TokenKind::Const => self.parse_global(visibility, modifiers),
             TokenKind::Struct => self.parse_struct(visibility, modifiers),
             TokenKind::Enum => self.parse_enum(visibility, modifiers),
@@ -148,8 +240,183 @@ impl<'a> Parser<'a> {
             TokenKind::Handler => self.parse_handler(visibility),
             TokenKind::Import => self.parse_import(),
             TokenKind::Extern => self.parse_extern(),
+            TokenKind::Ontology => self.parse_ontology_import(),
+            TokenKind::Align => self.parse_align_decl(),
             _ => Err(miette::miette!(
                 "Unexpected token {:?} at start of item",
+                self.peek()
+            )),
+        }
+    }
+
+    /// Parse item-level attributes: #[attr], #[attr(args)], etc.
+    fn parse_item_attributes(&mut self) -> Result<Vec<Attribute>> {
+        let mut attrs = Vec::new();
+
+        while self.at(TokenKind::Hash) {
+            self.advance(); // consume #
+            self.expect(TokenKind::LBracket)?;
+
+            let start = self.span();
+            // Attribute name can be a keyword like 'compat'
+            let name = if self.at(TokenKind::Compat) {
+                self.advance();
+                "compat".to_string()
+            } else {
+                self.parse_ident()?
+            };
+
+            // Parse attribute arguments if present
+            let args = if self.at(TokenKind::LParen) {
+                self.advance();
+                let args = self.parse_attribute_args()?;
+                self.expect(TokenKind::RParen)?;
+                args
+            } else {
+                AttributeArgs::Empty
+            };
+
+            let end = self.span();
+            self.expect(TokenKind::RBracket)?;
+
+            attrs.push(Attribute {
+                id: self.next_id(),
+                name,
+                args,
+                span: start.merge(end),
+            });
+        }
+
+        Ok(attrs)
+    }
+
+    /// Check if current token can be used as an identifier in attribute context
+    fn is_attr_ident(&self) -> bool {
+        matches!(
+            self.peek(),
+            TokenKind::Ident
+                | TokenKind::Threshold
+                | TokenKind::Compat
+                | TokenKind::Distance
+                | TokenKind::From
+                | TokenKind::Align
+        )
+    }
+
+    /// Parse identifier in attribute context (allows some keywords)
+    fn parse_attr_ident(&mut self) -> Result<String> {
+        match self.peek() {
+            TokenKind::Ident => Ok(self.advance().text.clone()),
+            TokenKind::Threshold => {
+                self.advance();
+                Ok("threshold".to_string())
+            }
+            TokenKind::Compat => {
+                self.advance();
+                Ok("compat".to_string())
+            }
+            TokenKind::Distance => {
+                self.advance();
+                Ok("distance".to_string())
+            }
+            TokenKind::From => {
+                self.advance();
+                Ok("from".to_string())
+            }
+            TokenKind::Align => {
+                self.advance();
+                Ok("align".to_string())
+            }
+            _ => Err(miette::miette!(
+                "Expected identifier in attribute, found {:?}",
+                self.peek()
+            )),
+        }
+    }
+
+    /// Parse attribute arguments inside parentheses
+    fn parse_attribute_args(&mut self) -> Result<AttributeArgs> {
+        if self.at(TokenKind::RParen) {
+            return Ok(AttributeArgs::Empty);
+        }
+
+        // Check if this is a named argument (ident = value)
+        if self.is_attr_ident() && self.peek_n(1) == TokenKind::Eq {
+            let mut named = Vec::new();
+            loop {
+                let key = self.parse_attr_ident()?;
+                self.expect(TokenKind::Eq)?;
+                let value = self.parse_attribute_value()?;
+                named.push((key, value));
+
+                if !self.at(TokenKind::Comma) {
+                    break;
+                }
+                self.advance();
+                if self.at(TokenKind::RParen) {
+                    break;
+                }
+            }
+            Ok(AttributeArgs::Named(named))
+        } else {
+            // Single value or list
+            let first = self.parse_attribute_value()?;
+            if self.at(TokenKind::Comma) {
+                let mut list = vec![first];
+                while self.at(TokenKind::Comma) {
+                    self.advance();
+                    if self.at(TokenKind::RParen) {
+                        break;
+                    }
+                    list.push(self.parse_attribute_value()?);
+                }
+                Ok(AttributeArgs::List(list))
+            } else {
+                Ok(AttributeArgs::Value(first))
+            }
+        }
+    }
+
+    /// Parse a single attribute value
+    fn parse_attribute_value(&mut self) -> Result<AttributeValue> {
+        match self.peek() {
+            TokenKind::StringLit => {
+                let s = self.advance().text.clone();
+                Ok(AttributeValue::String(s[1..s.len() - 1].to_string()))
+            }
+            TokenKind::IntLit => {
+                let s = self.advance().text.clone();
+                Ok(AttributeValue::Int(s.parse().unwrap_or(0)))
+            }
+            TokenKind::FloatLit => {
+                let s = self.advance().text.clone();
+                Ok(AttributeValue::Float(s.parse().unwrap_or(0.0)))
+            }
+            TokenKind::True => {
+                self.advance();
+                Ok(AttributeValue::Bool(true))
+            }
+            TokenKind::False => {
+                self.advance();
+                Ok(AttributeValue::Bool(false))
+            }
+            TokenKind::Ident => {
+                let path = self.parse_path()?;
+                // Check if this is a nested attribute like cfg(all(...))
+                if self.at(TokenKind::LParen) {
+                    self.advance();
+                    let nested = self.parse_attribute_args()?;
+                    self.expect(TokenKind::RParen)?;
+                    Ok(AttributeValue::Nested(
+                        path.segments.join("::"),
+                        Box::new(nested),
+                    ))
+                } else {
+                    Ok(AttributeValue::Path(path))
+                }
+            }
+            _ => Err(miette::miette!(
+                "Expected attribute value, found {:?}",
                 self.peek()
             )),
         }
@@ -194,7 +461,12 @@ impl<'a> Parser<'a> {
 
     // ==================== FUNCTIONS ====================
 
-    fn parse_fn(&mut self, visibility: Visibility, modifiers: Modifiers) -> Result<Item> {
+    fn parse_fn(
+        &mut self,
+        visibility: Visibility,
+        modifiers: Modifiers,
+        attributes: Vec<Attribute>,
+    ) -> Result<Item> {
         let start = self.span();
 
         let is_kernel = if self.at(TokenKind::Kernel) {
@@ -224,7 +496,7 @@ impl<'a> Parser<'a> {
                 is_unsafe: modifiers.is_unsafe,
                 is_kernel,
             },
-            attributes: Vec::new(),
+            attributes,
             name,
             generics,
             params,
@@ -634,12 +906,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_impl_item(&mut self) -> Result<ImplItem> {
+        let attributes = self.parse_item_attributes()?;
         let visibility = self.parse_visibility();
         let modifiers = self.parse_modifiers();
 
         match self.peek() {
             TokenKind::Fn | TokenKind::Kernel => {
-                let item = self.parse_fn(visibility, modifiers)?;
+                let item = self.parse_fn(visibility, modifiers, attributes)?;
                 if let Item::Function(f) = item {
                     Ok(ImplItem::Fn(f))
                 } else {
@@ -792,6 +1065,106 @@ impl<'a> Parser<'a> {
             path,
             span: start.merge(end),
         }))
+    }
+
+    /// Parse ontology import: `ontology chebi from "https://...";`
+    fn parse_ontology_import(&mut self) -> Result<Item> {
+        let start = self.span();
+        self.expect(TokenKind::Ontology)?;
+
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::From)?;
+
+        // Parse the source URL/path as a string literal
+        let source = if self.at(TokenKind::StringLit) {
+            let s = self.advance().text.clone();
+            // Remove quotes
+            s[1..s.len() - 1].to_string()
+        } else {
+            return Err(miette::miette!(
+                "Expected string literal for ontology source"
+            ));
+        };
+
+        self.expect(TokenKind::Semi)?;
+        let end = self.span();
+
+        Ok(Item::OntologyImport(OntologyImportDef {
+            id: self.next_id(),
+            prefix: name,
+            source,
+            alias: None,
+            span: start.merge(end),
+        }))
+    }
+
+    /// Parse alignment declaration: `align chebi:drug ~ drugbank:drug with distance 0.1;`
+    fn parse_align_decl(&mut self) -> Result<Item> {
+        let start = self.span();
+        self.expect(TokenKind::Align)?;
+
+        // Parse first term (ontology:term)
+        let term1 = self.parse_ontology_term_ref()?;
+
+        // Expect ~
+        self.expect(TokenKind::Tilde)?;
+
+        // Parse second term
+        let term2 = self.parse_ontology_term_ref()?;
+
+        // Expect "with distance"
+        self.expect(TokenKind::With)?;
+        self.expect(TokenKind::Distance)?;
+
+        // Parse distance value
+        let distance = if self.at(TokenKind::FloatLit) {
+            let s = self.advance().text.clone();
+            s.parse::<f64>()
+                .map_err(|_| miette::miette!("Invalid distance value"))?
+        } else if self.at(TokenKind::IntLit) {
+            let s = self.advance().text.clone();
+            s.parse::<f64>()
+                .map_err(|_| miette::miette!("Invalid distance value"))?
+        } else {
+            return Err(miette::miette!("Expected numeric distance value"));
+        };
+
+        self.expect(TokenKind::Semi)?;
+        let end = self.span();
+
+        Ok(Item::AlignDecl(AlignDef {
+            id: self.next_id(),
+            type1: term1,
+            type2: term2,
+            distance,
+            span: start.merge(end),
+        }))
+    }
+
+    /// Parse ontology term reference: `chebi:drug` or `SNOMED:12345`
+    fn parse_ontology_term_ref(&mut self) -> Result<OntologyTermRef> {
+        let start = self.span();
+
+        let ontology = self.parse_ident()?;
+        self.expect(TokenKind::Colon)?;
+
+        // Term can be an identifier or a number
+        let term = if self.at(TokenKind::Ident) {
+            self.advance().text.clone()
+        } else if self.at(TokenKind::IntLit) {
+            self.advance().text.clone()
+        } else {
+            return Err(miette::miette!("Expected term identifier or number"));
+        };
+
+        let end = self.span();
+
+        Ok(OntologyTermRef {
+            id: self.next_id(),
+            prefix: ontology,
+            term,
+            span: start.merge(end),
+        })
     }
 
     fn parse_extern(&mut self) -> Result<Item> {
@@ -1022,14 +1395,15 @@ impl<'a> Parser<'a> {
         self.advance();
         let mut params = Vec::new();
 
-        while !self.at(TokenKind::Gt) {
+        // Use at_gt_or_shr for consistency with type arg parsing
+        while !self.at_gt_or_shr() {
             params.push(self.parse_generic_param()?);
-            if !self.at(TokenKind::Gt) {
+            if !self.at_gt_or_shr() {
                 self.expect(TokenKind::Comma)?;
             }
         }
 
-        self.expect(TokenKind::Gt)?;
+        self.expect_gt()?;
 
         Ok(Generics { params })
     }
@@ -1075,14 +1449,16 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Lt)?;
         let mut args = Vec::new();
 
-        while !self.at(TokenKind::Gt) {
+        // Use at_gt_or_shr to handle nested generics like Option<Box<T>>
+        while !self.at_gt_or_shr() {
             args.push(self.parse_type()?);
-            if !self.at(TokenKind::Gt) {
+            if !self.at_gt_or_shr() {
                 self.expect(TokenKind::Comma)?;
             }
         }
 
-        self.expect(TokenKind::Gt)?;
+        // Use expect_gt to handle >> splitting for nested generics
+        self.expect_gt()?;
         Ok(args)
     }
 
@@ -1205,8 +1581,28 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            // Named type
+            // Named type or ontology term reference (prefix:term)
             TokenKind::Ident => {
+                // Check if this is an ontology term reference: prefix:term (single colon)
+                // vs a path: module::Type (double colon)
+                // Term can be an identifier (chebi:drug) or a number (chebi:15365)
+                if self.peek_n(1) == TokenKind::Colon
+                    && matches!(self.peek_n(2), TokenKind::Ident | TokenKind::IntLit)
+                {
+                    // This is an ontology term reference like chebi:drug or chebi:15365
+                    let prefix = self.parse_ident()?;
+                    self.expect(TokenKind::Colon)?;
+                    let term = if self.at(TokenKind::IntLit) {
+                        self.advance().text.clone()
+                    } else {
+                        self.parse_ident()?
+                    };
+                    return Ok(TypeExpr::Ontology {
+                        ontology: prefix,
+                        term: Some(term),
+                    });
+                }
+
                 let path = self.parse_path()?;
                 let args = if self.at(TokenKind::Lt) {
                     self.parse_type_args()?
@@ -1601,24 +1997,79 @@ impl<'a> Parser<'a> {
     fn parse_expr_with_precedence(&mut self, min_prec: u8) -> Result<Expr> {
         let mut left = self.parse_unary()?;
 
-        while let Some((op, prec, assoc)) = self.binary_op_info() {
-            if prec < min_prec {
-                break;
+        loop {
+            // Check for range operators (lowest precedence, 0)
+            if min_prec == 0 && (self.at(TokenKind::DotDot) || self.at(TokenKind::DotDotEq)) {
+                let inclusive = self.at(TokenKind::DotDotEq);
+                self.advance();
+
+                // Parse end expression if present (not at end of expression context)
+                let end = if self.at_expr_start() {
+                    Some(Box::new(self.parse_expr_with_precedence(1)?))
+                } else {
+                    None
+                };
+
+                left = Expr::Range {
+                    id: self.next_id(),
+                    start: Some(Box::new(left)),
+                    end,
+                    inclusive,
+                };
+                continue;
             }
 
-            self.advance();
-            let next_min = if assoc == Assoc::Left { prec + 1 } else { prec };
-            let right = self.parse_expr_with_precedence(next_min)?;
+            // Check for binary operators
+            if let Some((op, prec, assoc)) = self.binary_op_info() {
+                if prec < min_prec {
+                    break;
+                }
 
-            left = Expr::Binary {
-                id: self.next_id(),
-                op,
-                left: Box::new(left),
-                right: Box::new(right),
-            };
+                self.advance();
+                let next_min = if assoc == Assoc::Left { prec + 1 } else { prec };
+                let right = self.parse_expr_with_precedence(next_min)?;
+
+                left = Expr::Binary {
+                    id: self.next_id(),
+                    op,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                };
+            } else {
+                break;
+            }
         }
 
         Ok(left)
+    }
+
+    /// Check if current token can start an expression
+    fn at_expr_start(&self) -> bool {
+        matches!(
+            self.peek(),
+            TokenKind::Ident
+                | TokenKind::IntLit
+                | TokenKind::FloatLit
+                | TokenKind::StringLit
+                | TokenKind::CharLit
+                | TokenKind::True
+                | TokenKind::False
+                | TokenKind::LParen
+                | TokenKind::LBracket
+                | TokenKind::LBrace
+                | TokenKind::Minus
+                | TokenKind::Bang
+                | TokenKind::Amp
+                | TokenKind::Star
+                | TokenKind::If
+                | TokenKind::Match
+                | TokenKind::Loop
+                | TokenKind::While
+                | TokenKind::For
+                | TokenKind::Return
+                | TokenKind::Break
+                | TokenKind::Continue
+        )
     }
 
     fn binary_op_info(&self) -> Option<(BinaryOp, u8, Assoc)> {
@@ -1704,17 +2155,21 @@ impl<'a> Parser<'a> {
         loop {
             match self.peek() {
                 TokenKind::LParen => {
+                    let lparen_start = self.current().span.start;
                     self.advance();
                     let mut args = Vec::new();
                     while !self.at(TokenKind::RParen) {
-                        args.push(self.parse_expr()?);
+                        args.push(self.parse_expr_with_span()?);
                         if !self.at(TokenKind::RParen) {
                             self.expect(TokenKind::Comma)?;
                         }
                     }
+                    let rparen_end = self.current().span.end;
                     self.expect(TokenKind::RParen)?;
+                    let id = self.next_id();
+                    self.record_span(id, Span::new(lparen_start, rparen_end));
                     expr = Expr::Call {
-                        id: self.next_id(),
+                        id,
                         callee: Box::new(expr),
                         args,
                     };
@@ -1858,6 +2313,24 @@ impl<'a> Parser<'a> {
                 if self.peek_n(1) == TokenKind::Bang {
                     let macro_inv = self.parse_macro_invocation()?;
                     return Ok(Expr::MacroInvocation(macro_inv));
+                }
+
+                // Check for ontology term literal: prefix:term (e.g., drugbank:DB00945)
+                if self.peek_n(1) == TokenKind::Colon
+                    && matches!(self.peek_n(2), TokenKind::Ident | TokenKind::IntLit)
+                {
+                    let prefix = self.parse_ident()?;
+                    self.expect(TokenKind::Colon)?;
+                    let term = if self.at(TokenKind::Ident) {
+                        self.advance().text.clone()
+                    } else {
+                        self.advance().text.clone() // IntLit
+                    };
+                    return Ok(Expr::OntologyTerm {
+                        id: self.next_id(),
+                        ontology: prefix,
+                        term,
+                    });
                 }
 
                 let path = self.parse_path()?;
@@ -2101,6 +2574,12 @@ impl<'a> Parser<'a> {
 
             // Knowledge type constructor: Knowledge { value, epsilon, validity, provenance }
             TokenKind::Knowledge => self.parse_knowledge_expr(),
+
+            // Handle keywords followed by ! as macro invocations (e.g., assert!(x))
+            _ if self.peek().is_keyword() && self.peek_n(1) == TokenKind::Bang => {
+                let macro_inv = self.parse_macro_invocation()?;
+                Ok(Expr::MacroInvocation(macro_inv))
+            }
 
             _ => Err(miette::miette!(
                 "Unexpected token {:?} in expression",
@@ -2395,6 +2874,12 @@ impl<'a> Parser<'a> {
 
     fn parse_if(&mut self) -> Result<Expr> {
         self.expect(TokenKind::If)?;
+
+        // Check for `if let` pattern matching
+        if self.at(TokenKind::Let) {
+            return self.parse_if_let();
+        }
+
         // Use parse_expr_no_struct to avoid ambiguity with `if x { ... }`
         // being parsed as struct literal `x { ... }`
         let condition = Box::new(self.parse_expr_no_struct()?);
@@ -2418,6 +2903,56 @@ impl<'a> Parser<'a> {
             condition,
             then_branch,
             else_branch,
+        })
+    }
+
+    /// Parse `if let PATTERN = EXPR { THEN } else { ELSE }`
+    fn parse_if_let(&mut self) -> Result<Expr> {
+        self.expect(TokenKind::Let)?;
+        let pattern = self.parse_pattern()?;
+        self.expect(TokenKind::Eq)?;
+        let scrutinee = Box::new(self.parse_expr_no_struct()?);
+        let then_branch = self.parse_block()?;
+
+        let else_branch = if self.at(TokenKind::Else) {
+            self.advance();
+            if self.at(TokenKind::If) {
+                Some(Box::new(self.parse_if()?))
+            } else {
+                Some(Box::new(Expr::Block {
+                    id: self.next_id(),
+                    block: self.parse_block()?,
+                }))
+            }
+        } else {
+            None
+        };
+
+        // Convert if let to a Match expression with a single arm
+        // This is a common desugaring approach
+        let match_arm = MatchArm {
+            pattern,
+            guard: None,
+            body: Expr::Block {
+                id: self.next_id(),
+                block: then_branch,
+            },
+        };
+
+        // Create a wildcard arm for the else branch
+        let else_arm = MatchArm {
+            pattern: Pattern::Wildcard,
+            guard: None,
+            body: else_branch.map(|e| *e).unwrap_or(Expr::Literal {
+                id: self.next_id(),
+                value: Literal::Unit,
+            }),
+        };
+
+        Ok(Expr::Match {
+            id: self.next_id(),
+            scrutinee,
+            arms: vec![match_arm, else_arm],
         })
     }
 
@@ -2484,7 +3019,9 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::For)?;
         let pattern = self.parse_pattern()?;
         self.expect(TokenKind::In)?;
-        let iter = Box::new(self.parse_expr()?);
+        // Use parse_expr_no_struct to avoid ambiguity with `for x in items { ... }`
+        // being parsed as struct literal `items { ... }`
+        let iter = Box::new(self.parse_expr_no_struct()?);
         let body = self.parse_block()?;
         Ok(Expr::For {
             id: self.next_id(),
@@ -2596,6 +3133,11 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_stmt(&mut self) -> Result<Stmt> {
+        // Skip doc comments
+        while self.at(TokenKind::DocCommentOuter) || self.at(TokenKind::DocCommentInner) {
+            self.advance();
+        }
+
         match self.peek() {
             TokenKind::Let => self.parse_let_stmt(),
             TokenKind::Semi => {
@@ -2799,12 +3341,30 @@ impl<'a> Parser<'a> {
             Ok(self.advance().text.clone())
         } else if self.at(TokenKind::SelfLower) {
             Ok(self.advance().text.clone())
+        } else if self.is_contextual_keyword() {
+            // Allow certain keywords to be used as identifiers in specific contexts
+            // (like field names, variable names, etc.)
+            Ok(self.advance().text.clone())
         } else {
             Err(miette::miette!(
                 "Expected identifier, found {:?}",
                 self.peek()
             ))
         }
+    }
+
+    /// Check if current token is a keyword that can be used as an identifier in certain contexts
+    fn is_contextual_keyword(&self) -> bool {
+        matches!(
+            self.peek(),
+            TokenKind::Effect
+                | TokenKind::Handler
+                | TokenKind::Handle
+                | TokenKind::Align
+                | TokenKind::Ontology
+                | TokenKind::From
+                | TokenKind::Type
+        )
     }
 
     fn parse_path(&mut self) -> Result<Path> {
@@ -2820,10 +3380,22 @@ impl<'a> Parser<'a> {
 
     // ==================== MACROS ====================
 
-    /// Parse a macro invocation (e.g., vec![1, 2, 3])
+    /// Parse a macro invocation (e.g., vec![1, 2, 3] or assert!(x))
     fn parse_macro_invocation(&mut self) -> Result<MacroInvocation> {
         let start_span = self.span();
-        let name = self.parse_ident()?;
+        // Macro name can be an identifier or a keyword (e.g., assert!, vec!)
+        let name = if self.at(TokenKind::Ident) {
+            self.parse_ident()?
+        } else if self.peek().is_keyword() {
+            let text = self.current().text.clone();
+            self.advance();
+            text
+        } else {
+            return Err(miette::miette!(
+                "Expected macro name, found {:?}",
+                self.peek()
+            ));
+        };
         self.expect(TokenKind::Bang)?;
         let args = self.parse_macro_args()?;
         let end_span = self.span();

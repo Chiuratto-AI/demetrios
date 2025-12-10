@@ -428,6 +428,14 @@ impl HirConceptExtractor {
                     self.visit_expr(e);
                 }
             }
+            HirExprKind::Range { start, end, .. } => {
+                if let Some(s) = start {
+                    self.visit_expr(s);
+                }
+                if let Some(e) = end {
+                    self.visit_expr(e);
+                }
+            }
             HirExprKind::Struct { fields, .. } => {
                 for (_, e) in fields {
                     self.visit_expr(e);
@@ -502,6 +510,11 @@ impl HirConceptExtractor {
             | HirExprKind::ValidityOf(e)
             | HirExprKind::Unwrap(e) => {
                 self.visit_expr(e);
+            }
+            HirExprKind::OntologyTerm { namespace, term } => {
+                // Register ontology term as a concept reference
+                let curie = format!("{}:{}", namespace, term);
+                self.usage.concepts.insert(curie);
             }
         }
     }

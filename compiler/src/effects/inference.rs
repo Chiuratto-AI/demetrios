@@ -3,7 +3,7 @@
 //! Infers effects for expressions and checks that all effects are declared
 //! in function signatures.
 
-use crate::ast::{self, Ast, BinaryOp, Expr, Item, Stmt};
+use crate::ast::{self, Ast, BinaryOp, Expr, ImplItem, Item, Stmt};
 use crate::common::Span;
 use crate::resolve::{DefId, SymbolTable};
 use crate::types::core::{Effect, EffectSet};
@@ -14,6 +14,8 @@ pub struct EffectChecker<'a> {
     symbols: &'a SymbolTable,
     /// Inferred effects per function DefId
     fn_effects: HashMap<DefId, EffectSet>,
+    /// Method effects: (type_name, method_name) -> EffectSet
+    method_effects: HashMap<(String, String), EffectSet>,
     /// Current function's declared effects
     declared: EffectSet,
     /// Current function's inferred effects
@@ -48,6 +50,7 @@ impl<'a> EffectChecker<'a> {
         Self {
             symbols,
             fn_effects: HashMap::new(),
+            method_effects: HashMap::new(),
             declared: EffectSet::new(),
             inferred: EffectSet::new(),
             current_fn_span: Span::dummy(),
@@ -57,10 +60,16 @@ impl<'a> EffectChecker<'a> {
 
     /// Check effects for entire program
     pub fn check_program(&mut self, ast: &Ast) -> Result<(), Vec<EffectError>> {
-        // First pass: collect declared effects for all functions
+        // First pass: collect declared effects for all functions and methods
         for item in &ast.items {
-            if let Item::Function(f) = item {
-                self.collect_function_effects(f);
+            match item {
+                Item::Function(f) => {
+                    self.collect_function_effects(f);
+                }
+                Item::Impl(impl_def) => {
+                    self.collect_impl_method_effects(impl_def);
+                }
+                _ => {}
             }
         }
 
@@ -71,10 +80,62 @@ impl<'a> EffectChecker<'a> {
             }
         }
 
+        // Also check impl method bodies
+        for item in &ast.items {
+            if let Item::Impl(impl_def) = item {
+                for impl_item in &impl_def.items {
+                    if let ImplItem::Fn(f) = impl_item {
+                        self.check_function(f);
+                    }
+                }
+            }
+        }
+
         if self.errors.is_empty() {
             Ok(())
         } else {
             Err(std::mem::take(&mut self.errors))
+        }
+    }
+
+    fn collect_impl_method_effects(&mut self, impl_def: &ast::ImplDef) {
+        // Extract type name from target_type
+        let type_name = self.extract_type_name(&impl_def.target_type);
+
+        for impl_item in &impl_def.items {
+            if let ImplItem::Fn(f) = impl_item {
+                let mut effects = EffectSet::new();
+                for eff_ref in &f.effects {
+                    let effect = self.resolve_effect_ref(eff_ref);
+                    effects.add(effect);
+                }
+
+                // Store method effects keyed by (type_name, method_name)
+                self.method_effects
+                    .insert((type_name.clone(), f.name.clone()), effects.clone());
+
+                // Also store by DefId for consistency
+                if let Some(def_id) = self.symbols.def_for_node(f.id) {
+                    self.fn_effects.insert(def_id, effects);
+                }
+            }
+        }
+    }
+
+    fn extract_type_name(&self, ty: &ast::TypeExpr) -> String {
+        match ty {
+            ast::TypeExpr::Named { path, .. } => {
+                // Get the last segment of the path as the type name
+                path.segments
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| "Unknown".to_string())
+            }
+            ast::TypeExpr::Reference { inner, .. } => {
+                // For reference types like &T or &!T, extract the inner type name
+                self.extract_type_name(inner)
+            }
+            _ => "Unknown".to_string(),
         }
     }
 
@@ -191,12 +252,20 @@ impl<'a> EffectChecker<'a> {
                 effects
             }
 
-            Expr::MethodCall { receiver, args, .. } => {
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+                ..
+            } => {
                 let mut effects = self.infer_expr(receiver);
                 for arg in args {
                     effects = effects.union(&self.infer_expr(arg));
                 }
-                // TODO: look up method effects
+
+                // Look up method effects based on receiver type
+                let method_effects = self.get_method_effects(receiver, method);
+                effects = effects.union(&method_effects);
                 effects
             }
 
@@ -310,6 +379,17 @@ impl<'a> EffectChecker<'a> {
                 let mut effects = EffectSet::new();
                 for elem in elements {
                     effects = effects.union(&self.infer_expr(elem));
+                }
+                effects
+            }
+
+            Expr::Range { start, end, .. } => {
+                let mut effects = EffectSet::new();
+                if let Some(s) = start {
+                    effects = effects.union(&self.infer_expr(s));
+                }
+                if let Some(e) = end {
+                    effects = effects.union(&self.infer_expr(e));
                 }
                 effects
             }
@@ -552,6 +632,9 @@ impl<'a> EffectChecker<'a> {
                 }
                 effects
             }
+
+            // Ontology term literals have no effects
+            Expr::OntologyTerm { .. } => EffectSet::new(),
         }
     }
 
@@ -567,6 +650,52 @@ impl<'a> EffectChecker<'a> {
             }
         }
         EffectSet::new()
+    }
+
+    fn get_method_effects(&self, receiver: &Expr, method_name: &str) -> EffectSet {
+        // Try to infer the receiver's type name
+        let type_name = self.infer_receiver_type_name(receiver);
+
+        if let Some(name) = type_name {
+            // Look up method effects by (type_name, method_name)
+            if let Some(effects) = self
+                .method_effects
+                .get(&(name.clone(), method_name.to_string()))
+            {
+                return effects.clone();
+            }
+        }
+
+        // Fallback: no effects known for this method
+        EffectSet::new()
+    }
+
+    fn infer_receiver_type_name(&self, receiver: &Expr) -> Option<String> {
+        match receiver {
+            // Simple path like `foo.method()` - we need type info from the checker
+            Expr::Path { path, id } => {
+                // Try to look up the variable's type from symbol table
+                if path.is_simple() {
+                    if let Some(def_id) = self.symbols.ref_for_node(*id) {
+                        if let Some(symbol) = self.symbols.get(def_id) {
+                            // Return the symbol's type name if available
+                            // For now, return the symbol name as a heuristic
+                            return Some(symbol.name.clone());
+                        }
+                    }
+                }
+                None
+            }
+            // Struct literal: `MyStruct { ... }.method()`
+            Expr::StructLit { path, .. } => path.segments.last().cloned(),
+            // Method chain: `x.foo().bar()` - would need type inference
+            Expr::MethodCall { .. } => None,
+            // Function call result: `get_foo().method()`
+            Expr::Call { .. } => None,
+            // Field access: `x.field.method()`
+            Expr::Field { .. } => None,
+            _ => None,
+        }
     }
 
     fn resolve_effect_ref(&self, eff_ref: &ast::EffectRef) -> Effect {

@@ -264,6 +264,14 @@ impl EpistemicOptimizer {
                     self.optimize_expr(e, ctx);
                 }
             }
+            HirExprKind::Range { start, end, .. } => {
+                if let Some(s) = start {
+                    self.optimize_expr(s, ctx);
+                }
+                if let Some(e) = end {
+                    self.optimize_expr(e, ctx);
+                }
+            }
             HirExprKind::Struct { fields, .. } => {
                 for (_, e) in fields {
                     self.optimize_expr(e, ctx);
@@ -347,6 +355,9 @@ impl EpistemicOptimizer {
             | HirExprKind::Unwrap(e) => {
                 self.optimize_expr(e, ctx);
             }
+
+            // Ontology terms are terminals - no optimization needed
+            HirExprKind::OntologyTerm { .. } => {}
         }
     }
 

@@ -297,6 +297,15 @@ impl<'a> OwnershipChecker<'a> {
                 }
             }
 
+            Expr::Range { start, end, .. } => {
+                if let Some(s) = start {
+                    self.check_expr(s, use_kind);
+                }
+                if let Some(e) = end {
+                    self.check_expr(e, use_kind);
+                }
+            }
+
             Expr::StructLit { fields, .. } => {
                 for (_, field_expr) in fields {
                     self.check_expr(field_expr, UseKind::Move);
@@ -425,6 +434,9 @@ impl<'a> OwnershipChecker<'a> {
                     self.check_expr(value, UseKind::Copy);
                 }
             }
+
+            // Ontology term literals are value types, no ownership concerns
+            Expr::OntologyTerm { .. } => {}
         }
     }
 

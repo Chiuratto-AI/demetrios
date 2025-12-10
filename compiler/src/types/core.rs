@@ -70,6 +70,15 @@ pub enum Type {
         inner: Box<Type>,
     },
 
+    // Semantic types
+    /// Ontology term type: chebi:drug, SNOMED:12345
+    Ontology {
+        /// Ontology namespace/prefix (e.g., "chebi", "SNOMED")
+        namespace: String,
+        /// Term identifier (e.g., "drug", "12345")
+        term: String,
+    },
+
     // Special types
     /// Never type (!)
     Never,

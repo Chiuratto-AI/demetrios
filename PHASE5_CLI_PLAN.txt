@@ -1,0 +1,142 @@
+PHASE 5: CLI APPLICATION & Q1 DOCUMENTATION
+Date: December 8, 2025
+Status: IN PROGRESS
+
+OBJECTIVE:
+Create user-friendly command-line interface for Darwin PBPK with
+comprehensive documentation ready for Q1 publication.
+
+CLI DESIGN
+
+Binary: darwin-pbpk
+
+Subcommands:
+1. simulate    - Run PBPK simulation
+2. validate    - Validate predictions vs clinical data
+3. predict     - AI-based drug property prediction
+4. convert     - Convert between model formats
+5. benchmark   - Performance comparison
+6. generate    - Generate model from template
+
+Usage Examples:
+$ darwin-pbpk simulate --drug midazolam --dose 2.0 --duration 2.0
+$ darwin-pbpk validate --input predictions.csv --clinical clinical_data.csv
+$ darwin-pbpk predict --smiles "CC(C)Cc1ccc(cc1)C(C)C(O)=O" --output properties.json
+$ darwin-pbpk benchmark --model 14comp --iterations 1000
+$ darwin-pbpk generate --template pbpk_14comp --drug custom_drug.json
+
+IMPLEMENTATION STEPS
+
+Step 1: Rust CLI Framework
+- Use clap for argument parsing
+- Structure: src/cli/mod.rs
+- Subcommand handlers
+
+Step 2: Simulate Subcommand
+- Load drug parameters
+- Run ODE solver
+- Output concentration profile
+- Export to CSV/JSON
+
+Step 3: Validate Subcommand
+- Read predicted and clinical data
+- Calculate fold error (FE)
+- Calculate GMFE
+- Generate report
+
+Step 4: Predict Subcommand
+- Parse SMILES strings
+- Call ML model (placeholder)
+- Return properties
+
+Step 5: Documentation
+- README with usage examples
+- API documentation
+- Tutorial (step-by-step)
+- Example gallery (10 drugs)
+
+DOCUMENTATION STRUCTURE
+
+1. README_CLI.md
+   - Installation
+   - Quick start
+   - Common workflows
+   - Examples
+
+2. USER_GUIDE.md
+   - Detailed command reference
+   - Parameter descriptions
+   - Output formats
+   - Troubleshooting
+
+3. API_REFERENCE.md
+   - Library functions
+   - Type definitions
+   - Integration examples
+   - Performance notes
+
+4. TUTORIAL.md
+   - Step-by-step guide
+   - Real drug examples
+   - Validation workflow
+   - Publication-ready report
+
+5. EXAMPLE_GALLERY.md
+   - 10 drug examples
+   - Expected results
+   - Comparison to literature
+   - Validation metrics
+
+6. RESEARCH_PAPER.md
+   - Technical background
+   - Methodology
+   - Validation results
+   - Future directions
+
+DELIVERABLES
+
+Phase 5a: CLI Application
+- [ ] Argument parsing (clap)
+- [ ] Simulate subcommand
+- [ ] Validate subcommand
+- [ ] Predict subcommand (stub)
+- [ ] Convert subcommand (stub)
+- [ ] Benchmark subcommand
+- [ ] Output formatting (CSV, JSON)
+- [ ] Error handling
+
+Phase 5b: Documentation
+- [ ] README with quick start
+- [ ] User guide (command reference)
+- [ ] API reference
+- [ ] Tutorial (5 examples)
+- [ ] Example gallery (10 drugs)
+- [ ] Research paper draft
+
+ESTIMATED EFFORT
+
+CLI Implementation: 4-6 hours
+Documentation: 2-3 hours
+Testing & polish: 1-2 hours
+Total: 7-11 hours (~2 days)
+
+VALIDATION CHECKLIST
+
+[ ] CLI compiles without errors
+[ ] All subcommands work
+[ ] Output is readable and correct
+[ ] Documentation is complete
+[ ] Examples run without errors
+[ ] Validation metrics are accurate
+[ ] Performance is acceptable
+[ ] Code is well-documented
+
+SUCCESS CRITERIA
+
+✓ CLI binary (darwin-pbpk) works
+✓ Simulate command produces correct output
+✓ Validate command calculates fold errors
+✓ Documentation is Q1 publication-ready
+✓ All 10-drug examples work
+✓ Performance benchmarks available
+✓ Tutorial is beginner-friendly

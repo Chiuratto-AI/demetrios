@@ -16,9 +16,10 @@ pub enum ResolveError {
         span: SourceSpan,
     },
 
-    #[error("Undefined type: {name}")]
+    #[error("Undefined type: {name}{}", suggestion.as_ref().map(|s| format!(". Did you mean `{}`?", s)).unwrap_or_default())]
     UndefinedType {
         name: String,
+        suggestion: Option<String>,
         #[label("type not found")]
         span: SourceSpan,
     },
@@ -470,13 +471,22 @@ impl Resolver {
         if path.is_simple() {
             let name = path.name().unwrap();
             if self.symbols.lookup_type(name).is_none() {
+                // Find similar type names for suggestion
+                let suggestion = self.find_similar_type(name);
                 self.errors.push(ResolveError::UndefinedType {
                     name: name.to_string(),
+                    suggestion,
                     span: SourceSpan::from(0..1),
                 });
             }
         }
         // TODO: multi-segment paths
+    }
+
+    /// Find a similar type name using Levenshtein distance
+    fn find_similar_type(&self, name: &str) -> Option<String> {
+        let type_names = self.symbols.all_type_names();
+        find_similar_name(name, &type_names)
     }
 
     fn resolve_effect_ref(&mut self, effect: &EffectRef) {
@@ -679,6 +689,15 @@ impl Resolver {
                 }
             }
 
+            Expr::Range { start, end, .. } => {
+                if let Some(s) = start {
+                    self.resolve_expr(s);
+                }
+                if let Some(e) = end {
+                    self.resolve_expr(e);
+                }
+            }
+
             Expr::StructLit { path, fields, .. } => {
                 self.resolve_path_as_type(path);
                 for (_, value) in fields {
@@ -821,6 +840,9 @@ impl Resolver {
                     self.resolve_expr(value);
                 }
             }
+
+            // Ontology terms are literals, no resolution needed
+            Expr::OntologyTerm { .. } => {}
         }
     }
 
@@ -862,8 +884,10 @@ impl Resolver {
                     // Full path like Option::Some
                     let type_name = &path.segments[0];
                     if self.symbols.lookup_type(type_name).is_none() {
+                        let suggestion = self.find_similar_type(type_name);
                         self.errors.push(ResolveError::UndefinedType {
                             name: type_name.clone(),
+                            suggestion,
                             span: SourceSpan::from(0..1),
                         });
                     }
@@ -892,4 +916,59 @@ impl Default for Resolver {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Compute Levenshtein distance between two strings
+fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let m = a_chars.len();
+    let n = b_chars.len();
+
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+
+    let mut prev = (0..=n).collect::<Vec<_>>();
+    let mut curr = vec![0; n + 1];
+
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[n]
+}
+
+/// Find a similar name from a list of candidates
+fn find_similar_name(target: &str, candidates: &[String]) -> Option<String> {
+    let max_distance = match target.len() {
+        0..=2 => 0, // Exact match only for very short names
+        3..=5 => 1, // Allow 1 edit for short names
+        _ => 2,     // Allow 2 edits for longer names
+    };
+
+    candidates
+        .iter()
+        .filter_map(|candidate| {
+            let dist = levenshtein_distance(target, candidate);
+            if dist <= max_distance && dist > 0 {
+                Some((candidate.clone(), dist))
+            } else {
+                None
+            }
+        })
+        .min_by_key(|(_, dist)| *dist)
+        .map(|(name, _)| name)
 }

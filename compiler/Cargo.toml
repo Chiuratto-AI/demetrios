@@ -1,6 +1,6 @@
 [package]
 name = "demetrios"
-version = "0.58.0"
+version = "0.59.0"
 edition = "2024"
 authors = ["Demetrios Chiuratto Agourakis", "Dionisio Chiuratto Agourakis"]
 description = "A programming language where types have meaning - 15M+ ontological terms as first-class types"
@@ -130,6 +130,7 @@ pretty_assertions = "1"
 proptest = "1"
 insta = { version = "1", features = ["yaml"] }
 tempfile = "3"
+regex = "1.10"
 
 [features]
 default = []
@@ -193,26 +194,6 @@ panic = "abort"
 # Faster compile times
 opt-level = 0
 debug = true
-
-[[test]]
-name = "lexer_tests"
-path = "tests/lexer_tests.rs"
-
-[[test]]
-name = "parser_tests"
-path = "tests/parser_tests.rs"
-
-[[test]]
-name = "units_tests"
-path = "tests/units_tests.rs"
-
-[[test]]
-name = "sourcemap_tests"
-path = "tests/sourcemap_tests.rs"
-
-[[test]]
-name = "refinement_tests"
-path = "tests/refinement_tests.rs"
 
 [[test]]
 name = "integration_semantic_types"

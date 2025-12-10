@@ -40,7 +40,15 @@ impl TestHarness {
         // Assumes compiler is already built via `cargo build`
         let compiler_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/dc");
 
-        let temp_dir = std::env::temp_dir().join(format!("demetrios_test_{}", std::process::id()));
+        // Use both process id and a counter to make temp dirs unique across parallel tests
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let temp_dir = std::env::temp_dir().join(format!(
+            "demetrios_test_{}_{}",
+            std::process::id(),
+            unique_id
+        ));
         fs::create_dir_all(&temp_dir).expect("Failed to create temp dir");
 
         Self {
@@ -636,8 +644,17 @@ pub struct SemanticDistance {
 
 /// Normalize output for comparison
 fn normalize_output(s: &str) -> String {
+    // Regex to match temp directory paths like /tmp/demetrios_test_12345/ or /tmp/demetrios_test_12345_67/
+    let temp_path_re =
+        regex::Regex::new(r"/tmp/demetrios_test_\d+(_\d+)?/").expect("Invalid temp path regex");
+
     s.lines()
         .map(|line| line.trim_end())
+        .map(|line| {
+            temp_path_re
+                .replace_all(line, "/tmp/demetrios_test_XXXX/")
+                .to_string()
+        })
         .collect::<Vec<_>>()
         .join("\n")
         .trim()

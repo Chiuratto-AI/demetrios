@@ -1,20 +1,6 @@
-error[E0412]: cannot find ontology `undefined` in this scope
- --> cascade.dm:3:13
-  |
-3 | type Drug = undefined:drug;
-  |             ^^^^^^^^^ not found
-  |
-  = help: consider importing the ontology:
-          `ontology undefined from "path/to/ontology.owl";`
-
-error[E0412]: cannot resolve type `Drug`
- --> cascade.dm:5:16
-  |
-5 | fn use_drug(d: Drug) -> Drug {
-  |                ^^^^ type depends on unresolved `undefined:drug`
-  |
-  = note: this error originates from the unresolved ontology above
-
-error: aborting due to 2 previous errors
-
-For more information about this error, try `demetrios --explain E0412`.
+Error:   × Type errors:
+  │ Undefined ontology prefix `undefined` in type `undefined:drug` (used in
+  │ Drug). Add `ontology undefined from "...";` declaration.
+  │ Type mismatch: expected `Drug`, found `chebi:15365`
+  │ no alignment found between undefined:drug and chebi:15365 (different
+  │ ontologies require explicit align declaration)

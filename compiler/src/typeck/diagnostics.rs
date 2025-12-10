@@ -581,17 +581,9 @@ impl DiagnosticAccumulator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::Position;
 
     fn test_span() -> Span {
-        Span {
-            start: Position { line: 1, column: 1 },
-            end: Position {
-                line: 1,
-                column: 10,
-            },
-            file: Some("test.dm".to_string()),
-        }
+        Span::new(0, 10)
     }
 
     #[test]

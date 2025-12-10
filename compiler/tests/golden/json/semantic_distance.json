@@ -1,1 +1,5 @@
-{"level":"error","code":"E0308","message":"semantic distance exceeds threshold","location":{"file":"json_distance.dm","line":14,"column":13,"end_line":14,"end_column":15},"related":[],"suggestions":[{"message":"increase the threshold","replacement":"#[compat(threshold = 0.3)]","semantic_distance":{"from_type":"DrugBankDrug","to_type":"ChEBIDrug","distance":0.3,"path_distance":0.12,"ic_distance":0.10,"embedding_distance":0.08}}],"notes":["expected type `ChEBIDrug` (chebi:drug)","found type `DrugBankDrug` (drugbank:drug)","alignment distance is 0.3, threshold is 0.2"]}
+{"code":"E0308","level":"error","location":{"column":13,"file":"/tmp/demetrios_test_XXXX/json_distance.dm","line":15},"message":"type mismatch: expected `ChEBIDrug` (chebi:drug), found `DrugBankDrug` (drugbank:drug): semantic distance 0.3 exceeds threshold 0.2 between chebi:drug and drugbank:drug","notes":[],"related":[],"suggestions":[]}
+Error:   × Type errors:
+  │ type mismatch: expected `ChEBIDrug` (chebi:drug), found `DrugBankDrug`
+  │ (drugbank:drug): semantic distance 0.3 exceeds threshold 0.2 between
+  │ chebi:drug and drugbank:drug

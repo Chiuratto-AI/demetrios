@@ -239,7 +239,13 @@ impl<'a> LoweringContext<'a> {
                 is_mut,
                 layout_hint: _, // Layout hints are used by codegen, not HLIR lowering
             } => {
-                let hlir_ty = HlirType::from_hir(ty);
+                // Use the type from the initializer if the declared type is a type variable
+                let hlir_ty = if let Some(init) = value {
+                    // Prefer the initializer's type (it's concrete after type checking)
+                    HlirType::from_hir(&init.ty)
+                } else {
+                    HlirType::from_hir(ty)
+                };
 
                 if *is_mut {
                     // Mutable variable: allocate stack slot
@@ -402,7 +408,15 @@ impl<'a> LoweringContext<'a> {
                 let left_val = self.lower_expr(left)?;
                 let right_val = self.lower_expr(right)?;
                 let left_ty = HlirType::from_hir(&left.ty);
-                Some(self.lower_binary_op(*op, left_val, right_val, &left_ty, &ty))
+                // For arithmetic ops, use operand type if result type is Void (unresolved type var)
+                let result_ty = if ty == HlirType::Void && !op.is_comparison() {
+                    left_ty.clone()
+                } else if ty == HlirType::Void && op.is_comparison() {
+                    HlirType::Bool
+                } else {
+                    ty.clone()
+                };
+                Some(self.lower_binary_op(*op, left_val, right_val, &left_ty, &result_ty))
             }
 
             HirExprKind::Unary { op, expr: inner } => {
@@ -475,6 +489,28 @@ impl<'a> LoweringContext<'a> {
             HirExprKind::Array(elems) => {
                 let vals: Vec<_> = elems.iter().filter_map(|e| self.lower_expr(e)).collect();
                 Some(self.builder.build_array(vals, ty))
+            }
+
+            HirExprKind::Range {
+                start,
+                end,
+                inclusive: _,
+            } => {
+                // Lower range to a struct with start/end fields
+                let start_val = start.as_ref().and_then(|s| self.lower_expr(s));
+                let end_val = end.as_ref().and_then(|e| self.lower_expr(e));
+                // For now, just return a tuple of (start, end)
+                let range_fields = vec![
+                    (
+                        "start".to_string(),
+                        start_val.unwrap_or_else(|| self.builder.build_i64(0)),
+                    ),
+                    (
+                        "end".to_string(),
+                        end_val.unwrap_or_else(|| self.builder.build_i64(i64::MAX)),
+                    ),
+                ];
+                Some(self.builder.build_struct("Range", range_fields, ty))
             }
 
             HirExprKind::Struct { name, fields } => {
@@ -656,6 +692,17 @@ impl<'a> LoweringContext<'a> {
             HirExprKind::Unwrap(expr) => {
                 // Unwrap Knowledge to get inner value
                 self.lower_expr(expr)
+            }
+
+            HirExprKind::OntologyTerm { namespace, term } => {
+                // Ontology terms are represented as string constants at runtime
+                // Format: "namespace:term"
+                let term_str = format!("{}:{}", namespace, term);
+                let string_ty = HlirType::Ptr(Box::new(HlirType::U8));
+                Some(
+                    self.builder
+                        .build_const(HlirConstant::String(term_str), string_ty),
+                )
             }
         }
     }

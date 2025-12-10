@@ -638,6 +638,7 @@ impl EpistemicPtxEmitter {
         }
 
         // Confidence = distance / uncertainty (higher is better)
+        self.emit_comment("Confidence = distance / combined_uncertainty");
         self.emit(&format!(
             "div.approx.f32 {}, %r_eps_t0, %r_eps_t1;",
             result_confidence

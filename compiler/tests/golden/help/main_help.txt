@@ -1,30 +1,17 @@
-Demetrios Compiler
+Type-check a D source file without compiling
 
-A biomedical domain language with semantic type checking
+Usage: dc check [OPTIONS] <FILE>
 
-USAGE:
-    demetrios [OPTIONS] <INPUT>
+Arguments:
+  <FILE>  Input file
 
-ARGS:
-    <INPUT>    Source file to compile
-
-OPTIONS:
-    -o, --output <FILE>           Output file path
-        --error-format <FORMAT>   Error output format [human|json] (default: human)
-        --semantic-threshold <N>  Default semantic distance threshold (default: 0.3)
-        --ontology <PATH>         Additional ontology file to load
-        --warn <WARNING>          Enable specific warning
-        --allow <WARNING>         Disable specific warning
-        --deny <WARNING>          Treat warning as error
-    -v, --verbose                 Verbose output
-    -q, --quiet                   Suppress non-error output
-        --explain <CODE>          Explain an error code
-    -h, --help                    Print help information
-    -V, --version                 Print version information
-
-EXAMPLES:
-    demetrios program.dm -o program
-    demetrios --error-format=json src/main.dm
-    demetrios --ontology=custom.owl program.dm
-
-For more information, visit https://demetrios-lang.org
+Options:
+      --show-ast                     Show the parsed AST
+      --show-resolved                Show resolved symbols
+      --show-types                   Show inferred types
+      --show-effects                 Show inferred effects
+      --skip-ownership               Skip ownership checking
+      --error-format <ERROR_FORMAT>  Error output format (human or json) [default: human]
+      --warn <WARNINGS>              Warning flags (e.g., --warn=unused-imports)
+  -v, --verbose                      Enable verbose output
+  -h, --help                         Print help

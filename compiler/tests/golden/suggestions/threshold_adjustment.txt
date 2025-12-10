@@ -1,18 +1,4 @@
-error[E0308]: semantic distance exceeds threshold
-  --> threshold_suggest.dm:14:13
-   |
-14 |     analyze(db);
-   |             ^^ distance 0.35 exceeds threshold 0.3
-   |
-   = note: expected type `ChEBIDrug` (chebi:drug)
-              found type `DrugBankDrug` (drugbank:drug)
-   = note: alignment distance is 0.35, threshold is 0.3
-   = help: increase the threshold to allow this coercion:
-           `#[compat(threshold = 0.35)]`
-   |
-10 | #[compat(threshold = 0.3)]
-   |          ^^^^^^^^^^^^^^ change to `threshold = 0.35` or higher
-
-error: aborting due to 1 previous error
-
-For more information about this error, try `demetrios --explain E0308`.
+Error:   × Type errors:
+  │ type mismatch: expected `ChEBIDrug` (chebi:drug), found `DrugBankDrug`
+  │ (drugbank:drug): semantic distance 0.35 exceeds threshold 0.3 between
+  │ chebi:drug and drugbank:drug

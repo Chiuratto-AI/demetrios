@@ -286,6 +286,30 @@ impl Interpreter {
                 Ok(Value::Array(Rc::new(RefCell::new(values))))
             }
 
+            HirExprKind::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                let start_val = match start {
+                    Some(s) => self.eval_expr(s)?,
+                    None => Value::Int(0),
+                };
+                let end_val = match end {
+                    Some(e) => self.eval_expr(e)?,
+                    None => Value::Int(i64::MAX),
+                };
+                // Return as a struct-like value
+                let mut fields = HashMap::new();
+                fields.insert("start".to_string(), start_val);
+                fields.insert("end".to_string(), end_val);
+                fields.insert("inclusive".to_string(), Value::Bool(*inclusive));
+                Ok(Value::Struct {
+                    name: "Range".to_string(),
+                    fields,
+                })
+            }
+
             HirExprKind::Struct { name, fields } => {
                 let mut field_values = HashMap::new();
                 for (field_name, field_expr) in fields {
@@ -560,6 +584,11 @@ impl Interpreter {
             HirExprKind::Unwrap(expr) => {
                 // Unwrap Knowledge to get inner value
                 self.eval_expr(expr)
+            }
+
+            HirExprKind::OntologyTerm { namespace, term } => {
+                // Ontology terms are represented as strings at runtime
+                Ok(Value::String(format!("{}:{}", namespace, term)))
             }
         }
     }

@@ -106,6 +106,14 @@ enum Commands {
         /// Skip ownership checking
         #[arg(long)]
         skip_ownership: bool,
+
+        /// Error output format (human or json)
+        #[arg(long, default_value = "human")]
+        error_format: String,
+
+        /// Warning flags (e.g., --warn=unused-imports)
+        #[arg(long = "warn")]
+        warnings: Vec<String>,
     },
 
     /// Run a D program using the interpreter
@@ -1551,6 +1559,8 @@ fn main() -> Result<()> {
             show_types,
             show_effects,
             skip_ownership,
+            error_format,
+            warnings: _,
         } => check(
             &input,
             show_ast,
@@ -1558,6 +1568,7 @@ fn main() -> Result<()> {
             show_types,
             show_effects,
             skip_ownership,
+            &error_format,
         ),
 
         Commands::Run { input, args } => run(&input, &args),
@@ -2271,7 +2282,9 @@ fn check(
     show_types: bool,
     show_effects: bool,
     skip_ownership: bool,
+    error_format: &str,
 ) -> Result<()> {
+    let use_json = error_format == "json";
     tracing::info!("Type-checking {:?}", input);
 
     let source_content = std::fs::read_to_string(input)
@@ -2309,7 +2322,81 @@ fn check(
     }
 
     // 4. Type check
-    let hir = demetrios::check::check(&resolved.ast)?;
+    let check_result = demetrios::check::check_with_errors(&resolved.ast);
+
+    // Emit warnings (including unused import warnings)
+    for warning in &check_result.warnings {
+        // Extract warning code from the message (format: "code: message")
+        let (code, message) = if let Some(idx) = warning.find(':') {
+            (&warning[..idx], &warning[idx + 1..])
+        } else {
+            ("warning", warning.as_str())
+        };
+
+        if use_json {
+            let diag = serde_json::json!({
+                "level": "warning",
+                "message": message.trim(),
+                "code": code,
+                "location": {
+                    "file": input.to_string_lossy(),
+                    "line": 1,
+                    "column": 1
+                },
+                "notes": [],
+                "suggestions": [],
+                "related": []
+            });
+            eprintln!("{}", diag);
+        } else {
+            eprintln!("warning[{}]: {}", code, message.trim());
+        }
+    }
+
+    if !check_result.errors.is_empty() {
+        // Calculate line/column from byte offset
+        let line_starts: Vec<usize> = std::iter::once(0)
+            .chain(source_content.match_indices('\n').map(|(i, _)| i + 1))
+            .collect();
+
+        for err in &check_result.errors {
+            let (line, column) = {
+                let offset = err.span.start;
+                let line_idx = line_starts
+                    .partition_point(|&start| start <= offset)
+                    .saturating_sub(1);
+                let line = line_idx + 1;
+                let col = offset - line_starts.get(line_idx).copied().unwrap_or(0) + 1;
+                (line as u32, col as u32)
+            };
+
+            if use_json {
+                let diag = serde_json::json!({
+                    "level": "error",
+                    "message": err.message,
+                    "code": "E0308",
+                    "location": {
+                        "file": input.to_string_lossy(),
+                        "line": line,
+                        "column": column
+                    },
+                    "notes": [],
+                    "suggestions": [],
+                    "related": []
+                });
+                eprintln!("{}", diag);
+            }
+        }
+
+        let messages: Vec<_> = check_result
+            .errors
+            .iter()
+            .map(|e| e.message.clone())
+            .collect();
+        return Err(miette::miette!("Type errors:\n{}", messages.join("\n")));
+    }
+
+    let hir = check_result.hir.expect("HIR should exist when no errors");
 
     if show_types {
         println!("=== HIR (with types) ===");

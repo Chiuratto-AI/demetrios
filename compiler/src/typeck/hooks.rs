@@ -337,6 +337,15 @@ impl SemanticTypeChecker {
                 }
             }
 
+            HirExprKind::Range { start, end, .. } => {
+                if let Some(s) = start {
+                    self.check_expr(s)?;
+                }
+                if let Some(e) = end {
+                    self.check_expr(e)?;
+                }
+            }
+
             HirExprKind::Tuple(elements) => {
                 for elem in elements.iter_mut() {
                     self.check_expr(elem)?;
@@ -455,7 +464,8 @@ impl SemanticTypeChecker {
             | HirExprKind::Local(_)
             | HirExprKind::Global(_)
             | HirExprKind::Break(_)
-            | HirExprKind::Continue => {}
+            | HirExprKind::Continue
+            | HirExprKind::OntologyTerm { .. } => {}
         }
 
         Ok(())

@@ -141,8 +141,36 @@ impl SymbolTable {
     fn register_builtins(&mut self) {
         // Built-in types
         let builtins = [
-            "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize",
-            "f32", "f64", "bool", "char", "String", "str",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            "i128",
+            "isize",
+            "u8",
+            "u16",
+            "u32",
+            "u64",
+            "u128",
+            "usize",
+            "f32",
+            "f64",
+            "bool",
+            "char",
+            "String",
+            "str",
+            // Collection types
+            "Vec",
+            "HashMap",
+            "HashSet",
+            "Option",
+            "Result",
+            "Box",
+            "Rc",
+            "Arc",
+            // Other common types
+            "PhantomData",
+            "Range",
         ];
 
         for name in builtins {
@@ -206,6 +234,25 @@ impl SymbolTable {
                     def_id,
                     name: name.to_string(),
                     kind: DefKind::BuiltinFunction,
+                    node_id: NodeId(0),
+                    span: Span::default(),
+                    parent: None,
+                },
+            );
+        }
+
+        // Built-in enum variants (Option::None, Option::Some, Result::Ok, Result::Err)
+        let builtin_variants = ["None", "Some", "Ok", "Err"];
+
+        for name in builtin_variants {
+            let def_id = self.fresh_def_id();
+            let _ = self.define(name.to_string(), def_id);
+            self.symbols.insert(
+                def_id,
+                Symbol {
+                    def_id,
+                    name: name.to_string(),
+                    kind: DefKind::Variant,
                     node_id: NodeId(0),
                     span: Span::default(),
                     parent: None,
@@ -318,6 +365,19 @@ impl SymbolTable {
     /// Get all symbols
     pub fn all_symbols(&self) -> impl Iterator<Item = &Symbol> {
         self.symbols.values()
+    }
+
+    /// Get all type names from all scopes
+    pub fn all_type_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        for scope in &self.scopes {
+            for name in scope.types.keys() {
+                if !names.contains(name) {
+                    names.push(name.clone());
+                }
+            }
+        }
+        names
     }
 }
 

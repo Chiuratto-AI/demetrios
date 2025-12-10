@@ -113,6 +113,9 @@ impl Attribute {
 pub struct Ast {
     pub module_name: Option<Path>,
     pub items: Vec<Item>,
+    /// Mapping from NodeId to source span for error reporting
+    #[serde(skip)]
+    pub node_spans: std::collections::HashMap<crate::common::NodeId, crate::common::Span>,
 }
 
 /// Item visibility
@@ -161,6 +164,10 @@ pub enum Item {
     Extern(ExternBlock),
     Global(GlobalDef),
     MacroInvocation(MacroInvocation),
+    /// Ontology import: `ontology chebi from "https://...";`
+    OntologyImport(OntologyImportDef),
+    /// Alignment declaration: `align chebi:drug ~ drugbank:drug with distance 0.1;`
+    AlignDecl(AlignDef),
 }
 
 // ==================== FUNCTIONS ====================
@@ -398,6 +405,65 @@ pub struct ImportDef {
     pub id: NodeId,
     pub path: Path,
     pub span: Span,
+}
+
+// ==================== ONTOLOGY ====================
+
+/// Ontology import definition
+/// Syntax: `ontology <prefix> from "<url>";`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OntologyImportDef {
+    pub id: NodeId,
+    /// The prefix/namespace to use (e.g., "chebi", "go", "hp")
+    pub prefix: String,
+    /// The source URL or path
+    pub source: String,
+    /// Optional alias
+    pub alias: Option<String>,
+    pub span: Span,
+}
+
+/// Ontology alignment declaration
+/// Syntax: `align <type1> ~ <type2> with distance <value>;`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlignDef {
+    pub id: NodeId,
+    /// First type in the alignment
+    pub type1: OntologyTermRef,
+    /// Second type in the alignment
+    pub type2: OntologyTermRef,
+    /// The semantic distance between the types
+    pub distance: f64,
+    pub span: Span,
+}
+
+/// Reference to an ontology term
+/// Syntax: `prefix:term` (e.g., `chebi:15365`, `chebi:drug`)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OntologyTermRef {
+    pub id: NodeId,
+    /// Ontology prefix (e.g., "chebi", "go")
+    pub prefix: String,
+    /// Term identifier or name (e.g., "15365", "drug")
+    pub term: String,
+    pub span: Span,
+}
+
+impl OntologyTermRef {
+    /// Create a new ontology term reference
+    pub fn new(prefix: String, term: String, span: Span) -> Self {
+        Self {
+            id: NodeId::dummy(),
+            prefix,
+            term,
+            span,
+        }
+    }
+
+    /// Get the full IRI-style representation
+    pub fn to_iri(&self) -> String {
+        format!("{}:{}", self.prefix, self.term)
+    }
 }
 
 /// ABI specification for FFI
@@ -970,6 +1036,13 @@ pub enum Expr {
     Tuple { id: NodeId, elements: Vec<Expr> },
     /// Array expression
     Array { id: NodeId, elements: Vec<Expr> },
+    /// Range expression (start..end or start..=end)
+    Range {
+        id: NodeId,
+        start: Option<Box<Expr>>,
+        end: Option<Box<Expr>>,
+        inclusive: bool,
+    },
     /// Struct literal
     StructLit {
         id: NodeId,
@@ -1012,6 +1085,16 @@ pub enum Expr {
     Join { id: NodeId, futures: Vec<Expr> },
     /// Macro invocation
     MacroInvocation(MacroInvocation),
+
+    // ==================== DEMETRIOS ONTOLOGY EXPRESSIONS ====================
+    /// Ontology term literal: prefix:term (e.g., drugbank:DB00945, chebi:15365)
+    OntologyTerm {
+        id: NodeId,
+        /// Ontology prefix (e.g., "drugbank", "chebi")
+        ontology: String,
+        /// Term identifier (e.g., "DB00945", "15365")
+        term: String,
+    },
 
     // ==================== DEMETRIOS EPISTEMIC EXPRESSIONS ====================
     /// Causal do expression: do(X = 1)

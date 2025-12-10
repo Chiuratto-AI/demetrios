@@ -9,6 +9,5 @@ fn main() -> i32 {
         count = count + 1
     }
     
-    println(sum)
     return sum
 }

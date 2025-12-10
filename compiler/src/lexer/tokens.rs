@@ -77,6 +77,20 @@ pub enum TokenKind {
     #[token("Self")]
     SelfUpper,
 
+    // Ontology keywords
+    #[token("ontology")]
+    Ontology,
+    #[token("from")]
+    From,
+    #[token("align")]
+    Align,
+    #[token("distance")]
+    Distance,
+    #[token("threshold")]
+    Threshold,
+    #[token("compat")]
+    Compat,
+
     // D-specific keywords
     #[token("effect")]
     Effect,
@@ -423,6 +437,13 @@ impl TokenKind {
                 | TokenKind::Measured
                 | TokenKind::InputProv
                 | TokenKind::Query
+                // Ontology keywords
+                | TokenKind::Ontology
+                | TokenKind::From
+                | TokenKind::Align
+                | TokenKind::Distance
+                | TokenKind::Threshold
+                | TokenKind::Compat
         )
     }
 
@@ -619,6 +640,13 @@ impl TokenKind {
             TokenKind::Measured => "Measured",
             TokenKind::InputProv => "Input",
             TokenKind::Query => "query",
+            // Ontology keywords
+            TokenKind::Ontology => "ontology",
+            TokenKind::From => "from",
+            TokenKind::Align => "align",
+            TokenKind::Distance => "distance",
+            TokenKind::Threshold => "threshold",
+            TokenKind::Compat => "compat",
         }
     }
 }

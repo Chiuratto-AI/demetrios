@@ -33,7 +33,7 @@ fn main() {
         .json_diagnostics()
         .compile_str("error_location", source)
         .assert_failure()
-        .assert_error_at("E0308", 11, 15); // Line 11, column 15 (the `p` argument)
+        .assert_error_at("E0308", 12, 15); // Line 12, column 15 (the `p` argument in need_drug(p))
 }
 
 /// Test that undefined ontology points to import

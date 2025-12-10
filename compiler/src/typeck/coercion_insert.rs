@@ -169,6 +169,15 @@ impl CoercionInserter {
                 }
             }
 
+            HirExprKind::Range { start, end, .. } => {
+                if let Some(s) = start {
+                    Self::apply_to_expr_inner_static(s, coercion_map);
+                }
+                if let Some(e) = end {
+                    Self::apply_to_expr_inner_static(e, coercion_map);
+                }
+            }
+
             HirExprKind::Tuple(elements) => {
                 for elem in elements {
                     Self::apply_to_expr_inner_static(elem, coercion_map);
@@ -277,6 +286,9 @@ impl CoercionInserter {
             | HirExprKind::Unwrap(inner) => {
                 Self::apply_to_expr_inner_static(inner, coercion_map);
             }
+
+            // Ontology terms are leaf expressions - no sub-expressions
+            HirExprKind::OntologyTerm { .. } => {}
         }
     }
 
