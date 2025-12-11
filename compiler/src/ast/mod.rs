@@ -161,6 +161,7 @@ pub enum Item {
     Effect(EffectDef),
     Handler(HandlerDef),
     Import(ImportDef),
+    Export(ExportDef),
     Extern(ExternBlock),
     Global(GlobalDef),
     MacroInvocation(MacroInvocation),
@@ -404,6 +405,15 @@ pub struct HandlerCase {
 pub struct ImportDef {
     pub id: NodeId,
     pub path: Path,
+    pub span: Span,
+}
+
+/// Export definition
+/// Syntax: `export { Name1, Name2, ... };` or `export Name;`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportDef {
+    pub id: NodeId,
+    pub names: Vec<String>,
     pub span: Span,
 }
 

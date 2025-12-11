@@ -272,6 +272,13 @@ impl Formatter {
                 "align {}:{} ~ {}:{} with distance {};",
                 a.type1.prefix, a.type1.term, a.type2.prefix, a.type2.term, a.distance
             )),
+            Item::Export(e) => {
+                if e.names.len() == 1 {
+                    Doc::Text(format!("export {};", e.names[0]))
+                } else {
+                    Doc::Text(format!("export {{ {} }};", e.names.join(", ")))
+                }
+            }
         }
     }
 

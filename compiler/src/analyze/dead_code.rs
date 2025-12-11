@@ -421,6 +421,7 @@ impl DeadCodeAnalyzer {
                 }
             }
             Item::Import(_)
+            | Item::Export(_)
             | Item::Effect(_)
             | Item::Handler(_)
             | Item::Extern(_)
@@ -525,7 +526,8 @@ impl DeadCodeAnalyzer {
                     let _ = i;
                 }
             }
-            Item::Effect(_)
+            Item::Export(_)
+            | Item::Effect(_)
             | Item::Handler(_)
             | Item::Extern(_)
             | Item::MacroInvocation(_)

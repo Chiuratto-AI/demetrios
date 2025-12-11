@@ -135,6 +135,14 @@ pub enum HlirType {
         params: Vec<HlirType>,
         return_type: Box<HlirType>,
     },
+    // Linear algebra primitives (SIMD-friendly)
+    Vec2, // 2x f32
+    Vec3, // 3x f32 (padded to 4 for SIMD)
+    Vec4, // 4x f32
+    Mat2, // 2x2 f32 (4 floats)
+    Mat3, // 3x3 f32 (9 floats, may be padded)
+    Mat4, // 4x4 f32 (16 floats)
+    Quat, // 4x f32 (x, y, z, w)
 }
 
 impl HlirType {
@@ -186,6 +194,14 @@ impl HlirType {
                 // Ontology terms become a struct with namespace and term id
                 HlirType::Struct(format!("Ontology_{}", namespace))
             }
+            // Linear algebra primitives
+            HirType::Vec2 => HlirType::Vec2,
+            HirType::Vec3 => HlirType::Vec3,
+            HirType::Vec4 => HlirType::Vec4,
+            HirType::Mat2 => HlirType::Mat2,
+            HirType::Mat3 => HlirType::Mat3,
+            HirType::Mat4 => HlirType::Mat4,
+            HirType::Quat => HlirType::Quat,
         }
     }
 
@@ -230,6 +246,14 @@ impl HlirType {
             HlirType::Struct(_) => 64, // Conservative estimate
             HlirType::Tuple(elems) => elems.iter().map(|e| e.size_bits()).sum(),
             HlirType::Function { .. } => 64, // Function pointer
+            // Linear algebra primitives (all use f32 components)
+            HlirType::Vec2 => 64,  // 2 x 32-bit floats
+            HlirType::Vec3 => 128, // 3 x 32-bit floats, padded to 128 for SIMD
+            HlirType::Vec4 => 128, // 4 x 32-bit floats
+            HlirType::Mat2 => 128, // 4 x 32-bit floats
+            HlirType::Mat3 => 288, // 9 x 32-bit floats
+            HlirType::Mat4 => 512, // 16 x 32-bit floats
+            HlirType::Quat => 128, // 4 x 32-bit floats (x, y, z, w)
         }
     }
 }

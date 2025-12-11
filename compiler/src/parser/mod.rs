@@ -184,6 +184,10 @@ impl<'a> Parser<'a> {
         let module_name = if self.at(TokenKind::Module) {
             self.advance();
             let name = self.parse_path()?;
+            // Accept optional semicolon after module declaration
+            if self.at(TokenKind::Semi) {
+                self.advance();
+            }
             Some(name)
         } else {
             None
@@ -239,6 +243,7 @@ impl<'a> Parser<'a> {
             TokenKind::Effect => self.parse_effect(visibility),
             TokenKind::Handler => self.parse_handler(visibility),
             TokenKind::Import => self.parse_import(),
+            TokenKind::Export => self.parse_export(),
             TokenKind::Extern => self.parse_extern(),
             TokenKind::Ontology => self.parse_ontology_import(),
             TokenKind::Align => self.parse_align_decl(),
@@ -1059,13 +1064,76 @@ impl<'a> Parser<'a> {
     fn parse_import(&mut self) -> Result<Item> {
         let start = self.span();
         self.expect(TokenKind::Import)?;
-        let path = self.parse_path()?;
+
+        // Check for `import { items } from path;` syntax
+        if self.at(TokenKind::LBrace) {
+            self.advance(); // consume {
+            let mut _items = Vec::new();
+            while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+                _items.push(self.parse_ident()?);
+                if self.at(TokenKind::Comma) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            self.expect(TokenKind::RBrace)?;
+            self.expect(TokenKind::From)?;
+            let path = self.parse_path()?;
+            self.expect(TokenKind::Semi)?;
+            let end = self.span();
+
+            // For now, treat as regular import (items are ignored, full module imported)
+            Ok(Item::Import(ImportDef {
+                id: self.next_id(),
+                path,
+                span: start.merge(end),
+            }))
+        } else {
+            // Simple `import path;` syntax
+            let path = self.parse_path()?;
+            self.expect(TokenKind::Semi)?;
+            let end = self.span();
+
+            Ok(Item::Import(ImportDef {
+                id: self.next_id(),
+                path,
+                span: start.merge(end),
+            }))
+        }
+    }
+
+    /// Parse export block: `export { Item1, Item2, ... };`
+    fn parse_export(&mut self) -> Result<Item> {
+        let start = self.span();
+        self.expect(TokenKind::Export)?;
+
+        let mut names = Vec::new();
+
+        if self.at(TokenKind::LBrace) {
+            self.advance(); // consume {
+            while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+                names.push(self.parse_ident()?);
+                if self.at(TokenKind::Comma) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            self.expect(TokenKind::RBrace)?;
+        } else {
+            // Single export: `export foo;`
+            names.push(self.parse_ident()?);
+        }
+
         self.expect(TokenKind::Semi)?;
         let end = self.span();
 
-        Ok(Item::Import(ImportDef {
+        // For now, exports are parsed but not fully processed
+        // We return a placeholder Import item (exports affect visibility, not AST structure)
+        Ok(Item::Export(ExportDef {
             id: self.next_id(),
-            path,
+            names,
             span: start.merge(end),
         }))
     }
@@ -1669,6 +1737,78 @@ impl<'a> Parser<'a> {
                 Ok(TypeExpr::Infer)
             }
 
+            // Linear algebra primitives
+            TokenKind::Vec2 => {
+                self.advance();
+                Ok(TypeExpr::Named {
+                    path: Path {
+                        segments: vec!["vec2".to_string()],
+                    },
+                    args: Vec::new(),
+                    unit: None,
+                })
+            }
+            TokenKind::Vec3 => {
+                self.advance();
+                Ok(TypeExpr::Named {
+                    path: Path {
+                        segments: vec!["vec3".to_string()],
+                    },
+                    args: Vec::new(),
+                    unit: None,
+                })
+            }
+            TokenKind::Vec4 => {
+                self.advance();
+                Ok(TypeExpr::Named {
+                    path: Path {
+                        segments: vec!["vec4".to_string()],
+                    },
+                    args: Vec::new(),
+                    unit: None,
+                })
+            }
+            TokenKind::Mat2 => {
+                self.advance();
+                Ok(TypeExpr::Named {
+                    path: Path {
+                        segments: vec!["mat2".to_string()],
+                    },
+                    args: Vec::new(),
+                    unit: None,
+                })
+            }
+            TokenKind::Mat3 => {
+                self.advance();
+                Ok(TypeExpr::Named {
+                    path: Path {
+                        segments: vec!["mat3".to_string()],
+                    },
+                    args: Vec::new(),
+                    unit: None,
+                })
+            }
+            TokenKind::Mat4 => {
+                self.advance();
+                Ok(TypeExpr::Named {
+                    path: Path {
+                        segments: vec!["mat4".to_string()],
+                    },
+                    args: Vec::new(),
+                    unit: None,
+                })
+            }
+            TokenKind::Quat => {
+                self.advance();
+                Ok(TypeExpr::Named {
+                    path: Path {
+                        segments: vec!["quat".to_string()],
+                    },
+                    args: Vec::new(),
+                    unit: None,
+                })
+            }
+
             // Knowledge type: Knowledge[T, ε < 0.05, Valid(duration), Derived]
             TokenKind::Knowledge => self.parse_knowledge_type(),
 
@@ -2229,6 +2369,16 @@ impl<'a> Parser<'a> {
                         ty,
                     };
                 }
+                TokenKind::At => {
+                    // Type ascription with unit: 84.0@L_per_h means the value has that unit type
+                    self.advance();
+                    let ty = self.parse_type()?;
+                    expr = Expr::Cast {
+                        id: self.next_id(),
+                        expr: Box::new(expr),
+                        ty,
+                    };
+                }
                 _ => break,
             }
         }
@@ -2313,6 +2463,40 @@ impl<'a> Parser<'a> {
                 })
             }
 
+            // Linear algebra constructors: vec2(x, y), vec3(x, y, z), etc.
+            TokenKind::Vec2
+            | TokenKind::Vec3
+            | TokenKind::Vec4
+            | TokenKind::Mat2
+            | TokenKind::Mat3
+            | TokenKind::Mat4
+            | TokenKind::Quat => {
+                let type_name = self.advance().text.clone();
+                self.expect(TokenKind::LParen)?;
+                let mut args = Vec::new();
+                if !self.at(TokenKind::RParen) {
+                    args.push(self.parse_expr()?);
+                    while self.at(TokenKind::Comma) {
+                        self.advance();
+                        if self.at(TokenKind::RParen) {
+                            break;
+                        }
+                        args.push(self.parse_expr()?);
+                    }
+                }
+                self.expect(TokenKind::RParen)?;
+                Ok(Expr::Call {
+                    id: self.next_id(),
+                    callee: Box::new(Expr::Path {
+                        id: self.next_id(),
+                        path: Path {
+                            segments: vec![type_name],
+                        },
+                    }),
+                    args,
+                })
+            }
+
             // Identifiers and paths
             TokenKind::Ident | TokenKind::SelfLower => {
                 // Check for macro invocation (identifier followed by !)
@@ -2389,15 +2573,60 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            // Array literal
+            // Array literal: [a, b, c] or repeat syntax [value; count]
             TokenKind::LBracket => {
                 self.advance();
                 let mut elements = Vec::new();
-                while !self.at(TokenKind::RBracket) {
-                    elements.push(self.parse_expr()?);
-                    if !self.at(TokenKind::RBracket) {
-                        self.expect(TokenKind::Comma)?;
+
+                // Check for empty array
+                if self.at(TokenKind::RBracket) {
+                    self.advance();
+                    return Ok(Expr::Array {
+                        id: self.next_id(),
+                        elements,
+                    });
+                }
+
+                // Parse first element
+                let first = self.parse_expr()?;
+
+                // Check for repeat syntax: [value; count]
+                if self.at(TokenKind::Semi) {
+                    self.advance();
+                    let count_expr = self.parse_expr()?;
+                    self.expect(TokenKind::RBracket)?;
+
+                    // For now, expand into repeated elements if count is a literal
+                    // In a full implementation, this would be a separate AST node
+                    if let Expr::Literal {
+                        value: Literal::Int(count),
+                        ..
+                    } = &count_expr
+                    {
+                        let count = *count as usize;
+                        elements.push(first.clone());
+                        for _ in 1..count {
+                            elements.push(first.clone());
+                        }
+                    } else {
+                        // If count is not a literal, just use first element
+                        // TODO: Add proper ArrayRepeat AST node
+                        elements.push(first);
                     }
+                    return Ok(Expr::Array {
+                        id: self.next_id(),
+                        elements,
+                    });
+                }
+
+                // Regular array: [a, b, c]
+                elements.push(first);
+                while self.at(TokenKind::Comma) {
+                    self.advance();
+                    if self.at(TokenKind::RBracket) {
+                        break; // trailing comma
+                    }
+                    elements.push(self.parse_expr()?);
                 }
                 self.expect(TokenKind::RBracket)?;
                 Ok(Expr::Array {
@@ -3146,6 +3375,7 @@ impl<'a> Parser<'a> {
 
         match self.peek() {
             TokenKind::Let => self.parse_let_stmt(),
+            TokenKind::Var => self.parse_var_stmt(),
             TokenKind::Semi => {
                 self.advance();
                 Ok(Stmt::Empty)
@@ -3226,6 +3456,39 @@ impl<'a> Parser<'a> {
 
         Ok(Stmt::Let {
             is_mut,
+            pattern,
+            ty,
+            value,
+        })
+    }
+
+    /// Parse a var statement (mutable binding): var x: T = value;
+    /// Equivalent to `let mut x: T = value;`
+    fn parse_var_stmt(&mut self) -> Result<Stmt> {
+        self.expect(TokenKind::Var)?;
+
+        let pattern = self.parse_pattern()?;
+        let ty = if self.at(TokenKind::Colon) {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        let value = if self.at(TokenKind::Eq) {
+            self.advance();
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
+        if self.at(TokenKind::Semi) {
+            self.advance();
+        }
+
+        // var is syntactic sugar for let mut
+        Ok(Stmt::Let {
+            is_mut: true,
             pattern,
             ty,
             value,
@@ -3370,6 +3633,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::Ontology
                 | TokenKind::From
                 | TokenKind::Type
+                | TokenKind::Module
         )
     }
 

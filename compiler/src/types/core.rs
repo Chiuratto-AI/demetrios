@@ -79,6 +79,22 @@ pub enum Type {
         term: String,
     },
 
+    // Linear algebra primitives
+    /// 2D vector: vec2 (2x f32)
+    Vec2,
+    /// 3D vector: vec3 (3x f32)
+    Vec3,
+    /// 4D vector: vec4 (4x f32)
+    Vec4,
+    /// 2x2 matrix: mat2 (4x f32, column-major)
+    Mat2,
+    /// 3x3 matrix: mat3 (9x f32, column-major)
+    Mat3,
+    /// 4x4 matrix: mat4 (16x f32, column-major)
+    Mat4,
+    /// Quaternion: quat (4x f32: x, y, z, w)
+    Quat,
+
     // Special types
     /// Never type (!)
     Never,
@@ -112,6 +128,13 @@ impl Type {
                 | Type::F32
                 | Type::F64
                 | Type::Char
+                | Type::Vec2
+                | Type::Vec3
+                | Type::Vec4
+                | Type::Mat2
+                | Type::Mat3
+                | Type::Mat4
+                | Type::Quat
         )
     }
 
@@ -166,6 +189,46 @@ impl Type {
             self,
             Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::I128 | Type::Isize
         )
+    }
+
+    /// Check if this type is a vector type
+    pub fn is_vector(&self) -> bool {
+        matches!(self, Type::Vec2 | Type::Vec3 | Type::Vec4)
+    }
+
+    /// Check if this type is a matrix type
+    pub fn is_matrix(&self) -> bool {
+        matches!(self, Type::Mat2 | Type::Mat3 | Type::Mat4)
+    }
+
+    /// Check if this type is a quaternion
+    pub fn is_quaternion(&self) -> bool {
+        matches!(self, Type::Quat)
+    }
+
+    /// Check if this type is a linear algebra primitive
+    pub fn is_linear_algebra(&self) -> bool {
+        self.is_vector() || self.is_matrix() || self.is_quaternion()
+    }
+
+    /// Get the dimension of a vector type
+    pub fn vector_dimension(&self) -> Option<usize> {
+        match self {
+            Type::Vec2 => Some(2),
+            Type::Vec3 => Some(3),
+            Type::Vec4 => Some(4),
+            _ => None,
+        }
+    }
+
+    /// Get the dimension of a matrix type (returns NxN)
+    pub fn matrix_dimension(&self) -> Option<usize> {
+        match self {
+            Type::Mat2 => Some(2),
+            Type::Mat3 => Some(3),
+            Type::Mat4 => Some(4),
+            _ => None,
+        }
     }
 
     /// Get all free type variables in this type

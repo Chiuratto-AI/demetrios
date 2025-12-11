@@ -171,6 +171,14 @@ impl SymbolTable {
             // Other common types
             "PhantomData",
             "Range",
+            // Linear algebra primitives
+            "vec2",
+            "vec3",
+            "vec4",
+            "mat2",
+            "mat3",
+            "mat4",
+            "quat",
         ];
 
         for name in builtins {
@@ -223,6 +231,47 @@ impl SymbolTable {
             "println", // Print with newline
             "assert",  // Runtime assertion
             "panic",   // Abort with message
+            // Linear algebra constructors
+            "vec2", // vec2(x, y)
+            "vec3", // vec3(x, y, z)
+            "vec4", // vec4(x, y, z, w)
+            "mat2", // mat2(col0...) - 2x2 matrix
+            "mat3", // mat3(col0...) - 3x3 matrix
+            "mat4", // mat4(col0...) - 4x4 matrix
+            "quat", // quat(x, y, z, w) - quaternion
+            // Vector operations
+            "dot",
+            "cross",
+            "normalize",
+            "length",
+            "length_squared",
+            // Quaternion operations
+            "quat_mul",
+            "quat_conj",
+            "quat_inv",
+            "quat_normalize",
+            "quat_identity",
+            // Matrix operations
+            "mat_mul",
+            "transpose",
+            "inverse",
+            "determinant",
+            // Interpolation
+            "lerp",
+            "slerp",
+            // Conversions
+            "quat_to_euler",
+            "euler_to_quat",
+            "quat_to_mat3",
+            "quat_to_mat4",
+            "mat3_to_quat",
+            // Quaternion Embeddings (Knowledge Graph) - arXiv:1904.10281
+            "hamilton_product",     // Hamilton product for quaternion embeddings
+            "quat_rotate_vec",      // Rotate vector by quaternion
+            "quat_score",           // Score triple (head, relation, tail)
+            "quat_embed_init",      // Initialize quaternion embedding
+            "quat_normalize_embed", // Normalize to unit quaternion
+            "quat_inner_product",   // Inner product of two quaternion embeddings
         ];
 
         for name in builtin_functions {

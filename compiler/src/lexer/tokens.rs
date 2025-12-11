@@ -16,10 +16,12 @@ pub struct Token {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Logos, Serialize, Deserialize)]
 #[logos(skip r"[ \t\r\n\f]+")]
 // Skip regular comments but NOT doc comments (captured as tokens below)
-// Regular line comments: // followed by anything that isn't / or !
-#[logos(skip r"//[^/!\n][^\n]*")]
-// Block comments that aren't doc comments: /* followed by anything that isn't * or !
-#[logos(skip r"/\*[^*!]([^*]|\*[^/])*\*/")]
+// Regular line comments: // optionally followed by content (but not / or ! as first char for doc comments)
+// Matches: // (empty), // text, //   spaces, but not /// or //!
+#[logos(skip r"//([^/!\n][^\n]*)?")]
+// Block comments that aren't doc comments: /* not followed by * or !
+// Matches: /* text */, /*  */, but not /** or /*!
+#[logos(skip r"/\*([^*!]([^*]|\*[^/])*|[^*!]?)\*/")]
 pub enum TokenKind {
     // Keywords
     #[token("module")]
@@ -32,6 +34,8 @@ pub enum TokenKind {
     Fn,
     #[token("let")]
     Let,
+    #[token("var")]
+    Var,
     #[token("mut")]
     Mut,
     #[token("const")]
@@ -144,6 +148,22 @@ pub enum TokenKind {
     Quantity,
     #[token("Tensor")]
     Tensor,
+
+    // Linear algebra primitive types
+    #[token("vec2")]
+    Vec2,
+    #[token("vec3")]
+    Vec3,
+    #[token("vec4")]
+    Vec4,
+    #[token("mat2")]
+    Mat2,
+    #[token("mat3")]
+    Mat3,
+    #[token("mat4")]
+    Mat4,
+    #[token("quat")]
+    Quat,
     #[token("OntologyTerm")]
     OntologyTerm,
     #[token("do")]
@@ -367,6 +387,7 @@ impl TokenKind {
                 | TokenKind::Export
                 | TokenKind::Fn
                 | TokenKind::Let
+                | TokenKind::Var
                 | TokenKind::Mut
                 | TokenKind::Const
                 | TokenKind::Type
@@ -424,6 +445,13 @@ impl TokenKind {
                 | TokenKind::Knowledge
                 | TokenKind::Quantity
                 | TokenKind::Tensor
+                | TokenKind::Vec2
+                | TokenKind::Vec3
+                | TokenKind::Vec4
+                | TokenKind::Mat2
+                | TokenKind::Mat3
+                | TokenKind::Mat4
+                | TokenKind::Quat
                 | TokenKind::OntologyTerm
                 | TokenKind::Do
                 | TokenKind::Counterfactual
@@ -501,6 +529,7 @@ impl TokenKind {
             TokenKind::Export => "export",
             TokenKind::Fn => "fn",
             TokenKind::Let => "let",
+            TokenKind::Var => "var",
             TokenKind::Mut => "mut",
             TokenKind::Const => "const",
             TokenKind::Type => "type",
@@ -627,6 +656,13 @@ impl TokenKind {
             TokenKind::Knowledge => "Knowledge",
             TokenKind::Quantity => "Quantity",
             TokenKind::Tensor => "Tensor",
+            TokenKind::Vec2 => "vec2",
+            TokenKind::Vec3 => "vec3",
+            TokenKind::Vec4 => "vec4",
+            TokenKind::Mat2 => "mat2",
+            TokenKind::Mat3 => "mat3",
+            TokenKind::Mat4 => "mat4",
+            TokenKind::Quat => "quat",
             TokenKind::OntologyTerm => "OntologyTerm",
             TokenKind::Do => "do",
             TokenKind::Counterfactual => "counterfactual",

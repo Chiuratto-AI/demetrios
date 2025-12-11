@@ -720,6 +720,16 @@ impl HlirToGpuLowering {
                 GpuType::Struct("tuple".to_string(), gpu_elems)
             }
             HlirType::Function { .. } => GpuType::U64, // Function pointer
+            // Linear algebra primitives - map to GPU vector types (f32 components)
+            HlirType::Vec2 => GpuType::Vec2(Box::new(GpuType::F32)),
+            HlirType::Vec3 => GpuType::Vec3(Box::new(GpuType::F32)),
+            HlirType::Vec4 => GpuType::Vec4(Box::new(GpuType::F32)),
+            // Matrices stored as arrays of column vectors
+            HlirType::Mat2 => GpuType::Array(Box::new(GpuType::Vec2(Box::new(GpuType::F32))), 2),
+            HlirType::Mat3 => GpuType::Array(Box::new(GpuType::Vec3(Box::new(GpuType::F32))), 3),
+            HlirType::Mat4 => GpuType::Array(Box::new(GpuType::Vec4(Box::new(GpuType::F32))), 4),
+            // Quaternion as vec4 (x, y, z, w)
+            HlirType::Quat => GpuType::Vec4(Box::new(GpuType::F32)),
         }
     }
 

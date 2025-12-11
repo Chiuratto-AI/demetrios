@@ -9,6 +9,7 @@
 pub mod cranelift;
 pub mod debug;
 pub mod gpu;
+pub mod simd;
 
 // The LLVM backend is in a subdirectory when the feature is enabled
 #[cfg(feature = "llvm")]

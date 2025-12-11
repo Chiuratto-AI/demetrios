@@ -345,6 +345,23 @@ fn hlir_to_cranelift_type(ty: &HlirType) -> types::Type {
         HlirType::Struct(_) => types::I64,   // Pointer to struct
         HlirType::Tuple(_) => types::I64,    // Pointer to tuple or packed
         HlirType::Function { .. } => types::I64, // Function pointer
+        // Linear algebra types - use SIMD vector types for performance
+        // vec2: 2x f32 = 64 bits, but we use F32X4 for alignment
+        HlirType::Vec2 => types::F32X4,
+        // vec3: 3x f32, padded to 4x f32 for SIMD (128 bits)
+        HlirType::Vec3 => types::F32X4,
+        // vec4: 4x f32 = 128 bits
+        HlirType::Vec4 => types::F32X4,
+        // mat2: 2x2 = 4 floats, fits in F32X4
+        HlirType::Mat2 => types::F32X4,
+        // mat3: 3x3 = 9 floats, use 3x F32X4 (12 floats, 3 wasted)
+        // For now, represent as pointer to data
+        HlirType::Mat3 => types::I64,
+        // mat4: 4x4 = 16 floats = 4x F32X4
+        // For now, represent as pointer to data
+        HlirType::Mat4 => types::I64,
+        // quat: 4x f32 = 128 bits, same as vec4
+        HlirType::Quat => types::F32X4,
     }
 }
 
@@ -795,7 +812,33 @@ fn translate_terminator(
         HlirTerminator::Return(val) => {
             if let Some(v) = val {
                 let ret_val = get_value(values, *v)?;
-                builder.ins().return_(&[ret_val]);
+
+                // Get expected return type from function signature
+                let expected_ret_ty = builder
+                    .func
+                    .signature
+                    .returns
+                    .first()
+                    .map(|p| p.value_type)
+                    .unwrap_or(types::I64);
+                let actual_ty = builder.func.dfg.value_type(ret_val);
+
+                // Insert cast if types don't match
+                let final_val = if actual_ty != expected_ret_ty {
+                    if actual_ty.bits() > expected_ret_ty.bits() {
+                        // Truncate (e.g., I64 -> I32)
+                        builder.ins().ireduce(expected_ret_ty, ret_val)
+                    } else if actual_ty.bits() < expected_ret_ty.bits() {
+                        // Extend (e.g., I32 -> I64)
+                        builder.ins().sextend(expected_ret_ty, ret_val)
+                    } else {
+                        ret_val
+                    }
+                } else {
+                    ret_val
+                };
+
+                builder.ins().return_(&[final_val]);
             } else {
                 builder.ins().return_(&[]);
             }

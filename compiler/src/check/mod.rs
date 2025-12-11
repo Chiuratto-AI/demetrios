@@ -2680,6 +2680,47 @@ impl TypeChecker {
                 | "round"
                 | "min"
                 | "max"
+                // Linear algebra constructors
+                | "vec2"
+                | "vec3"
+                | "vec4"
+                | "mat2"
+                | "mat3"
+                | "mat4"
+                | "quat"
+                // Vector operations
+                | "dot"
+                | "cross"
+                | "normalize"
+                | "length"
+                | "length_squared"
+                // Quaternion operations
+                | "quat_mul"
+                | "quat_conj"
+                | "quat_inv"
+                | "quat_normalize"
+                | "quat_identity"
+                // Matrix operations
+                | "mat_mul"
+                | "transpose"
+                | "inverse"
+                | "determinant"
+                // Interpolation
+                | "lerp"
+                | "slerp"
+                // Conversions
+                | "quat_to_euler"
+                | "euler_to_quat"
+                | "quat_to_mat3"
+                | "quat_to_mat4"
+                | "mat3_to_quat"
+                // Quaternion Embeddings (Knowledge Graph) - arXiv:1904.10281
+                | "hamilton_product"
+                | "quat_rotate_vec"
+                | "quat_score"
+                | "quat_embed_init"
+                | "quat_normalize_embed"
+                | "quat_inner_product"
         )
     }
 
@@ -2719,6 +2760,156 @@ impl TypeChecker {
             "None" => HirType::Named {
                 name: "Option".to_string(),
                 args: vec![HirType::Unit],
+            },
+            // Linear algebra constructors
+            "vec2" => HirType::Fn {
+                params: vec![HirType::F32, HirType::F32],
+                return_type: Box::new(HirType::Vec2),
+            },
+            "vec3" => HirType::Fn {
+                params: vec![HirType::F32, HirType::F32, HirType::F32],
+                return_type: Box::new(HirType::Vec3),
+            },
+            "vec4" => HirType::Fn {
+                params: vec![HirType::F32, HirType::F32, HirType::F32, HirType::F32],
+                return_type: Box::new(HirType::Vec4),
+            },
+            "mat2" => HirType::Fn {
+                params: vec![HirType::F32; 4], // 2x2 = 4 floats
+                return_type: Box::new(HirType::Mat2),
+            },
+            "mat3" => HirType::Fn {
+                params: vec![HirType::F32; 9], // 3x3 = 9 floats
+                return_type: Box::new(HirType::Mat3),
+            },
+            "mat4" => HirType::Fn {
+                params: vec![HirType::F32; 16], // 4x4 = 16 floats
+                return_type: Box::new(HirType::Mat4),
+            },
+            "quat" => HirType::Fn {
+                params: vec![HirType::F32, HirType::F32, HirType::F32, HirType::F32],
+                return_type: Box::new(HirType::Quat),
+            },
+            // Vector operations
+            "dot" => HirType::Fn {
+                params: vec![HirType::Vec3, HirType::Vec3],
+                return_type: Box::new(HirType::F32),
+            },
+            "cross" => HirType::Fn {
+                params: vec![HirType::Vec3, HirType::Vec3],
+                return_type: Box::new(HirType::Vec3),
+            },
+            "normalize" => HirType::Fn {
+                params: vec![HirType::Vec3],
+                return_type: Box::new(HirType::Vec3),
+            },
+            "length" => HirType::Fn {
+                params: vec![HirType::Vec3],
+                return_type: Box::new(HirType::F32),
+            },
+            "length_squared" => HirType::Fn {
+                params: vec![HirType::Vec3],
+                return_type: Box::new(HirType::F32),
+            },
+            // Quaternion operations
+            "quat_mul" => HirType::Fn {
+                params: vec![HirType::Quat, HirType::Quat],
+                return_type: Box::new(HirType::Quat),
+            },
+            "quat_conj" => HirType::Fn {
+                params: vec![HirType::Quat],
+                return_type: Box::new(HirType::Quat),
+            },
+            "quat_inv" => HirType::Fn {
+                params: vec![HirType::Quat],
+                return_type: Box::new(HirType::Quat),
+            },
+            "quat_normalize" => HirType::Fn {
+                params: vec![HirType::Quat],
+                return_type: Box::new(HirType::Quat),
+            },
+            "quat_identity" => HirType::Fn {
+                params: vec![],
+                return_type: Box::new(HirType::Quat),
+            },
+            // Matrix operations
+            "mat_mul" => HirType::Fn {
+                params: vec![HirType::Mat4, HirType::Mat4],
+                return_type: Box::new(HirType::Mat4),
+            },
+            "transpose" => HirType::Fn {
+                params: vec![HirType::Mat4],
+                return_type: Box::new(HirType::Mat4),
+            },
+            "inverse" => HirType::Fn {
+                params: vec![HirType::Mat4],
+                return_type: Box::new(HirType::Mat4),
+            },
+            "determinant" => HirType::Fn {
+                params: vec![HirType::Mat4],
+                return_type: Box::new(HirType::F32),
+            },
+            // Interpolation
+            "lerp" => HirType::Fn {
+                params: vec![HirType::Vec3, HirType::Vec3, HirType::F32],
+                return_type: Box::new(HirType::Vec3),
+            },
+            "slerp" => HirType::Fn {
+                params: vec![HirType::Quat, HirType::Quat, HirType::F32],
+                return_type: Box::new(HirType::Quat),
+            },
+            // Conversions
+            "quat_to_euler" => HirType::Fn {
+                params: vec![HirType::Quat],
+                return_type: Box::new(HirType::Vec3),
+            },
+            "euler_to_quat" => HirType::Fn {
+                params: vec![HirType::Vec3],
+                return_type: Box::new(HirType::Quat),
+            },
+            "quat_to_mat3" => HirType::Fn {
+                params: vec![HirType::Quat],
+                return_type: Box::new(HirType::Mat3),
+            },
+            "quat_to_mat4" => HirType::Fn {
+                params: vec![HirType::Quat],
+                return_type: Box::new(HirType::Mat4),
+            },
+            "mat3_to_quat" => HirType::Fn {
+                params: vec![HirType::Mat3],
+                return_type: Box::new(HirType::Quat),
+            },
+            // Quaternion Embeddings (Knowledge Graph) - arXiv:1904.10281
+            // Hamilton product: q1 ⊗ q2 - captures inter-dependencies between components
+            "hamilton_product" => HirType::Fn {
+                params: vec![HirType::Quat, HirType::Quat],
+                return_type: Box::new(HirType::Quat),
+            },
+            // Rotate vector by quaternion: q * v * q^(-1)
+            "quat_rotate_vec" => HirType::Fn {
+                params: vec![HirType::Quat, HirType::Vec3],
+                return_type: Box::new(HirType::Vec3),
+            },
+            // Score triple (head, relation, tail) for knowledge graph completion
+            // Returns scalar score: <h ⊗ r, t> where ⊗ is Hamilton product
+            "quat_score" => HirType::Fn {
+                params: vec![HirType::Quat, HirType::Quat, HirType::Quat],
+                return_type: Box::new(HirType::F32),
+            },
+            // Initialize quaternion embedding with random unit quaternion
+            "quat_embed_init" => HirType::Fn {
+                params: vec![HirType::I32], // seed
+                return_type: Box::new(HirType::Quat),
+            },
+            // Normalize to unit quaternion for embeddings
+            "quat_normalize_embed" => HirType::Fn {
+                params: vec![HirType::Quat],
+                return_type: Box::new(HirType::Quat),
+            },
+            // Inner product of two quaternion embeddings: sum of component-wise products
+            "quat_inner_product" => HirType::Fn {
+                params: vec![HirType::Quat, HirType::Quat],
+                return_type: Box::new(HirType::F32),
             },
             _ => HirType::Error,
         }
@@ -2914,6 +3105,14 @@ impl TypeChecker {
                         "char" => Type::Char,
                         "str" => Type::Str,
                         "String" => Type::String,
+                        // Linear algebra primitives
+                        "vec2" => Type::Vec2,
+                        "vec3" => Type::Vec3,
+                        "vec4" => Type::Vec4,
+                        "mat2" => Type::Mat2,
+                        "mat3" => Type::Mat3,
+                        "mat4" => Type::Mat4,
+                        "quat" => Type::Quat,
                         _ => Type::Named {
                             name: name.clone(),
                             args: args.iter().map(|a| self.lower_type_expr(a)).collect(),
@@ -3049,6 +3248,14 @@ impl TypeChecker {
                 term: term.clone(),
             },
             Type::Never | Type::Unknown | Type::Error | Type::SelfType => HirType::Error,
+            // Linear algebra primitives
+            Type::Vec2 => HirType::Vec2,
+            Type::Vec3 => HirType::Vec3,
+            Type::Vec4 => HirType::Vec4,
+            Type::Mat2 => HirType::Mat2,
+            Type::Mat3 => HirType::Mat3,
+            Type::Mat4 => HirType::Mat4,
+            Type::Quat => HirType::Quat,
         }
     }
 
@@ -3114,6 +3321,14 @@ impl TypeChecker {
                 namespace: namespace.clone(),
                 term: term.clone(),
             },
+            // Linear algebra primitives
+            HirType::Vec2 => Type::Vec2,
+            HirType::Vec3 => Type::Vec3,
+            HirType::Vec4 => Type::Vec4,
+            HirType::Mat2 => Type::Mat2,
+            HirType::Mat3 => Type::Mat3,
+            HirType::Mat4 => Type::Mat4,
+            HirType::Quat => Type::Quat,
         }
     }
 

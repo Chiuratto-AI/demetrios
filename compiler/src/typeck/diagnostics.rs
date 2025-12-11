@@ -473,6 +473,14 @@ fn format_type(ty: &HirType) -> String {
                 dims_str.join(", ")
             )
         }
+        // Linear algebra primitives
+        HirType::Vec2 => "vec2".to_string(),
+        HirType::Vec3 => "vec3".to_string(),
+        HirType::Vec4 => "vec4".to_string(),
+        HirType::Mat2 => "mat2".to_string(),
+        HirType::Mat3 => "mat3".to_string(),
+        HirType::Mat4 => "mat4".to_string(),
+        HirType::Quat => "quat".to_string(),
     }
 }
 

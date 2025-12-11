@@ -94,6 +94,11 @@ pub fn ownership_of(ty: &Type) -> Ownership {
 
         // Ontology types are Copy (they're essentially interned string identifiers)
         Type::Ontology { .. } => Ownership::Copy,
+
+        // Linear algebra primitives are Copy (fixed-size, stack-allocated)
+        Type::Vec2 | Type::Vec3 | Type::Vec4 => Ownership::Copy,
+        Type::Mat2 | Type::Mat3 | Type::Mat4 => Ownership::Copy,
+        Type::Quat => Ownership::Copy,
     }
 }
 

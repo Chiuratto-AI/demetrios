@@ -205,6 +205,23 @@ pub enum HirType {
     Char,
     /// String (owned)
     String,
+
+    // Linear algebra primitives
+    /// 2D vector (2x f32)
+    Vec2,
+    /// 3D vector (3x f32)
+    Vec3,
+    /// 4D vector (4x f32)
+    Vec4,
+    /// 2x2 matrix (4x f32, column-major)
+    Mat2,
+    /// 3x3 matrix (9x f32, column-major)
+    Mat3,
+    /// 4x4 matrix (16x f32, column-major)
+    Mat4,
+    /// Quaternion (4x f32: x, y, z, w)
+    Quat,
+
     /// Reference
     Ref {
         mutable: bool,
