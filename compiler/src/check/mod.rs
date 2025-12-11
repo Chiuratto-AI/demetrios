@@ -1361,6 +1361,13 @@ impl TypeChecker {
                     if let Some(ref v_expr) = value_expr {
                         let actual_ty = self.hir_type_to_type(&v_expr.ty);
 
+                        // Get span from the original AST value expression
+                        let value_span = if let (Some(v), Some(ast_ref)) = (value, &self.ast) {
+                            self.expr_span(v, ast_ref.as_ref())
+                        } else {
+                            Span::dummy()
+                        };
+
                         // Get threshold for current function (from #[compat] annotation or default)
                         let threshold = self
                             .current_fn
@@ -1377,7 +1384,7 @@ impl TypeChecker {
                                     "Type mismatch: expected `{}`, found `{}`",
                                     decl_name, actual_name
                                 ),
-                                Span::dummy(), // TODO: get span from value expr
+                                value_span,
                             );
                         }
 
@@ -1387,7 +1394,7 @@ impl TypeChecker {
                             &declared_hir,
                             &v_expr.ty,
                             threshold,
-                            Span::dummy(), // TODO: get span from value expr
+                            value_span,
                         );
                     }
 

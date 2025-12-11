@@ -2276,11 +2276,14 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::StringLit => {
+                let span = self.current().span;
                 let text = self.advance().text.clone();
                 // Remove quotes
                 let value = text[1..text.len() - 1].to_string();
+                let id = self.next_id();
+                self.record_span(id, span);
                 Ok(Expr::Literal {
-                    id: self.next_id(),
+                    id,
                     value: Literal::String(value),
                 })
             }

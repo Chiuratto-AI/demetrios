@@ -1,3 +1,9 @@
+error: Undefined ontology prefix `undefined_ontology` in type `undefined_ontology:drug` (used in Drug). Add `ontology undefined_ontology from "...";` declaration.
+  --> /tmp/demetrios_test_XXXX/undefined_onto.dm:1:1
+   |
+  1 |
+   |  ^
+
 Error:   × Type errors:
   │ Undefined ontology prefix `undefined_ontology` in type
   │ `undefined_ontology:drug` (used in Drug). Add `ontology undefined_ontology

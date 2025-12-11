@@ -2385,6 +2385,24 @@ fn check(
                     "related": []
                 });
                 eprintln!("{}", diag);
+            } else {
+                // Human-readable format with source snippet
+                eprintln!("error: {}", err.message);
+                eprintln!("  --> {}:{}:{}", input.to_string_lossy(), line, column);
+
+                // Get the source line
+                let line_idx = line as usize - 1;
+                let lines: Vec<&str> = source_content.lines().collect();
+                if line_idx < lines.len() {
+                    let source_line = lines[line_idx];
+                    eprintln!("   |");
+                    eprintln!("{:3} | {}", line, source_line);
+
+                    // Add caret pointing to the error location
+                    let padding = " ".repeat(column as usize);
+                    eprintln!("   | {}^", padding);
+                }
+                eprintln!();
             }
         }
 
