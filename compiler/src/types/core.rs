@@ -95,6 +95,10 @@ pub enum Type {
     /// Quaternion: quat (4x f32: x, y, z, w)
     Quat,
 
+    // Automatic differentiation types
+    /// Dual number for forward-mode autodiff: dual (value: f64, derivative: f64)
+    Dual,
+
     // Special types
     /// Never type (!)
     Never,
@@ -135,6 +139,7 @@ impl Type {
                 | Type::Mat3
                 | Type::Mat4
                 | Type::Quat
+                | Type::Dual
         )
     }
 
@@ -209,6 +214,16 @@ impl Type {
     /// Check if this type is a linear algebra primitive
     pub fn is_linear_algebra(&self) -> bool {
         self.is_vector() || self.is_matrix() || self.is_quaternion()
+    }
+
+    /// Check if this type is a dual number (for autodiff)
+    pub fn is_dual(&self) -> bool {
+        matches!(self, Type::Dual)
+    }
+
+    /// Check if this type supports automatic differentiation
+    pub fn is_differentiable(&self) -> bool {
+        self.is_float() || self.is_dual()
     }
 
     /// Get the dimension of a vector type

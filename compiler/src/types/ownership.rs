@@ -99,6 +99,9 @@ pub fn ownership_of(ty: &Type) -> Ownership {
         Type::Vec2 | Type::Vec3 | Type::Vec4 => Ownership::Copy,
         Type::Mat2 | Type::Mat3 | Type::Mat4 => Ownership::Copy,
         Type::Quat => Ownership::Copy,
+
+        // Dual numbers are Copy (two f64 values, stack-allocated)
+        Type::Dual => Ownership::Copy,
     }
 }
 

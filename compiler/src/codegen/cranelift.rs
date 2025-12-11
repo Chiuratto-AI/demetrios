@@ -362,6 +362,9 @@ fn hlir_to_cranelift_type(ty: &HlirType) -> types::Type {
         HlirType::Mat4 => types::I64,
         // quat: 4x f32 = 128 bits, same as vec4
         HlirType::Quat => types::F32X4,
+        // dual: 2x f64 = 128 bits (value, derivative)
+        // Use F64X2 for SIMD operations on dual numbers
+        HlirType::Dual => types::F64X2,
     }
 }
 

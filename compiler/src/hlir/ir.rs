@@ -143,6 +143,8 @@ pub enum HlirType {
     Mat3, // 3x3 f32 (9 floats, may be padded)
     Mat4, // 4x4 f32 (16 floats)
     Quat, // 4x f32 (x, y, z, w)
+    // Automatic differentiation
+    Dual, // Dual number: (value: f64, derivative: f64) = 128 bits
 }
 
 impl HlirType {
@@ -202,6 +204,8 @@ impl HlirType {
             HirType::Mat3 => HlirType::Mat3,
             HirType::Mat4 => HlirType::Mat4,
             HirType::Quat => HlirType::Quat,
+            // Automatic differentiation
+            HirType::Dual => HlirType::Dual,
         }
     }
 
@@ -254,6 +258,7 @@ impl HlirType {
             HlirType::Mat3 => 288, // 9 x 32-bit floats
             HlirType::Mat4 => 512, // 16 x 32-bit floats
             HlirType::Quat => 128, // 4 x 32-bit floats (x, y, z, w)
+            HlirType::Dual => 128, // 2 x 64-bit floats (value, derivative)
         }
     }
 }

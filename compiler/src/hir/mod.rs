@@ -222,6 +222,10 @@ pub enum HirType {
     /// Quaternion (4x f32: x, y, z, w)
     Quat,
 
+    // Automatic differentiation types
+    /// Dual number for forward-mode autodiff (value: f64, derivative: f64)
+    Dual,
+
     /// Reference
     Ref {
         mutable: bool,

@@ -730,6 +730,8 @@ impl HlirToGpuLowering {
             HlirType::Mat4 => GpuType::Array(Box::new(GpuType::Vec4(Box::new(GpuType::F32))), 4),
             // Quaternion as vec4 (x, y, z, w)
             HlirType::Quat => GpuType::Vec4(Box::new(GpuType::F32)),
+            // Dual number as vec2 of f64 (value, derivative)
+            HlirType::Dual => GpuType::Vec2(Box::new(GpuType::F64)),
         }
     }
 

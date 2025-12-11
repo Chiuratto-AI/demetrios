@@ -481,6 +481,8 @@ fn format_type(ty: &HirType) -> String {
         HirType::Mat3 => "mat3".to_string(),
         HirType::Mat4 => "mat4".to_string(),
         HirType::Quat => "quat".to_string(),
+        // Automatic differentiation
+        HirType::Dual => "dual".to_string(),
     }
 }
 

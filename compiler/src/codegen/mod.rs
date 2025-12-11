@@ -6,6 +6,7 @@
 //! - GPU: For CUDA/SPIR-V compute kernels (requires `--features gpu`)
 //! - Debug: DWARF debug information and source maps
 
+pub mod autodiff;
 pub mod cranelift;
 pub mod debug;
 pub mod gpu;

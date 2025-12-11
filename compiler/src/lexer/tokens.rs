@@ -164,6 +164,16 @@ pub enum TokenKind {
     Mat4,
     #[token("quat")]
     Quat,
+
+    // Automatic differentiation types
+    #[token("dual")]
+    Dual,
+    #[token("grad")]
+    Grad,
+    #[token("jacobian")]
+    Jacobian,
+    #[token("hessian")]
+    Hessian,
     #[token("OntologyTerm")]
     OntologyTerm,
     #[token("do")]
@@ -452,6 +462,10 @@ impl TokenKind {
                 | TokenKind::Mat3
                 | TokenKind::Mat4
                 | TokenKind::Quat
+                | TokenKind::Dual
+                | TokenKind::Grad
+                | TokenKind::Jacobian
+                | TokenKind::Hessian
                 | TokenKind::OntologyTerm
                 | TokenKind::Do
                 | TokenKind::Counterfactual
@@ -663,6 +677,10 @@ impl TokenKind {
             TokenKind::Mat3 => "mat3",
             TokenKind::Mat4 => "mat4",
             TokenKind::Quat => "quat",
+            TokenKind::Dual => "dual",
+            TokenKind::Grad => "grad",
+            TokenKind::Jacobian => "jacobian",
+            TokenKind::Hessian => "hessian",
             TokenKind::OntologyTerm => "OntologyTerm",
             TokenKind::Do => "do",
             TokenKind::Counterfactual => "counterfactual",

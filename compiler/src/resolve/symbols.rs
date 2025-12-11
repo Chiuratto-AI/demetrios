@@ -179,6 +179,9 @@ impl SymbolTable {
             "mat3",
             "mat4",
             "quat",
+            "dual",      // Dual number for automatic differentiation
+            "uncertain", // Uncertain value with error propagation
+            "Tensor",    // Tensor with compile-time shape verification
         ];
 
         for name in builtins {
@@ -272,6 +275,68 @@ impl SymbolTable {
             "quat_embed_init",      // Initialize quaternion embedding
             "quat_normalize_embed", // Normalize to unit quaternion
             "quat_inner_product",   // Inner product of two quaternion embeddings
+            // Automatic Differentiation (Forward-mode via dual numbers)
+            "dual",       // Constructor: dual(value, derivative) -> dual
+            "dual_value", // Extract value component: dual_value(d) -> f64
+            "dual_deriv", // Extract derivative component: dual_deriv(d) -> f64
+            "grad",       // Compute gradient: grad(f, x) -> f64
+            "jacobian",   // Compute Jacobian matrix: jacobian(f, x) -> [[f64]]
+            "hessian",    // Compute Hessian matrix: hessian(f, x) -> [[f64]]
+            // Uncertainty propagation
+            "uncertain",       // Constructor: uncertain(value, error) -> uncertain<f64>
+            "uncertain_value", // Extract value: uncertain_value(u) -> f64
+            "uncertain_error", // Extract error: uncertain_error(u) -> f64
+            "weighted_mean",   // Weighted mean of uncertain values
+            // ODE Solvers
+            "ode_solve", // Solve ODE: ode_solve(f, y0, t_span, method) -> ODESolution
+            "ode_euler", // Euler solver
+            "ode_rk4",   // RK4 solver
+            "ode_rk45",  // Dormand-Prince adaptive solver
+            // Probabilistic programming (Prob effect)
+            "sample",  // Sample from distribution: sample(dist) -> f64
+            "observe", // Condition on observation: observe(dist, value)
+            "infer",   // Run inference: infer(model, method) -> Trace
+            // Probability distributions
+            "Normal",      // Normal(mean, std)
+            "Uniform",     // Uniform(low, high)
+            "Beta",        // Beta(alpha, beta)
+            "Gamma",       // Gamma(shape, rate)
+            "Exponential", // Exponential(rate)
+            "Bernoulli",   // Bernoulli(p)
+            "Poisson",     // Poisson(lambda)
+            // Tensor operations
+            "tensor",    // Create tensor from data
+            "zeros",     // Zero-filled tensor
+            "ones",      // One-filled tensor
+            "eye",       // Identity matrix
+            "linspace",  // Linearly spaced values
+            "arange",    // Range of values
+            "reshape",   // Reshape tensor
+            "transpose", // Transpose tensor
+            "matmul",    // Matrix multiplication
+            // Symbolic computation
+            "symbolic",       // Create symbolic variable
+            "simplify",       // Simplify expression
+            "expand",         // Expand expression
+            "factor",         // Factor expression
+            "diff",           // Symbolic differentiation
+            "integrate_sym",  // Symbolic integration
+            "solve_symbolic", // Solve equation symbolically
+            "compile_expr",   // Compile expression to function
+            "substitute",     // Substitute variable with value
+            // Causal inference (Causal effect)
+            "do_intervention", // Intervention: do(model, var, value)
+            "counterfactual",  // Counterfactual query
+            "intervene",       // Apply intervention
+            "identify",        // Identify causal effect
+            "ate",             // Average treatment effect
+            "backdoor_adjust", // Backdoor adjustment
+            // Model discovery (SINDy)
+            "discover",          // Discover model from data
+            "sindy",             // SINDy algorithm
+            "build_library",     // Build function library
+            "poly_library",      // Polynomial library
+            "sparse_regression", // Sparse regression
         ];
 
         for name in builtin_functions {

@@ -1808,6 +1808,16 @@ impl<'a> Parser<'a> {
                     unit: None,
                 })
             }
+            TokenKind::Dual => {
+                self.advance();
+                Ok(TypeExpr::Named {
+                    path: Path {
+                        segments: vec!["dual".to_string()],
+                    },
+                    args: Vec::new(),
+                    unit: None,
+                })
+            }
 
             // Knowledge type: Knowledge[T, ε < 0.05, Valid(duration), Derived]
             TokenKind::Knowledge => self.parse_knowledge_type(),
@@ -2464,13 +2474,15 @@ impl<'a> Parser<'a> {
             }
 
             // Linear algebra constructors: vec2(x, y), vec3(x, y, z), etc.
+            // Autodiff constructors: dual(value, derivative)
             TokenKind::Vec2
             | TokenKind::Vec3
             | TokenKind::Vec4
             | TokenKind::Mat2
             | TokenKind::Mat3
             | TokenKind::Mat4
-            | TokenKind::Quat => {
+            | TokenKind::Quat
+            | TokenKind::Dual => {
                 let type_name = self.advance().text.clone();
                 self.expect(TokenKind::LParen)?;
                 let mut args = Vec::new();

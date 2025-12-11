@@ -2721,6 +2721,13 @@ impl TypeChecker {
                 | "quat_embed_init"
                 | "quat_normalize_embed"
                 | "quat_inner_product"
+                // Automatic Differentiation
+                | "dual"
+                | "dual_value"
+                | "dual_deriv"
+                | "grad"
+                | "jacobian"
+                | "hessian"
         )
     }
 
@@ -2910,6 +2917,86 @@ impl TypeChecker {
             "quat_inner_product" => HirType::Fn {
                 params: vec![HirType::Quat, HirType::Quat],
                 return_type: Box::new(HirType::F32),
+            },
+
+            // ==================== AUTOMATIC DIFFERENTIATION ====================
+            // Dual number constructor: dual(value, derivative)
+            "dual" => HirType::Fn {
+                params: vec![HirType::F64, HirType::F64],
+                return_type: Box::new(HirType::Dual),
+            },
+            // Extract value component from dual number
+            "dual_value" => HirType::Fn {
+                params: vec![HirType::Dual],
+                return_type: Box::new(HirType::F64),
+            },
+            // Extract derivative component from dual number
+            "dual_deriv" => HirType::Fn {
+                params: vec![HirType::Dual],
+                return_type: Box::new(HirType::F64),
+            },
+            // Compute gradient of a function at a point
+            // grad(f, x) where f: fn(f64) -> f64, x: f64 -> f64
+            "grad" => HirType::Fn {
+                params: vec![
+                    HirType::Fn {
+                        params: vec![HirType::Dual],
+                        return_type: Box::new(HirType::Dual),
+                    },
+                    HirType::F64,
+                ],
+                return_type: Box::new(HirType::F64),
+            },
+            // Compute Jacobian of vector function (returns matrix of partial derivatives)
+            // jacobian(f, x) where f: fn(vec) -> vec, x: vec -> mat
+            "jacobian" => HirType::Fn {
+                params: vec![
+                    HirType::Fn {
+                        params: vec![HirType::Array {
+                            element: Box::new(HirType::Dual),
+                            size: None,
+                        }],
+                        return_type: Box::new(HirType::Array {
+                            element: Box::new(HirType::Dual),
+                            size: None,
+                        }),
+                    },
+                    HirType::Array {
+                        element: Box::new(HirType::F64),
+                        size: None,
+                    },
+                ],
+                return_type: Box::new(HirType::Array {
+                    element: Box::new(HirType::Array {
+                        element: Box::new(HirType::F64),
+                        size: None,
+                    }),
+                    size: None,
+                }),
+            },
+            // Compute Hessian (second derivatives) of scalar function
+            // hessian(f, x) where f: fn(vec) -> scalar, x: vec -> mat
+            "hessian" => HirType::Fn {
+                params: vec![
+                    HirType::Fn {
+                        params: vec![HirType::Array {
+                            element: Box::new(HirType::Dual),
+                            size: None,
+                        }],
+                        return_type: Box::new(HirType::Dual),
+                    },
+                    HirType::Array {
+                        element: Box::new(HirType::F64),
+                        size: None,
+                    },
+                ],
+                return_type: Box::new(HirType::Array {
+                    element: Box::new(HirType::Array {
+                        element: Box::new(HirType::F64),
+                        size: None,
+                    }),
+                    size: None,
+                }),
             },
             _ => HirType::Error,
         }
@@ -3113,6 +3200,7 @@ impl TypeChecker {
                         "mat3" => Type::Mat3,
                         "mat4" => Type::Mat4,
                         "quat" => Type::Quat,
+                        "dual" => Type::Dual,
                         _ => Type::Named {
                             name: name.clone(),
                             args: args.iter().map(|a| self.lower_type_expr(a)).collect(),
@@ -3256,6 +3344,8 @@ impl TypeChecker {
             Type::Mat3 => HirType::Mat3,
             Type::Mat4 => HirType::Mat4,
             Type::Quat => HirType::Quat,
+            // Automatic differentiation
+            Type::Dual => HirType::Dual,
         }
     }
 
@@ -3329,6 +3419,8 @@ impl TypeChecker {
             HirType::Mat3 => Type::Mat3,
             HirType::Mat4 => Type::Mat4,
             HirType::Quat => Type::Quat,
+            // Automatic differentiation
+            HirType::Dual => Type::Dual,
         }
     }
 
