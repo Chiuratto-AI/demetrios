@@ -1,8 +1,8 @@
 error: Undefined ontology prefix `undefined` in type `undefined:drug` (used in Drug). Add `ontology undefined from "...";` declaration.
-  --> /tmp/demetrios_test_XXXX/cascade.dm:1:1
+  --> /tmp/demetrios_test_XXXX/cascade.dm:4:13
    |
-  1 |
-   |  ^
+  4 | type Drug = undefined:drug;  // First error
+   |              ^
 
 error: Type mismatch: expected `undefined:drug`, found `chebi:15365`
   --> /tmp/demetrios_test_XXXX/cascade.dm:1:1

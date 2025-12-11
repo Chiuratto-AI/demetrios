@@ -95,7 +95,7 @@ enum TypeDef {
         linear: bool,
         affine: bool,
     },
-    Alias(Type),
+    Alias(Type, Span),
 }
 
 /// Type constraint for unification
@@ -111,6 +111,7 @@ struct TypeConstraint {
 pub struct TypeError {
     pub message: String,
     pub span: Span,
+    pub code: String,
 }
 
 /// Structured type check result with detailed errors and warnings
@@ -175,11 +176,21 @@ impl TypeChecker {
         });
     }
 
-    /// Report a type error
+    /// Report a type error (default code E0308)
     fn error(&mut self, message: impl Into<String>, span: Span) {
         self.errors.push(TypeError {
             message: message.into(),
             span,
+            code: "E0308".to_string(),
+        });
+    }
+
+    /// Report a type error with a specific code
+    fn error_with_code(&mut self, code: &str, message: impl Into<String>, span: Span) {
+        self.errors.push(TypeError {
+            message: message.into(),
+            span,
+            code: code.to_string(),
         });
     }
 
@@ -188,7 +199,7 @@ impl TypeChecker {
         match ty {
             Type::Named { name, args } => {
                 // Check if this is a type alias
-                if let Some(TypeDef::Alias(alias_ty)) = self.type_defs.get(name) {
+                if let Some(TypeDef::Alias(alias_ty, _)) = self.type_defs.get(name) {
                     // Recursively expand the alias
                     self.expand_type_alias(alias_ty)
                 } else {
@@ -643,7 +654,8 @@ impl TypeChecker {
             }
             Item::TypeAlias(t) => {
                 let ty = self.lower_type_expr(&t.ty);
-                self.type_defs.insert(t.name.clone(), TypeDef::Alias(ty));
+                self.type_defs
+                    .insert(t.name.clone(), TypeDef::Alias(ty, t.span));
             }
             _ => {}
         }
@@ -732,14 +744,15 @@ impl TypeChecker {
     fn check_undefined_ontology_prefixes(&mut self) {
         for (name, def) in &self.type_defs.clone() {
             match def {
-                TypeDef::Alias(ty) => {
-                    self.check_type_for_undefined_ontology(ty, name);
+                TypeDef::Alias(ty, span) => {
+                    self.check_type_for_undefined_ontology(ty, name, *span);
                 }
                 TypeDef::Struct { fields, .. } => {
                     for (field_name, field_ty) in fields {
                         self.check_type_for_undefined_ontology(
                             field_ty,
                             &format!("{}.{}", name, field_name),
+                            Span::dummy(),
                         );
                     }
                 }
@@ -749,6 +762,7 @@ impl TypeChecker {
                             self.check_type_for_undefined_ontology(
                                 ty,
                                 &format!("{}::{}", name, variant_name),
+                                Span::dummy(),
                             );
                         }
                     }
@@ -758,30 +772,31 @@ impl TypeChecker {
     }
 
     /// Check a single type for undefined ontology prefixes
-    fn check_type_for_undefined_ontology(&mut self, ty: &Type, context: &str) {
+    fn check_type_for_undefined_ontology(&mut self, ty: &Type, context: &str, span: Span) {
         match ty {
             Type::Ontology { namespace, term } => {
                 if !self.ontology_prefixes.contains(namespace) {
-                    self.error(
+                    self.error_with_code(
+                        "E0412",
                         format!(
                             "Undefined ontology prefix `{}` in type `{}:{}` (used in {}). Add `ontology {} from \"...\";` declaration.",
                             namespace, namespace, term, context, namespace
                         ),
-                        Span::dummy(),
+                        span,
                     );
                 }
             }
             Type::Named { args, .. } => {
                 for arg in args {
-                    self.check_type_for_undefined_ontology(arg, context);
+                    self.check_type_for_undefined_ontology(arg, context, span);
                 }
             }
             Type::Array { element, .. } => {
-                self.check_type_for_undefined_ontology(element, context);
+                self.check_type_for_undefined_ontology(element, context, span);
             }
             Type::Tuple(types) => {
                 for t in types {
-                    self.check_type_for_undefined_ontology(t, context);
+                    self.check_type_for_undefined_ontology(t, context, span);
                 }
             }
             Type::Function {
@@ -790,12 +805,12 @@ impl TypeChecker {
                 ..
             } => {
                 for p in params {
-                    self.check_type_for_undefined_ontology(p, context);
+                    self.check_type_for_undefined_ontology(p, context, span);
                 }
-                self.check_type_for_undefined_ontology(return_type, context);
+                self.check_type_for_undefined_ontology(return_type, context, span);
             }
             Type::Ref { inner, .. } => {
-                self.check_type_for_undefined_ontology(inner, context);
+                self.check_type_for_undefined_ontology(inner, context, span);
             }
             _ => {}
         }
@@ -807,7 +822,7 @@ impl TypeChecker {
 
         // For each type alias, check if following the chain leads back to itself
         for (name, def) in &self.type_defs.clone() {
-            if let TypeDef::Alias(ty) = def {
+            if let TypeDef::Alias(ty, _) = def {
                 let mut visited = HashSet::new();
                 visited.insert(name.clone());
 
@@ -832,7 +847,7 @@ impl TypeChecker {
                 if visited.contains(name) {
                     return true;
                 }
-                if let Some(TypeDef::Alias(inner)) = self.type_defs.get(name) {
+                if let Some(TypeDef::Alias(inner, _)) = self.type_defs.get(name) {
                     visited.insert(name.clone());
                     self.type_creates_cycle(inner, visited)
                 } else {
@@ -898,7 +913,7 @@ impl TypeChecker {
                                 .iter()
                                 .any(|(_, field_ty)| self.type_has_infinite_size(field_ty, visited))
                         }
-                        TypeDef::Alias(inner) => {
+                        TypeDef::Alias(inner, _) => {
                             visited.insert(name.clone());
                             self.type_has_infinite_size(inner, visited)
                         }
@@ -1013,7 +1028,7 @@ impl TypeChecker {
                 },
             ) => {
                 // Look up if these are type aliases to ontology types
-                if let (Some(TypeDef::Alias(exp_ty)), Some(TypeDef::Alias(found_ty))) =
+                if let (Some(TypeDef::Alias(exp_ty, _)), Some(TypeDef::Alias(found_ty, _))) =
                     (self.type_defs.get(exp_name), self.type_defs.get(found_name))
                 {
                     if let (
@@ -1028,7 +1043,11 @@ impl TypeChecker {
                     ) = (exp_ty, found_ty)
                     {
                         match self.check_ontology_compatibility(
-                            exp_ns, exp_term, found_ns, found_term, threshold,
+                            &exp_ns,
+                            &exp_term,
+                            &found_ns,
+                            &found_term,
+                            threshold,
                         ) {
                             Ok(_) => {}
                             Err(msg) => {
@@ -1057,10 +1076,13 @@ impl TypeChecker {
                     term: found_term,
                 },
             ) => {
-                if let Some(TypeDef::Alias(Type::Ontology {
-                    namespace: exp_ns,
-                    term: exp_term,
-                })) = self.type_defs.get(name)
+                if let Some(TypeDef::Alias(
+                    Type::Ontology {
+                        namespace: exp_ns,
+                        term: exp_term,
+                    },
+                    _,
+                )) = self.type_defs.get(name)
                 {
                     match self.check_ontology_compatibility(
                         exp_ns, exp_term, found_ns, found_term, threshold,
@@ -1079,10 +1101,13 @@ impl TypeChecker {
                 },
                 HirType::Named { name, .. },
             ) => {
-                if let Some(TypeDef::Alias(Type::Ontology {
-                    namespace: found_ns,
-                    term: found_term,
-                })) = self.type_defs.get(name)
+                if let Some(TypeDef::Alias(
+                    Type::Ontology {
+                        namespace: found_ns,
+                        term: found_term,
+                    },
+                    _,
+                )) = self.type_defs.get(name)
                 {
                     match self.check_ontology_compatibility(
                         exp_ns, exp_term, found_ns, found_term, threshold,
@@ -3139,7 +3164,11 @@ impl TypeChecker {
             .collect();
 
         for (msg, span) in errors {
-            self.errors.push(TypeError { message: msg, span });
+            self.errors.push(TypeError {
+                message: msg,
+                span,
+                code: "E0308".to_string(),
+            });
         }
         Ok(())
     }
@@ -3376,7 +3405,7 @@ impl TypeChecker {
             }
             // Named type (alias) compared with Ontology type - resolve alias
             (Type::Named { name, .. }, Type::Ontology { namespace, term }) => {
-                if let Some(TypeDef::Alias(alias_ty)) = self.type_defs.get(name) {
+                if let Some(TypeDef::Alias(alias_ty, _)) = self.type_defs.get(name) {
                     if let Type::Ontology {
                         namespace: alias_ns,
                         term: alias_term,
@@ -3399,7 +3428,7 @@ impl TypeChecker {
             }
             // Ontology type compared with Named type (alias) - resolve alias
             (Type::Ontology { namespace, term }, Type::Named { name, .. }) => {
-                if let Some(TypeDef::Alias(alias_ty)) = self.type_defs.get(name) {
+                if let Some(TypeDef::Alias(alias_ty, _)) = self.type_defs.get(name) {
                     if let Type::Ontology {
                         namespace: alias_ns,
                         term: alias_term,

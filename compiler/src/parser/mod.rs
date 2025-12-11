@@ -947,10 +947,13 @@ impl<'a> Parser<'a> {
         let name = self.parse_ident()?;
         let generics = self.parse_generics()?;
         self.expect(TokenKind::Eq)?;
+        // Capture span of the type expression itself
+        let ty_start = self.span();
         let ty = self.parse_type()?;
+        let ty_end = self.span();
         self.expect(TokenKind::Semi)?;
 
-        let end = self.span();
+        let _end = self.span();
 
         Ok(Item::TypeAlias(TypeAliasDef {
             id: self.next_id(),
@@ -958,7 +961,7 @@ impl<'a> Parser<'a> {
             name,
             generics,
             ty,
-            span: start.merge(end),
+            span: ty_start.merge(ty_end), // Use type expression span, not whole declaration
         }))
     }
 

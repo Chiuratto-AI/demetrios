@@ -2374,7 +2374,7 @@ fn check(
                 let diag = serde_json::json!({
                     "level": "error",
                     "message": err.message,
-                    "code": "E0308",
+                    "code": err.code,
                     "location": {
                         "file": input.to_string_lossy(),
                         "line": line,

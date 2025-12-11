@@ -90,3 +90,18 @@ criterion/
 # Node modules (for VS Code extension)
 node_modules/
 *.vsix
+
+# Session/report files (temporary work artifacts)
+SESSION_*.txt
+PHASE*.txt
+*_REPORT.txt
+*_SUMMARY.txt
+*_CHECKLIST.txt
+*_MASTER*.txt
+PARA_*.txt
+
+# Generated Julia output
+examples/julia_output/
+
+# PDF reports
+*.pdf
