@@ -3377,6 +3377,21 @@ impl TypeChecker {
                         .zip(a2.iter())
                         .all(|(a, b)| self.types_compatible(a, b))
             }
+            // Quantity type compatibility - same unit and compatible numeric types
+            (
+                Type::Quantity {
+                    numeric: n1,
+                    unit: u1,
+                },
+                Type::Quantity {
+                    numeric: n2,
+                    unit: u2,
+                },
+            ) => u1 == u2 && self.types_compatible(n1, n2),
+            // Quantity with plain numeric - allow if numeric types match (implicit unit stripping)
+            (Type::Quantity { numeric, .. }, other) | (other, Type::Quantity { numeric, .. }) => {
+                self.types_compatible(numeric, other)
+            }
             // Ontology type compatibility - check if within default threshold
             (
                 Type::Ontology {
