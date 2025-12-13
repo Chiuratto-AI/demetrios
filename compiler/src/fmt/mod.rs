@@ -279,6 +279,8 @@ impl Formatter {
                     Doc::Text(format!("export {{ {} }};", e.names.join(", ")))
                 }
             }
+            Item::OdeDef(o) => Doc::Text(format!("ode {} {{ ... }}", o.name)),
+            Item::PdeDef(p) => Doc::Text(format!("pde {} {{ ... }}", p.name)),
         }
     }
 
@@ -1133,6 +1135,7 @@ impl Formatter {
             BinaryOp::Le => "<=",
             BinaryOp::Gt => ">",
             BinaryOp::Ge => ">=",
+            BinaryOp::PlusMinus => "±",
         }
     }
 

@@ -169,6 +169,10 @@ pub enum Item {
     OntologyImport(OntologyImportDef),
     /// Alignment declaration: `align chebi:drug ~ drugbank:drug with distance 0.1;`
     AlignDecl(AlignDef),
+    /// ODE definition: `ode LotkaVolterra { ... }`
+    OdeDef(OdeDef),
+    /// PDE definition: `pde HeatEquation { ... }`
+    PdeDef(PdeDef),
 }
 
 // ==================== FUNCTIONS ====================
@@ -415,6 +419,161 @@ pub struct ExportDef {
     pub id: NodeId,
     pub names: Vec<String>,
     pub span: Span,
+}
+
+// ==================== ODE/PDE DEFINITIONS ====================
+
+/// ODE (Ordinary Differential Equation) definition
+/// Syntax:
+/// ```d
+/// ode LotkaVolterra {
+///     params: { alpha: f64, beta: f64, gamma: f64, delta: f64 }
+///     state: { prey: f64, predator: f64 }
+///
+///     d(prey)/dt = alpha * prey - beta * prey * predator
+///     d(predator)/dt = delta * prey * predator - gamma * predator
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OdeDef {
+    pub id: NodeId,
+    pub visibility: Visibility,
+    pub name: String,
+    /// Parameters block: `params: { name: type, ... }`
+    pub params: Vec<OdeParam>,
+    /// State variables block: `state: { name: type, ... }`
+    pub state: Vec<OdeStateVar>,
+    /// Differential equations: `d(var)/dt = expr`
+    pub equations: Vec<OdeEquation>,
+    pub span: Span,
+}
+
+/// ODE parameter
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OdeParam {
+    pub id: NodeId,
+    pub name: String,
+    pub ty: TypeExpr,
+    pub default: Option<Expr>,
+    pub span: Span,
+}
+
+/// ODE state variable
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OdeStateVar {
+    pub id: NodeId,
+    pub name: String,
+    pub ty: TypeExpr,
+    pub span: Span,
+}
+
+/// ODE differential equation: `d(var)/dt = expr`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OdeEquation {
+    pub id: NodeId,
+    /// The state variable being differentiated
+    pub variable: String,
+    /// The right-hand side expression
+    pub rhs: Expr,
+    pub span: Span,
+}
+
+/// PDE (Partial Differential Equation) definition
+/// Syntax:
+/// ```d
+/// pde HeatEquation {
+///     params: { alpha: f64 }
+///     domain: [0, 1] x [0, 1]
+///
+///     ∂u/∂t = alpha * (∂²u/∂x² + ∂²u/∂y²)
+///
+///     boundary: {
+///         x = 0: u = 0,
+///         x = 1: u = 0,
+///         y = 0: ∂u/∂n = 0,
+///         y = 1: u = sin(pi * x)
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PdeDef {
+    pub id: NodeId,
+    pub visibility: Visibility,
+    pub name: String,
+    /// Parameters block
+    pub params: Vec<OdeParam>,
+    /// Domain specification
+    pub domain: PdeDomain,
+    /// The PDE equation
+    pub equation: PdeEquation,
+    /// Boundary conditions
+    pub boundary_conditions: Vec<BoundaryConditionDef>,
+    /// Optional initial condition
+    pub initial_condition: Option<Expr>,
+    pub span: Span,
+}
+
+/// PDE domain specification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PdeDomain {
+    pub id: NodeId,
+    /// Spatial dimensions: [(name, min, max), ...]
+    pub dimensions: Vec<PdeDimension>,
+    pub span: Span,
+}
+
+/// Single dimension in PDE domain
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PdeDimension {
+    pub name: String,
+    pub min: Expr,
+    pub max: Expr,
+}
+
+/// PDE equation: `∂u/∂t = ...` or `∂²u/∂t² = ...`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PdeEquation {
+    pub id: NodeId,
+    /// Variable name (usually "u")
+    pub variable: String,
+    /// Time derivative order (1 for parabolic, 2 for hyperbolic)
+    pub time_order: u32,
+    /// Right-hand side expression
+    pub rhs: Expr,
+    pub span: Span,
+}
+
+/// Boundary condition definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoundaryConditionDef {
+    pub id: NodeId,
+    /// Which boundary (e.g., "x = 0", "y = 1")
+    pub boundary: BoundarySpec,
+    /// The condition type and value
+    pub condition: BoundaryConditionType,
+    pub span: Span,
+}
+
+/// Boundary specification: which edge/face
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoundarySpec {
+    /// Variable name (x, y, z, etc.)
+    pub variable: String,
+    /// Boundary value (0 or 1 for min/max)
+    pub value: Expr,
+}
+
+/// Type of boundary condition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BoundaryConditionType {
+    /// Dirichlet: u = value
+    Dirichlet(Expr),
+    /// Neumann: ∂u/∂n = value
+    Neumann(Expr),
+    /// Robin: a*u + b*∂u/∂n = value
+    Robin { a: Expr, b: Expr, value: Expr },
+    /// Periodic boundary
+    Periodic,
 }
 
 // ==================== ONTOLOGY ====================
@@ -1248,6 +1407,9 @@ pub enum BinaryOp {
     BitXor,
     Shl,
     Shr,
+    // Scientific
+    /// Plus-minus operator for uncertain values: `x +- 0.1`
+    PlusMinus,
 }
 
 /// Unary operators

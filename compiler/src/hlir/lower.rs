@@ -840,6 +840,14 @@ impl<'a> LoweringContext<'a> {
                     BinaryOp::LShr
                 }
             }
+            HirBinaryOp::PlusMinus => {
+                // Treat PlusMinus as Add (uncertainty is handled at type-check time)
+                if is_float {
+                    BinaryOp::FAdd
+                } else {
+                    BinaryOp::Add
+                }
+            }
         };
 
         self.builder

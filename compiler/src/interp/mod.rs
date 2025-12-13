@@ -8,6 +8,7 @@ pub mod causal;
 pub mod closure;
 pub mod env;
 pub mod eval;
+pub mod symbolic;
 pub mod value;
 
 pub use autodiff::Tape;
@@ -16,4 +17,5 @@ pub use causal::{CausalDAG, CausalModel};
 pub use closure::{InterpreterClosure, DCallable, extract_closure};
 pub use env::Environment;
 pub use eval::Interpreter;
+pub use symbolic::Expr as SymbolicExpr;
 pub use value::Value;

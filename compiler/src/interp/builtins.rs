@@ -401,10 +401,9 @@ impl BuiltinRegistry {
 
             match (&args[0], &args[1]) {
                 (Value::SymbolicExpr(expr), Value::String(var)) => {
-                    // For now, just return a placeholder derivative
-                    // Later: use runtime::symbolic::differentiate
-                    let derivative = format!("d({})/d({})", expr, var);
-                    Ok(Value::SymbolicExpr(derivative))
+                    use crate::interp::symbolic::Expr as SymbolicExpr;
+                    let derivative = expr.differentiate(var);
+                    Ok(Value::SymbolicExpr(std::rc::Rc::new(derivative)))
                 }
                 _ => Err("differentiate expects: SymbolicExpr, String".to_string()),
             }
@@ -645,9 +644,12 @@ mod tests {
 
     #[test]
     fn test_differentiate_symbolic() {
+        use crate::interp::symbolic;
         let registry = BuiltinRegistry::new();
 
-        let expr = Value::SymbolicExpr("x^2".to_string());
+        // Parse "x^2" into an Expr
+        let parsed_expr = symbolic::Expr::parse("x^2").expect("Failed to parse expression");
+        let expr = Value::SymbolicExpr(std::rc::Rc::new(parsed_expr));
         let var = Value::String("x".to_string());
 
         let result = registry.call("differentiate", &[expr, var]);

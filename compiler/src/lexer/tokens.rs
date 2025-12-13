@@ -141,6 +141,22 @@ pub enum TokenKind {
     #[token("proof")]
     Proof,
 
+    // Scientific DSL keywords
+    #[token("ode")]
+    Ode,
+    #[token("pde")]
+    Pde,
+    #[token("state")]
+    State,
+    #[token("params")]
+    Params,
+    #[token("domain")]
+    Domain,
+    #[token("boundary")]
+    Boundary,
+    #[token("initial")]
+    Initial,
+
     // Epistemic/causal keywords
     #[token("Knowledge")]
     Knowledge,
@@ -319,13 +335,21 @@ pub enum TokenKind {
     #[token(">>=")]
     ShrEq,
 
-    // Arrows
+    // Arrows and special operators
     #[token("->")]
     Arrow,
     #[token("=>")]
     FatArrow,
     #[token("<-")]
     LeftArrow,
+
+    // Uncertainty operator (plus-minus)
+    #[token("+-")]
+    PlusMinus,
+
+    // Partial derivative (for ODE/PDE DSL)
+    #[regex(r"∂|\\partial")]
+    Partial,
 
     // Delimiters
     #[token("(")]
@@ -701,6 +725,15 @@ impl TokenKind {
             TokenKind::Distance => "distance",
             TokenKind::Threshold => "threshold",
             TokenKind::Compat => "compat",
+            TokenKind::Ode => "ode",
+            TokenKind::Pde => "pde",
+            TokenKind::State => "state",
+            TokenKind::Params => "params",
+            TokenKind::Domain => "domain",
+            TokenKind::Boundary => "boundary",
+            TokenKind::Initial => "initial",
+            TokenKind::PlusMinus => "±",
+            TokenKind::Partial => "∂",
         }
     }
 }

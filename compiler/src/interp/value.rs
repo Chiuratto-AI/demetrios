@@ -6,6 +6,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use crate::hir::HirFn;
+use crate::interp::symbolic::Expr as SymbolicExprType;
 
 /// ODE solver statistics
 #[derive(Clone, Debug)]
@@ -41,6 +42,19 @@ pub enum Distribution {
     Exponential { lambda: f64 },
     /// Categorical/Discrete distribution
     Categorical { probs: Vec<f64> },
+}
+
+/// Strategy for fusing neural and symbolic components in hybrid models
+#[derive(Clone, Debug, PartialEq)]
+pub enum HybridFusion {
+    /// Weighted sum: α * neural + (1-α) * symbolic, where α is learned
+    WeightedSum,
+    /// Learned gating: g(x) * neural + (1-g(x)) * symbolic, where g is a learned gate function
+    LearnedGate,
+    /// Element-wise product: neural * symbolic
+    Product,
+    /// Product then sum: (neural * symbolic) + residual
+    ProductResidual,
 }
 
 /// Runtime value
@@ -99,8 +113,8 @@ pub enum Value {
     },
     /// Probability distribution
     Distribution(Distribution),
-    /// Symbolic mathematical expression (as string for now)
-    SymbolicExpr(String),
+    /// Symbolic mathematical expression
+    SymbolicExpr(Rc<SymbolicExprType>),
     /// Multi-dimensional tensor/array
     Tensor {
         data: Vec<f64>,
@@ -108,8 +122,17 @@ pub enum Value {
     },
     /// Value with uncertainty bounds (mean ± std)
     Uncertain { mean: f64, std: f64 },
-    /// Causal model representation (as string placeholder)
+    /// Causal model representation
     CausalModel(String),
+    /// Hybrid neural-symbolic model
+    HybridModel {
+        /// Neural component parameters
+        neural_params: Rc<RefCell<Vec<f64>>>,
+        /// Symbolic expression component
+        symbolic_expr: Rc<SymbolicExprType>,
+        /// Fusion strategy: how to combine neural and symbolic outputs
+        fusion: HybridFusion,
+    },
 }
 
 impl Value {
@@ -138,6 +161,7 @@ impl Value {
             Value::Tensor { .. } => "Tensor",
             Value::Uncertain { .. } => "Uncertain",
             Value::CausalModel(_) => "CausalModel",
+            Value::HybridModel { .. } => "HybridModel",
         }
     }
 
@@ -201,9 +225,19 @@ impl Value {
     }
 
     /// Try to get as symbolic expression
-    pub fn as_symbolic_expr(&self) -> Option<&str> {
+    pub fn as_symbolic_expr(&self) -> Option<Rc<SymbolicExprType>> {
         match self {
-            Value::SymbolicExpr(s) => Some(s),
+            Value::SymbolicExpr(e) => Some(e.clone()),
+            _ => None,
+        }
+    }
+
+    /// Try to get as hybrid model
+    pub fn as_hybrid_model(&self) -> Option<(Rc<RefCell<Vec<f64>>>, Rc<SymbolicExprType>, HybridFusion)> {
+        match self {
+            Value::HybridModel { neural_params, symbolic_expr, fusion } => {
+                Some((neural_params.clone(), symbolic_expr.clone(), fusion.clone()))
+            }
             _ => None,
         }
     }
@@ -302,12 +336,16 @@ impl fmt::Debug for Value {
                        t.len(), y.len(), stats.steps)
             }
             Value::Distribution(d) => write!(f, "{:?}", d),
-            Value::SymbolicExpr(e) => write!(f, "SymbolicExpr({})", e),
+            Value::SymbolicExpr(e) => write!(f, "SymbolicExpr({:?})", e),
             Value::Tensor { data, shape } => {
                 write!(f, "Tensor {{ shape: {:?}, data: [{}] }}", shape, data.len())
             }
             Value::Uncertain { mean, std } => write!(f, "{} ± {}", mean, std),
             Value::CausalModel(m) => write!(f, "CausalModel({})", m),
+            Value::HybridModel { neural_params, symbolic_expr, fusion } => {
+                write!(f, "HybridModel {{ neural_params: [{}], symbolic: {:?}, fusion: {:?} }}",
+                       neural_params.borrow().len(), symbolic_expr, fusion)
+            }
         }
     }
 }
@@ -389,12 +427,16 @@ impl fmt::Display for Value {
                     Distribution::Categorical { probs } => write!(f, "Categorical([{}])", probs.len()),
                 }
             }
-            Value::SymbolicExpr(e) => write!(f, "{}", e),
+            Value::SymbolicExpr(e) => write!(f, "Symbolic({})", e),
             Value::Tensor { data, shape } => {
                 write!(f, "Tensor({:?}, {} elements)", shape, data.len())
             }
             Value::Uncertain { mean, std } => write!(f, "{} ± {}", mean, std),
             Value::CausalModel(m) => write!(f, "CausalModel({})", m),
+            Value::HybridModel { neural_params, symbolic_expr, fusion } => {
+                write!(f, "HybridModel(params: {}, expr: {}, fusion: {:?})",
+                       neural_params.borrow().len(), symbolic_expr, fusion)
+            }
         }
     }
 }

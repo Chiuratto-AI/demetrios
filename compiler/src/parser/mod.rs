@@ -247,6 +247,8 @@ impl<'a> Parser<'a> {
             TokenKind::Extern => self.parse_extern(),
             TokenKind::Ontology => self.parse_ontology_import(),
             TokenKind::Align => self.parse_align_decl(),
+            TokenKind::Ode => self.parse_ode_def(visibility),
+            TokenKind::Pde => self.parse_pde_def(visibility),
             _ => Err(miette::miette!(
                 "Unexpected token {:?} at start of item",
                 self.peek()
@@ -1210,6 +1212,372 @@ impl<'a> Parser<'a> {
             distance,
             span: start.merge(end),
         }))
+    }
+
+    // ==================== ODE/PDE PARSING ====================
+
+    /// Parse ODE definition:
+    /// ```d
+    /// ode LotkaVolterra {
+    ///     params: { alpha: f64, beta: f64 }
+    ///     state: { prey: f64, predator: f64 }
+    ///     d(prey)/dt = alpha * prey - beta * prey * predator
+    ///     d(predator)/dt = delta * prey * predator - gamma * predator
+    /// }
+    /// ```
+    fn parse_ode_def(&mut self, visibility: Visibility) -> Result<Item> {
+        let start = self.span();
+        self.expect(TokenKind::Ode)?;
+
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::LBrace)?;
+
+        let mut params = Vec::new();
+        let mut state = Vec::new();
+        let mut equations = Vec::new();
+
+        while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+            if self.at(TokenKind::Params) {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                params = self.parse_ode_params_block()?;
+            } else if self.at(TokenKind::State) {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                state = self.parse_ode_state_block()?;
+            } else if self.at(TokenKind::Ident) && self.current().text == "d" {
+                equations.push(self.parse_ode_equation()?);
+            } else {
+                // Skip unknown tokens within the block
+                self.advance();
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        let end = self.span();
+
+        Ok(Item::OdeDef(OdeDef {
+            id: self.next_id(),
+            visibility,
+            name,
+            params,
+            state,
+            equations,
+            span: start.merge(end),
+        }))
+    }
+
+    /// Parse params block: `{ alpha: f64, beta: f64 = 1.0 }`
+    fn parse_ode_params_block(&mut self) -> Result<Vec<OdeParam>> {
+        self.expect(TokenKind::LBrace)?;
+        let mut params = Vec::new();
+
+        while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+            let start = self.span();
+            let name = self.parse_ident()?;
+            self.expect(TokenKind::Colon)?;
+            let ty = self.parse_type()?;
+
+            let default = if self.at(TokenKind::Eq) {
+                self.advance();
+                Some(self.parse_expr()?)
+            } else {
+                None
+            };
+
+            params.push(OdeParam {
+                id: self.next_id(),
+                name,
+                ty,
+                default,
+                span: start.merge(self.span()),
+            });
+
+            if !self.at(TokenKind::RBrace) {
+                self.expect(TokenKind::Comma)?;
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(params)
+    }
+
+    /// Parse state block: `{ prey: f64, predator: f64 }`
+    fn parse_ode_state_block(&mut self) -> Result<Vec<OdeStateVar>> {
+        self.expect(TokenKind::LBrace)?;
+        let mut vars = Vec::new();
+
+        while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+            let start = self.span();
+            let name = self.parse_ident()?;
+            self.expect(TokenKind::Colon)?;
+            let ty = self.parse_type()?;
+
+            vars.push(OdeStateVar {
+                id: self.next_id(),
+                name,
+                ty,
+                span: start.merge(self.span()),
+            });
+
+            if !self.at(TokenKind::RBrace) {
+                self.expect(TokenKind::Comma)?;
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(vars)
+    }
+
+    /// Parse ODE equation: `d(prey)/dt = alpha * prey - beta * prey * predator`
+    fn parse_ode_equation(&mut self) -> Result<OdeEquation> {
+        let start = self.span();
+
+        // Expect 'd' identifier
+        let d = self.parse_ident()?;
+        if d != "d" {
+            return Err(miette::miette!(
+                "Expected 'd' for derivative, found '{}'",
+                d
+            ));
+        }
+
+        // Parse (variable)
+        self.expect(TokenKind::LParen)?;
+        let variable = self.parse_ident()?;
+        self.expect(TokenKind::RParen)?;
+
+        // Parse /dt
+        self.expect(TokenKind::Slash)?;
+        let dt = self.parse_ident()?;
+        if dt != "dt" {
+            return Err(miette::miette!("Expected 'dt', found '{}'", dt));
+        }
+
+        // Parse = expr
+        self.expect(TokenKind::Eq)?;
+        let rhs = self.parse_expr()?;
+
+        Ok(OdeEquation {
+            id: self.next_id(),
+            variable,
+            rhs,
+            span: start.merge(self.span()),
+        })
+    }
+
+    /// Parse PDE definition:
+    /// ```d
+    /// pde HeatEquation {
+    ///     params: { alpha: f64 }
+    ///     domain: [0, 1] x [0, 1]
+    ///     equation: du/dt = alpha * laplacian(u)
+    ///     boundary: { x=0: u=0, x=1: u=0 }
+    /// }
+    /// ```
+    fn parse_pde_def(&mut self, visibility: Visibility) -> Result<Item> {
+        let start = self.span();
+        self.expect(TokenKind::Pde)?;
+
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::LBrace)?;
+
+        let mut params = Vec::new();
+        let mut domain = None;
+        let mut equation = None;
+        let mut boundary_conditions = Vec::new();
+        let mut initial_condition = None;
+
+        while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+            if self.at(TokenKind::Params) {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                params = self.parse_ode_params_block()?;
+            } else if self.at(TokenKind::Domain) {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                domain = Some(self.parse_pde_domain()?);
+            } else if self.at(TokenKind::Ident) && self.current().text == "equation" {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                equation = Some(self.parse_pde_equation()?);
+            } else if self.at(TokenKind::Boundary) {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                boundary_conditions = self.parse_boundary_conditions()?;
+            } else if self.at(TokenKind::Initial) {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                initial_condition = Some(self.parse_expr()?);
+            } else {
+                self.advance();
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        let end = self.span();
+
+        // Create default domain if not specified
+        let domain = domain.unwrap_or_else(|| PdeDomain {
+            id: self.next_id(),
+            dimensions: vec![],
+            span: start.merge(end),
+        });
+
+        // Create default equation if not specified
+        let equation = equation.unwrap_or_else(|| PdeEquation {
+            id: self.next_id(),
+            variable: "u".to_string(),
+            time_order: 1,
+            rhs: Expr::Literal {
+                id: self.next_id(),
+                value: Literal::Int(0),
+            },
+            span: start.merge(end),
+        });
+
+        Ok(Item::PdeDef(PdeDef {
+            id: self.next_id(),
+            visibility,
+            name,
+            params,
+            domain,
+            equation,
+            boundary_conditions,
+            initial_condition,
+            span: start.merge(end),
+        }))
+    }
+
+    /// Parse PDE domain: `[0, 1] x [0, 1]` or `[0, L]`
+    fn parse_pde_domain(&mut self) -> Result<PdeDomain> {
+        let start = self.span();
+        let mut dimensions = Vec::new();
+
+        // Parse first dimension [min, max]
+        dimensions.push(self.parse_pde_dimension("x")?);
+
+        // Parse additional dimensions separated by 'x'
+        while self.at(TokenKind::Ident) && self.current().text == "x" {
+            self.advance();
+            let dim_name = if dimensions.len() == 1 { "y" } else { "z" };
+            dimensions.push(self.parse_pde_dimension(dim_name)?);
+        }
+
+        Ok(PdeDomain {
+            id: self.next_id(),
+            dimensions,
+            span: start.merge(self.span()),
+        })
+    }
+
+    /// Parse single dimension: `[min, max]`
+    fn parse_pde_dimension(&mut self, name: &str) -> Result<PdeDimension> {
+        self.expect(TokenKind::LBracket)?;
+        let min = self.parse_expr()?;
+        self.expect(TokenKind::Comma)?;
+        let max = self.parse_expr()?;
+        self.expect(TokenKind::RBracket)?;
+
+        Ok(PdeDimension {
+            name: name.to_string(),
+            min,
+            max,
+        })
+    }
+
+    /// Parse PDE equation: `du/dt = alpha * laplacian(u)`
+    fn parse_pde_equation(&mut self) -> Result<PdeEquation> {
+        let start = self.span();
+
+        // Parse du/dt or d2u/dt2
+        let d = self.parse_ident()?;
+        let (variable, time_order) = if d.starts_with("d2") || d == "d2" {
+            // Second order: d2u/dt2
+            let var = if d.len() > 2 {
+                d[2..].to_string()
+            } else {
+                self.parse_ident()?
+            };
+            (var, 2)
+        } else if d.starts_with('d') {
+            // First order: du/dt
+            let var = if d.len() > 1 {
+                d[1..].to_string()
+            } else {
+                self.parse_ident()?
+            };
+            (var, 1)
+        } else {
+            return Err(miette::miette!("Expected derivative like 'du/dt'"));
+        };
+
+        self.expect(TokenKind::Slash)?;
+        let _dt = self.parse_ident()?; // dt or dt2
+
+        self.expect(TokenKind::Eq)?;
+        let rhs = self.parse_expr()?;
+
+        Ok(PdeEquation {
+            id: self.next_id(),
+            variable,
+            time_order,
+            rhs,
+            span: start.merge(self.span()),
+        })
+    }
+
+    /// Parse boundary conditions: `{ x=0: u=0, x=1: u=0 }`
+    fn parse_boundary_conditions(&mut self) -> Result<Vec<BoundaryConditionDef>> {
+        self.expect(TokenKind::LBrace)?;
+        let mut conditions = Vec::new();
+
+        while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+            let start = self.span();
+
+            // Parse boundary spec: x=0 or y=1
+            let variable = self.parse_ident()?;
+            self.expect(TokenKind::Eq)?;
+            let value = self.parse_expr()?;
+
+            self.expect(TokenKind::Colon)?;
+
+            // Parse condition type
+            let condition = if self.at(TokenKind::Ident) && self.current().text == "periodic" {
+                self.advance();
+                BoundaryConditionType::Periodic
+            } else {
+                // Parse u = expr or du/dn = expr
+                let lhs = self.parse_ident()?;
+                if lhs.starts_with('d') {
+                    // Neumann: du/dn = value
+                    self.expect(TokenKind::Slash)?;
+                    let _dn = self.parse_ident()?;
+                    self.expect(TokenKind::Eq)?;
+                    let val = self.parse_expr()?;
+                    BoundaryConditionType::Neumann(val)
+                } else {
+                    // Dirichlet: u = value
+                    self.expect(TokenKind::Eq)?;
+                    let val = self.parse_expr()?;
+                    BoundaryConditionType::Dirichlet(val)
+                }
+            };
+
+            conditions.push(BoundaryConditionDef {
+                id: self.next_id(),
+                boundary: BoundarySpec { variable, value },
+                condition,
+                span: start.merge(self.span()),
+            });
+
+            if !self.at(TokenKind::RBrace) {
+                self.expect(TokenKind::Comma)?;
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(conditions)
     }
 
     /// Parse ontology term reference: `chebi:drug` or `SNOMED:12345`
@@ -2242,6 +2610,7 @@ impl<'a> Parser<'a> {
             TokenKind::Shr => (BinaryOp::Shr, 8, Assoc::Left),
             TokenKind::Plus => (BinaryOp::Add, 9, Assoc::Left),
             TokenKind::Minus => (BinaryOp::Sub, 9, Assoc::Left),
+            TokenKind::PlusMinus => (BinaryOp::PlusMinus, 9, Assoc::Left),
             TokenKind::Star => (BinaryOp::Mul, 10, Assoc::Left),
             TokenKind::Slash => (BinaryOp::Div, 10, Assoc::Left),
             TokenKind::Percent => (BinaryOp::Rem, 10, Assoc::Left),

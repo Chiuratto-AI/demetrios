@@ -427,7 +427,9 @@ impl DeadCodeAnalyzer {
             | Item::Extern(_)
             | Item::MacroInvocation(_)
             | Item::OntologyImport(_)
-            | Item::AlignDecl(_) => {}
+            | Item::AlignDecl(_)
+            | Item::OdeDef(_)
+            | Item::PdeDef(_) => {}
         }
     }
 
@@ -532,7 +534,9 @@ impl DeadCodeAnalyzer {
             | Item::Extern(_)
             | Item::MacroInvocation(_)
             | Item::OntologyImport(_)
-            | Item::AlignDecl(_) => {}
+            | Item::AlignDecl(_)
+            | Item::OdeDef(_)
+            | Item::PdeDef(_) => {}
         }
     }
 
