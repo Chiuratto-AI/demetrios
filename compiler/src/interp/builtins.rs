@@ -442,6 +442,104 @@ impl BuiltinRegistry {
                 _ => Err("ones expects integer dimension".to_string()),
             }
         }));
+
+        // Gradient computation (reverse-mode autodiff)
+        self.register("grad", Rc::new(|args| {
+            if args.len() < 2 {
+                return Err("grad expects: function, parameters".to_string());
+            }
+
+            // For now, return a placeholder gradient
+            // Full implementation requires integration with interpreter
+            match &args[1] {
+                Value::Float(_) => {
+                    // Return gradient as a float (scalar case)
+                    Ok(Value::Float(0.0))  // Placeholder
+                }
+                Value::Array(_) => {
+                    // Return gradient as an array
+                    Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![]))))
+                }
+                _ => Err("grad expects scalar or array parameters".to_string()),
+            }
+        }));
+
+        // Jacobian matrix (gradient for vector functions)
+        self.register("jacobian", Rc::new(|args| {
+            if args.len() < 2 {
+                return Err("jacobian expects: function, parameters".to_string());
+            }
+
+            // Placeholder for Jacobian computation
+            // Returns a matrix of partial derivatives
+            Ok(Value::Tensor {
+                data: vec![],
+                shape: vec![0, 0],
+            })
+        }));
+
+        // Hessian matrix (second derivatives)
+        self.register("hessian", Rc::new(|args| {
+            if args.len() < 2 {
+                return Err("hessian expects: function, parameters".to_string());
+            }
+
+            // Placeholder for Hessian computation
+            // Returns a matrix of second partial derivatives
+            Ok(Value::Tensor {
+                data: vec![],
+                shape: vec![0, 0],
+            })
+        }));
+
+        // Causal do-operator: do(model, interventions)
+        self.register("do", Rc::new(|args| {
+            if args.len() < 2 {
+                return Err("do expects: causal_model, interventions".to_string());
+            }
+
+            // For now, return a placeholder causal model
+            // Full implementation requires model integration
+            match &args[0] {
+                Value::CausalModel(_) => {
+                    Ok(Value::CausalModel("intervened_model".to_string()))
+                }
+                _ => Err("do expects a CausalModel".to_string()),
+            }
+        }));
+
+        // Counterfactual reasoning: counterfactual(model, factual, intervention, query)
+        self.register("counterfactual", Rc::new(|args| {
+            if args.len() < 3 {
+                return Err("counterfactual expects: model, factual_evidence, intervention".to_string());
+            }
+
+            // Placeholder for counterfactual computation
+            // Returns the counterfactual value
+            Ok(Value::Float(0.0))
+        }));
+
+        // Estimate average treatment effect (ATE)
+        self.register("estimate_ate", Rc::new(|args| {
+            if args.len() < 3 {
+                return Err("estimate_ate expects: data, treatment, outcome".to_string());
+            }
+
+            // Placeholder for ATE estimation
+            // Would compute E[Y | do(X=1)] - E[Y | do(X=0)]
+            Ok(Value::Float(0.0))
+        }));
+
+        // Detect Simpson's paradox
+        self.register("simpsons_paradox", Rc::new(|args| {
+            if args.len() < 3 {
+                return Err("simpsons_paradox expects: data, x, y, stratified_by_z".to_string());
+            }
+
+            // Placeholder for Simpson's paradox detection
+            // Returns true if paradox is detected
+            Ok(Value::Bool(false))
+        }));
     }
 }
 
