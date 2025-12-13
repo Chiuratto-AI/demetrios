@@ -8,6 +8,7 @@ use miette::{Result, miette};
 
 use crate::hir::*;
 
+use super::builtins::BuiltinRegistry;
 use super::env::Environment;
 use super::value::{ControlFlow, Value};
 
@@ -21,6 +22,8 @@ pub struct Interpreter {
     structs: HashMap<String, HirStruct>,
     /// Enum definitions (by name)
     enums: HashMap<String, HirEnum>,
+    /// Builtin function registry
+    builtins: BuiltinRegistry,
     /// Output buffer for testing
     output: Vec<String>,
 }
@@ -33,6 +36,7 @@ impl Interpreter {
             functions: HashMap::new(),
             structs: HashMap::new(),
             enums: HashMap::new(),
+            builtins: BuiltinRegistry::new(),
             output: Vec::new(),
         }
     }
@@ -50,6 +54,11 @@ impl Interpreter {
     /// Get mutable access to environment (for REPL)
     pub fn env_mut(&mut self) -> &mut Environment {
         &mut self.env
+    }
+
+    /// Evaluate a block (internal API for closures)
+    pub(crate) fn eval_block_internal(&mut self, block: &HirBlock) -> Result<Value, ControlFlow> {
+        self.eval_block(block)
     }
 
     /// Alias for interpret (for API compatibility)
@@ -702,6 +711,14 @@ impl Interpreter {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a >> b)),
                 _ => Err(ControlFlow::Return(Value::Unit)),
             },
+            HirBinaryOp::PlusMinus => match (lhs, rhs) {
+                // Treat PlusMinus as Add (uncertainty is handled at type-check time)
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
+                (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+                (Value::Int(a), Value::Float(b)) => Ok(Value::Float(a as f64 + b)),
+                (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + b as f64)),
+                _ => Err(ControlFlow::Return(Value::Unit)),
+            },
         }
     }
 
@@ -809,6 +826,15 @@ impl Interpreter {
 
     /// Call a named builtin function
     pub fn call_builtin(&mut self, name: &str, args: Vec<Value>) -> Result<Value, ControlFlow> {
+        // First, try the builtin registry
+        if self.builtins.is_builtin(name) {
+            match self.builtins.call(name, &args) {
+                Ok(v) => return Ok(v),
+                Err(e) => return Err(ControlFlow::Return(Value::String(e))),
+            }
+        }
+
+        // Fall back to hardcoded implementations
         match name {
             "print" => {
                 let output: Vec<String> = args.iter().map(|v| format!("{}", v)).collect();
