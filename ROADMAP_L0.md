@@ -19,26 +19,37 @@ Linguagens L0 tradicionais:     Demetrios L0 Cientifica:
 
 ---
 
-## Estado Atual (v0.61.0)
+## Estado Atual (v0.62.0)
 
 ### ✅ Primitivas L0 Implementadas
 
 | Primitiva | Modulo | Status | Linhas |
 |-----------|--------|--------|--------|
-| `grad`/`jacobian`/`hessian` | `autodiff.rs` | ✅ Completo | ~300 |
+| `grad`/`jacobian`/`hessian` | `autodiff.rs` | ✅ Completo | ~660 |
 | `uncertain<T>` com ± | `uncertain.rs` | ✅ Completo | ~500 |
 | `Tensor<T, Shape>` verificado | `tensor.rs` | ✅ Completo | ~400 |
 | `sample`/`observe`/`infer` | `prob.rs` | ✅ Completo | ~600 |
 | `ode`/`solve` (Euler, RK4, RK45) | `ode.rs` | ✅ Completo | ~400 |
 | `solve_stiff` (BDF, LSODA) | `stiff.rs` | ✅ Completo | ~1200 |
 | `discover`/`sindy` | `discover.rs` | ✅ Completo | ~500 |
-| `do`/`counterfactual`/`ate` | `causal.rs` | ✅ Completo | ~600 |
-| `symbolic`/`simplify`/`diff` | `symbolic.rs` | ✅ Completo | ~700 |
+| `do`/`counterfactual`/`ate` | `causal.rs` | ✅ Completo | ~460 |
+| `symbolic`/`simplify`/`diff` | `symbolic.rs` | ✅ Completo | ~950 |
 | `heat`/`wave`/`advection` PDEs | `pde.rs` | ✅ Completo | ~900 |
 | `einsum` Einstein notation | `einsum.rs` | ✅ Completo | ~450 |
 | GPU kernels (CUDA/Metal/WebGPU) | `gpu_scientific.rs` | ✅ Completo | ~1000 |
 
-**Total Runtime Cientifico:** ~7,550 linhas, 1695 testes
+**Total Runtime Cientifico:** ~8,000+ linhas, 1756 testes
+
+### ✅ Wave 3: Neurosymbolic Interpreter Integration
+
+| Componente | Modulo | Testes | Funcionalidades |
+|------------|--------|--------|-----------------|
+| Symbolic Parser | `interp/symbolic.rs` | 27 | Recursive descent, precedence, functions |
+| Tape Autodiff | `interp/autodiff.rs` | 16 | 12 ops com backprop correto |
+| Causal ATE | `interp/causal.rs` | 7 | Backdoor adjustment, stratification |
+| Hybrid Models | `interp/value.rs` | - | 4 fusion strategies |
+
+**Interpreter Integration:** 2,081 linhas, 50 testes
 
 ---
 
@@ -212,6 +223,16 @@ As primitivas existem no runtime. Agora precisamos:
 ---
 
 ## Changelog
+
+### v0.62.0 (2025-12-13)
+- ✅ **Wave 3 Neurosymbolic Complete**
+- ✅ Symbolic parser: recursive descent with operator precedence
+- ✅ Tape-based autodiff: 12 operations with correct gradients
+- ✅ Causal ATE: backdoor adjustment with stratification
+- ✅ HybridModel: 4 fusion strategies (WeightedSum, LearnedGate, Product, ProductResidual)
+- ✅ 50 new tests for interpreter integration
+- ✅ 5 Wave 3 examples (PINN, Kepler, Explainable NN, etc.)
+- ✅ NEUROSYMBOLIC_GUIDE.md documentation
 
 ### v0.61.0 (2025-12-11)
 - ✅ PDE solvers (Heat, Wave, Advection, Diffusion-Reaction)
