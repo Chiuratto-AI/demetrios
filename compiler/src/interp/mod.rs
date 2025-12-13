@@ -2,10 +2,14 @@
 //!
 //! Executes HIR directly for rapid semantic testing.
 
+pub mod builtins;
+pub mod closure;
 pub mod env;
 pub mod eval;
 pub mod value;
 
+pub use builtins::BuiltinRegistry;
+pub use closure::{InterpreterClosure, DCallable, extract_closure};
 pub use env::Environment;
 pub use eval::Interpreter;
 pub use value::Value;

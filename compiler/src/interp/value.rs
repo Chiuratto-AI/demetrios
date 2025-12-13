@@ -7,6 +7,42 @@ use std::rc::Rc;
 
 use crate::hir::HirFn;
 
+/// ODE solver statistics
+#[derive(Clone, Debug)]
+pub struct SolverStats {
+    /// Number of steps taken
+    pub steps: usize,
+    /// Number of successful steps
+    pub accepted_steps: usize,
+    /// Number of rejected steps
+    pub rejected_steps: usize,
+}
+
+impl Default for SolverStats {
+    fn default() -> Self {
+        SolverStats {
+            steps: 0,
+            accepted_steps: 0,
+            rejected_steps: 0,
+        }
+    }
+}
+
+/// Probabilistic distributions
+#[derive(Clone, Debug)]
+pub enum Distribution {
+    /// Normal distribution with mean and std dev
+    Normal { mean: f64, std: f64 },
+    /// Uniform distribution between a and b
+    Uniform { a: f64, b: f64 },
+    /// Beta distribution with shape parameters
+    Beta { alpha: f64, beta: f64 },
+    /// Exponential distribution with rate
+    Exponential { lambda: f64 },
+    /// Categorical/Discrete distribution
+    Categorical { probs: Vec<f64> },
+}
+
 /// Runtime value
 #[derive(Clone)]
 pub enum Value {
@@ -53,6 +89,27 @@ pub enum Value {
     Err(Box<Value>),
     /// Builtin function (by name)
     Builtin(String),
+
+    // Scientific types
+    /// ODE solution: time points, solution trajectories, solver stats
+    ODESolution {
+        t: Vec<f64>,
+        y: Vec<Vec<f64>>,
+        stats: SolverStats,
+    },
+    /// Probability distribution
+    Distribution(Distribution),
+    /// Symbolic mathematical expression (as string for now)
+    SymbolicExpr(String),
+    /// Multi-dimensional tensor/array
+    Tensor {
+        data: Vec<f64>,
+        shape: Vec<usize>,
+    },
+    /// Value with uncertainty bounds (mean ± std)
+    Uncertain { mean: f64, std: f64 },
+    /// Causal model representation (as string placeholder)
+    CausalModel(String),
 }
 
 impl Value {
@@ -75,6 +132,12 @@ impl Value {
             Value::Ok(_) => "Ok",
             Value::Err(_) => "Err",
             Value::Builtin(_) => "builtin",
+            Value::ODESolution { .. } => "ODESolution",
+            Value::Distribution(_) => "Distribution",
+            Value::SymbolicExpr(_) => "SymbolicExpr",
+            Value::Tensor { .. } => "Tensor",
+            Value::Uncertain { .. } => "Uncertain",
+            Value::CausalModel(_) => "CausalModel",
         }
     }
 
@@ -117,6 +180,54 @@ impl Value {
     pub fn as_string(&self) -> Option<&str> {
         match self {
             Value::String(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Try to get as ODE solution
+    pub fn as_ode_solution(&self) -> Option<(&[f64], &[Vec<f64>], &SolverStats)> {
+        match self {
+            Value::ODESolution { t, y, stats } => Some((t, y, stats)),
+            _ => None,
+        }
+    }
+
+    /// Try to get as distribution
+    pub fn as_distribution(&self) -> Option<&Distribution> {
+        match self {
+            Value::Distribution(d) => Some(d),
+            _ => None,
+        }
+    }
+
+    /// Try to get as symbolic expression
+    pub fn as_symbolic_expr(&self) -> Option<&str> {
+        match self {
+            Value::SymbolicExpr(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Try to get as tensor
+    pub fn as_tensor(&self) -> Option<(&[f64], &[usize])> {
+        match self {
+            Value::Tensor { data, shape } => Some((data, shape)),
+            _ => None,
+        }
+    }
+
+    /// Try to get as uncertain value
+    pub fn as_uncertain(&self) -> Option<(f64, f64)> {
+        match self {
+            Value::Uncertain { mean, std } => Some((*mean, *std)),
+            _ => None,
+        }
+    }
+
+    /// Try to get as causal model
+    pub fn as_causal_model(&self) -> Option<&str> {
+        match self {
+            Value::CausalModel(m) => Some(m),
             _ => None,
         }
     }
@@ -186,6 +297,17 @@ impl fmt::Debug for Value {
             Value::Ok(v) => write!(f, "Ok({:?})", v),
             Value::Err(v) => write!(f, "Err({:?})", v),
             Value::Builtin(name) => write!(f, "<builtin {}>", name),
+            Value::ODESolution { t, y, stats } => {
+                write!(f, "ODESolution {{ t: [{}], y: [{}], steps: {} }}",
+                       t.len(), y.len(), stats.steps)
+            }
+            Value::Distribution(d) => write!(f, "{:?}", d),
+            Value::SymbolicExpr(e) => write!(f, "SymbolicExpr({})", e),
+            Value::Tensor { data, shape } => {
+                write!(f, "Tensor {{ shape: {:?}, data: [{}] }}", shape, data.len())
+            }
+            Value::Uncertain { mean, std } => write!(f, "{} ± {}", mean, std),
+            Value::CausalModel(m) => write!(f, "CausalModel({})", m),
         }
     }
 }
@@ -254,6 +376,25 @@ impl fmt::Display for Value {
             Value::Ok(v) => write!(f, "Ok({})", v),
             Value::Err(v) => write!(f, "Err({})", v),
             Value::Builtin(name) => write!(f, "<builtin {}>", name),
+            Value::ODESolution { t, y, stats } => {
+                write!(f, "ODESolution(t: {} points, y: {} trajectories, steps: {})",
+                       t.len(), y.len(), stats.steps)
+            }
+            Value::Distribution(d) => {
+                match d {
+                    Distribution::Normal { mean, std } => write!(f, "Normal({}, {})", mean, std),
+                    Distribution::Uniform { a, b } => write!(f, "Uniform({}, {})", a, b),
+                    Distribution::Beta { alpha, beta } => write!(f, "Beta({}, {})", alpha, beta),
+                    Distribution::Exponential { lambda } => write!(f, "Exponential({})", lambda),
+                    Distribution::Categorical { probs } => write!(f, "Categorical([{}])", probs.len()),
+                }
+            }
+            Value::SymbolicExpr(e) => write!(f, "{}", e),
+            Value::Tensor { data, shape } => {
+                write!(f, "Tensor({:?}, {} elements)", shape, data.len())
+            }
+            Value::Uncertain { mean, std } => write!(f, "{} ± {}", mean, std),
+            Value::CausalModel(m) => write!(f, "CausalModel({})", m),
         }
     }
 }
@@ -295,6 +436,11 @@ impl PartialEq for Value {
                 },
             ) => e1 == e2 && v1 == v2 && f1 == f2,
             (Value::Builtin(a), Value::Builtin(b)) => a == b,
+            (Value::Uncertain { mean: m1, std: s1 }, Value::Uncertain { mean: m2, std: s2 }) => {
+                m1 == m2 && s1 == s2
+            }
+            (Value::SymbolicExpr(a), Value::SymbolicExpr(b)) => a == b,
+            (Value::CausalModel(a), Value::CausalModel(b)) => a == b,
             _ => false,
         }
     }
