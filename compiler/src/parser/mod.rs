@@ -249,6 +249,7 @@ impl<'a> Parser<'a> {
             TokenKind::Align => self.parse_align_decl(),
             TokenKind::Ode => self.parse_ode_def(visibility),
             TokenKind::Pde => self.parse_pde_def(visibility),
+            TokenKind::Causal => self.parse_causal_model_def(visibility),
             _ => Err(miette::miette!(
                 "Unexpected token {:?} at start of item",
                 self.peek()
@@ -1578,6 +1579,178 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::RBrace)?;
         Ok(conditions)
+    }
+
+    // ==================== CAUSAL MODEL PARSING ====================
+
+    /// Parse causal model definition:
+    /// ```d
+    /// causal model SmokingCancer {
+    ///     nodes: [Smoking, Tar, Cancer, Genetics]
+    ///
+    ///     Genetics -> Smoking
+    ///     Genetics -> Cancer
+    ///     Smoking -> Tar
+    ///     Tar -> Cancer
+    ///
+    ///     equations: {
+    ///         Smoking = 0.5 * Genetics + noise,
+    ///         Tar = 0.8 * Smoking + noise,
+    ///         Cancer = 0.6 * Tar + 0.3 * Genetics + noise
+    ///     }
+    /// }
+    /// ```
+    fn parse_causal_model_def(&mut self, visibility: Visibility) -> Result<Item> {
+        let start = self.span();
+        self.expect(TokenKind::Causal)?;
+
+        // Optional 'model' keyword (causal model X { } or causal X { })
+        if self.at(TokenKind::Ident) && self.current().text == "model" {
+            self.advance();
+        }
+
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::LBrace)?;
+
+        let mut nodes = Vec::new();
+        let mut edges = Vec::new();
+        let mut equations = Vec::new();
+
+        while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+            if self.at(TokenKind::Nodes) {
+                // nodes: [A, B, C]
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                nodes = self.parse_causal_nodes_list()?;
+            } else if self.at(TokenKind::Equations) {
+                // equations: { X = expr, ... }
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                equations = self.parse_causal_equations_block()?;
+            } else if self.at(TokenKind::Edges) {
+                // edges: [A -> B, C -> D]
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                edges.extend(self.parse_causal_edges_list()?);
+            } else if self.at(TokenKind::Ident) {
+                // Could be an edge: A -> B
+                if self.peek_n(1) == TokenKind::Arrow {
+                    edges.push(self.parse_causal_edge()?);
+                } else {
+                    // Skip unknown token
+                    self.advance();
+                }
+            } else {
+                // Skip unknown tokens within the block
+                self.advance();
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        let end = self.span();
+
+        Ok(Item::CausalModel(CausalModelDef {
+            id: self.next_id(),
+            visibility,
+            name,
+            nodes,
+            edges,
+            equations,
+            span: start.merge(end),
+        }))
+    }
+
+    /// Parse causal nodes list: `[A, B, C]` or `[A: f64, B: f64]`
+    fn parse_causal_nodes_list(&mut self) -> Result<Vec<CausalNode>> {
+        self.expect(TokenKind::LBracket)?;
+        let mut nodes = Vec::new();
+
+        while !self.at(TokenKind::RBracket) && !self.at(TokenKind::Eof) {
+            let start = self.span();
+            let name = self.parse_ident()?;
+
+            // Optional type annotation
+            let ty = if self.at(TokenKind::Colon) {
+                self.advance();
+                Some(self.parse_type()?)
+            } else {
+                None
+            };
+
+            nodes.push(CausalNode {
+                id: self.next_id(),
+                name,
+                ty,
+                span: start.merge(self.span()),
+            });
+
+            if !self.at(TokenKind::RBracket) {
+                self.expect(TokenKind::Comma)?;
+            }
+        }
+
+        self.expect(TokenKind::RBracket)?;
+        Ok(nodes)
+    }
+
+    /// Parse causal edges list: `[A -> B, C -> D]`
+    fn parse_causal_edges_list(&mut self) -> Result<Vec<CausalEdge>> {
+        self.expect(TokenKind::LBracket)?;
+        let mut edges = Vec::new();
+
+        while !self.at(TokenKind::RBracket) && !self.at(TokenKind::Eof) {
+            edges.push(self.parse_causal_edge()?);
+
+            if !self.at(TokenKind::RBracket) {
+                self.expect(TokenKind::Comma)?;
+            }
+        }
+
+        self.expect(TokenKind::RBracket)?;
+        Ok(edges)
+    }
+
+    /// Parse a single causal edge: `A -> B`
+    fn parse_causal_edge(&mut self) -> Result<CausalEdge> {
+        let start = self.span();
+        let from = self.parse_ident()?;
+        self.expect(TokenKind::Arrow)?;
+        let to = self.parse_ident()?;
+
+        Ok(CausalEdge {
+            id: self.next_id(),
+            from,
+            to,
+            span: start.merge(self.span()),
+        })
+    }
+
+    /// Parse causal equations block: `{ X = expr, Y = expr }`
+    fn parse_causal_equations_block(&mut self) -> Result<Vec<CausalEquation>> {
+        self.expect(TokenKind::LBrace)?;
+        let mut equations = Vec::new();
+
+        while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+            let start = self.span();
+            let variable = self.parse_ident()?;
+            self.expect(TokenKind::Eq)?;
+            let rhs = self.parse_expr()?;
+
+            equations.push(CausalEquation {
+                id: self.next_id(),
+                variable,
+                rhs,
+                span: start.merge(self.span()),
+            });
+
+            // Optional comma or semicolon separator
+            if self.at(TokenKind::Comma) || self.at(TokenKind::Semi) {
+                self.advance();
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(equations)
     }
 
     /// Parse ontology term reference: `chebi:drug` or `SNOMED:12345`

@@ -146,6 +146,14 @@ pub enum TokenKind {
     Ode,
     #[token("pde")]
     Pde,
+    #[token("causal")]
+    Causal,
+    #[token("nodes")]
+    Nodes,
+    #[token("edges")]
+    Edges,
+    #[token("equations")]
+    Equations,
     #[token("state")]
     State,
     #[token("params")]
@@ -510,6 +518,13 @@ impl TokenKind {
                 | TokenKind::Distance
                 | TokenKind::Threshold
                 | TokenKind::Compat
+                // Scientific DSL keywords
+                | TokenKind::Ode
+                | TokenKind::Pde
+                | TokenKind::Causal
+                | TokenKind::Nodes
+                | TokenKind::Edges
+                | TokenKind::Equations
         )
     }
 
@@ -727,6 +742,10 @@ impl TokenKind {
             TokenKind::Compat => "compat",
             TokenKind::Ode => "ode",
             TokenKind::Pde => "pde",
+            TokenKind::Causal => "causal",
+            TokenKind::Nodes => "nodes",
+            TokenKind::Edges => "edges",
+            TokenKind::Equations => "equations",
             TokenKind::State => "state",
             TokenKind::Params => "params",
             TokenKind::Domain => "domain",
