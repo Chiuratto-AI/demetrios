@@ -1065,6 +1065,7 @@ impl DocExtractor {
             ast::BinaryOp::BitXor => "^",
             ast::BinaryOp::Shl => "<<",
             ast::BinaryOp::Shr => ">>",
+            ast::BinaryOp::PlusMinus => "±",
         }
     }
 

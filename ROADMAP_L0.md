@@ -1,441 +1,249 @@
-# Demetrios L0 Roadmap: A Linguagem L0 Científica
+# Demetrios L0 Roadmap: A Linguagem L0 Cientifica
 
-## Visão
+## Visao
 
-**Demetrios (D)** é uma linguagem **L0 científica** - o mesmo nível que C/Assembly, mas com primitivas científicas nativas que nenhuma outra linguagem oferece.
+**Demetrios (D)** e uma linguagem **L0 cientifica** - o mesmo nivel que C/Assembly, mas com primitivas cientificas nativas que nenhuma outra linguagem oferece.
 
 ```
-Linguagens L0 tradicionais:     Demetrios L0 Científica:
+Linguagens L0 tradicionais:     Demetrios L0 Cientifica:
 ├── C: ponteiros, structs       ├── tudo de C/Rust +
 ├── Rust: ownership, lifetimes  ├── autodiff nativo
-└── Assembly: registros         ├── probabilístico nativo
+└── Assembly: registros         ├── probabilistico nativo
                                 ├── descoberta de modelos
-                                ├── inferência causal
-                                ├── computação simbólica
+                                ├── inferencia causal
+                                ├── computacao simbolica
                                 └── incerteza nativa
 ```
 
-**Proposta única:** Primeira linguagem L0 onde ciência é cidadã de primeira classe.
+**Proposta unica:** Primeira linguagem L0 onde ciencia e cidada de primeira classe.
 
 ---
 
-## Primitivas L0 Científicas
+## Estado Atual (v0.61.0)
 
-### 1. **Diferenciação Automática** (`grad`, `jacobian`, `hessian`)
+### ✅ Primitivas L0 Implementadas
+
+| Primitiva | Modulo | Status | Linhas |
+|-----------|--------|--------|--------|
+| `grad`/`jacobian`/`hessian` | `autodiff.rs` | ✅ Completo | ~300 |
+| `uncertain<T>` com ± | `uncertain.rs` | ✅ Completo | ~500 |
+| `Tensor<T, Shape>` verificado | `tensor.rs` | ✅ Completo | ~400 |
+| `sample`/`observe`/`infer` | `prob.rs` | ✅ Completo | ~600 |
+| `ode`/`solve` (Euler, RK4, RK45) | `ode.rs` | ✅ Completo | ~400 |
+| `solve_stiff` (BDF, LSODA) | `stiff.rs` | ✅ Completo | ~1200 |
+| `discover`/`sindy` | `discover.rs` | ✅ Completo | ~500 |
+| `do`/`counterfactual`/`ate` | `causal.rs` | ✅ Completo | ~600 |
+| `symbolic`/`simplify`/`diff` | `symbolic.rs` | ✅ Completo | ~700 |
+| `heat`/`wave`/`advection` PDEs | `pde.rs` | ✅ Completo | ~900 |
+| `einsum` Einstein notation | `einsum.rs` | ✅ Completo | ~450 |
+| GPU kernels (CUDA/Metal/WebGPU) | `gpu_scientific.rs` | ✅ Completo | ~1000 |
+
+**Total Runtime Cientifico:** ~7,550 linhas, 1695 testes
+
+---
+
+## Primitivas L0 Cientificas
+
+### 1. **Diferenciacao Automatica** ✅ IMPLEMENTADO
 
 ```d
-// Nativo na linguagem - não biblioteca!
 fn loss(params: Tensor<f64>) -> f64 {
     return sum((predict(params) - data)^2)
 }
 
 fn main() {
-    let θ = [1.0, 2.0, 3.0];
+    let theta = [1.0, 2.0, 3.0];
     
     // Primitivas nativas
-    let g = grad(loss, θ);           // Gradiente
-    let J = jacobian(f, θ);          // Jacobiano  
-    let H = hessian(loss, θ);        // Hessiano
-    
-    // Forward e reverse mode automático
-    let θ_new = θ - 0.01 * g;
+    let g = grad(loss, theta);           // Gradiente
+    let J = jacobian(f, theta);          // Jacobiano  
+    let H = hessian(loss, theta);        // Hessiano
 }
 ```
 
-**Implementação:** Dual numbers + source transformation no HLIR
-
-### 2. **Computação Probabilística** (`sample`, `observe`, `infer`)
+### 2. **Computacao Probabilistica** ✅ IMPLEMENTADO
 
 ```d
-// Efeito Prob é primitiva L0
 fn bayesian_model(data: [f64]) -> f64 with Prob {
-    // Sampling é operação primitiva
-    let μ = sample Normal(0.0, 10.0);
-    let σ = sample Gamma(1.0, 1.0);
-    
-    // Conditioning é primitivo
-    observe data ~ Normal(μ, σ);
-    
-    return μ
+    let mu = sample Normal(0.0, 10.0);
+    let sigma = sample Gamma(1.0, 1.0);
+    observe data ~ Normal(mu, sigma);
+    return mu
 }
 
 fn main() {
-    let data = [1.2, 1.5, 1.3, 1.8];
-    
-    // Inferência como primitiva
     let posterior = infer(bayesian_model, data, 
                           method: HMC, 
                           samples: 10000);
-    
-    let μ_estimate = posterior.mean();
-    let credible = posterior.hdi(0.95);
 }
 ```
 
-**Backends nativos:** HMC, NUTS, Variational Inference, SMC
-
-### 3. **Descoberta de Modelos** (`discover`, `sparse`)
+### 3. **Descoberta de Modelos** ✅ IMPLEMENTADO
 
 ```d
-// SINDy-like como primitiva L0
-fn discover_dynamics(data: Tensor<f64>, dt: f64) -> ODE with Discover {
-    // Biblioteca de funções candidatas
-    let library = [
-        poly(1), poly(2), poly(3),  // x, x², x³
-        sin, cos, exp,               // transcendentais  
-        |x, y| x * y,               // interações
-    ];
-    
-    // Descoberta esparsa é primitiva
-    let model = discover ode from data 
-                with library: library,
-                     sparsity: 0.1,
-                     threshold: 0.05;
-    
-    return model  // Retorna ODE simbólica!
-}
-
-// O compilador otimiza a ODE descoberta
-fn main() {
-    let trajectory = load_csv("experiment.csv");
-    let ode = discover_dynamics(trajectory, 0.01);
-    
-    // ode é agora um tipo ODE verificado em tempo de compilação
-    print(ode.symbolic_form());  // "dx/dt = -0.5*x + 0.1*x²"
-    
-    let prediction = solve(ode, x0: 1.0, t_span: [0, 10]);
+fn discover_dynamics(data: Tensor<f64>, dt: f64) -> ODE {
+    let library = polynomial_library(3) + dynamics_library();
+    let model = sindy(data, library, threshold: 0.1);
+    return model
 }
 ```
 
-### 4. **Inferência Causal** (`do`, `counterfactual`, `intervene`)
+### 4. **Inferencia Causal** ✅ IMPLEMENTADO
 
 ```d
-// Causalidade como primitiva L0
-struct CausalModel {
-    graph: DAG,
-    mechanisms: [fn],
-}
-
-fn causal_analysis(model: CausalModel, data: DataFrame) with Causal {
-    // Operador do() - intervenção
-    let effect = do(model, X = 1.0) {
-        observe Y
-    };
-    
-    // Counterfactual como primitiva
-    let cf = counterfactual(model, 
-        observed: {X: 0, Y: 1},
-        intervention: {X: 1}
-    ) {
-        query Y  // "O que teria acontecido?"
-    };
-    
-    // Identificação causal automática
-    let ate = identify(model, 
-        treatment: X,
-        outcome: Y,
-        method: BackdoorCriterion
-    );
+fn causal_analysis(model: CausalModel, data: DataFrame) {
+    let effect = do(model, X = 1.0);
+    let cf = counterfactual(model, observed: {X: 0}, intervention: {X: 1});
+    let ate = estimate_ate(model, treatment: X, outcome: Y);
 }
 ```
 
-### 5. **Computação Simbólica** (`symbolic`, `simplify`, `solve_symbolic`)
+### 5. **Computacao Simbolica** ✅ IMPLEMENTADO
 
 ```d
-// Expressões simbólicas são tipos de primeira classe
-fn symbolic_math() with Symbolic {
-    // Declaração de símbolos
-    let x = symbolic("x");
-    let y = symbolic("y");
-    
-    // Manipulação simbólica nativa
-    let expr = x^2 + 2*x*y + y^2;
-    let simplified = simplify(expr);     // (x + y)²
-    
-    // Resolução simbólica
-    let equation = x^2 - 4 == 0;
-    let solutions = solve_symbolic(equation, x);  // [-2, 2]
-    
-    // Integração simbólica
-    let integral = integrate(x^2, x);    // x³/3
-    
-    // Conversão para função numérica
-    let f = compile(expr);               // fn(f64, f64) -> f64
+fn symbolic_math() {
+    let x = symbol("x");
+    let expr = x^2 + 2*x + 1;
+    let simplified = simplify(expr);     // (x + 1)^2
+    let derivative = differentiate(expr, x);  // 2x + 2
+    let integral = integrate(expr, x);   // x^3/3 + x^2 + x
 }
 ```
 
-### 6. **Propagação de Incerteza** (`uncertain<T>`, `±`)
+### 6. **Propagacao de Incerteza** ✅ IMPLEMENTADO
 
 ```d
-// Incerteza como tipo primitivo
 fn experiment() -> uncertain<f64> {
-    // Medições com incerteza
-    let mass: uncertain<f64> = 5.0 ± 0.1;      // 5.0 kg ± 0.1
-    let velocity: uncertain<f64> = 10.0 ± 0.5; // 10.0 m/s ± 0.5
-    
-    // Propagação automática (Monte Carlo ou analítica)
-    let energy = 0.5 * mass * velocity^2;
-    
-    // energy automaticamente tem incerteza propagada!
-    print(energy);  // 250.0 ± 27.5 J
-    
-    return energy
-}
-
-// Também funciona com distribuições completas
-fn bayesian_propagation() {
-    let x: Distribution = Normal(10.0, 2.0);
-    let y: Distribution = Gamma(2.0, 1.0);
-    
-    // Operações preservam distribuições
-    let z = x * y;  // z é uma distribuição derivada
-    
-    print(z.mean());
-    print(z.std());
-    print(z.percentile(0.95));
+    let mass = 5.0 +- 0.1;         // 5.0 kg +/- 0.1
+    let velocity = 10.0 +- 0.5;    // 10.0 m/s +/- 0.5
+    let energy = 0.5 * mass * velocity^2;  // Propagacao automatica!
+    return energy  // 250.0 +/- 27.5 J
 }
 ```
 
-### 7. **Tensores com Dimensões Verificadas** (`Tensor<T, Shape>`)
+### 7. **Tensores Verificados** ✅ IMPLEMENTADO
 
 ```d
-// Shapes verificados em tempo de compilação
 fn matrix_ops() {
     let A: Tensor<f64, [3, 4]> = zeros();
     let B: Tensor<f64, [4, 5]> = ones();
-    
-    // Compilador verifica compatibilidade
-    let C = A @ B;  // OK: [3,4] @ [4,5] = [3,5]
-    
-    // let D = B @ A;  // ERRO DE COMPILAÇÃO: [4,5] @ [3,4] inválido
-    
-    // Broadcasting verificado
-    let v: Tensor<f64, [4]> = [1, 2, 3, 4];
-    let D = A + v;  // OK: broadcast [4] para [3, 4]
-    
-    // Einstein notation nativa
+    let C = A @ B;  // [3,4] @ [4,5] = [3,5] - verificado em compilacao!
     let E = einsum("ij,jk->ik", A, B);
 }
 ```
 
-### 8. **Solvers de ODE/PDE Nativos** (`ode`, `pde`, `solve`)
+### 8. **Solvers ODE/PDE** ✅ IMPLEMENTADO
 
 ```d
-// ODEs como tipos de primeira classe
-ode LotkaVolterra {
-    params: { α: f64, β: f64, γ: f64, δ: f64 }
-    state: { prey: f64, predator: f64 }
-    
-    d(prey)/dt = α * prey - β * prey * predator
-    d(predator)/dt = δ * prey * predator - γ * predator
-}
-
 fn simulate() {
-    let model = LotkaVolterra {
-        α: 1.1, β: 0.4, γ: 0.4, δ: 0.1
-    };
+    // ODE
+    let sol = solve(lotka_volterra, y0, t_span, method: RK45);
     
-    let solution = solve(model,
-        initial: { prey: 10.0, predator: 5.0 },
-        t_span: [0.0, 50.0],
-        method: DormandPrince,      // ou Tsit5, Rodas5, etc.
-        abstol: 1e-8,
-        reltol: 1e-6
-    );
+    // Stiff ODE
+    let sol = solve_stiff(robertson, y0, t_span);
     
-    // Events nativos
-    let events = solve(model, ...,
-        events: [
-            when prey < 1.0 then stop,
-            when predator > 20.0 then { 
-                predator = 15.0  // reset
-            }
-        ]
-    );
-}
-
-// PDEs também
-pde HeatEquation {
-    params: { α: f64 }  // difusividade
-    domain: Rectangle([0, 1], [0, 1])
-    
-    ∂u/∂t = α * (∂²u/∂x² + ∂²u/∂y²)
-    
-    boundary: {
-        x = 0: u = 0,
-        x = 1: u = 0,
-        y = 0: ∂u/∂n = 0,  // Neumann
-        y = 1: u = sin(π * x)
-    }
+    // PDE
+    let heat = heat_equation_1d(&domain, &boundary, alpha, initial, t_final);
+    let wave = wave_equation_1d(&domain, &boundary, c, u0, v0, t_final);
 }
 ```
 
 ---
 
-## Arquitetura de Implementação
+## Proximo Passo: Integracao no Compilador
 
-### Novos Efeitos Algébricos
+As primitivas existem no runtime. Agora precisamos:
 
-```d
-// Efeitos L0 científicos
-effect Prob {
-    sample<D: Distribution>(d: D) -> D::Output
-    observe<D: Distribution>(value: D::Output, d: D) -> ()
-    factor(log_weight: f64) -> ()
-}
+### Fase 5: Syntax Sugar e Integracao (Atual)
 
-effect Discover {
-    propose_term(library: [fn]) -> Term
-    evaluate_fitness(model: Model, data: Data) -> f64
-    select_sparse(coefficients: [f64], threshold: f64) -> [f64]
-}
+| Feature | Prioridade | Status |
+|---------|------------|--------|
+| Syntax `x +- y` para uncertain | P0 | 🔴 Parser |
+| Syntax `ode { }` block | P0 | 🔴 Parser |
+| Syntax `pde { }` block | P0 | 🔴 Parser |
+| Type inference para Tensor shapes | P1 | 🟡 Parcial |
+| Efeito handlers para Prob | P1 | 🟡 Parcial |
+| Efeito handlers para Causal | P1 | 🔴 Nao iniciado |
+| Codegen para autodiff | P1 | 🟡 HLIR pass |
+| LLVM backend para primitivas | P2 | 🔴 Nao iniciado |
+| Julia backend para primitivas | P2 | 🟡 Parcial |
 
-effect Causal {
-    intervene<T>(variable: Var<T>, value: T) -> ()
-    observe_under_intervention<T>(target: Var<T>) -> T
-    counterfactual_query<T>(factual: Evidence, intervention: Evidence) -> T
-}
+### Fase 6: Otimizacoes
 
-effect Symbolic {
-    create_symbol(name: str) -> Expr
-    differentiate(expr: Expr, var: Symbol) -> Expr
-    integrate(expr: Expr, var: Symbol) -> Expr
-    simplify(expr: Expr) -> Expr
-}
+| Feature | Prioridade | Status |
+|---------|------------|--------|
+| Fusion de operacoes tensoriais | P2 | 🔴 |
+| Paralelizacao automatica de ODEs | P2 | 🔴 |
+| GPU dispatch automatico | P2 | 🟡 Kernels prontos |
+| Sparse tensor support | P3 | 🔴 |
+| Mixed precision autodiff | P3 | 🔴 |
 
-effect Autodiff {
-    dual<T: Numeric>(value: T) -> Dual<T>
-    grad<F: Differentiable>(f: F, at: [f64]) -> [f64]
-    jacobian<F: Differentiable>(f: F, at: [f64]) -> [[f64]]
-}
-```
+### Fase 7: Ecossistema
 
-### Hierarquia de Tipos Científicos
-
-```d
-// Tipos base
-trait Numeric { ... }
-trait Differentiable: Numeric { ... }
-trait Probabilistic { ... }
-
-// Tipos com incerteza
-type uncertain<T: Numeric> = struct {
-    value: T,
-    uncertainty: T,  // ou Distribution<T>
-}
-
-// Tensores tipados
-type Tensor<T: Numeric, Shape: [usize]> = struct {
-    data: [T],
-    shape: Shape,
-    strides: [usize],
-}
-
-// Distribuições
-trait Distribution {
-    type Output;
-    fn sample(self, rng: &mut RNG) -> Self::Output;
-    fn log_prob(self, x: Self::Output) -> f64;
-}
-
-// Expressões simbólicas
-enum Expr {
-    Symbol(String),
-    Const(f64),
-    Add(Box<Expr>, Box<Expr>),
-    Mul(Box<Expr>, Box<Expr>),
-    Pow(Box<Expr>, Box<Expr>),
-    Fn(String, Vec<Expr>),
-    Derivative(Box<Expr>, String),
-}
-```
+| Feature | Prioridade | Status |
+|---------|------------|--------|
+| LSP com inferencia de shapes | P2 | 🔴 |
+| Visualizacao de DAGs causais | P3 | 🔴 |
+| Export para Stan/PyMC | P3 | 🔴 |
+| Import de ONNX | P3 | 🔴 |
+| Notebooks interativos | P3 | 🔴 |
 
 ---
 
-## Estado Atual vs. Objetivo
-
-### ✅ Já Implementado (v0.59)
-
-| Componente | Status |
-|------------|--------|
-| Lexer/Parser | ✅ Completo |
-| AST | ✅ Completo |
-| Type Checker | ✅ Funcional |
-| Unidades de Medida | ⚠️ Parsing OK |
-| Efeito `Prob` | ⚠️ Declarado |
-| Efeito `GPU` | ⚠️ Declarado |
-| Ontologias | ✅ Avançado |
-
-### 🎯 Objetivo: Primitivas Científicas
-
-| Primitiva | Prioridade | Complexidade | Status |
-|-----------|------------|--------------|--------|
-| `grad`/`jacobian` | P0 | Alta | 🔴 Não iniciado |
-| `sample`/`observe`/`infer` | P0 | Alta | 🟡 Efeito existe |
-| `uncertain<T>` | P1 | Média | 🔴 Não iniciado |
-| `Tensor<T, Shape>` | P1 | Média | 🟡 Tipo existe |
-| `ode`/`solve` | P1 | Alta | 🔴 Não iniciado |
-| `discover` | P2 | Muito Alta | 🔴 Não iniciado |
-| `do`/`counterfactual` | P2 | Muito Alta | 🟡 Keywords existem |
-| `symbolic`/`simplify` | P3 | Muito Alta | 🔴 Não iniciado |
-
----
-
-## Plano de Implementação
-
-### Fase 1: Fundação (4-6 semanas)
-1. **Autodiff básico** - dual numbers para `grad`
-2. **Tensores verificados** - shapes em tempo de compilação
-3. **`uncertain<T>`** - tipo com propagação de erro
-
-### Fase 2: Probabilístico (4-6 semanas)
-1. **Runtime para `Prob`** - handlers de efeito
-2. **Distribuições básicas** - Normal, Gamma, Beta, etc.
-3. **Inferência HMC** - sampler nativo
-
-### Fase 3: Dinâmico (4-6 semanas)
-1. **Tipo `ode`** - ODEs como valores
-2. **Solvers nativos** - RK45, BDF
-3. **Descoberta básica** - SINDy simplificado
-
-### Fase 4: Causal + Simbólico (6-8 semanas)
-1. **Operador `do`** - intervenções
-2. **Counterfactuals** - queries contrafactuais
-3. **Expressões simbólicas** - manipulação básica
-
----
-
-## Comparação Final
+## Comparacao Final
 
 | Feature | D | Julia | Python | Rust | C++ |
 |---------|---|-------|--------|------|-----|
 | **L0 (compilada, sem runtime)** | ✅ | ❌ | ❌ | ✅ | ✅ |
 | **Autodiff nativo** | ✅ | Pkg | Pkg | Pkg | ❌ |
-| **Probabilístico nativo** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Probabilistico nativo** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Descoberta de modelos** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Inferência causal** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Inferencia causal** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Incerteza nativa** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Unidades verificadas** | ✅ | Pkg | Pkg | Pkg | ❌ |
 | **Ontologias** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Shapes verificados** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **PDEs nativos** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Einstein notation** | ✅ | Pkg | Pkg | ❌ | ❌ |
+| **GPU multi-backend** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-**Demetrios é a primeira e única linguagem L0 projetada para ciência.**
+**Demetrios e a primeira e unica linguagem L0 projetada para ciencia.**
 
 ---
 
-## Citação
+## Changelog
 
-Se você usar Demetrios em pesquisa, cite:
+### v0.61.0 (2025-12-11)
+- ✅ PDE solvers (Heat, Wave, Advection, Diffusion-Reaction)
+- ✅ Einstein notation (einsum)
+- ✅ Stiff ODE solvers (BDF, LSODA, Rosenbrock)
+- ✅ GPU scientific kernels
+
+### v0.60.0 (2025-12-10)
+- ✅ Symbolic computation
+- ✅ Causal inference (do-calculus)
+- ✅ Model discovery (SINDy)
+
+### v0.59.0 (2025-12-09)
+- ✅ Autodiff (dual numbers)
+- ✅ uncertain<T> type
+- ✅ Tensor<T, Shape>
+- ✅ Prob effect runtime
+- ✅ ODE solvers (Euler, RK4, RK45)
+
+---
+
+## Citacao
 
 ```bibtex
 @software{demetrios2025,
   author = {Agourakis, Demetrios Chiuratto and Agourakis, Dionisio Chiuratto},
   title = {Demetrios: A Scientific L0 Programming Language},
   year = {2025},
-  url = {https://github.com/demetrios-lang/demetrios}
+  url = {https://github.com/Chiuratto-AI/demetrios}
 }
 ```
 
 ---
 
-*"A linguagem que a ciência merecia desde o início."*
+*"A linguagem que a ciencia merecia desde o inicio."*

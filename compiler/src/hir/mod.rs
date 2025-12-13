@@ -695,6 +695,7 @@ pub enum HirBinaryOp {
     BitXor,
     Shl,
     Shr,
+    PlusMinus,
 }
 
 impl HirBinaryOp {

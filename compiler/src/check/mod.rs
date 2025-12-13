@@ -2478,7 +2478,7 @@ impl TypeChecker {
         let (right_numeric, right_unit) = self.extract_quantity(right);
 
         match op {
-            BinaryOp::Add | BinaryOp::Sub => {
+            BinaryOp::Add | BinaryOp::Sub | BinaryOp::PlusMinus => {
                 // Addition/subtraction requires compatible units
                 match (&left_unit, &right_unit) {
                     (Some(lu), Some(ru)) => {
@@ -3087,7 +3087,7 @@ impl TypeChecker {
 
     fn binary_result_type(&self, op: BinaryOp, left: &HirType, right: &HirType) -> HirType {
         match op {
-            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem => {
+            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem | BinaryOp::PlusMinus => {
                 left.clone()
             }
             BinaryOp::Eq
@@ -3154,6 +3154,7 @@ impl TypeChecker {
             BinaryOp::BitXor => HirBinaryOp::BitXor,
             BinaryOp::Shl => HirBinaryOp::Shl,
             BinaryOp::Shr => HirBinaryOp::Shr,
+            BinaryOp::PlusMinus => HirBinaryOp::PlusMinus,
         }
     }
 
