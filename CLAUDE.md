@@ -1,202 +1,170 @@
-# Demetrios Language Compiler — Claude Code Rules
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Identity
 
 **Demetrios (D)** is a novel L0 systems + scientific programming language created by Demetrios Chiuratto Agourakis. This is NOT a dialect of Rust, Julia, or any existing language. D has its own syntax, semantics, and design philosophy.
 
+## Build Commands
+
+```bash
+# Build (from repo root or compiler/)
+cd compiler && cargo build
+
+# Run all tests
+cargo test
+
+# Run specific test
+cargo test test_name
+cargo test --test integration_semantic_types
+cargo test --test integration_ontology_e2e
+
+# Run with output
+cargo test -- --nocapture
+
+# Lint and format
+cargo clippy
+cargo fmt
+
+# Check a D file
+cargo run -- check examples/hello.d
+cargo run -- check examples/hello.d --show-ast --show-types
+
+# Run with JIT (requires --features jit)
+cargo run --features jit -- run examples/hello.d
+
+# Run benchmarks
+cargo bench --bench layout_bench
+cargo bench --bench locality_bench
+cargo bench --bench ontology_bench
+
+# Build with features
+cargo build --features jit           # Cranelift JIT
+cargo build --features llvm          # LLVM backend (requires LLVM)
+cargo build --features lsp           # Language Server
+cargo build --features smt           # Z3 refinement types
+cargo build --features gpu           # GPU codegen
+cargo build --features ontology      # Ontology support
+cargo build --features full          # All features
+
+# Run LSP server (requires --features lsp)
+cargo run --features lsp --bin demetrios-lsp
+
+# Build ontology database
+cargo run --bin dc-ontology-build
+```
+
 ## Repository Structure
 
 ```
-/mnt/e/workspace/demetrios/
-├── compiler/              # Rust compiler implementation
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs        # CLI entry point
-│       ├── lib.rs         # Library root
-│       ├── lexer/         # Tokenization (Logos)
-│       ├── parser/        # Recursive descent + Pratt
-│       ├── ast/           # Abstract syntax tree
-│       ├── resolve/       # Name resolution
-│       ├── check/         # Type checker
-│       ├── types/         # Type system
-│       ├── effects/       # Algebraic effects
-│       ├── hir/           # High-level IR
-│       ├── hlir/          # SSA-based IR
-│       ├── mlir/          # MLIR integration
-│       └── codegen/       # LLVM/Cranelift/GPU backends
-├── stdlib/                # Standard library (D code)
-├── docs/                  # Documentation
-├── examples/              # Example programs
-└── tests/                 # Integration tests
+demetrios/
+├── compiler/           # Rust compiler (main codebase)
+│   ├── Cargo.toml      # Dependencies and features
+│   ├── src/
+│   │   ├── main.rs     # CLI entry point (dc)
+│   │   ├── lib.rs      # Library root
+│   │   ├── lexer/      # Tokenization (Logos)
+│   │   ├── parser/     # Recursive descent + Pratt parsing
+│   │   ├── ast/        # Abstract syntax tree
+│   │   ├── check/      # Type checking
+│   │   ├── typeck/     # Additional type checking
+│   │   ├── types/      # Type system core
+│   │   ├── effects/    # Algebraic effect system
+│   │   ├── hir/        # High-level IR (typed AST)
+│   │   ├── hlir/       # SSA-based low-level IR
+│   │   ├── codegen/    # LLVM/Cranelift/GPU backends
+│   │   ├── interp/     # Interpreter
+│   │   ├── ontology/   # Scientific ontology (15M+ terms)
+│   │   ├── epistemic/  # Knowledge types and confidence
+│   │   ├── smt/        # Z3 SMT solver integration
+│   │   ├── refinement/ # Refinement type verification
+│   │   ├── linear/     # Linear/affine type checking
+│   │   ├── ownership/  # Ownership analysis
+│   │   ├── units/      # Units of measure
+│   │   ├── lsp/        # Language Server Protocol
+│   │   ├── locality/   # Cache optimization
+│   │   ├── layout/     # Memory layout synthesis
+│   │   ├── optimizer/  # Optimizations
+│   │   ├── fmt/        # Code formatter
+│   │   └── ...
+│   ├── tests/          # Integration tests
+│   └── benches/        # Performance benchmarks
+├── stdlib/             # Standard library (D code)
+├── spec/               # Language specification
+├── docs/               # Documentation
+├── examples/           # Example programs
+├── editors/            # IDE integrations (VS Code)
+└── tests/              # Language test suite
+    ├── compile-fail/   # Should fail to compile
+    ├── run-pass/       # Should compile and run
+    └── ui/             # Error message tests
 ```
 
-## Language Design Principles
+## Language Syntax Quick Reference
 
-### 1. Core Features
-- **Algebraic Effects**: Full effect system with handlers (IO, Mut, Alloc, GPU, Prob, etc.)
-- **Linear/Affine Types**: Resource safety, must-use semantics
-- **Units of Measure**: Compile-time dimensional analysis (mg, mL, etc.)
-- **Refinement Types**: Predicate constraints with SMT verification
-- **GPU-Native**: First-class GPU memory and kernel syntax
-
-### 2. Syntax Style
-- `let` for immutable, `var` for mutable, `const` for compile-time
-- `fn` for functions, `kernel fn` for GPU kernels
-- `&T` for shared reference, `&!T` for exclusive reference (NOT `&mut`)
-- `with Effect` for effect annotations
-- `linear struct`, `affine struct` for resource types
-
-### 3. Effect System
 ```d
+// Variables
+let x = 5              // immutable
+var y = 10             // mutable
+const PI = 3.14159     // compile-time constant
+
+// Functions with effects
 fn read_file(path: string) -> string with IO, Panic { ... }
 fn simulate() -> f64 with Prob, Alloc { ... }
+
+// References (NOT &mut like Rust)
+&T                     // shared reference
+&!T                    // exclusive reference
+
+// Linear/affine types
+linear struct FileHandle { fd: i32 }
+affine struct Buffer { ptr: *u8 }
+
+// GPU kernels
+kernel fn vector_add(a: &[f32], b: &[f32], c: &!mut [f32]) {
+    let i = gpu.thread_id.x
+    c[i] = a[i] + b[i]
+}
+
+// Units of measure
+let dose: mg = 500.0
+let volume: mL = 10.0
+let conc: mg/mL = dose / volume
+
+// Refinement types
+type Positive = { x: i32 | x > 0 }
+type Percentage = { x: f64 | 0.0 <= x && x <= 100.0 }
 ```
 
-Built-in effects: IO, Mut, Alloc, Panic, Async, GPU, Prob, Div
+## Built-in Effects
 
-### 4. Type System
-- Hindley-Milner with bidirectional checking
-- Substructural types (linear, affine)
-- Effect polymorphism
-- Row polymorphism for records (future)
+`IO`, `Mut`, `Alloc`, `Panic`, `Async`, `GPU`, `Prob`, `Div`
+
+## Compiler Pipeline
+
+Source -> Lexer (Logos) -> Parser -> AST -> Type Checker -> HIR -> HLIR (SSA) -> MLIR -> Codegen (LLVM/Cranelift/GPU)
 
 ## Coding Standards
 
 ### Rust Code (Compiler)
-- Use `thiserror` for error types
-- Use `miette` for diagnostics with source spans
-- Prefer `logos` for lexing
+- Use `thiserror` for error types, `miette` for diagnostics with source spans
 - No `unwrap()` in library code—use `?` or proper error handling
-- All public items must have doc comments
-- Tests for every module
+- All public items need doc comments
+- Use `logos` for lexing patterns
 
-### D Code (Examples/Stdlib)
-- Follow D syntax as defined in the language spec
-- Include type annotations for clarity
-- Document effects in function signatures
-
-## File Naming Conventions
-- Rust: `snake_case.rs`
-- D source: `snake_case.d`
-- Documentation: `UPPER_CASE.md` for top-level, `Title_Case.md` for sections
-
-## Commit Message Format
+### Commit Messages
 ```
 [component] Brief description
 
-- Detail 1
-- Detail 2
-
-Closes #issue (if applicable)
+Components: lexer, parser, ast, check, types, effects, hir, hlir,
+           codegen, cli, docs, stdlib, tests, ontology, epistemic
 ```
 
-Components: `lexer`, `parser`, `ast`, `resolve`, `check`, `types`, `effects`, `hir`, `hlir`, `codegen`, `cli`, `docs`, `stdlib`, `tests`
+## Key Architectural Decisions
 
-## Development Workflow
-
-### Before Each Session
-1. `cargo build` — must pass
-2. `cargo test` — must pass
-3. `cargo clippy` — no warnings
-
-### After Each Session
-1. Update documentation in `docs/`
-2. Add/update tests
-3. Commit with descriptive message
-
-## Documentation Requirements
-
-Every significant feature must have:
-1. **Specification** in `docs/spec/`
-2. **Tutorial** in `docs/tutorial/`
-3. **API reference** in `docs/api/`
-4. **Examples** in `examples/`
-
-Documentation must be Q1-journal quality:
-- Precise terminology
-- Formal definitions where appropriate
-- Cross-references
-- Examples for every concept
-
-## Error Handling Philosophy
-
-Errors should:
-1. Have precise source locations (spans)
-2. Explain what went wrong
-3. Suggest how to fix it
-4. Be visually clear (use miette)
-
-Example:
-```
-error[E0001]: Type mismatch
-  ┌─ src/main.d:5:12
-  │
-5 │     return true
-  │            ^^^^ expected `int`, found `bool`
-  │
-  = help: the function signature declares return type `int`
-```
-
-## Testing Strategy
-
-1. **Unit tests**: In each module (`#[cfg(test)]`)
-2. **Integration tests**: In `tests/` directory
-3. **Example programs**: In `examples/`, must compile and run
-4. **Fuzzing**: For parser (future)
-
-## Performance Considerations
-
-- Use arena allocation for AST nodes
-- Intern all strings
-- Avoid cloning where possible
-- Profile before optimizing
-
-## Dependencies Policy
-
-- Minimize dependencies
-- Prefer well-maintained crates
-- No `unsafe` without justification
-- Pin versions in Cargo.toml
-
-## Current Phase
-
-**Bootstrap Phase** (Days 1-7):
-- [x] Day 1: Scaffold
-- [x] Day 2: Stub files
-- [x] Day 3: First pipeline
-- [x] Day 4: Name resolution + type checking
-- [ ] Day 5: Effects + ownership
-- [ ] Day 6: HIR lowering
-- [ ] Day 7: First codegen
-
-## Key Commands
-
-```bash
-# Build
-cargo build
-
-# Test
-cargo test
-
-# Check specific file
-cargo run -- check examples/minimal.d --show-ast --show-types
-
-# Format
-cargo fmt
-
-# Lint
-cargo clippy
-```
-
-## Important Notes
-
-1. **This is a new language** — don't assume Rust/Julia semantics
-2. **Effects are first-class** — every function has an effect signature
-3. **Linear types matter** — track resource usage carefully
-4. **Documentation is essential** — write it as you code
-5. **Quality over speed** — this is a long-term project
-
-## Contact
-
-Creator: Demetrios Chiuratto Agourakis & Dionisio Chiuratto Agourakis
-Project: Demetrios Programming Language
+1. **Effects are first-class** — every function has an effect signature
+2. **Linear types matter** — track resource usage carefully in `linear/` and `ownership/`
+3. **Ontology-aware types** — 15M+ scientific terms as first-class types via `ontology/`
+4. **Epistemic computing** — confidence and provenance tracking in `epistemic/`
+5. **Bidirectional type inference** — types flow both up and down the AST
