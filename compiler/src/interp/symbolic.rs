@@ -54,6 +54,259 @@ pub enum Expr {
     Neg(Box<Expr>),
 }
 
+// ============================================================================
+// Token types for the parser
+// ============================================================================
+
+#[derive(Clone, Debug, PartialEq)]
+enum Token {
+    Number(f64),
+    Ident(String),
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Caret,
+    LParen,
+    RParen,
+    Comma,
+    Eof,
+}
+
+// ============================================================================
+// Tokenizer (Lexer)
+// ============================================================================
+
+struct Tokenizer<'a> {
+    input: &'a str,
+    pos: usize,
+}
+
+impl<'a> Tokenizer<'a> {
+    fn new(input: &'a str) -> Self {
+        Tokenizer { input, pos: 0 }
+    }
+
+    fn peek_char(&self) -> Option<char> {
+        self.input[self.pos..].chars().next()
+    }
+
+    fn advance(&mut self) {
+        if let Some(c) = self.peek_char() {
+            self.pos += c.len_utf8();
+        }
+    }
+
+    fn skip_whitespace(&mut self) {
+        while let Some(c) = self.peek_char() {
+            if c.is_whitespace() {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn read_number(&mut self) -> f64 {
+        let start = self.pos;
+        while let Some(c) = self.peek_char() {
+            if c.is_ascii_digit() || c == '.' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.input[start..self.pos].parse().unwrap_or(0.0)
+    }
+
+    fn read_ident(&mut self) -> String {
+        let start = self.pos;
+        while let Some(c) = self.peek_char() {
+            if c.is_alphanumeric() || c == '_' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.input[start..self.pos].to_string()
+    }
+
+    fn next_token(&mut self) -> Token {
+        self.skip_whitespace();
+
+        match self.peek_char() {
+            None => Token::Eof,
+            Some(c) => {
+                match c {
+                    '+' => { self.advance(); Token::Plus }
+                    '-' => { self.advance(); Token::Minus }
+                    '*' => { self.advance(); Token::Star }
+                    '/' => { self.advance(); Token::Slash }
+                    '^' => { self.advance(); Token::Caret }
+                    '(' => { self.advance(); Token::LParen }
+                    ')' => { self.advance(); Token::RParen }
+                    ',' => { self.advance(); Token::Comma }
+                    _ if c.is_ascii_digit() || c == '.' => Token::Number(self.read_number()),
+                    _ if c.is_alphabetic() || c == '_' => Token::Ident(self.read_ident()),
+                    _ => { self.advance(); self.next_token() } // Skip unknown chars
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Recursive Descent Parser with Operator Precedence
+// ============================================================================
+
+struct Parser<'a> {
+    tokenizer: Tokenizer<'a>,
+    current: Token,
+}
+
+impl<'a> Parser<'a> {
+    fn new(input: &'a str) -> Self {
+        let mut tokenizer = Tokenizer::new(input);
+        let current = tokenizer.next_token();
+        Parser { tokenizer, current }
+    }
+
+    fn advance(&mut self) {
+        self.current = self.tokenizer.next_token();
+    }
+
+    fn expect(&mut self, expected: Token) -> Result<()> {
+        if std::mem::discriminant(&self.current) == std::mem::discriminant(&expected) {
+            self.advance();
+            Ok(())
+        } else {
+            Err(miette::miette!("Expected {:?}, got {:?}", expected, self.current))
+        }
+    }
+
+    /// Parse entry point
+    fn parse_expr(&mut self) -> Result<Expr> {
+        self.parse_additive()
+    }
+
+    /// Additive: handles + and - (lowest precedence for binary ops)
+    fn parse_additive(&mut self) -> Result<Expr> {
+        let mut left = self.parse_multiplicative()?;
+
+        loop {
+            match &self.current {
+                Token::Plus => {
+                    self.advance();
+                    let right = self.parse_multiplicative()?;
+                    left = Expr::Add(Box::new(left), Box::new(right));
+                }
+                Token::Minus => {
+                    self.advance();
+                    let right = self.parse_multiplicative()?;
+                    left = Expr::Sub(Box::new(left), Box::new(right));
+                }
+                _ => break,
+            }
+        }
+
+        Ok(left)
+    }
+
+    /// Multiplicative: handles * and /
+    fn parse_multiplicative(&mut self) -> Result<Expr> {
+        let mut left = self.parse_power()?;
+
+        loop {
+            match &self.current {
+                Token::Star => {
+                    self.advance();
+                    let right = self.parse_power()?;
+                    left = Expr::Mul(Box::new(left), Box::new(right));
+                }
+                Token::Slash => {
+                    self.advance();
+                    let right = self.parse_power()?;
+                    left = Expr::Div(Box::new(left), Box::new(right));
+                }
+                _ => break,
+            }
+        }
+
+        Ok(left)
+    }
+
+    /// Power: handles ^ (right-associative, highest precedence for binary ops)
+    fn parse_power(&mut self) -> Result<Expr> {
+        let base = self.parse_unary()?;
+
+        if matches!(self.current, Token::Caret) {
+            self.advance();
+            let exp = self.parse_power()?; // Right-associative recursion
+            Ok(Expr::Pow(Box::new(base), Box::new(exp)))
+        } else {
+            Ok(base)
+        }
+    }
+
+    /// Unary: handles unary minus
+    fn parse_unary(&mut self) -> Result<Expr> {
+        if matches!(self.current, Token::Minus) {
+            self.advance();
+            let expr = self.parse_unary()?;
+            Ok(Expr::Neg(Box::new(expr)))
+        } else {
+            self.parse_primary()
+        }
+    }
+
+    /// Primary: numbers, variables, function calls, parenthesized expressions
+    fn parse_primary(&mut self) -> Result<Expr> {
+        match self.current.clone() {
+            Token::Number(n) => {
+                self.advance();
+                Ok(Expr::Const(n))
+            }
+            Token::Ident(name) => {
+                self.advance();
+                // Check for function call
+                if matches!(self.current, Token::LParen) {
+                    self.advance(); // consume '('
+                    let arg = self.parse_expr()?;
+                    self.expect(Token::RParen)?;
+
+                    match name.as_str() {
+                        "sin" => Ok(Expr::Sin(Box::new(arg))),
+                        "cos" => Ok(Expr::Cos(Box::new(arg))),
+                        "tan" => {
+                            // tan(x) = sin(x) / cos(x)
+                            Ok(Expr::Div(
+                                Box::new(Expr::Sin(Box::new(arg.clone()))),
+                                Box::new(Expr::Cos(Box::new(arg))),
+                            ))
+                        }
+                        "exp" => Ok(Expr::Exp(Box::new(arg))),
+                        "ln" | "log" => Ok(Expr::Ln(Box::new(arg))),
+                        "sqrt" => Ok(Expr::Sqrt(Box::new(arg))),
+                        "abs" => Ok(Expr::Abs(Box::new(arg))),
+                        _ => Err(miette::miette!("Unknown function: {}", name)),
+                    }
+                } else {
+                    // Variable
+                    Ok(Expr::Var(name))
+                }
+            }
+            Token::LParen => {
+                self.advance();
+                let expr = self.parse_expr()?;
+                self.expect(Token::RParen)?;
+                Ok(expr)
+            }
+            Token::Eof => Err(miette::miette!("Unexpected end of expression")),
+            other => Err(miette::miette!("Unexpected token: {:?}", other)),
+        }
+    }
+}
+
 impl Expr {
     /// Create a constant
     pub fn constant(value: f64) -> Self {
@@ -65,50 +318,30 @@ impl Expr {
         Expr::Var(name.to_string())
     }
 
-    /// Parse a simple expression from a string
-    /// Limited parser for basic math expressions
+    /// Parse an expression from a string using recursive descent parser
+    ///
+    /// Supports:
+    /// - Numbers: 3.14, 42, -5
+    /// - Variables: x, y, theta
+    /// - Binary operators: +, -, *, /, ^ (with proper precedence)
+    /// - Parentheses: (x + 1) * 2
+    /// - Functions: sin(x), cos(x), tan(x), exp(x), ln(x), sqrt(x), abs(x)
+    /// - Unary minus: -x, -(x + 1)
+    ///
+    /// Operator precedence (highest to lowest):
+    /// 1. ^ (power, right-associative)
+    /// 2. *, / (multiplicative, left-associative)
+    /// 3. +, - (additive, left-associative)
     pub fn parse(input: &str) -> Result<Self> {
-        let trimmed = input.trim();
+        let mut parser = Parser::new(input);
+        let expr = parser.parse_expr()?;
 
-        // Try to parse as number
-        if let Ok(num) = trimmed.parse::<f64>() {
-            return Ok(Expr::Const(num));
+        // Ensure we consumed all input
+        if !matches!(parser.current, Token::Eof) {
+            return Err(miette::miette!("Unexpected token after expression: {:?}", parser.current));
         }
 
-        // Try to parse as variable
-        if trimmed.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            return Ok(Expr::Var(trimmed.to_string()));
-        }
-
-        // Basic binary operations (very simple parser)
-        if let Some(pos) = trimmed.rfind('+') {
-            let left = Expr::parse(&trimmed[..pos])?;
-            let right = Expr::parse(&trimmed[pos + 1..])?;
-            return Ok(Expr::Add(Box::new(left), Box::new(right)));
-        }
-
-        if let Some(pos) = trimmed.rfind('-') {
-            if pos > 0 {  // Avoid parsing leading minus as subtraction
-                let left = Expr::parse(&trimmed[..pos])?;
-                let right = Expr::parse(&trimmed[pos + 1..])?;
-                return Ok(Expr::Sub(Box::new(left), Box::new(right)));
-            }
-        }
-
-        if let Some(pos) = trimmed.rfind('*') {
-            let left = Expr::parse(&trimmed[..pos])?;
-            let right = Expr::parse(&trimmed[pos + 1..])?;
-            return Ok(Expr::Mul(Box::new(left), Box::new(right)));
-        }
-
-        if let Some(pos) = trimmed.rfind('/') {
-            let left = Expr::parse(&trimmed[..pos])?;
-            let right = Expr::parse(&trimmed[pos + 1..])?;
-            return Ok(Expr::Div(Box::new(left), Box::new(right)));
-        }
-
-        // Default: treat as variable
-        Ok(Expr::Var(trimmed.to_string()))
+        Ok(expr)
     }
 
     /// Differentiate with respect to a variable
@@ -490,5 +723,233 @@ mod tests {
             Expr::Var(v) => assert_eq!(v, "x"),
             _ => panic!("Should simplify to just x"),
         }
+    }
+
+    // ========================================================================
+    // Parser tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_simple_number() {
+        let expr = Expr::parse("42").unwrap();
+        assert_eq!(expr, Expr::Const(42.0));
+    }
+
+    #[test]
+    fn test_parse_simple_variable() {
+        let expr = Expr::parse("x").unwrap();
+        assert_eq!(expr, Expr::Var("x".to_string()));
+    }
+
+    #[test]
+    fn test_parse_addition() {
+        let expr = Expr::parse("x + 1").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 5.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 6.0);
+    }
+
+    #[test]
+    fn test_parse_subtraction() {
+        let expr = Expr::parse("x - 3").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 10.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 7.0);
+    }
+
+    #[test]
+    fn test_parse_multiplication() {
+        let expr = Expr::parse("x * 2").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 7.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 14.0);
+    }
+
+    #[test]
+    fn test_parse_division() {
+        let expr = Expr::parse("x / 4").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 20.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 5.0);
+    }
+
+    #[test]
+    fn test_parse_power() {
+        let expr = Expr::parse("x^2").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 3.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 9.0);
+    }
+
+    #[test]
+    fn test_parse_parentheses() {
+        // (x + 1) * 2 with x=3 should be 8
+        let expr = Expr::parse("(x + 1) * 2").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 3.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 8.0);
+    }
+
+    #[test]
+    fn test_parse_precedence_mul_over_add() {
+        // x + 2 * 3 should be x + 6, not (x + 2) * 3
+        let expr = Expr::parse("x + 2 * 3").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 1.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 7.0);  // 1 + 6 = 7
+    }
+
+    #[test]
+    fn test_parse_precedence_pow_over_mul() {
+        // 2 * x^3 with x=2 should be 2 * 8 = 16
+        let expr = Expr::parse("2 * x^3").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 2.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 16.0);
+    }
+
+    #[test]
+    fn test_parse_power_right_associative() {
+        // 2^3^2 should be 2^(3^2) = 2^9 = 512
+        let expr = Expr::parse("2^3^2").unwrap();
+        let vars = HashMap::new();
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 512.0);
+    }
+
+    #[test]
+    fn test_parse_unary_minus() {
+        let expr = Expr::parse("-x").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 5.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, -5.0);
+    }
+
+    #[test]
+    fn test_parse_unary_minus_with_parentheses() {
+        let expr = Expr::parse("-(x + 1)").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 3.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, -4.0);
+    }
+
+    #[test]
+    fn test_parse_sin() {
+        let expr = Expr::parse("sin(x)").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 0.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert!((result - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_cos() {
+        let expr = Expr::parse("cos(x)").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 0.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert!((result - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_exp() {
+        let expr = Expr::parse("exp(x)").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 0.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert!((result - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_ln() {
+        let expr = Expr::parse("ln(x)").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), std::f64::consts::E);
+        let result = expr.evaluate(&vars).unwrap();
+        assert!((result - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_sqrt() {
+        let expr = Expr::parse("sqrt(x)").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 16.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 4.0);
+    }
+
+    #[test]
+    fn test_parse_abs() {
+        let expr = Expr::parse("abs(x)").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), -7.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 7.0);
+    }
+
+    #[test]
+    fn test_parse_complex_expression() {
+        // (x^2 + 2*x + 1) / (x + 1) = (x+1)^2 / (x+1) = x+1
+        // With x=3: (9 + 6 + 1) / 4 = 16/4 = 4
+        let expr = Expr::parse("(x^2 + 2*x + 1) / (x + 1)").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 3.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 4.0);
+    }
+
+    #[test]
+    fn test_parse_nested_functions() {
+        // sin(cos(0)) = sin(1) ≈ 0.8414
+        let expr = Expr::parse("sin(cos(x))").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 0.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert!((result - 0.8414709848).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_parse_polynomial() {
+        // 3*x^2 + 2*x + 1 with x=2: 12 + 4 + 1 = 17
+        let expr = Expr::parse("3*x^2 + 2*x + 1").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 2.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 17.0);
+    }
+
+    #[test]
+    fn test_parse_differentiate() {
+        // f(x) = x^2, f'(x) = 2x, f'(3) = 6
+        let expr = Expr::parse("x^2").unwrap();
+        let deriv = expr.differentiate("x");
+        let simplified = deriv.simplify();
+
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 3.0);
+        let result = simplified.evaluate(&vars).unwrap();
+        assert!((result - 6.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_multivariate() {
+        // x*y + z with x=2, y=3, z=4: 6 + 4 = 10
+        let expr = Expr::parse("x*y + z").unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), 2.0);
+        vars.insert("y".to_string(), 3.0);
+        vars.insert("z".to_string(), 4.0);
+        let result = expr.evaluate(&vars).unwrap();
+        assert_eq!(result, 10.0);
     }
 }
