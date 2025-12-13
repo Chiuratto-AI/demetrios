@@ -281,6 +281,7 @@ impl Formatter {
             }
             Item::OdeDef(o) => Doc::Text(format!("ode {} {{ ... }}", o.name)),
             Item::PdeDef(p) => Doc::Text(format!("pde {} {{ ... }}", p.name)),
+            Item::CausalModel(c) => Doc::Text(format!("causal model {} {{ ... }}", c.name)),
         }
     }
 

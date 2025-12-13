@@ -19,7 +19,7 @@ Linguagens L0 tradicionais:     Demetrios L0 Cientifica:
 
 ---
 
-## Estado Atual (v0.62.0)
+## Estado Atual (v0.62.1)
 
 ### ✅ Primitivas L0 Implementadas
 
@@ -169,12 +169,13 @@ As primitivas existem no runtime. Agora precisamos:
 
 | Feature | Prioridade | Status |
 |---------|------------|--------|
-| Syntax `x +- y` para uncertain | P0 | 🔴 Parser |
-| Syntax `ode { }` block | P0 | 🔴 Parser |
-| Syntax `pde { }` block | P0 | 🔴 Parser |
+| Syntax `x +- y` para uncertain | P0 | ✅ Completo |
+| Syntax `ode { }` block | P0 | ✅ Completo |
+| Syntax `pde { }` block | P0 | ✅ Completo |
+| Syntax `causal model { }` block | P0 | ✅ Completo |
 | Type inference para Tensor shapes | P1 | 🟡 Parcial |
 | Efeito handlers para Prob | P1 | 🟡 Parcial |
-| Efeito handlers para Causal | P1 | 🔴 Nao iniciado |
+| Efeito handlers para Causal | P1 | 🟡 Parcial (syntax) |
 | Codegen para autodiff | P1 | 🟡 HLIR pass |
 | LLVM backend para primitivas | P2 | 🔴 Nao iniciado |
 | Julia backend para primitivas | P2 | 🟡 Parcial |
@@ -223,6 +224,13 @@ As primitivas existem no runtime. Agora precisamos:
 ---
 
 ## Changelog
+
+### v0.62.1 (2025-12-13)
+- ✅ **Syntax Sugar Phase Complete**
+- ✅ Discovered `+-`, `ode {}`, `pde {}` syntax already implemented
+- ✅ Added `causal model {}` block syntax for DAG definition
+- ✅ Causal model: nodes, edges, structural equations
+- ✅ New example: `examples/causal_model.d`
 
 ### v0.62.0 (2025-12-13)
 - ✅ **Wave 3 Neurosymbolic Complete**

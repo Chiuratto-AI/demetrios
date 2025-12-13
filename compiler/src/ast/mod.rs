@@ -173,6 +173,8 @@ pub enum Item {
     OdeDef(OdeDef),
     /// PDE definition: `pde HeatEquation { ... }`
     PdeDef(PdeDef),
+    /// Causal model definition: `causal model SmokingCancer { ... }`
+    CausalModel(CausalModelDef),
 }
 
 // ==================== FUNCTIONS ====================
@@ -574,6 +576,72 @@ pub enum BoundaryConditionType {
     Robin { a: Expr, b: Expr, value: Expr },
     /// Periodic boundary
     Periodic,
+}
+
+// ==================== CAUSAL MODEL ====================
+
+/// Causal model definition for causal inference
+/// Syntax:
+/// ```d
+/// causal model SmokingCancer {
+///     nodes: [Smoking, Tar, Cancer, Genetics]
+///
+///     Genetics -> Smoking
+///     Genetics -> Cancer
+///     Smoking -> Tar
+///     Tar -> Cancer
+///
+///     equations: {
+///         Smoking = 0.5 * Genetics + noise,
+///         Tar = 0.8 * Smoking + noise,
+///         Cancer = 0.6 * Tar + 0.3 * Genetics + noise
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalModelDef {
+    pub id: NodeId,
+    pub visibility: Visibility,
+    pub name: String,
+    /// Node declarations: `nodes: [A, B, C]`
+    pub nodes: Vec<CausalNode>,
+    /// Edge declarations: `A -> B`
+    pub edges: Vec<CausalEdge>,
+    /// Optional structural equations: `equations: { X = expr, ... }`
+    pub equations: Vec<CausalEquation>,
+    pub span: Span,
+}
+
+/// Causal DAG node
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalNode {
+    pub id: NodeId,
+    pub name: String,
+    /// Optional type annotation
+    pub ty: Option<TypeExpr>,
+    pub span: Span,
+}
+
+/// Causal DAG edge: `A -> B`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalEdge {
+    pub id: NodeId,
+    /// Source node name
+    pub from: String,
+    /// Target node name
+    pub to: String,
+    pub span: Span,
+}
+
+/// Structural causal equation: `X = expr`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalEquation {
+    pub id: NodeId,
+    /// Variable being defined
+    pub variable: String,
+    /// Right-hand side expression
+    pub rhs: Expr,
+    pub span: Span,
 }
 
 // ==================== ONTOLOGY ====================

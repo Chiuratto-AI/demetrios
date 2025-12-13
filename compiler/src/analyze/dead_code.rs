@@ -429,7 +429,8 @@ impl DeadCodeAnalyzer {
             | Item::OntologyImport(_)
             | Item::AlignDecl(_)
             | Item::OdeDef(_)
-            | Item::PdeDef(_) => {}
+            | Item::PdeDef(_)
+            | Item::CausalModel(_) => {}
         }
     }
 
@@ -536,7 +537,8 @@ impl DeadCodeAnalyzer {
             | Item::OntologyImport(_)
             | Item::AlignDecl(_)
             | Item::OdeDef(_)
-            | Item::PdeDef(_) => {}
+            | Item::PdeDef(_)
+            | Item::CausalModel(_) => {}
         }
     }
 
