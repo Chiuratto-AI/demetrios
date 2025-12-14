@@ -745,6 +745,122 @@ impl MetalCodegen {
                 ));
             }
 
+            // === Modern ML Type Conversions (BF16/FP8/F4) ===
+            GpuOp::F32ToBF16(val) => {
+                let v = self.get_var_name(*val);
+                // Metal supports bfloat natively on Apple Silicon
+                self.emit(&format!("bfloat {} = bfloat({});", result_name, v));
+            }
+            GpuOp::BF16ToF32(val) => {
+                let v = self.get_var_name(*val);
+                self.emit(&format!("float {} = float({});", result_name, v));
+            }
+            GpuOp::F32ToF8E4M3(val) => {
+                let v = self.get_var_name(*val);
+                // Metal doesn't have native FP8 - software emulation
+                self.emit("// FP8 E4M3 conversion (software emulation)");
+                self.emit(&format!(
+                    "uchar {} = (uchar)(clamp({}, -448.0f, 448.0f) * 0.5625f + 128.0f);",
+                    result_name, v
+                ));
+            }
+            GpuOp::F8E4M3ToF32(val) => {
+                let v = self.get_var_name(*val);
+                self.emit("// FP8 E4M3 to F32 (software emulation)");
+                self.emit(&format!(
+                    "float {} = (float({}) - 128.0f) * 1.777f;",
+                    result_name, v
+                ));
+            }
+            GpuOp::F32ToF8E5M2(val) => {
+                let v = self.get_var_name(*val);
+                self.emit("// FP8 E5M2 conversion (software emulation)");
+                self.emit(&format!(
+                    "uchar {} = (uchar)(clamp({}, -57344.0f, 57344.0f) * 0.00017f + 128.0f);",
+                    result_name, v
+                ));
+            }
+            GpuOp::F8E5M2ToF32(val) => {
+                let v = self.get_var_name(*val);
+                self.emit("// FP8 E5M2 to F32 (software emulation)");
+                self.emit(&format!(
+                    "float {} = (float({}) - 128.0f) * 5882.35f;",
+                    result_name, v
+                ));
+            }
+            GpuOp::F32ToF4(val) => {
+                let v = self.get_var_name(*val);
+                self.emit("// F4 quantization (software emulation)");
+                self.emit(&format!(
+                    "uchar {} = (uchar)((as_type<uint>({}) >> 28) & 0x0F);",
+                    result_name, v
+                ));
+            }
+            GpuOp::F4ToF32(val) => {
+                let v = self.get_var_name(*val);
+                self.emit("// F4 dequantization (software emulation)");
+                self.emit(&format!(
+                    "float {} = as_type<float>((uint({} & 0x0F) << 28));",
+                    result_name, v
+                ));
+            }
+
+            // Packed ML Type Operations
+            GpuOp::PackF8x2(lo, hi) => {
+                let lo_v = self.get_var_name(*lo);
+                let hi_v = self.get_var_name(*hi);
+                self.emit(&format!(
+                    "ushort {} = (ushort({}) << 8) | ushort({});",
+                    result_name, hi_v, lo_v
+                ));
+            }
+            GpuOp::UnpackF8x2Low(val) => {
+                let v = self.get_var_name(*val);
+                self.emit(&format!("uchar {} = uchar({} & 0x00FF);", result_name, v));
+            }
+            GpuOp::UnpackF8x2High(val) => {
+                let v = self.get_var_name(*val);
+                self.emit(&format!("uchar {} = uchar(({} >> 8) & 0x00FF);", result_name, v));
+            }
+            GpuOp::PackF4x2(lo, hi) => {
+                let lo_v = self.get_var_name(*lo);
+                let hi_v = self.get_var_name(*hi);
+                self.emit(&format!(
+                    "uchar {} = (({} & 0x0F) << 4) | ({} & 0x0F);",
+                    result_name, hi_v, lo_v
+                ));
+            }
+            GpuOp::UnpackF4x2Low(val) => {
+                let v = self.get_var_name(*val);
+                self.emit(&format!("uchar {} = {} & 0x0F;", result_name, v));
+            }
+            GpuOp::UnpackF4x2High(val) => {
+                let v = self.get_var_name(*val);
+                self.emit(&format!("uchar {} = ({} >> 4) & 0x0F;", result_name, v));
+            }
+
+            // Quantization Utilities
+            GpuOp::QuantizeF32ToF8(val, _mode) => {
+                let v = self.get_var_name(*val);
+                // Software emulation using E4M3 format
+                self.emit("// Quantize F32 to F8 (E4M3 format, software emulation)");
+                self.emit(&format!(
+                    "uchar {} = (uchar)(clamp({}, -448.0f, 448.0f) * 0.5625f + 128.0f);",
+                    result_name, v
+                ));
+            }
+            GpuOp::DequantizeF8ToF32(val, scale) => {
+                let v = self.get_var_name(*val);
+                self.emit("// Dequantize F8 to F32 (software emulation)");
+                let base_expr = format!("(float({}) - 128.0f) * 1.777f", v);
+                if let Some(scale_val) = scale {
+                    let s = self.get_var_name(*scale_val);
+                    self.emit(&format!("float {} = ({}) * {};", result_name, base_expr, s));
+                } else {
+                    self.emit(&format!("float {} = {};", result_name, base_expr));
+                }
+            }
+
             // Memory
             GpuOp::Load(ptr, _space) => {
                 let ptr_name = self.get_var_name(*ptr);

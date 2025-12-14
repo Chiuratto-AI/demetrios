@@ -27,6 +27,9 @@ pub enum IntrinsicType {
     F32,
     F64,
     Ptr,
+    // Extended types for ML quantization
+    U8,
+    U16,
 }
 
 /// Intrinsic category
@@ -52,6 +55,8 @@ pub enum IntrinsicCategory {
     Launch,
     /// Debug/profiling
     Debug,
+    /// Quantization/ML types (FP8/BF16/F4)
+    Quantization,
 }
 
 impl IntrinsicCategory {
@@ -67,6 +72,7 @@ impl IntrinsicCategory {
             IntrinsicCategory::Memory,
             IntrinsicCategory::Launch,
             IntrinsicCategory::Debug,
+            IntrinsicCategory::Quantization,
         ]
     }
 
@@ -82,6 +88,7 @@ impl IntrinsicCategory {
             IntrinsicCategory::Memory => "Memory Operations",
             IntrinsicCategory::Launch => "Kernel Launch",
             IntrinsicCategory::Debug => "Debug/Profiling",
+            IntrinsicCategory::Quantization => "Quantization/ML Types",
         }
     }
 }
@@ -594,6 +601,119 @@ pub fn all_intrinsics() -> Vec<GpuIntrinsic> {
             return_type: IntrinsicType::Void,
             description: "Record performance monitoring event",
             category: IntrinsicCategory::Debug,
+        },
+        // === Quantization/ML Type Intrinsics ===
+        GpuIntrinsic {
+            name: "gpu.f32_to_bf16",
+            short_name: "f32_to_bf16",
+            param_count: 1,
+            return_type: IntrinsicType::U16, // BF16 represented as u16
+            description: "Convert F32 to BF16 (BFloat16)",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.bf16_to_f32",
+            short_name: "bf16_to_f32",
+            param_count: 1,
+            return_type: IntrinsicType::F32,
+            description: "Convert BF16 to F32",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.f32_to_f8e4m3",
+            short_name: "f32_to_f8e4m3",
+            param_count: 1,
+            return_type: IntrinsicType::U8, // FP8 E4M3 as u8
+            description: "Convert F32 to FP8 E4M3 (higher precision, ±448 range)",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.f8e4m3_to_f32",
+            short_name: "f8e4m3_to_f32",
+            param_count: 1,
+            return_type: IntrinsicType::F32,
+            description: "Convert FP8 E4M3 to F32",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.f32_to_f8e5m2",
+            short_name: "f32_to_f8e5m2",
+            param_count: 1,
+            return_type: IntrinsicType::U8, // FP8 E5M2 as u8
+            description: "Convert F32 to FP8 E5M2 (larger range, ±57344)",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.f8e5m2_to_f32",
+            short_name: "f8e5m2_to_f32",
+            param_count: 1,
+            return_type: IntrinsicType::F32,
+            description: "Convert FP8 E5M2 to F32",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.f32_to_f4",
+            short_name: "f32_to_f4",
+            param_count: 1,
+            return_type: IntrinsicType::U8, // F4 as nibble in u8
+            description: "Convert F32 to 4-bit float (extreme quantization)",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.f4_to_f32",
+            short_name: "f4_to_f32",
+            param_count: 1,
+            return_type: IntrinsicType::F32,
+            description: "Convert 4-bit float to F32",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.pack_f8x2",
+            short_name: "pack_f8x2",
+            param_count: 2,
+            return_type: IntrinsicType::U16, // Two FP8 values packed
+            description: "Pack two FP8 values into u16",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.unpack_f8x2",
+            short_name: "unpack_f8x2",
+            param_count: 1,
+            return_type: IntrinsicType::U16, // Returns packed, caller extracts
+            description: "Unpack u16 into two FP8 values",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.pack_f4x2",
+            short_name: "pack_f4x2",
+            param_count: 2,
+            return_type: IntrinsicType::U8, // Two F4 values in one byte
+            description: "Pack two F4 values into u8",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.unpack_f4x2",
+            short_name: "unpack_f4x2",
+            param_count: 1,
+            return_type: IntrinsicType::U8, // Returns packed, caller extracts
+            description: "Unpack u8 into two F4 values",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.quantize_block",
+            short_name: "quantize_block",
+            param_count: 3, // ptr to f32[], size, ptr to f8[]
+            return_type: IntrinsicType::F32, // Returns scale factor
+            description: "Quantize F32 block to F8 with per-block scaling",
+            category: IntrinsicCategory::Quantization,
+        },
+        GpuIntrinsic {
+            name: "gpu.dequantize_block",
+            short_name: "dequantize_block",
+            param_count: 3, // ptr to f8[], size, scale factor
+            return_type: IntrinsicType::Void,
+            description: "Dequantize F8 block to F32 with scale",
+            category: IntrinsicCategory::Quantization,
         },
     ]
 }

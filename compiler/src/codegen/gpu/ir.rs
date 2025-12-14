@@ -410,6 +410,51 @@ impl fmt::Display for MemorySpace {
     }
 }
 
+/// Quantization mode for FP8/F4 conversions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum QuantizeMode {
+    /// Round to nearest even (default, best accuracy)
+    RoundNearestEven,
+    /// Round toward zero (truncate)
+    RoundTowardZero,
+    /// Round toward positive infinity
+    RoundTowardPosInf,
+    /// Round toward negative infinity
+    RoundTowardNegInf,
+    /// Stochastic rounding (uses random bits for tie-breaking)
+    Stochastic,
+}
+
+impl fmt::Display for QuantizeMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            QuantizeMode::RoundNearestEven => write!(f, "rne"),
+            QuantizeMode::RoundTowardZero => write!(f, "rtz"),
+            QuantizeMode::RoundTowardPosInf => write!(f, "rtp"),
+            QuantizeMode::RoundTowardNegInf => write!(f, "rtn"),
+            QuantizeMode::Stochastic => write!(f, "stochastic"),
+        }
+    }
+}
+
+/// FP8 format specification
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Fp8Format {
+    /// E4M3: 4-bit exponent, 3-bit mantissa (higher precision, range ±448)
+    E4M3,
+    /// E5M2: 5-bit exponent, 2-bit mantissa (larger range, ±57344)
+    E5M2,
+}
+
+impl fmt::Display for Fp8Format {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Fp8Format::E4M3 => write!(f, "e4m3"),
+            Fp8Format::E5M2 => write!(f, "e5m2"),
+        }
+    }
+}
+
 /// Shared memory declaration
 #[derive(Debug, Clone)]
 pub struct SharedMemDecl {
@@ -562,6 +607,44 @@ pub enum GpuOp {
     SiToFp(ValueId, GpuType),
     UiToFp(ValueId, GpuType),
     Bitcast(ValueId, GpuType),
+
+    // === Modern ML Type Conversions (BF16/FP8/F4) ===
+    /// Convert F32 to BF16 (truncate mantissa from 23 to 7 bits)
+    F32ToBF16(ValueId),
+    /// Convert BF16 to F32 (extend mantissa)
+    BF16ToF32(ValueId),
+    /// Convert F32 to FP8 E4M3 (higher precision FP8, range ±448)
+    F32ToF8E4M3(ValueId),
+    /// Convert FP8 E4M3 to F32
+    F8E4M3ToF32(ValueId),
+    /// Convert F32 to FP8 E5M2 (larger range FP8, range ±57344)
+    F32ToF8E5M2(ValueId),
+    /// Convert FP8 E5M2 to F32
+    F8E5M2ToF32(ValueId),
+    /// Convert F32 to F4 (extreme 4-bit quantization)
+    F32ToF4(ValueId),
+    /// Convert F4 to F32 (dequantization)
+    F4ToF32(ValueId),
+
+    // === Packed ML Type Operations ===
+    /// Pack two FP8 values into a u16
+    PackF8x2(ValueId, ValueId),
+    /// Unpack u16 into two FP8 values (returns low byte as index 0)
+    UnpackF8x2Low(ValueId),
+    /// Unpack u16 into two FP8 values (returns high byte as index 1)
+    UnpackF8x2High(ValueId),
+    /// Pack two F4 values into a single byte
+    PackF4x2(ValueId, ValueId),
+    /// Unpack byte into low F4 value (bits 0-3)
+    UnpackF4x2Low(ValueId),
+    /// Unpack byte into high F4 value (bits 4-7)
+    UnpackF4x2High(ValueId),
+
+    // === Quantization Utilities ===
+    /// Quantize F32 to F8 with saturation and rounding
+    QuantizeF32ToF8(ValueId, QuantizeMode),
+    /// Dequantize F8 to F32 with optional scale
+    DequantizeF8ToF32(ValueId, Option<ValueId>), // value, optional scale factor
 
     // === Memory ===
     Load(ValueId, MemorySpace),

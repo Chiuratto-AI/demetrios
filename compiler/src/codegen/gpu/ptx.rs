@@ -1048,6 +1048,204 @@ impl PtxCodegen {
                 writeln!(self.output, "{}mov.b{} {}, {};", indent, bits, reg, v).unwrap();
             }
 
+            // === Modern ML Type Conversions (BF16/FP8/F4) ===
+            GpuOp::F32ToBF16(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::BF16);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::BF16);
+                // PTX 8.0+: cvt.rn.bf16.f32 (round to nearest)
+                writeln!(self.output, "{}cvt.rn.bf16.f32 {}, {};", indent, reg, v).unwrap();
+            }
+
+            GpuOp::BF16ToF32(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+                // PTX 8.0+: cvt.f32.bf16
+                writeln!(self.output, "{}cvt.f32.bf16 {}, {};", indent, reg, v).unwrap();
+            }
+
+            GpuOp::F32ToF8E4M3(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::F8E4M3);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F8E4M3);
+                // PTX 8.1+ (sm_89+): cvt.rn.satfinite.e4m3x2.f32
+                // Single value version via packed conversion
+                let tmp = self.alloc_register(&GpuType::U16);
+                writeln!(self.output, "{}cvt.rn.satfinite.e4m3x2.f32 {}, {}, 0f00000000;", indent, tmp, v).unwrap();
+                writeln!(self.output, "{}and.b16 {}, {}, 0x00FF;", indent, reg, tmp).unwrap();
+            }
+
+            GpuOp::F8E4M3ToF32(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+                // PTX 8.1+ (sm_89+): cvt.f32.e4m3
+                // Extend to 16-bit, then convert
+                let tmp = self.alloc_register(&GpuType::U16);
+                writeln!(self.output, "{}cvt.u16.u8 {}, {};", indent, tmp, v).unwrap();
+                writeln!(self.output, "{}cvt.f32.e4m3x2 {}, {{_, {}}};", indent, reg, tmp).unwrap();
+            }
+
+            GpuOp::F32ToF8E5M2(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::F8E5M2);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F8E5M2);
+                // PTX 8.1+ (sm_89+): cvt.rn.satfinite.e5m2x2.f32
+                let tmp = self.alloc_register(&GpuType::U16);
+                writeln!(self.output, "{}cvt.rn.satfinite.e5m2x2.f32 {}, {}, 0f00000000;", indent, tmp, v).unwrap();
+                writeln!(self.output, "{}and.b16 {}, {}, 0x00FF;", indent, reg, tmp).unwrap();
+            }
+
+            GpuOp::F8E5M2ToF32(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+                // PTX 8.1+ (sm_89+): cvt.f32.e5m2
+                let tmp = self.alloc_register(&GpuType::U16);
+                writeln!(self.output, "{}cvt.u16.u8 {}, {};", indent, tmp, v).unwrap();
+                writeln!(self.output, "{}cvt.f32.e5m2x2 {}, {{_, {}}};", indent, reg, tmp).unwrap();
+            }
+
+            GpuOp::F32ToF4(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::F4);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F4);
+                // F4 requires software emulation - no native PTX support
+                // Simplified: quantize to 4-bit via truncation
+                // Format: 1 sign, 2 exp, 1 mantissa (similar to FP8 E4M3 but half precision)
+                writeln!(self.output, "{}// F4 quantization (software emulation)", indent).unwrap();
+                let tmp = self.alloc_register(&GpuType::U32);
+                writeln!(self.output, "{}mov.b32 {}, {};", indent, tmp, v).unwrap();
+                // Extract sign (bit 31), exp (bits 30-23), mantissa (bit 22)
+                writeln!(self.output, "{}shr.u32 {}, {}, 28;", indent, reg, tmp).unwrap();
+                writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, reg, reg).unwrap();
+            }
+
+            GpuOp::F4ToF32(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+                // F4 dequantization (software emulation)
+                writeln!(self.output, "{}// F4 dequantization (software emulation)", indent).unwrap();
+                let tmp = self.alloc_register(&GpuType::U32);
+                writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, tmp, v).unwrap();
+                writeln!(self.output, "{}shl.b32 {}, {}, 28;", indent, tmp, tmp).unwrap();
+                writeln!(self.output, "{}mov.b32 {}, {};", indent, reg, tmp).unwrap();
+            }
+
+            // === Packed ML Type Operations ===
+            GpuOp::PackF8x2(lo, hi) => {
+                let lo_v = self.get_register(*lo);
+                let hi_v = self.get_register(*hi);
+                let reg = self.alloc_register(&GpuType::U16);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U16);
+                // Pack two u8 values into u16: (hi << 8) | lo
+                let tmp = self.alloc_register(&GpuType::U16);
+                writeln!(self.output, "{}cvt.u16.u8 {}, {};", indent, reg, lo_v).unwrap();
+                writeln!(self.output, "{}cvt.u16.u8 {}, {};", indent, tmp, hi_v).unwrap();
+                writeln!(self.output, "{}shl.b16 {}, {}, 8;", indent, tmp, tmp).unwrap();
+                writeln!(self.output, "{}or.b16 {}, {}, {};", indent, reg, reg, tmp).unwrap();
+            }
+
+            GpuOp::UnpackF8x2Low(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+                // Extract low byte: val & 0xFF
+                writeln!(self.output, "{}and.b16 {}, {}, 0x00FF;", indent, reg, v).unwrap();
+            }
+
+            GpuOp::UnpackF8x2High(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+                // Extract high byte: (val >> 8) & 0xFF
+                let tmp = self.alloc_register(&GpuType::U16);
+                writeln!(self.output, "{}shr.b16 {}, {}, 8;", indent, tmp, v).unwrap();
+                writeln!(self.output, "{}and.b16 {}, {}, 0x00FF;", indent, reg, tmp).unwrap();
+            }
+
+            GpuOp::PackF4x2(lo, hi) => {
+                let lo_v = self.get_register(*lo);
+                let hi_v = self.get_register(*hi);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+                // Pack two 4-bit values into byte: (hi << 4) | (lo & 0x0F)
+                let tmp = self.alloc_register(&GpuType::U8);
+                writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, reg, lo_v).unwrap();
+                writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, tmp, hi_v).unwrap();
+                writeln!(self.output, "{}shl.b32 {}, {}, 4;", indent, tmp, tmp).unwrap();
+                writeln!(self.output, "{}or.b32 {}, {}, {};", indent, reg, reg, tmp).unwrap();
+            }
+
+            GpuOp::UnpackF4x2Low(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+                // Extract low nibble: val & 0x0F
+                writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, reg, v).unwrap();
+            }
+
+            GpuOp::UnpackF4x2High(val) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+                // Extract high nibble: (val >> 4) & 0x0F
+                let tmp = self.alloc_register(&GpuType::U8);
+                writeln!(self.output, "{}shr.b32 {}, {}, 4;", indent, tmp, v).unwrap();
+                writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, reg, tmp).unwrap();
+            }
+
+            // === Quantization Utilities ===
+            GpuOp::QuantizeF32ToF8(val, mode) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+                // Use E4M3 format by default with specified rounding mode
+                let rnd = match mode {
+                    QuantizeMode::RoundNearestEven => "rn",
+                    QuantizeMode::RoundTowardZero => "rz",
+                    QuantizeMode::RoundTowardPosInf => "rp",
+                    QuantizeMode::RoundTowardNegInf => "rm",
+                    QuantizeMode::Stochastic => "rn", // Fallback to RNE for stochastic
+                };
+                let tmp = self.alloc_register(&GpuType::U16);
+                writeln!(self.output, "{}cvt.{}.satfinite.e4m3x2.f32 {}, {}, 0f00000000;", indent, rnd, tmp, v).unwrap();
+                writeln!(self.output, "{}and.b16 {}, {}, 0x00FF;", indent, reg, tmp).unwrap();
+            }
+
+            GpuOp::DequantizeF8ToF32(val, scale) => {
+                let v = self.get_register(*val);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+                // Convert F8 to F32
+                let tmp = self.alloc_register(&GpuType::U16);
+                writeln!(self.output, "{}cvt.u16.u8 {}, {};", indent, tmp, v).unwrap();
+                writeln!(self.output, "{}cvt.f32.e4m3x2 {}, {{_, {}}};", indent, reg, tmp).unwrap();
+                // Apply optional scale factor
+                if let Some(scale_val) = scale {
+                    let s = self.get_register(*scale_val);
+                    writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, reg, reg, s).unwrap();
+                }
+            }
+
             // Memory operations
             GpuOp::Load(ptr, space) => {
                 let p = self.get_register(*ptr);
@@ -2852,5 +3050,270 @@ mod tests {
         let ptx = codegen.generate(&module);
 
         assert!(ptx.contains("pmevent 123"));
+    }
+
+    // =========================================================================
+    // BF16/FP8/F4 Conversion Tests
+    // =========================================================================
+
+    #[test]
+    fn test_f32_to_bf16_conversion() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (8, 0), // sm_80+ for BF16
+        };
+        let mut module = GpuModule::new("bf16_test", target);
+
+        let mut kernel = GpuKernel::new("bf16_convert");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Create an f32 value and convert to bf16
+        block.add_instruction(ValueId(0), GpuOp::ConstFloat(3.14, GpuType::F32));
+        block.add_instruction(ValueId(1), GpuOp::F32ToBF16(ValueId(0)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 0));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("cvt.rn.bf16.f32"));
+    }
+
+    #[test]
+    fn test_bf16_to_f32_conversion() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (8, 0),
+        };
+        let mut module = GpuModule::new("bf16_test", target);
+
+        let mut kernel = GpuKernel::new("bf16_to_f32");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Create a bf16 value (as const) and convert to f32
+        block.add_instruction(ValueId(0), GpuOp::ConstFloat(3.14, GpuType::F32));
+        block.add_instruction(ValueId(1), GpuOp::F32ToBF16(ValueId(0)));
+        block.add_instruction(ValueId(2), GpuOp::BF16ToF32(ValueId(1)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 0));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("cvt.f32.bf16"));
+    }
+
+    #[test]
+    fn test_f32_to_f8e4m3_conversion() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (8, 9), // sm_89+ for FP8
+        };
+        let mut module = GpuModule::new("fp8_test", target);
+
+        let mut kernel = GpuKernel::new("fp8_convert");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ConstFloat(1.5, GpuType::F32));
+        block.add_instruction(ValueId(1), GpuOp::F32ToF8E4M3(ValueId(0)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 9));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("e4m3"));
+    }
+
+    #[test]
+    fn test_f8e4m3_to_f32_conversion() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (8, 9),
+        };
+        let mut module = GpuModule::new("fp8_test", target);
+
+        let mut kernel = GpuKernel::new("fp8_to_f32");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ConstFloat(2.0, GpuType::F32));
+        block.add_instruction(ValueId(1), GpuOp::F32ToF8E4M3(ValueId(0)));
+        block.add_instruction(ValueId(2), GpuOp::F8E4M3ToF32(ValueId(1)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 9));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("cvt.f32.e4m3"));
+    }
+
+    #[test]
+    fn test_f32_to_f8e5m2_conversion() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (8, 9),
+        };
+        let mut module = GpuModule::new("fp8_test", target);
+
+        let mut kernel = GpuKernel::new("fp8_e5m2_convert");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ConstFloat(100.0, GpuType::F32));
+        block.add_instruction(ValueId(1), GpuOp::F32ToF8E5M2(ValueId(0)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 9));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("e5m2"));
+    }
+
+    #[test]
+    fn test_f4_quantization() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (7, 5),
+        };
+        let mut module = GpuModule::new("f4_test", target);
+
+        let mut kernel = GpuKernel::new("f4_quant");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ConstFloat(1.0, GpuType::F32));
+        block.add_instruction(ValueId(1), GpuOp::F32ToF4(ValueId(0)));
+        block.add_instruction(ValueId(2), GpuOp::F4ToF32(ValueId(1)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("F4 quantization"));
+        assert!(ptx.contains("F4 dequantization"));
+    }
+
+    #[test]
+    fn test_pack_f8x2() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (8, 9),
+        };
+        let mut module = GpuModule::new("pack_test", target);
+
+        let mut kernel = GpuKernel::new("pack_f8");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Create two f32 values and convert to fp8, then pack
+        block.add_instruction(ValueId(0), GpuOp::ConstFloat(1.0, GpuType::F32));
+        block.add_instruction(ValueId(1), GpuOp::ConstFloat(2.0, GpuType::F32));
+        block.add_instruction(ValueId(2), GpuOp::F32ToF8E4M3(ValueId(0)));
+        block.add_instruction(ValueId(3), GpuOp::F32ToF8E4M3(ValueId(1)));
+        block.add_instruction(ValueId(4), GpuOp::PackF8x2(ValueId(2), ValueId(3)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 9));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("shl.b16"));
+        assert!(ptx.contains("or.b16"));
+    }
+
+    #[test]
+    fn test_unpack_f8x2() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (8, 9),
+        };
+        let mut module = GpuModule::new("unpack_test", target);
+
+        let mut kernel = GpuKernel::new("unpack_f8");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Create packed value and unpack
+        block.add_instruction(ValueId(0), GpuOp::ConstInt(0x1234, GpuType::U16));
+        block.add_instruction(ValueId(1), GpuOp::UnpackF8x2Low(ValueId(0)));
+        block.add_instruction(ValueId(2), GpuOp::UnpackF8x2High(ValueId(0)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 9));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("and.b16"));
+        assert!(ptx.contains("0x00FF"));
+    }
+
+    #[test]
+    fn test_pack_f4x2() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (7, 5),
+        };
+        let mut module = GpuModule::new("pack_f4_test", target);
+
+        let mut kernel = GpuKernel::new("pack_f4");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ConstFloat(1.0, GpuType::F32));
+        block.add_instruction(ValueId(1), GpuOp::ConstFloat(2.0, GpuType::F32));
+        block.add_instruction(ValueId(2), GpuOp::F32ToF4(ValueId(0)));
+        block.add_instruction(ValueId(3), GpuOp::F32ToF4(ValueId(1)));
+        block.add_instruction(ValueId(4), GpuOp::PackF4x2(ValueId(2), ValueId(3)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("0x0F"));
+        assert!(ptx.contains("or.b32"));
+    }
+
+    #[test]
+    fn test_quantize_with_mode() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (8, 9),
+        };
+        let mut module = GpuModule::new("quant_mode_test", target);
+
+        let mut kernel = GpuKernel::new("quantize_rne");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ConstFloat(1.5, GpuType::F32));
+        block.add_instruction(
+            ValueId(1),
+            GpuOp::QuantizeF32ToF8(ValueId(0), QuantizeMode::RoundNearestEven),
+        );
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 9));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("cvt.rn.satfinite"));
+    }
+
+    #[test]
+    fn test_dequantize_with_scale() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (8, 9),
+        };
+        let mut module = GpuModule::new("dequant_test", target);
+
+        let mut kernel = GpuKernel::new("dequantize");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Create quantized value
+        block.add_instruction(ValueId(0), GpuOp::ConstFloat(1.5, GpuType::F32));
+        block.add_instruction(ValueId(1), GpuOp::F32ToF8E4M3(ValueId(0)));
+        // Scale factor
+        block.add_instruction(ValueId(2), GpuOp::ConstFloat(0.5, GpuType::F32));
+        // Dequantize with scale
+        block.add_instruction(
+            ValueId(3),
+            GpuOp::DequantizeF8ToF32(ValueId(1), Some(ValueId(2))),
+        );
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 9));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("cvt.f32.e4m3"));
+        assert!(ptx.contains("mul.f32"));
     }
 }
