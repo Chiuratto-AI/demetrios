@@ -1257,6 +1257,54 @@ impl MetalCodegen {
                     result_name
                 ));
             }
+
+            // === Debug/Profiling Operations ===
+
+            // Printf is not natively supported in Metal compute shaders
+            // Use os_log or print buffer pattern instead
+            GpuOp::Printf(fmt_id, args) => {
+                self.emit(&format!("// gpu.printf (format_id={}, {} args)", fmt_id, args.len()));
+                self.emit("// Metal does not support printf in compute shaders");
+                self.emit("// Use debug buffer pattern: store values to buffer, read on host");
+                self.emit(&format!("auto {} = 0; // printf not supported", result_name));
+            }
+
+            // Assert - use Metal's assert or trap
+            GpuOp::Assert(cond, msg_id) => {
+                let cond_name = self.get_var_name(*cond);
+                if let Some(msg) = msg_id {
+                    self.emit(&format!("// gpu.assert (msg_id={})", msg));
+                }
+                self.emit(&format!("if (!{}) {{ /* assertion failed */ }}", cond_name));
+            }
+
+            // Trap - Metal doesn't have a direct trap instruction
+            GpuOp::Trap => {
+                self.emit("// gpu.trap - Metal doesn't support trap");
+                self.emit("// Use infinite loop or return as alternative");
+            }
+
+            // Breakpoint - not supported in Metal
+            GpuOp::Brkpt => {
+                self.emit("// gpu.brkpt - breakpoints not supported in Metal compute");
+            }
+
+            // Clock counter - Metal doesn't expose raw clock
+            GpuOp::Clock => {
+                self.emit(&format!("// gpu.clock - not directly available in Metal"));
+                self.emit(&format!("uint64_t {} = 0; // placeholder for clock", result_name));
+            }
+
+            // Global timer - not available in Metal
+            GpuOp::GlobalTimer => {
+                self.emit(&format!("// gpu.globaltimer - not available in Metal"));
+                self.emit(&format!("uint64_t {} = 0; // placeholder for globaltimer", result_name));
+            }
+
+            // Performance event - not directly available
+            GpuOp::PmEvent(event_id) => {
+                self.emit(&format!("// pmevent {} - use Metal GPU counters via API", event_id));
+            }
         }
     }
 

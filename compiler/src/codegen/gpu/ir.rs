@@ -736,6 +736,31 @@ pub enum GpuOp {
 
     /// Memory fence at group scope
     CoopMemoryFence(ValueId), // group
+
+    // === Debug/Profiling Operations ===
+
+    /// Printf from GPU (CUDA vprintf)
+    /// Format string is stored in constant memory, args are passed via buffer
+    /// Printf(format_string_id, args_buffer_ptr)
+    Printf(u32, Vec<ValueId>), // format string constant index, argument values
+
+    /// Assert condition (trap if false)
+    Assert(ValueId, Option<u32>), // condition, optional message string index
+
+    /// Trigger GPU trap (unconditional)
+    Trap,
+
+    /// Software breakpoint (for debugger)
+    Brkpt,
+
+    /// Read per-SM clock counter (low 32 bits or full 64 bits)
+    Clock,
+
+    /// Read global timer (nanoseconds since GPU reset)
+    GlobalTimer,
+
+    /// Record performance monitoring event
+    PmEvent(u32), // event id
 }
 
 /// Warp vote operations

@@ -50,6 +50,8 @@ pub enum IntrinsicCategory {
     Memory,
     /// Kernel launch
     Launch,
+    /// Debug/profiling
+    Debug,
 }
 
 impl IntrinsicCategory {
@@ -64,6 +66,7 @@ impl IntrinsicCategory {
             IntrinsicCategory::FastMath,
             IntrinsicCategory::Memory,
             IntrinsicCategory::Launch,
+            IntrinsicCategory::Debug,
         ]
     }
 
@@ -78,6 +81,7 @@ impl IntrinsicCategory {
             IntrinsicCategory::FastMath => "Fast Math",
             IntrinsicCategory::Memory => "Memory Operations",
             IntrinsicCategory::Launch => "Kernel Launch",
+            IntrinsicCategory::Debug => "Debug/Profiling",
         }
     }
 }
@@ -525,6 +529,71 @@ pub fn all_intrinsics() -> Vec<GpuIntrinsic> {
             return_type: IntrinsicType::Void,
             description: "Wait for all GPU operations to complete",
             category: IntrinsicCategory::Launch,
+        },
+        // === Debug/Profiling ===
+        GpuIntrinsic {
+            name: "gpu.printf",
+            short_name: "printf",
+            param_count: 255, // Variadic
+            return_type: IntrinsicType::I32,
+            description: "Print formatted output from GPU (CUDA printf/vprintf)",
+            category: IntrinsicCategory::Debug,
+        },
+        GpuIntrinsic {
+            name: "gpu.assert",
+            short_name: "assert",
+            param_count: 1,
+            return_type: IntrinsicType::Void,
+            description: "Assert condition on GPU (triggers trap if false)",
+            category: IntrinsicCategory::Debug,
+        },
+        GpuIntrinsic {
+            name: "gpu.trap",
+            short_name: "trap",
+            param_count: 0,
+            return_type: IntrinsicType::Void,
+            description: "Trigger GPU trap/breakpoint",
+            category: IntrinsicCategory::Debug,
+        },
+        GpuIntrinsic {
+            name: "gpu.brkpt",
+            short_name: "brkpt",
+            param_count: 0,
+            return_type: IntrinsicType::Void,
+            description: "Software breakpoint (for debugger)",
+            category: IntrinsicCategory::Debug,
+        },
+        GpuIntrinsic {
+            name: "gpu.clock",
+            short_name: "clock",
+            param_count: 0,
+            return_type: IntrinsicType::U64,
+            description: "Read per-SM clock counter (for profiling)",
+            category: IntrinsicCategory::Debug,
+        },
+        GpuIntrinsic {
+            name: "gpu.clock_hi",
+            short_name: "clock_hi",
+            param_count: 0,
+            return_type: IntrinsicType::U32,
+            description: "Read high 32 bits of clock counter",
+            category: IntrinsicCategory::Debug,
+        },
+        GpuIntrinsic {
+            name: "gpu.globaltimer",
+            short_name: "globaltimer",
+            param_count: 0,
+            return_type: IntrinsicType::U64,
+            description: "Read global timer (nanoseconds since reset)",
+            category: IntrinsicCategory::Debug,
+        },
+        GpuIntrinsic {
+            name: "gpu.pm_event",
+            short_name: "pm_event",
+            param_count: 1,
+            return_type: IntrinsicType::Void,
+            description: "Record performance monitoring event",
+            category: IntrinsicCategory::Debug,
         },
     ]
 }

@@ -2085,6 +2085,119 @@ impl PtxCodegen {
                 writeln!(self.output, "{}setp.eq.u32 p0, {}, 4;", indent, grp).unwrap();
                 writeln!(self.output, "{}@p0 fence.acq_rel.sys;", indent).unwrap();
             }
+
+            // === Debug/Profiling Operations ===
+
+            // Printf from GPU using vprintf
+            // PTX vprintf requires: format string pointer, argument buffer pointer
+            GpuOp::Printf(fmt_id, args) => {
+                writeln!(self.output, "{}// gpu.printf (format_id={})", indent, fmt_id).unwrap();
+
+                // Allocate result register for return value
+                let ret_reg = self.alloc_register(&GpuType::I32);
+                self.registers.push(ret_reg.clone());
+                self.value_types.push(GpuType::I32);
+
+                // Build argument buffer in local memory (each arg is 8 bytes for alignment)
+                let arg_buf_size = args.len() * 8;
+                if arg_buf_size > 0 {
+                    writeln!(self.output, "{}{{\n{}\t.local .align 8 .b8 __printf_args[{}];",
+                        indent, indent, arg_buf_size
+                    ).unwrap();
+                    writeln!(self.output, "{}\t.reg .b64 buf_addr;", indent).unwrap();
+                    writeln!(self.output, "{}\tmov.u64 buf_addr, __printf_args;", indent).unwrap();
+
+                    // Store each argument to the buffer
+                    for (i, arg) in args.iter().enumerate() {
+                        let arg_reg = self.get_register(*arg);
+                        let offset = i * 8;
+                        // Use generic store since we don't know exact type
+                        writeln!(self.output, "{}\tst.local.b64 [buf_addr+{}], {};",
+                            indent, offset, arg_reg
+                        ).unwrap();
+                    }
+
+                    // Call vprintf with format string and argument buffer
+                    writeln!(self.output, "{}\t.param .b64 fmt_param;", indent).unwrap();
+                    writeln!(self.output, "{}\t.param .b64 buf_param;", indent).unwrap();
+                    writeln!(self.output, "{}\t.param .b32 ret_param;", indent).unwrap();
+                    writeln!(self.output, "{}\tst.param.b64 [fmt_param], __printf_fmt_{};",
+                        indent, fmt_id
+                    ).unwrap();
+                    writeln!(self.output, "{}\tst.param.b64 [buf_param], buf_addr;", indent).unwrap();
+                    writeln!(self.output, "{}\tcall.uni (ret_param), vprintf, (fmt_param, buf_param);",
+                        indent
+                    ).unwrap();
+                    writeln!(self.output, "{}\tld.param.b32 {}, [ret_param];", indent, ret_reg).unwrap();
+                    writeln!(self.output, "{}}}", indent).unwrap();
+                } else {
+                    // No args - pass null buffer
+                    writeln!(self.output, "{}{{\n{}\t.param .b64 fmt_param;", indent, indent).unwrap();
+                    writeln!(self.output, "{}\t.param .b64 buf_param;", indent).unwrap();
+                    writeln!(self.output, "{}\t.param .b32 ret_param;", indent).unwrap();
+                    writeln!(self.output, "{}\tst.param.b64 [fmt_param], __printf_fmt_{};",
+                        indent, fmt_id
+                    ).unwrap();
+                    writeln!(self.output, "{}\tmov.u64 %rd0, 0;", indent).unwrap();
+                    writeln!(self.output, "{}\tst.param.b64 [buf_param], %rd0;", indent).unwrap();
+                    writeln!(self.output, "{}\tcall.uni (ret_param), vprintf, (fmt_param, buf_param);",
+                        indent
+                    ).unwrap();
+                    writeln!(self.output, "{}\tld.param.b32 {}, [ret_param];", indent, ret_reg).unwrap();
+                    writeln!(self.output, "{}}}", indent).unwrap();
+                }
+            }
+
+            // Assert condition (trap if false)
+            GpuOp::Assert(cond, msg_id) => {
+                let c = self.get_register(*cond);
+                writeln!(self.output, "{}// gpu.assert", indent).unwrap();
+                writeln!(self.output, "{}setp.eq.s32 p_assert, {}, 0;", indent, c).unwrap();
+                if let Some(msg) = msg_id {
+                    writeln!(self.output,
+                        "{}@p_assert {{ // assertion failed: msg_id={}\n{}\ttrap;\n{}}}",
+                        indent, msg, indent, indent
+                    ).unwrap();
+                } else {
+                    writeln!(self.output, "{}@p_assert trap;", indent).unwrap();
+                }
+            }
+
+            // Unconditional trap
+            GpuOp::Trap => {
+                writeln!(self.output, "{}trap;", indent).unwrap();
+            }
+
+            // Software breakpoint
+            GpuOp::Brkpt => {
+                writeln!(self.output, "{}brkpt;", indent).unwrap();
+            }
+
+            // Read clock counter (64-bit)
+            GpuOp::Clock => {
+                let ret_reg = self.alloc_register(&GpuType::U64);
+                self.registers.push(ret_reg.clone());
+                self.value_types.push(GpuType::U64);
+                writeln!(self.output, "{}mov.u64 {}, %clock64;", indent, ret_reg).unwrap();
+            }
+
+            // Read global timer (64-bit nanoseconds)
+            GpuOp::GlobalTimer => {
+                let ret_reg = self.alloc_register(&GpuType::U64);
+                self.registers.push(ret_reg.clone());
+                self.value_types.push(GpuType::U64);
+                writeln!(self.output, "{}mov.u64 {}, %globaltimer;", indent, ret_reg).unwrap();
+            }
+
+            // Performance monitoring event (requires profiler)
+            GpuOp::PmEvent(event_id) => {
+                writeln!(self.output,
+                    "{}// pmevent {} (enabled only under profiler)",
+                    indent, event_id
+                ).unwrap();
+                // pmevent instruction is only meaningful when running under Nsight
+                // Uncomment to enable: writeln!(self.output, "{}pmevent {};", indent, event_id).unwrap();
+            }
         }
     }
 
@@ -2586,5 +2699,158 @@ mod tests {
         assert!(ptx.contains("CoopPartitionTiled size=16"));
         assert!(ptx.contains("activemask.b32"));
         assert!(ptx.contains("CoopElect"));
+    }
+
+    // =========================================================================
+    // Debug/Profiling Operation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_debug_trap() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (7, 5),
+        };
+        let mut module = GpuModule::new("debug_test", target);
+
+        let mut kernel = GpuKernel::new("trap_test");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::Trap);
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("trap;"));
+    }
+
+    #[test]
+    fn test_debug_brkpt() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (7, 5),
+        };
+        let mut module = GpuModule::new("debug_test", target);
+
+        let mut kernel = GpuKernel::new("brkpt_test");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::Brkpt);
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("brkpt;"));
+    }
+
+    #[test]
+    fn test_debug_clock() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (7, 5),
+        };
+        let mut module = GpuModule::new("debug_test", target);
+
+        let mut kernel = GpuKernel::new("clock_test");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::Clock);
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("%clock64"));
+    }
+
+    #[test]
+    fn test_debug_globaltimer() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (7, 5),
+        };
+        let mut module = GpuModule::new("debug_test", target);
+
+        let mut kernel = GpuKernel::new("timer_test");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::GlobalTimer);
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("%globaltimer"));
+    }
+
+    #[test]
+    fn test_debug_assert() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (7, 5),
+        };
+        let mut module = GpuModule::new("debug_test", target);
+
+        let mut kernel = GpuKernel::new("assert_test");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ConstBool(true));
+        block.add_instruction(ValueId(1), GpuOp::Assert(ValueId(0), Some(42)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("gpu.assert"));
+        assert!(ptx.contains("setp.eq"));
+        assert!(ptx.contains("trap"));
+    }
+
+    #[test]
+    fn test_debug_printf() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (7, 5),
+        };
+        let mut module = GpuModule::new("debug_test", target);
+
+        let mut kernel = GpuKernel::new("printf_test");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Create some values to print
+        block.add_instruction(ValueId(0), GpuOp::ThreadIdX);
+        block.add_instruction(ValueId(1), GpuOp::ConstFloat(3.14, GpuType::F32));
+        // Printf with format string id 0 and two arguments
+        block.add_instruction(ValueId(2), GpuOp::Printf(0, vec![ValueId(0), ValueId(1)]));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("gpu.printf"));
+        assert!(ptx.contains("vprintf"));
+        assert!(ptx.contains("__printf_args"));
+    }
+
+    #[test]
+    fn test_debug_pmevent() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (7, 5),
+        };
+        let mut module = GpuModule::new("debug_test", target);
+
+        let mut kernel = GpuKernel::new("pmevent_test");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::PmEvent(123));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("pmevent 123"));
     }
 }
