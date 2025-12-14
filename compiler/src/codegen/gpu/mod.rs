@@ -30,6 +30,7 @@
 pub mod bio;
 pub mod cooperative;
 pub mod counterfactual;
+pub mod graph;
 pub mod counterfactual_metal;
 pub mod epistemic_ptx;
 pub mod hlir_to_gpu;
@@ -102,4 +103,11 @@ pub use bio::{
 pub use cooperative::{
     add_cooperative_kernels, gen_ballot_count_kernel, gen_block_reduce_kernel,
     gen_warp_broadcast_kernel, gen_warp_inclusive_scan_kernel, gen_warp_reduce_sum_kernel,
+};
+
+// CUDA Graphs with dynamic control flow
+pub use graph::{
+    BufferId, BufferInfo, BufferLocation, ConditionType, ConditionalNode, GraphExecConfig,
+    GraphKernelArg, GraphNode, GraphNodeId, GraphNodeType, GpuGraph, KernelNode, LoopNode,
+    MemcpyNode, MemsetNode, StreamId,
 };
