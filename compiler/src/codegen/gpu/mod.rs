@@ -38,6 +38,7 @@ pub mod intrinsics;
 pub mod ir;
 pub mod metal;
 pub mod metal_runtime;
+pub mod portable;
 pub mod ptx;
 pub mod runtime;
 #[cfg(feature = "gpu")]
@@ -110,4 +111,11 @@ pub use graph::{
     BufferId, BufferInfo, BufferLocation, ConditionType, ConditionalNode, GraphExecConfig,
     GraphKernelArg, GraphNode, GraphNodeId, GraphNodeType, GpuGraph, KernelNode, LoopNode,
     MemcpyNode, MemsetNode, StreamId,
+};
+
+// Cross-platform portable GPU IR (write-once, compile-anywhere)
+pub use portable::{
+    AvailableBackends, BackendCapabilities, Capability, CompileError, CompileResult,
+    CompiledKernel, Dimension, PortableGpuOp, PortableMemorySpace, PortableType, UnifiedCompiler,
+    UnifiedKernel, UnifiedParam, UnifiedSharedMem, compile_kernel, compile_to_all,
 };
