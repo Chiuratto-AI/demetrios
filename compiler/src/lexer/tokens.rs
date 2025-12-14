@@ -120,6 +120,8 @@ pub enum TokenKind {
     Drop,
     #[token("kernel")]
     Kernel,
+    #[token("tile")]
+    Tile,
     #[token("device")]
     Device,
     #[token("shared")]

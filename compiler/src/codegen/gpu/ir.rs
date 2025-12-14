@@ -671,6 +671,41 @@ impl fmt::Display for TmaReduceOp {
     }
 }
 
+/// Memory layout for tile data in shared memory (CUDA 13+)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TileLayout {
+    /// Row-major layout (C convention)
+    RowMajor,
+    /// Column-major layout (Fortran convention)
+    ColMajor,
+    /// Swizzled layout for bank conflict avoidance
+    /// block_m and block_n define swizzle granularity
+    Swizzled { block_m: u32, block_n: u32 },
+}
+
+impl fmt::Display for TileLayout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TileLayout::RowMajor => write!(f, "row_major"),
+            TileLayout::ColMajor => write!(f, "col_major"),
+            TileLayout::Swizzled { block_m, block_n } => {
+                write!(f, "swizzled({},{})", block_m, block_n)
+            }
+        }
+    }
+}
+
+impl TileLayout {
+    /// Convert layout string to TileLayout enum
+    pub fn from_string(s: &str) -> Self {
+        match s {
+            "col_major" => TileLayout::ColMajor,
+            "swizzled" => TileLayout::Swizzled { block_m: 8, block_n: 64 },
+            _ => TileLayout::RowMajor, // Default
+        }
+    }
+}
+
 /// Shared memory declaration
 #[derive(Debug, Clone)]
 pub struct SharedMemDecl {
@@ -1002,6 +1037,78 @@ pub enum GpuOp {
         dst_addr: ValueId,
         value: ValueId,
     },
+
+    // ===== TILE PROGRAMMING (CUDA 13+) =====
+    /// Create a tile from a cooperative group
+    /// Maps to: CoopPartitionTiled + shared memory allocation
+    TileCreate {
+        group: ValueId,
+        tile_m: u32,
+        tile_n: u32,
+        element_type: GpuType,
+        layout: TileLayout,
+    },
+    /// Load tile from global memory to shared memory (collective operation)
+    /// Maps to: TmaLoadAsync (sm_90+) or manual coalesced loads
+    TileLoad {
+        tile: ValueId,
+        src_ptr: ValueId,
+        stride: ValueId,
+        barrier: Option<ValueId>,
+    },
+    /// Store tile from shared memory to global memory (collective operation)
+    /// Maps to: TmaStoreAsync (sm_90+) or manual coalesced stores
+    TileStore {
+        tile: ValueId,
+        dst_ptr: ValueId,
+        stride: ValueId,
+        barrier: Option<ValueId>,
+    },
+    /// Matrix multiply-accumulate on tiles (Tensor Core operation)
+    /// C = A @ B + C
+    /// Maps to: WgmmaFp4/WgmmaFp8/WgmmaBf16 based on element type
+    TileMma {
+        c: ValueId,
+        a: ValueId,
+        b: ValueId,
+        tile_m: u32,
+        tile_n: u32,
+        tile_k: u32,
+    },
+    /// Synchronize all threads in tile (collective barrier)
+    /// Maps to: CoopSync(tile_group)
+    TileSync(ValueId),
+    /// Element-wise access to tile (single thread)
+    /// Returns reference to element at (row, col)
+    TileGetElement {
+        tile: ValueId,
+        row: ValueId,
+        col: ValueId,
+    },
+    /// Set element in tile (single thread)
+    TileSetElement {
+        tile: ValueId,
+        row: ValueId,
+        col: ValueId,
+        value: ValueId,
+    },
+    /// Fill entire tile with scalar value (collective broadcast)
+    TileFill {
+        tile: ValueId,
+        value: ValueId,
+    },
+    /// Reduce tile to scalar (collective operation)
+    /// Maps to: CoopReduce across all tile threads
+    TileReduce {
+        tile: ValueId,
+        reduce_op: CoopReduceOp,
+    },
+    /// Transpose tile in-place (collective operation)
+    /// Useful for memory layout conversions
+    TileTranspose(ValueId),
+    /// Get tile dimensions (constant folding opportunity)
+    TileM(ValueId),
+    TileN(ValueId),
 
     // === Memory ===
     Load(ValueId, MemorySpace),

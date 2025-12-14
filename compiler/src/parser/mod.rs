@@ -2369,6 +2369,9 @@ impl<'a> Parser<'a> {
             // Tensor type: Tensor[f32, (batch, channels, height, width)]
             TokenKind::Tensor => self.parse_tensor_type(),
 
+            // Tile type: tile<f16, 16, 16>
+            TokenKind::Tile => self.parse_tile_type(),
+
             // Ontology type: OntologyTerm[SNOMED:12345]
             TokenKind::OntologyTerm => self.parse_ontology_type(),
 
@@ -2644,6 +2647,68 @@ impl<'a> Parser<'a> {
         Ok(TypeExpr::Tensor {
             element_type,
             shape,
+        })
+    }
+
+    /// Parse tile type: tile<f16, 16, 16> or tile<bf16, 32, 32, "col_major">
+    fn parse_tile_type(&mut self) -> Result<TypeExpr> {
+        self.expect(TokenKind::Tile)?;
+        self.expect(TokenKind::Lt)?;
+
+        // Parse element type (must be scalar: f32, f16, bf16, f8, f4)
+        let element_type = Box::new(self.parse_type()?);
+        self.expect(TokenKind::Comma)?;
+
+        // Parse tile_m (must be literal integer)
+        let tile_m = match self.peek() {
+            TokenKind::IntLit => {
+                let val: u32 = self.advance().text.parse()
+                    .map_err(|_| miette::miette!("Invalid tile dimension"))?;
+                val
+            }
+            _ => return Err(miette::miette!("Expected integer literal for tile_m")),
+        };
+        self.expect(TokenKind::Comma)?;
+
+        // Parse tile_n
+        let tile_n = match self.peek() {
+            TokenKind::IntLit => {
+                let val: u32 = self.advance().text.parse()
+                    .map_err(|_| miette::miette!("Invalid tile dimension"))?;
+                val
+            }
+            _ => return Err(miette::miette!("Expected integer literal for tile_n")),
+        };
+
+        // Optional layout specifier
+        let layout = if self.at(TokenKind::Comma) {
+            self.advance();
+            match self.peek() {
+                TokenKind::StringLit => {
+                    let layout_str = self.advance().text.clone();
+                    Some(layout_str)
+                }
+                _ => return Err(miette::miette!("Expected string literal for layout")),
+            }
+        } else {
+            None
+        };
+
+        self.expect(TokenKind::Gt)?;
+
+        // Validate tile dimensions
+        if !tile_m.is_power_of_two() || !tile_n.is_power_of_two() {
+            return Err(miette::miette!("Tile dimensions must be powers of 2, got {}x{}", tile_m, tile_n));
+        }
+        if tile_m > 64 || tile_n > 64 {
+            return Err(miette::miette!("Tile dimensions must be ≤64, got {}x{}", tile_m, tile_n));
+        }
+
+        Ok(TypeExpr::Tile {
+            element_type,
+            tile_m,
+            tile_n,
+            layout,
         })
     }
 

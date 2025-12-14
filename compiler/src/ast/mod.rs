@@ -1013,6 +1013,19 @@ pub enum TypeExpr {
         shape: Vec<TensorDim>,
     },
 
+    /// Tile type for GPU tile programming: tile<f16, 16, 16>
+    /// Cooperative thread group view of a matrix tile in shared memory
+    Tile {
+        /// Element type (f32, f16, bf16, f8e4m3, f8e5m2, f4)
+        element_type: Box<TypeExpr>,
+        /// Tile height (static, power of 2, ≤64)
+        tile_m: u32,
+        /// Tile width (static, power of 2, ≤64)
+        tile_n: u32,
+        /// Optional memory layout ("row_major", "col_major", "swizzled")
+        layout: Option<String>,
+    },
+
     /// Ontology type: OntologyTerm[SNOMED:12345]
     /// Reference to an ontology term for semantic interoperability
     Ontology {
