@@ -165,12 +165,12 @@ fn pbpk_state_scale(s: PBPKState14, factor: f64) -> PBPKState14 {
     }
 }
 
-fn pbpk_state_total_mass(s: PBPKState14, p: PBPKParams14) -> f64 {
-    return s.blood * p.v_blood + s.liver * p.v_liver + s.kidney * p.v_kidney
-         + s.brain * p.v_brain + s.heart * p.v_heart + s.lung * p.v_lung
-         + s.muscle * p.v_muscle + s.adipose * p.v_adipose + s.gut * p.v_gut
-         + s.skin * p.v_skin + s.bone * p.v_bone + s.spleen * p.v_spleen
-         + s.pancreas * p.v_pancreas + s.other * p.v_other
+fn pbpk_state_total_mass(s: PBPKState14, prm: PBPKParams14) -> f64 {
+    return s.blood * prm.v_blood + s.liver * prm.v_liver + s.kidney * prm.v_kidney
+         + s.brain * prm.v_brain + s.heart * prm.v_heart + s.lung * prm.v_lung
+         + s.muscle * prm.v_muscle + s.adipose * prm.v_adipose + s.gut * prm.v_gut
+         + s.skin * prm.v_skin + s.bone * prm.v_bone + s.spleen * prm.v_spleen
+         + s.pancreas * prm.v_pancreas + s.other * prm.v_other
 }
 
 // ============================================================================
@@ -296,71 +296,71 @@ fn default_pbpk_params() -> PBPKParams14 {
 // PBPK ODE SYSTEM
 // ============================================================================
 
-fn pbpk_ode(state: PBPKState14, t: f64, p: PBPKParams14) -> PBPKState14 {
-    let c_blood = state.blood
-    let c_plasma = c_blood / p.rb_ratio
-    let c_unbound = c_plasma * p.fu_plasma
+fn pbpk_ode(st: PBPKState14, t: f64, prm: PBPKParams14) -> PBPKState14 {
+    let c_blood = st.blood
+    let c_plasma = c_blood / prm.rb_ratio
+    let c_unbound = c_plasma * prm.fu_plasma
 
     // Derivatives for each compartment
     let mut d_blood = 0.0
 
     // Liver: dC/dt = (Q/V)(C_plasma - C/Kp)
-    let d_liver = (p.q_liver / p.v_liver) * (c_plasma - state.liver / p.kp_liver)
-    d_blood = d_blood - (p.q_liver / p.v_blood) * p.rb_ratio * (c_plasma - state.liver / p.kp_liver)
+    let d_liver = (prm.q_liver / prm.v_liver) * (c_plasma - st.liver / prm.kp_liver)
+    d_blood = d_blood - (prm.q_liver / prm.v_blood) * prm.rb_ratio * (c_plasma - st.liver / prm.kp_liver)
 
     // Kidney
-    let d_kidney = (p.q_kidney / p.v_kidney) * (c_plasma - state.kidney / p.kp_kidney)
-    d_blood = d_blood - (p.q_kidney / p.v_blood) * p.rb_ratio * (c_plasma - state.kidney / p.kp_kidney)
+    let d_kidney = (prm.q_kidney / prm.v_kidney) * (c_plasma - st.kidney / prm.kp_kidney)
+    d_blood = d_blood - (prm.q_kidney / prm.v_blood) * prm.rb_ratio * (c_plasma - st.kidney / prm.kp_kidney)
 
     // Brain
-    let d_brain = (p.q_brain / p.v_brain) * (c_plasma - state.brain / p.kp_brain)
-    d_blood = d_blood - (p.q_brain / p.v_blood) * p.rb_ratio * (c_plasma - state.brain / p.kp_brain)
+    let d_brain = (prm.q_brain / prm.v_brain) * (c_plasma - st.brain / prm.kp_brain)
+    d_blood = d_blood - (prm.q_brain / prm.v_blood) * prm.rb_ratio * (c_plasma - st.brain / prm.kp_brain)
 
     // Heart
-    let d_heart = (p.q_heart / p.v_heart) * (c_plasma - state.heart / p.kp_heart)
-    d_blood = d_blood - (p.q_heart / p.v_blood) * p.rb_ratio * (c_plasma - state.heart / p.kp_heart)
+    let d_heart = (prm.q_heart / prm.v_heart) * (c_plasma - st.heart / prm.kp_heart)
+    d_blood = d_blood - (prm.q_heart / prm.v_blood) * prm.rb_ratio * (c_plasma - st.heart / prm.kp_heart)
 
     // Lung
-    let d_lung = (p.q_lung / p.v_lung) * (c_plasma - state.lung / p.kp_lung)
-    d_blood = d_blood - (p.q_lung / p.v_blood) * p.rb_ratio * (c_plasma - state.lung / p.kp_lung)
+    let d_lung = (prm.q_lung / prm.v_lung) * (c_plasma - st.lung / prm.kp_lung)
+    d_blood = d_blood - (prm.q_lung / prm.v_blood) * prm.rb_ratio * (c_plasma - st.lung / prm.kp_lung)
 
     // Muscle
-    let d_muscle = (p.q_muscle / p.v_muscle) * (c_plasma - state.muscle / p.kp_muscle)
-    d_blood = d_blood - (p.q_muscle / p.v_blood) * p.rb_ratio * (c_plasma - state.muscle / p.kp_muscle)
+    let d_muscle = (prm.q_muscle / prm.v_muscle) * (c_plasma - st.muscle / prm.kp_muscle)
+    d_blood = d_blood - (prm.q_muscle / prm.v_blood) * prm.rb_ratio * (c_plasma - st.muscle / prm.kp_muscle)
 
     // Adipose
-    let d_adipose = (p.q_adipose / p.v_adipose) * (c_plasma - state.adipose / p.kp_adipose)
-    d_blood = d_blood - (p.q_adipose / p.v_blood) * p.rb_ratio * (c_plasma - state.adipose / p.kp_adipose)
+    let d_adipose = (prm.q_adipose / prm.v_adipose) * (c_plasma - st.adipose / prm.kp_adipose)
+    d_blood = d_blood - (prm.q_adipose / prm.v_blood) * prm.rb_ratio * (c_plasma - st.adipose / prm.kp_adipose)
 
     // Gut
-    let d_gut = (p.q_gut / p.v_gut) * (c_plasma - state.gut / p.kp_gut)
-    d_blood = d_blood - (p.q_gut / p.v_blood) * p.rb_ratio * (c_plasma - state.gut / p.kp_gut)
+    let d_gut = (prm.q_gut / prm.v_gut) * (c_plasma - st.gut / prm.kp_gut)
+    d_blood = d_blood - (prm.q_gut / prm.v_blood) * prm.rb_ratio * (c_plasma - st.gut / prm.kp_gut)
 
     // Skin
-    let d_skin = (p.q_skin / p.v_skin) * (c_plasma - state.skin / p.kp_skin)
-    d_blood = d_blood - (p.q_skin / p.v_blood) * p.rb_ratio * (c_plasma - state.skin / p.kp_skin)
+    let d_skin = (prm.q_skin / prm.v_skin) * (c_plasma - st.skin / prm.kp_skin)
+    d_blood = d_blood - (prm.q_skin / prm.v_blood) * prm.rb_ratio * (c_plasma - st.skin / prm.kp_skin)
 
     // Bone
-    let d_bone = (p.q_bone / p.v_bone) * (c_plasma - state.bone / p.kp_bone)
-    d_blood = d_blood - (p.q_bone / p.v_blood) * p.rb_ratio * (c_plasma - state.bone / p.kp_bone)
+    let d_bone = (prm.q_bone / prm.v_bone) * (c_plasma - st.bone / prm.kp_bone)
+    d_blood = d_blood - (prm.q_bone / prm.v_blood) * prm.rb_ratio * (c_plasma - st.bone / prm.kp_bone)
 
     // Spleen
-    let d_spleen = (p.q_spleen / p.v_spleen) * (c_plasma - state.spleen / p.kp_spleen)
-    d_blood = d_blood - (p.q_spleen / p.v_blood) * p.rb_ratio * (c_plasma - state.spleen / p.kp_spleen)
+    let d_spleen = (prm.q_spleen / prm.v_spleen) * (c_plasma - st.spleen / prm.kp_spleen)
+    d_blood = d_blood - (prm.q_spleen / prm.v_blood) * prm.rb_ratio * (c_plasma - st.spleen / prm.kp_spleen)
 
     // Pancreas
-    let d_pancreas = (p.q_pancreas / p.v_pancreas) * (c_plasma - state.pancreas / p.kp_pancreas)
-    d_blood = d_blood - (p.q_pancreas / p.v_blood) * p.rb_ratio * (c_plasma - state.pancreas / p.kp_pancreas)
+    let d_pancreas = (prm.q_pancreas / prm.v_pancreas) * (c_plasma - st.pancreas / prm.kp_pancreas)
+    d_blood = d_blood - (prm.q_pancreas / prm.v_blood) * prm.rb_ratio * (c_plasma - st.pancreas / prm.kp_pancreas)
 
     // Other
-    let d_other = (p.q_other / p.v_other) * (c_plasma - state.other / p.kp_other)
-    d_blood = d_blood - (p.q_other / p.v_blood) * p.rb_ratio * (c_plasma - state.other / p.kp_other)
+    let d_other = (prm.q_other / prm.v_other) * (c_plasma - st.other / prm.kp_other)
+    d_blood = d_blood - (prm.q_other / prm.v_blood) * prm.rb_ratio * (c_plasma - st.other / prm.kp_other)
 
     // Hepatic clearance (unbound drug)
-    d_blood = d_blood - (p.cl_hepatic / p.v_blood) * c_unbound * p.rb_ratio
+    d_blood = d_blood - (prm.cl_hepatic / prm.v_blood) * c_unbound * prm.rb_ratio
 
     // Renal clearance (unbound drug)
-    d_blood = d_blood - (p.cl_renal / p.v_blood) * c_unbound * p.rb_ratio
+    d_blood = d_blood - (prm.cl_renal / prm.v_blood) * c_unbound * prm.rb_ratio
 
     return PBPKState14 {
         blood: d_blood, liver: d_liver, kidney: d_kidney, brain: d_brain,
@@ -379,53 +379,53 @@ struct Tsit5StepResult14 {
     err: PBPKState14
 }
 
-fn tsit5_step_pbpk(state_in: PBPKState14, t: f64, dt: f64, p: PBPKParams14) -> Tsit5StepResult14 {
+fn tsit5_step_pbpk(st_in: PBPKState14, t: f64, dt: f64, prm: PBPKParams14) -> Tsit5StepResult14 {
     // Stage 1
-    let k1 = pbpk_ode(state_in, t, p)
+    let k1 = pbpk_ode(st_in, t, prm)
 
     // Stage 2
-    let stage2_state = pbpk_state_add(state_in, pbpk_state_scale(k1, dt * tsit5_a21()))
-    let k2 = pbpk_ode(stage2_state, t + tsit5_c2() * dt, p)
+    let stage2_state = pbpk_state_add(st_in, pbpk_state_scale(k1, dt * tsit5_a21()))
+    let k2 = pbpk_ode(stage2_state, t + tsit5_c2() * dt, prm)
 
     // Stage 3
-    let stage3_state = pbpk_state_add(state_in,
+    let stage3_state = pbpk_state_add(st_in,
         pbpk_state_add(pbpk_state_scale(k1, dt * tsit5_a31()),
                        pbpk_state_scale(k2, dt * tsit5_a32())))
-    let k3 = pbpk_ode(stage3_state, t + tsit5_c3() * dt, p)
+    let k3 = pbpk_ode(stage3_state, t + tsit5_c3() * dt, prm)
 
     // Stage 4
-    let stage4_state = pbpk_state_add(state_in,
+    let stage4_state = pbpk_state_add(st_in,
         pbpk_state_add(pbpk_state_scale(k1, dt * tsit5_a41()),
         pbpk_state_add(pbpk_state_scale(k2, dt * tsit5_a42()),
                        pbpk_state_scale(k3, dt * tsit5_a43()))))
-    let k4 = pbpk_ode(stage4_state, t + tsit5_c4() * dt, p)
+    let k4 = pbpk_ode(stage4_state, t + tsit5_c4() * dt, prm)
 
     // Stage 5
-    let stage5_state = pbpk_state_add(state_in,
+    let stage5_state = pbpk_state_add(st_in,
         pbpk_state_add(pbpk_state_scale(k1, dt * tsit5_a51()),
         pbpk_state_add(pbpk_state_scale(k2, dt * tsit5_a52()),
         pbpk_state_add(pbpk_state_scale(k3, dt * tsit5_a53()),
                        pbpk_state_scale(k4, dt * tsit5_a54())))))
-    let k5 = pbpk_ode(stage5_state, t + tsit5_c5() * dt, p)
+    let k5 = pbpk_ode(stage5_state, t + tsit5_c5() * dt, prm)
 
     // Stage 6
-    let stage6_state = pbpk_state_add(state_in,
+    let stage6_state = pbpk_state_add(st_in,
         pbpk_state_add(pbpk_state_scale(k1, dt * tsit5_a61()),
         pbpk_state_add(pbpk_state_scale(k2, dt * tsit5_a62()),
         pbpk_state_add(pbpk_state_scale(k3, dt * tsit5_a63()),
         pbpk_state_add(pbpk_state_scale(k4, dt * tsit5_a64()),
                        pbpk_state_scale(k5, dt * tsit5_a65()))))))
-    let k6 = pbpk_ode(stage6_state, t + tsit5_c6() * dt, p)
+    let k6 = pbpk_ode(stage6_state, t + tsit5_c6() * dt, prm)
 
     // Stage 7
-    let stage7_state = pbpk_state_add(state_in,
+    let stage7_state = pbpk_state_add(st_in,
         pbpk_state_add(pbpk_state_scale(k1, dt * tsit5_a71()),
         pbpk_state_add(pbpk_state_scale(k2, dt * tsit5_a72()),
         pbpk_state_add(pbpk_state_scale(k3, dt * tsit5_a73()),
         pbpk_state_add(pbpk_state_scale(k4, dt * tsit5_a74()),
         pbpk_state_add(pbpk_state_scale(k5, dt * tsit5_a75()),
                        pbpk_state_scale(k6, dt * tsit5_a76())))))))
-    let k7 = pbpk_ode(stage7_state, t + tsit5_c7() * dt, p)
+    let k7 = pbpk_ode(stage7_state, t + tsit5_c7() * dt, prm)
 
     // 5th order solution (same as stage 7 position for FSAL)
     let state_new = stage7_state
@@ -547,44 +547,44 @@ struct PBPKSolution14 {
 fn solve_pbpk14(
     dose_mg: f64,
     t_end: f64,
-    params: PBPKParams14,
-    config: ODEConfig14
+    prm: PBPKParams14,
+    cfg: ODEConfig14
 ) -> PBPKSolution14 {
     // Initial condition: all drug in blood compartment
-    let c0_blood = dose_mg / params.v_blood
-    let mut state = PBPKState14 {
+    let c0_blood = dose_mg / prm.v_blood
+    let mut st = PBPKState14 {
         blood: c0_blood, liver: 0.0, kidney: 0.0, brain: 0.0, heart: 0.0,
         lung: 0.0, muscle: 0.0, adipose: 0.0, gut: 0.0, skin: 0.0,
         bone: 0.0, spleen: 0.0, pancreas: 0.0, other: 0.0
     }
 
     let mut t = 0.0
-    let mut dt = config.dt_init
+    let mut dt = cfg.dt_init
     let mut nsteps = 0
     let mut nfeval = 0
     let mut nreject = 0
 
-    while t < t_end && nsteps < config.max_steps {
+    while t < t_end && nsteps < cfg.max_steps {
         let dt_use = if t + dt > t_end { t_end - t } else { dt }
 
-        let result = tsit5_step_pbpk(state, t, dt_use, params)
+        let result = tsit5_step_pbpk(st, t, dt_use, prm)
         nfeval = nfeval + 7
 
-        let err_norm = compute_error_norm_14(result.err, state, result.state_new, config.rtol, config.atol)
+        let err_norm = compute_error_norm_14(result.err, st, result.state_new, cfg.rtol, cfg.atol)
 
         if err_norm <= 1.0 {
             // Accept step
             t = t + dt_use
-            state = result.state_new
+            st = result.state_new
             nsteps = nsteps + 1
-            dt = optimal_step_14(dt_use, err_norm, config.safety, config.max_growth, config.min_shrink)
+            dt = optimal_step_14(dt_use, err_norm, cfg.safety, cfg.max_growth, cfg.min_shrink)
         } else {
             // Reject step
             nreject = nreject + 1
-            dt = optimal_step_14(dt_use, err_norm, config.safety, config.max_growth, config.min_shrink)
+            dt = optimal_step_14(dt_use, err_norm, cfg.safety, cfg.max_growth, cfg.min_shrink)
         }
 
-        dt = max_f64(config.dt_min, min_f64(config.dt_max, dt))
+        dt = max_f64(cfg.dt_min, min_f64(cfg.dt_max, dt))
 
         // Fail-safe: if too many rejections, something is wrong
         if nreject > 1000 {
@@ -594,12 +594,12 @@ fn solve_pbpk14(
                 nfeval: nfeval,
                 nreject: nreject,
                 t_final: t,
-                state_final: state
+                state_final: st
             }
         }
     }
 
-    let success = t >= t_end - config.dt_min
+    let success = t >= t_end - cfg.dt_min
 
     return PBPKSolution14 {
         success: success,
@@ -607,7 +607,7 @@ fn solve_pbpk14(
         nfeval: nfeval,
         nreject: nreject,
         t_final: t,
-        state_final: state
+        state_final: st
     }
 }
 
@@ -619,8 +619,8 @@ fn main() -> i32 {
     println("=== Demetrios 14-Compartment PBPK Solver ===")
     println("")
 
-    let params = default_pbpk_params()
-    let config = default_ode_config()
+    let pk_prm = default_pbpk_params()
+    let ode_cfg = default_ode_config()
 
     // Simulate 100mg dose over 8 hours
     let dose = 100.0
@@ -631,7 +631,7 @@ fn main() -> i32 {
     println("  Duration: 8 hours")
     println("")
 
-    let sol = solve_pbpk14(dose, t_end, params, config)
+    let sol = solve_pbpk14(dose, t_end, pk_prm, ode_cfg)
 
     println("Results:")
     println("  Success: ")
@@ -663,7 +663,7 @@ fn main() -> i32 {
 
     // Mass balance check
     let initial_mass = dose
-    let final_mass = pbpk_state_total_mass(sol.state_final, params)
+    let final_mass = pbpk_state_total_mass(sol.state_final, pk_prm)
     println("Mass balance:")
     println("  Initial: ")
     println(initial_mass)
