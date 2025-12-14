@@ -38,6 +38,8 @@ pub mod codegen;
 #[cfg(feature = "llvm")]
 pub mod debug;
 #[cfg(feature = "llvm")]
+pub mod gpu;
+#[cfg(feature = "llvm")]
 pub mod linker;
 #[cfg(feature = "llvm")]
 pub mod passes;
@@ -49,9 +51,11 @@ pub mod types;
 #[cfg(feature = "llvm")]
 pub use codegen::{LLVMCodegen, OptLevel};
 #[cfg(feature = "llvm")]
+pub use gpu::LlvmGpuCodegen;
+#[cfg(feature = "llvm")]
 pub use linker::{LinkError, Linker};
 #[cfg(feature = "llvm")]
-pub use target::TargetConfig;
+pub use target::{GpuTargetConfig, TargetConfig};
 
 // Stub implementations when LLVM is not available
 #[cfg(not(feature = "llvm"))]
