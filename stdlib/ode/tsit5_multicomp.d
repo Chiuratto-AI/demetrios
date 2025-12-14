@@ -141,15 +141,15 @@ fn default_pk_params() -> PKParams {
 }
 
 // ODE function for 3-compartment model
-fn pk_ode(state_in: PKState, t: f64, params: PKParams) -> PKDeriv {
+fn pk_ode(state_in: PKState, t: f64, p: PKParams) -> PKDeriv {
     // dA_gut/dt = -ka * A_gut
-    let d_gut = 0.0 - params.ka * state_in.gut
+    let d_gut = 0.0 - p.ka * state_in.gut
 
     // dA_central/dt = ka*A_gut - ke*A_central - k12*A_central + k21*A_periph
-    let d_central = params.ka * state_in.gut - params.ke * state_in.central - params.k12 * state_in.central + params.k21 * state_in.periph
+    let d_central = p.ka * state_in.gut - p.ke * state_in.central - p.k12 * state_in.central + p.k21 * state_in.periph
 
     // dA_periph/dt = k12*A_central - k21*A_periph
-    let d_periph = params.k12 * state_in.central - params.k21 * state_in.periph
+    let d_periph = p.k12 * state_in.central - p.k21 * state_in.periph
 
     return PKDeriv {
         d_gut: d_gut,
@@ -177,13 +177,13 @@ fn add_scaled_deriv(state_in: PKState, deriv: PKDeriv, scale: f64) -> PKState {
     }
 }
 
-fn tsit5_step_pk(state_in: PKState, t: f64, dt: f64, params: PKParams) -> PKStepResult {
+fn tsit5_step_pk(state_in: PKState, t: f64, dt: f64, p: PKParams) -> PKStepResult {
     // Stage 1
-    let k1 = pk_ode(state_in, t, params)
+    let k1 = pk_ode(state_in, t, p)
 
     // Stage 2
     let stage_2 = add_scaled_deriv(state_in, k1, dt * tsit5_a21())
-    let k2 = pk_ode(stage_2, t + tsit5_c2() * dt, params)
+    let k2 = pk_ode(stage_2, t + tsit5_c2() * dt, p)
 
     // Stage 3
     let stage_3 = PKState {
@@ -191,7 +191,7 @@ fn tsit5_step_pk(state_in: PKState, t: f64, dt: f64, params: PKParams) -> PKStep
         central: state_in.central + dt * (tsit5_a31() * k1.d_central + tsit5_a32() * k2.d_central),
         periph: state_in.periph + dt * (tsit5_a31() * k1.d_periph + tsit5_a32() * k2.d_periph)
     }
-    let k3 = pk_ode(stage_3, t + tsit5_c3() * dt, params)
+    let k3 = pk_ode(stage_3, t + tsit5_c3() * dt, p)
 
     // Stage 4
     let stage_4 = PKState {
@@ -199,7 +199,7 @@ fn tsit5_step_pk(state_in: PKState, t: f64, dt: f64, params: PKParams) -> PKStep
         central: state_in.central + dt * (tsit5_a41() * k1.d_central + tsit5_a42() * k2.d_central + tsit5_a43() * k3.d_central),
         periph: state_in.periph + dt * (tsit5_a41() * k1.d_periph + tsit5_a42() * k2.d_periph + tsit5_a43() * k3.d_periph)
     }
-    let k4 = pk_ode(stage_4, t + tsit5_c4() * dt, params)
+    let k4 = pk_ode(stage_4, t + tsit5_c4() * dt, p)
 
     // Stage 5
     let stage_5 = PKState {
@@ -207,7 +207,7 @@ fn tsit5_step_pk(state_in: PKState, t: f64, dt: f64, params: PKParams) -> PKStep
         central: state_in.central + dt * (tsit5_a51() * k1.d_central + tsit5_a52() * k2.d_central + tsit5_a53() * k3.d_central + tsit5_a54() * k4.d_central),
         periph: state_in.periph + dt * (tsit5_a51() * k1.d_periph + tsit5_a52() * k2.d_periph + tsit5_a53() * k3.d_periph + tsit5_a54() * k4.d_periph)
     }
-    let k5 = pk_ode(stage_5, t + tsit5_c5() * dt, params)
+    let k5 = pk_ode(stage_5, t + tsit5_c5() * dt, p)
 
     // Stage 6
     let stage_6 = PKState {
@@ -215,7 +215,7 @@ fn tsit5_step_pk(state_in: PKState, t: f64, dt: f64, params: PKParams) -> PKStep
         central: state_in.central + dt * (tsit5_a61() * k1.d_central + tsit5_a62() * k2.d_central + tsit5_a63() * k3.d_central + tsit5_a64() * k4.d_central + tsit5_a65() * k5.d_central),
         periph: state_in.periph + dt * (tsit5_a61() * k1.d_periph + tsit5_a62() * k2.d_periph + tsit5_a63() * k3.d_periph + tsit5_a64() * k4.d_periph + tsit5_a65() * k5.d_periph)
     }
-    let k6 = pk_ode(stage_6, t + tsit5_c6() * dt, params)
+    let k6 = pk_ode(stage_6, t + tsit5_c6() * dt, p)
 
     // Stage 7 (same as b weights for FSAL)
     let stage_7 = PKState {
@@ -223,7 +223,7 @@ fn tsit5_step_pk(state_in: PKState, t: f64, dt: f64, params: PKParams) -> PKStep
         central: state_in.central + dt * (tsit5_a71() * k1.d_central + tsit5_a72() * k2.d_central + tsit5_a73() * k3.d_central + tsit5_a74() * k4.d_central + tsit5_a75() * k5.d_central + tsit5_a76() * k6.d_central),
         periph: state_in.periph + dt * (tsit5_a71() * k1.d_periph + tsit5_a72() * k2.d_periph + tsit5_a73() * k3.d_periph + tsit5_a74() * k4.d_periph + tsit5_a75() * k5.d_periph + tsit5_a76() * k6.d_periph)
     }
-    let k7 = pk_ode(stage_7, t + tsit5_c7() * dt, params)
+    let k7 = pk_ode(stage_7, t + tsit5_c7() * dt, p)
 
     // 5th order solution
     let state_new = stage_7
@@ -319,44 +319,44 @@ struct PKSolution {
 // ============================================================================
 
 fn solve_pk(
-    initial: PKState,
-    params: PKParams,
+    init_state: PKState,
+    pk_p: PKParams,
     t_end: f64,
-    config: SolverConfig
+    cfg: SolverConfig
 ) -> PKSolution {
-    let mut state_curr = initial
+    let mut state_curr = init_state
     let mut t_curr = 0.0
-    let mut dt_curr = config.dt_init
+    let mut dt_curr = cfg.dt_init
     let mut steps = 0
     let mut evals = 0
     let mut rejects = 0
 
-    while t_curr < t_end && steps < config.max_steps {
+    while t_curr < t_end && steps < cfg.max_steps {
         let dt_use = if t_curr + dt_curr > t_end { t_end - t_curr } else { dt_curr }
 
-        let result = tsit5_step_pk(state_curr, t_curr, dt_use, params)
+        let result = tsit5_step_pk(state_curr, t_curr, dt_use, pk_p)
         evals = evals + 7
 
         let err_n = compute_error_norm(
             result.err_gut, result.err_central, result.err_periph,
             state_curr, result.state_new,
-            config.rtol, config.atol
+            cfg.rtol, cfg.atol
         )
 
         if err_n <= 1.0 {
             t_curr = t_curr + dt_use
             state_curr = result.state_new
             steps = steps + 1
-            dt_curr = optimal_step(dt_use, err_n, config.safety, config.max_growth, config.min_shrink)
+            dt_curr = optimal_step(dt_use, err_n, cfg.safety, cfg.max_growth, cfg.min_shrink)
         } else {
             rejects = rejects + 1
-            dt_curr = optimal_step(dt_use, err_n, config.safety, config.max_growth, config.min_shrink)
+            dt_curr = optimal_step(dt_use, err_n, cfg.safety, cfg.max_growth, cfg.min_shrink)
         }
 
-        dt_curr = max_val(config.dt_min, min_val(config.dt_max, dt_curr))
+        dt_curr = max_val(cfg.dt_min, min_val(cfg.dt_max, dt_curr))
     }
 
-    let success = t_curr >= t_end - config.dt_min
+    let success = t_curr >= t_end - cfg.dt_min
 
     return PKSolution {
         success: success,
@@ -383,16 +383,16 @@ fn main() -> i32 {
     println("")
 
     let dose = 500.0
-    let initial = PKState {
+    let init_st = PKState {
         gut: dose,
         central: 0.0,
         periph: 0.0
     }
 
-    let params = default_pk_params()
-    let config = default_config()
+    let pk_params = default_pk_params()
+    let solver_cfg = default_config()
 
-    let sol = solve_pk(initial, params, 24.0, config)
+    let sol = solve_pk(init_st, pk_params, 24.0, solver_cfg)
 
     println("Results at t=24h:")
     println("  Gut amount (mg):")
