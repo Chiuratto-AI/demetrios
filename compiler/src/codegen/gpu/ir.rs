@@ -50,6 +50,192 @@ pub enum GpuTarget {
     OneApi,
 }
 
+/// NVIDIA GPU architecture names (for convenience)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CudaArch {
+    /// Turing (RTX 20xx, GTX 16xx) - sm_75
+    Turing,
+    /// Ampere (RTX 30xx, A100) - sm_80, sm_86, sm_87
+    Ampere,
+    /// Ada Lovelace (RTX 40xx) - sm_89
+    Ada,
+    /// Hopper (H100, H200) - sm_90, sm_90a
+    Hopper,
+    /// Blackwell (B100, B200, GB200) - sm_100, sm_100a
+    Blackwell,
+    /// Blackwell Ultra (B200 Ultra) - sm_120
+    BlackwellUltra,
+}
+
+impl CudaArch {
+    /// Get the base compute capability for this architecture
+    pub fn compute_capability(&self) -> (u32, u32) {
+        match self {
+            CudaArch::Turing => (7, 5),
+            CudaArch::Ampere => (8, 0),
+            CudaArch::Ada => (8, 9),
+            CudaArch::Hopper => (9, 0),
+            CudaArch::Blackwell => (10, 0),
+            CudaArch::BlackwellUltra => (12, 0),
+        }
+    }
+
+    /// Get the recommended PTX version for this architecture
+    pub fn ptx_version(&self) -> (u32, u32) {
+        match self {
+            CudaArch::Turing => (6, 4),
+            CudaArch::Ampere => (7, 1),
+            CudaArch::Ada => (8, 1),
+            CudaArch::Hopper => (8, 3),
+            CudaArch::Blackwell => (8, 5),
+            CudaArch::BlackwellUltra => (8, 6),
+        }
+    }
+
+    /// Get architecture from compute capability
+    pub fn from_compute_capability(cc: (u32, u32)) -> Option<Self> {
+        match cc {
+            (7, 5) => Some(CudaArch::Turing),
+            (8, 0) | (8, 6) | (8, 7) => Some(CudaArch::Ampere),
+            (8, 9) => Some(CudaArch::Ada),
+            (9, 0) => Some(CudaArch::Hopper),
+            (10, 0) => Some(CudaArch::Blackwell),
+            (12, 0) => Some(CudaArch::BlackwellUltra),
+            _ => None,
+        }
+    }
+
+    /// Architecture name as string
+    pub fn name(&self) -> &'static str {
+        match self {
+            CudaArch::Turing => "Turing",
+            CudaArch::Ampere => "Ampere",
+            CudaArch::Ada => "Ada Lovelace",
+            CudaArch::Hopper => "Hopper",
+            CudaArch::Blackwell => "Blackwell",
+            CudaArch::BlackwellUltra => "Blackwell Ultra",
+        }
+    }
+
+    /// Tensor Core generation
+    pub fn tensor_core_gen(&self) -> u32 {
+        match self {
+            CudaArch::Turing => 2,
+            CudaArch::Ampere => 3,
+            CudaArch::Ada | CudaArch::Hopper => 4,
+            CudaArch::Blackwell | CudaArch::BlackwellUltra => 5,
+        }
+    }
+
+    /// Maximum shared memory per block (bytes)
+    pub fn max_shared_memory(&self) -> u32 {
+        match self {
+            CudaArch::Turing => 64 * 1024,          // 64 KB
+            CudaArch::Ampere => 164 * 1024,         // 164 KB (A100)
+            CudaArch::Ada => 100 * 1024,            // 100 KB
+            CudaArch::Hopper => 228 * 1024,         // 228 KB (H100)
+            CudaArch::Blackwell => 256 * 1024,      // 256 KB (estimated)
+            CudaArch::BlackwellUltra => 256 * 1024, // 256 KB (estimated)
+        }
+    }
+
+    /// Maximum threads per block
+    pub fn max_threads_per_block(&self) -> u32 {
+        1024 // Same across all architectures
+    }
+
+    /// Maximum registers per thread
+    pub fn max_registers_per_thread(&self) -> u32 {
+        255 // Same across all architectures
+    }
+
+    /// L2 cache size (bytes)
+    pub fn l2_cache_size(&self) -> u32 {
+        match self {
+            CudaArch::Turing => 6 * 1024 * 1024,       // 6 MB
+            CudaArch::Ampere => 40 * 1024 * 1024,      // 40 MB (A100)
+            CudaArch::Ada => 72 * 1024 * 1024,         // 72 MB (RTX 4090)
+            CudaArch::Hopper => 50 * 1024 * 1024,      // 50 MB (H100)
+            CudaArch::Blackwell => 96 * 1024 * 1024,   // 96 MB (estimated B100)
+            CudaArch::BlackwellUltra => 128 * 1024 * 1024, // 128 MB (estimated)
+        }
+    }
+}
+
+/// Feature flags for CUDA compute capabilities
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CudaFeatures {
+    /// Supports BFloat16 (sm_80+)
+    pub bf16: bool,
+    /// Supports FP8 (sm_89+)
+    pub fp8: bool,
+    /// Supports TMA (Tensor Memory Accelerator, sm_90+)
+    pub tma: bool,
+    /// Supports Thread Block Clusters (sm_90+)
+    pub clusters: bool,
+    /// Supports Distributed Shared Memory (sm_90+)
+    pub distributed_shared_memory: bool,
+    /// Supports FP8 in Tensor Cores (sm_89+)
+    pub tensor_fp8: bool,
+    /// Supports FP4/INT4 Tensor Cores (sm_100+, Blackwell)
+    pub tensor_fp4: bool,
+    /// Supports 2nd-gen Transformer Engine (sm_100+)
+    pub transformer_engine_v2: bool,
+    /// Supports dynamic shared memory carveout
+    pub dynamic_shared_memory: bool,
+    /// Supports asynchronous copy (sm_80+)
+    pub async_copy: bool,
+    /// Supports redux warp reduction (sm_80+)
+    pub redux: bool,
+    /// Supports mbarrier (sm_80+)
+    pub mbarrier: bool,
+    /// Supports 5th-gen Tensor Cores (sm_100+)
+    pub tensor_core_gen5: bool,
+    /// Supports NVLink 5.0 (sm_100+)
+    pub nvlink5: bool,
+    /// Supports Confidential Computing (sm_100+)
+    pub confidential_computing: bool,
+    /// Supports Decompression Engine (sm_100+)
+    pub decompression_engine: bool,
+}
+
+impl CudaFeatures {
+    /// Get features for a compute capability
+    pub fn from_compute_capability(cc: (u32, u32)) -> Self {
+        let (major, minor) = cc;
+        let sm = major * 10 + minor;
+
+        CudaFeatures {
+            bf16: sm >= 80,
+            fp8: sm >= 89,
+            tma: sm >= 90,
+            clusters: sm >= 90,
+            distributed_shared_memory: sm >= 90,
+            tensor_fp8: sm >= 89,
+            tensor_fp4: sm >= 100,
+            transformer_engine_v2: sm >= 100,
+            dynamic_shared_memory: sm >= 70,
+            async_copy: sm >= 80,
+            redux: sm >= 80,
+            mbarrier: sm >= 80,
+            tensor_core_gen5: sm >= 100,
+            nvlink5: sm >= 100,
+            confidential_computing: sm >= 100,
+            decompression_engine: sm >= 100,
+        }
+    }
+
+    /// Check if all Blackwell features are available
+    pub fn is_blackwell(&self) -> bool {
+        self.tensor_core_gen5 && self.tensor_fp4 && self.transformer_engine_v2
+    }
+
+    /// Check if all Hopper features are available
+    pub fn is_hopper(&self) -> bool {
+        self.tma && self.clusters && self.distributed_shared_memory && !self.tensor_core_gen5
+    }
+}
+
 /// Apple GPU family for Metal
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MetalGpuFamily {
@@ -455,6 +641,36 @@ impl fmt::Display for Fp8Format {
     }
 }
 
+/// TMA reduction operation type (sm_100+)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TmaReduceOp {
+    /// Atomic add
+    Add,
+    /// Atomic min
+    Min,
+    /// Atomic max
+    Max,
+    /// Atomic AND
+    And,
+    /// Atomic OR
+    Or,
+    /// Atomic XOR
+    Xor,
+}
+
+impl fmt::Display for TmaReduceOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TmaReduceOp::Add => write!(f, "add"),
+            TmaReduceOp::Min => write!(f, "min"),
+            TmaReduceOp::Max => write!(f, "max"),
+            TmaReduceOp::And => write!(f, "and"),
+            TmaReduceOp::Or => write!(f, "or"),
+            TmaReduceOp::Xor => write!(f, "xor"),
+        }
+    }
+}
+
 /// Shared memory declaration
 #[derive(Debug, Clone)]
 pub struct SharedMemDecl {
@@ -645,6 +861,147 @@ pub enum GpuOp {
     QuantizeF32ToF8(ValueId, QuantizeMode),
     /// Dequantize F8 to F32 with optional scale
     DequantizeF8ToF32(ValueId, Option<ValueId>), // value, optional scale factor
+
+    // === Blackwell Features (sm_100+) ===
+    // Tensor Memory Accelerator (TMA) - bulk async memory operations
+    /// TMA async copy from global to shared (sm_90+, enhanced in sm_100)
+    TmaLoadAsync {
+        dst_shared: ValueId,
+        src_global: ValueId,
+        size: u32,
+        barrier: ValueId,
+    },
+    /// TMA async copy from shared to global
+    TmaStoreAsync {
+        dst_global: ValueId,
+        src_shared: ValueId,
+        size: u32,
+    },
+    /// TMA multicast load to multiple CTAs in cluster
+    TmaMulticastLoad {
+        dst_shared: ValueId,
+        src_global: ValueId,
+        size: u32,
+        cluster_mask: u32,
+        barrier: ValueId,
+    },
+    /// TMA reduction operation (scatter-add)
+    TmaReduceAsync {
+        dst_global: ValueId,
+        src_shared: ValueId,
+        size: u32,
+        reduce_op: TmaReduceOp,
+    },
+
+    // 5th-gen Tensor Core Operations (sm_100+)
+    /// WGMMA (Warpgroup Matrix Multiply-Accumulate) with FP4
+    WgmmaFp4 {
+        a: ValueId,      // FP4 matrix A
+        b: ValueId,      // FP4 matrix B
+        c: ValueId,      // Accumulator (FP32)
+        m: u32,          // M dimension
+        n: u32,          // N dimension
+        k: u32,          // K dimension
+        scale_a: ValueId, // Scale for A
+        scale_b: ValueId, // Scale for B
+    },
+    /// WGMMA with FP8 (E4M3 or E5M2)
+    WgmmaFp8 {
+        a: ValueId,
+        b: ValueId,
+        c: ValueId,
+        m: u32,
+        n: u32,
+        k: u32,
+        format: Fp8Format,
+    },
+    /// WGMMA with BF16
+    WgmmaBf16 {
+        a: ValueId,
+        b: ValueId,
+        c: ValueId,
+        m: u32,
+        n: u32,
+        k: u32,
+    },
+
+    // Transformer Engine v2 (sm_100+)
+    /// Fused attention with FP8 quantization
+    TransformerEngineFusedAttention {
+        q: ValueId,       // Query tensor
+        k: ValueId,       // Key tensor
+        v: ValueId,       // Value tensor
+        scale: ValueId,   // Softmax scale
+        output: ValueId,  // Output tensor
+        format: Fp8Format,
+    },
+    /// FP8 GEMM with amax tracking for dynamic scaling
+    TransformerEngineFp8Gemm {
+        a: ValueId,
+        b: ValueId,
+        c: ValueId,
+        amax_out: ValueId,  // Track max for scaling
+        format: Fp8Format,
+    },
+
+    // Decompression Engine (sm_100+)
+    /// Hardware decompression from LZ4
+    DecompressLz4 {
+        dst: ValueId,
+        src: ValueId,
+        compressed_size: u32,
+        uncompressed_size: u32,
+    },
+    /// Hardware decompression from Snappy
+    DecompressSnappy {
+        dst: ValueId,
+        src: ValueId,
+        compressed_size: u32,
+        uncompressed_size: u32,
+    },
+    /// Hardware decompression from Deflate
+    DecompressDeflate {
+        dst: ValueId,
+        src: ValueId,
+        compressed_size: u32,
+        uncompressed_size: u32,
+    },
+
+    // Thread Block Cluster Extensions (sm_100+ enhanced)
+    /// Get cluster ID within grid
+    ClusterId,
+    /// Get cluster dimension
+    ClusterDim,
+    /// Get block ID within cluster
+    BlockIdInCluster,
+    /// Cluster-wide barrier
+    ClusterBarrier,
+    /// Cluster-wide arrive (non-blocking)
+    ClusterArrive(ValueId),  // barrier
+    /// Cluster-wide wait
+    ClusterWait(ValueId),    // barrier
+
+    // NVLink 5.0 Operations (sm_100+)
+    /// Remote direct memory access read
+    NvlinkRead {
+        dst: ValueId,
+        src_gpu: u32,
+        src_addr: ValueId,
+        size: u32,
+    },
+    /// Remote direct memory access write
+    NvlinkWrite {
+        dst_gpu: u32,
+        dst_addr: ValueId,
+        src: ValueId,
+        size: u32,
+    },
+    /// NVLink atomic operation
+    NvlinkAtomicAdd {
+        dst_gpu: u32,
+        dst_addr: ValueId,
+        value: ValueId,
+    },
 
     // === Memory ===
     Load(ValueId, MemorySpace),

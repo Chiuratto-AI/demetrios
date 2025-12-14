@@ -861,6 +861,111 @@ impl MetalCodegen {
                 }
             }
 
+            // === Blackwell Features (CUDA sm_100+ - Not available on Metal) ===
+            // Metal doesn't support TMA, WGMMA, or NVLink features
+            GpuOp::TmaLoadAsync { .. } => {
+                self.emit("// TMA not available on Metal - use threadgroup memory instead");
+                self.emit(&format!("auto {} = 0; // TMA placeholder", result_name));
+            }
+            GpuOp::TmaStoreAsync { .. } => {
+                self.emit("// TMA not available on Metal");
+            }
+            GpuOp::TmaMulticastLoad { .. } => {
+                self.emit("// TMA multicast not available on Metal");
+                self.emit(&format!("auto {} = 0; // TMA placeholder", result_name));
+            }
+            GpuOp::TmaReduceAsync { .. } => {
+                self.emit("// TMA reduce not available on Metal");
+            }
+
+            // WGMMA operations - use simdgroup_matrix on Metal
+            GpuOp::WgmmaFp4 { a, b, c, .. } => {
+                let a_v = self.get_var_name(*a);
+                let b_v = self.get_var_name(*b);
+                let c_v = self.get_var_name(*c);
+                self.emit("// WGMMA FP4 not available - using simdgroup_matrix placeholder");
+                self.emit(&format!("float {} = {}; // FP4 WGMMA placeholder", result_name, c_v));
+                self.emit(&format!("// Would use simdgroup_matrix with {} and {}", a_v, b_v));
+            }
+            GpuOp::WgmmaFp8 { a, b, c, .. } => {
+                let a_v = self.get_var_name(*a);
+                let b_v = self.get_var_name(*b);
+                let c_v = self.get_var_name(*c);
+                self.emit("// WGMMA FP8 not available - using simdgroup_matrix placeholder");
+                self.emit(&format!("float {} = {}; // FP8 WGMMA placeholder", result_name, c_v));
+                self.emit(&format!("// Would use simdgroup_matrix with {} and {}", a_v, b_v));
+            }
+            GpuOp::WgmmaBf16 { a, b, c, .. } => {
+                let a_v = self.get_var_name(*a);
+                let b_v = self.get_var_name(*b);
+                let c_v = self.get_var_name(*c);
+                self.emit("// WGMMA BF16 - using simdgroup_matrix");
+                self.emit(&format!("// simdgroup_matrix<bfloat, 8, 8> ma, mb, mc;"));
+                self.emit(&format!("// ma.load({});", a_v));
+                self.emit(&format!("// mb.load({});", b_v));
+                self.emit(&format!("// mc = ma * mb;"));
+                self.emit(&format!("float {} = {}; // BF16 WGMMA placeholder", result_name, c_v));
+            }
+
+            // Transformer Engine - not available on Metal
+            GpuOp::TransformerEngineFusedAttention { .. } => {
+                self.emit("// Transformer Engine not available on Metal");
+                self.emit("// Use MPSGraph attention operations instead");
+            }
+            GpuOp::TransformerEngineFp8Gemm { .. } => {
+                self.emit("// Transformer Engine FP8 GEMM not available on Metal");
+                self.emit("// Use simdgroup_matrix with BF16 instead");
+            }
+
+            // Decompression Engine - not available on Metal
+            GpuOp::DecompressLz4 { .. } => {
+                self.emit("// Hardware LZ4 decompression not available on Metal");
+                self.emit("// Use software decompression instead");
+            }
+            GpuOp::DecompressSnappy { .. } => {
+                self.emit("// Hardware Snappy decompression not available on Metal");
+            }
+            GpuOp::DecompressDeflate { .. } => {
+                self.emit("// Hardware Deflate decompression not available on Metal");
+            }
+
+            // Cluster operations - not available on Metal
+            GpuOp::ClusterId => {
+                self.emit("// Cluster ID not available on Metal");
+                self.emit(&format!("uint {} = 0; // No cluster support", result_name));
+            }
+            GpuOp::ClusterDim => {
+                self.emit("// Cluster dimension not available on Metal");
+                self.emit(&format!("uint {} = 1; // No cluster support", result_name));
+            }
+            GpuOp::BlockIdInCluster => {
+                self.emit("// Block ID in cluster not available on Metal");
+                self.emit(&format!("uint {} = 0; // No cluster support", result_name));
+            }
+            GpuOp::ClusterBarrier => {
+                self.emit("// Cluster barrier not available on Metal - using threadgroup_barrier");
+                self.emit("threadgroup_barrier(mem_flags::mem_threadgroup);");
+            }
+            GpuOp::ClusterArrive(_) => {
+                self.emit("// Cluster arrive not available on Metal");
+            }
+            GpuOp::ClusterWait(_) => {
+                self.emit("// Cluster wait not available on Metal");
+            }
+
+            // NVLink operations - not available on Metal
+            GpuOp::NvlinkRead { .. } => {
+                self.emit("// NVLink not available on Metal");
+                self.emit(&format!("auto {} = 0; // NVLink placeholder", result_name));
+            }
+            GpuOp::NvlinkWrite { .. } => {
+                self.emit("// NVLink not available on Metal");
+            }
+            GpuOp::NvlinkAtomicAdd { .. } => {
+                self.emit("// NVLink atomic not available on Metal");
+                self.emit(&format!("auto {} = 0; // NVLink placeholder", result_name));
+            }
+
             // Memory
             GpuOp::Load(ptr, _space) => {
                 let ptr_name = self.get_var_name(*ptr);

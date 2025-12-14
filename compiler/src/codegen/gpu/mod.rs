@@ -47,10 +47,10 @@ pub mod tensor_epistemic;
 
 pub use intrinsics::{GpuIntrinsic, all_intrinsics, get_intrinsic, is_gpu_intrinsic};
 pub use ir::{
-    BlockId, CoopReduceOp, CooperativeGroupId, CooperativeScope, Fp8Format, GpuBlock, GpuConstValue,
-    GpuConstant, GpuFunction, GpuKernel, GpuModule, GpuOp, GpuParam, GpuTarget, GpuTerminator,
-    GpuType, MemorySpace, MetalGpuFamily, PartitionType, QuantizeMode, SharedMemDecl, ValueId,
-    WarpReduceOp, WarpVoteOp,
+    BlockId, CoopReduceOp, CooperativeGroupId, CooperativeScope, CudaArch, CudaFeatures, Fp8Format,
+    GpuBlock, GpuConstValue, GpuConstant, GpuFunction, GpuKernel, GpuModule, GpuOp, GpuParam,
+    GpuTarget, GpuTerminator, GpuType, MemorySpace, MetalGpuFamily, PartitionType, QuantizeMode,
+    SharedMemDecl, TmaReduceOp, ValueId, WarpReduceOp, WarpVoteOp,
 };
 pub use ptx::PtxCodegen;
 pub use runtime::{

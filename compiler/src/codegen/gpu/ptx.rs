@@ -46,14 +46,51 @@ struct RegCounters {
 
 impl PtxCodegen {
     pub fn new(sm_version: (u32, u32)) -> Self {
+        // Automatically select PTX version based on compute capability
+        let ptx_version = Self::recommended_ptx_version(sm_version);
         Self {
             output: String::new(),
             sm_version,
-            ptx_version: (8, 0),
+            ptx_version,
             indent: 0,
             registers: Vec::new(),
             reg_counters: RegCounters::default(),
             value_types: Vec::new(),
+        }
+    }
+
+    /// Get recommended PTX version for a compute capability
+    pub fn recommended_ptx_version(sm_version: (u32, u32)) -> (u32, u32) {
+        let (major, minor) = sm_version;
+        let sm = major * 10 + minor;
+        match sm {
+            ..=69 => (6, 0),       // sm_60-69: Volta and older
+            70..=74 => (6, 3),     // sm_70-74: Volta
+            75 => (6, 4),          // sm_75: Turing
+            80..=86 => (7, 1),     // sm_80-86: Ampere
+            87 => (7, 4),          // sm_87: Ampere (Jetson)
+            89 => (8, 1),          // sm_89: Ada Lovelace
+            90 => (8, 3),          // sm_90: Hopper
+            100 => (8, 5),         // sm_100: Blackwell
+            120 => (8, 6),         // sm_120: Blackwell Ultra
+            _ => (8, 5),           // Future architectures
+        }
+    }
+
+    /// Check if the current target supports a feature
+    pub fn supports_feature(&self, feature: &str) -> bool {
+        let sm = self.sm_version.0 * 10 + self.sm_version.1;
+        match feature {
+            "bf16" => sm >= 80,
+            "fp8" => sm >= 89,
+            "tma" => sm >= 90,
+            "clusters" => sm >= 90,
+            "wgmma" => sm >= 90,
+            "fp4" => sm >= 100,
+            "tensor_gen5" => sm >= 100,
+            "decompression" => sm >= 100,
+            "nvlink5" => sm >= 100,
+            _ => false,
         }
     }
 
@@ -1244,6 +1281,242 @@ impl PtxCodegen {
                     let s = self.get_register(*scale_val);
                     writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, reg, reg, s).unwrap();
                 }
+            }
+
+            // === Blackwell Features (sm_100+) ===
+            GpuOp::TmaLoadAsync { dst_shared, src_global, size, barrier } => {
+                let dst = self.get_register(*dst_shared);
+                let src = self.get_register(*src_global);
+                let bar = self.get_register(*barrier);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// TMA async load (sm_90+)", indent).unwrap();
+                writeln!(self.output, "{}cp.async.bulk.tensor.1d.shared::cluster.global.mbarrier::complete_tx::bytes",
+                         indent).unwrap();
+                writeln!(self.output, "{}    [{}, {{{}}}], [{}], [{}];", indent, dst, size, src, bar).unwrap();
+            }
+
+            GpuOp::TmaStoreAsync { dst_global, src_shared, size } => {
+                let dst = self.get_register(*dst_global);
+                let src = self.get_register(*src_shared);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// TMA async store (sm_90+)", indent).unwrap();
+                writeln!(self.output, "{}cp.async.bulk.tensor.1d.global.shared::cta.bulk_group",
+                         indent).unwrap();
+                writeln!(self.output, "{}    [{}], [{}, {{{}}}];", indent, dst, src, size).unwrap();
+            }
+
+            GpuOp::TmaMulticastLoad { dst_shared, src_global, size, cluster_mask, barrier } => {
+                let dst = self.get_register(*dst_shared);
+                let src = self.get_register(*src_global);
+                let bar = self.get_register(*barrier);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// TMA multicast load (sm_90+)", indent).unwrap();
+                writeln!(self.output, "{}cp.async.bulk.tensor.1d.shared::cluster.global.mbarrier::complete_tx::bytes.multicast::cluster",
+                         indent).unwrap();
+                writeln!(self.output, "{}    [{}, {{{}}}], [{}], [{}], 0x{:x};",
+                         indent, dst, size, src, bar, cluster_mask).unwrap();
+            }
+
+            GpuOp::TmaReduceAsync { dst_global, src_shared, size, reduce_op } => {
+                let dst = self.get_register(*dst_global);
+                let src = self.get_register(*src_shared);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// TMA reduce async (sm_100+)", indent).unwrap();
+                writeln!(self.output, "{}cp.reduce.async.bulk.tensor.1d.global.shared::cta.{}",
+                         indent, reduce_op).unwrap();
+                writeln!(self.output, "{}    [{}], [{}, {{{}}}];", indent, dst, src, size).unwrap();
+            }
+
+            // 5th-gen Tensor Core operations (sm_100+)
+            GpuOp::WgmmaFp4 { a, b, c, m, n, k, scale_a, scale_b } => {
+                let a_reg = self.get_register(*a);
+                let b_reg = self.get_register(*b);
+                let c_reg = self.get_register(*c);
+                let sa = self.get_register(*scale_a);
+                let sb = self.get_register(*scale_b);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+                writeln!(self.output, "{}// WGMMA FP4 (sm_100+ 5th-gen Tensor Cores)", indent).unwrap();
+                writeln!(self.output, "{}// M={}, N={}, K={}", indent, m, n, k).unwrap();
+                writeln!(self.output, "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.e2m1.e2m1",
+                         indent, m, n, k).unwrap();
+                writeln!(self.output, "{}    {{{}}}, {{{}}}, {{{}}}, {}, {};",
+                         indent, c_reg, a_reg, b_reg, sa, sb).unwrap();
+                writeln!(self.output, "{}mov.f32 {}, {};", indent, reg, c_reg).unwrap();
+            }
+
+            GpuOp::WgmmaFp8 { a, b, c, m, n, k, format } => {
+                let a_reg = self.get_register(*a);
+                let b_reg = self.get_register(*b);
+                let c_reg = self.get_register(*c);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+                let fmt = match format {
+                    Fp8Format::E4M3 => "e4m3",
+                    Fp8Format::E5M2 => "e5m2",
+                };
+                writeln!(self.output, "{}// WGMMA FP8 {} (sm_89+)", indent, fmt).unwrap();
+                writeln!(self.output, "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.{}.{}",
+                         indent, m, n, k, fmt, fmt).unwrap();
+                writeln!(self.output, "{}    {{{}}}, {{{}}}, {{{}}};", indent, c_reg, a_reg, b_reg).unwrap();
+                writeln!(self.output, "{}mov.f32 {}, {};", indent, reg, c_reg).unwrap();
+            }
+
+            GpuOp::WgmmaBf16 { a, b, c, m, n, k } => {
+                let a_reg = self.get_register(*a);
+                let b_reg = self.get_register(*b);
+                let c_reg = self.get_register(*c);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+                writeln!(self.output, "{}// WGMMA BF16 (sm_90+)", indent).unwrap();
+                writeln!(self.output, "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.bf16.bf16",
+                         indent, m, n, k).unwrap();
+                writeln!(self.output, "{}    {{{}}}, {{{}}}, {{{}}};", indent, c_reg, a_reg, b_reg).unwrap();
+                writeln!(self.output, "{}mov.f32 {}, {};", indent, reg, c_reg).unwrap();
+            }
+
+            // Transformer Engine v2 (sm_100+)
+            GpuOp::TransformerEngineFusedAttention { q, k, v, scale, output, format } => {
+                let q_reg = self.get_register(*q);
+                let k_reg = self.get_register(*k);
+                let v_reg = self.get_register(*v);
+                let s_reg = self.get_register(*scale);
+                let o_reg = self.get_register(*output);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// Transformer Engine Fused Attention (sm_100+)", indent).unwrap();
+                writeln!(self.output, "{}// Format: {} - This maps to cuDNN fused attention",
+                         indent, format).unwrap();
+                writeln!(self.output, "{}// Placeholder: call external TE library", indent).unwrap();
+                writeln!(self.output, "{}// te.fused_attention({}, {}, {}, {}, {});",
+                         indent, q_reg, k_reg, v_reg, s_reg, o_reg).unwrap();
+            }
+
+            GpuOp::TransformerEngineFp8Gemm { a, b, c, amax_out, format } => {
+                let a_reg = self.get_register(*a);
+                let b_reg = self.get_register(*b);
+                let c_reg = self.get_register(*c);
+                let amax = self.get_register(*amax_out);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// Transformer Engine FP8 GEMM with amax (sm_100+)", indent).unwrap();
+                writeln!(self.output, "{}// Format: {} - Dynamic scaling", indent, format).unwrap();
+                writeln!(self.output, "{}// te.fp8_gemm({}, {}, {}, amax={});",
+                         indent, a_reg, b_reg, c_reg, amax).unwrap();
+            }
+
+            // Decompression Engine (sm_100+)
+            GpuOp::DecompressLz4 { dst, src, compressed_size, uncompressed_size } => {
+                let d = self.get_register(*dst);
+                let s = self.get_register(*src);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// Hardware LZ4 decompression (sm_100+)", indent).unwrap();
+                writeln!(self.output, "{}decompress.lz4 [{}, {}], [{}, {}];",
+                         indent, d, uncompressed_size, s, compressed_size).unwrap();
+            }
+
+            GpuOp::DecompressSnappy { dst, src, compressed_size, uncompressed_size } => {
+                let d = self.get_register(*dst);
+                let s = self.get_register(*src);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// Hardware Snappy decompression (sm_100+)", indent).unwrap();
+                writeln!(self.output, "{}decompress.snappy [{}, {}], [{}, {}];",
+                         indent, d, uncompressed_size, s, compressed_size).unwrap();
+            }
+
+            GpuOp::DecompressDeflate { dst, src, compressed_size, uncompressed_size } => {
+                let d = self.get_register(*dst);
+                let s = self.get_register(*src);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// Hardware Deflate decompression (sm_100+)", indent).unwrap();
+                writeln!(self.output, "{}decompress.deflate [{}, {}], [{}, {}];",
+                         indent, d, uncompressed_size, s, compressed_size).unwrap();
+            }
+
+            // Cluster operations (sm_90+, enhanced in sm_100)
+            GpuOp::ClusterId => {
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}mov.u32 {}, %clusterid;", indent, reg).unwrap();
+            }
+
+            GpuOp::ClusterDim => {
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}mov.u32 {}, %nclusterid;", indent, reg).unwrap();
+            }
+
+            GpuOp::BlockIdInCluster => {
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}mov.u32 {}, %cluster_ctaid;", indent, reg).unwrap();
+            }
+
+            GpuOp::ClusterBarrier => {
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}barrier.cluster.sync.aligned;", indent).unwrap();
+            }
+
+            GpuOp::ClusterArrive(barrier) => {
+                let bar = self.get_register(*barrier);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}mbarrier.arrive.shared::cluster [{}];", indent, bar).unwrap();
+            }
+
+            GpuOp::ClusterWait(barrier) => {
+                let bar = self.get_register(*barrier);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}mbarrier.wait.shared::cluster [{}];", indent, bar).unwrap();
+            }
+
+            // NVLink 5.0 Operations (sm_100+)
+            GpuOp::NvlinkRead { dst, src_gpu, src_addr, size } => {
+                let d = self.get_register(*dst);
+                let sa = self.get_register(*src_addr);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// NVLink 5.0 remote read (sm_100+)", indent).unwrap();
+                writeln!(self.output, "{}// rdma.read gpu={} size={}", indent, src_gpu, size).unwrap();
+                writeln!(self.output, "{}ld.global.nc.b8 {}, [{} + gpu{}];",
+                         indent, d, sa, src_gpu).unwrap();
+            }
+
+            GpuOp::NvlinkWrite { dst_gpu, dst_addr, src, size } => {
+                let da = self.get_register(*dst_addr);
+                let s = self.get_register(*src);
+                self.registers.push("_".to_string());
+                self.value_types.push(GpuType::Void);
+                writeln!(self.output, "{}// NVLink 5.0 remote write (sm_100+)", indent).unwrap();
+                writeln!(self.output, "{}// rdma.write gpu={} size={}", indent, dst_gpu, size).unwrap();
+                writeln!(self.output, "{}st.global.b8 [{} + gpu{}], {};",
+                         indent, da, dst_gpu, s).unwrap();
+            }
+
+            GpuOp::NvlinkAtomicAdd { dst_gpu, dst_addr, value } => {
+                let da = self.get_register(*dst_addr);
+                let v = self.get_register(*value);
+                let reg = self.alloc_register(&GpuType::U64);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U64);
+                writeln!(self.output, "{}// NVLink 5.0 remote atomic (sm_100+)", indent).unwrap();
+                writeln!(self.output, "{}atom.global.add.u64 {}, [{} + gpu{}], {};",
+                         indent, reg, da, dst_gpu, v).unwrap();
             }
 
             // Memory operations
@@ -3315,5 +3588,250 @@ mod tests {
 
         assert!(ptx.contains("cvt.f32.e4m3"));
         assert!(ptx.contains("mul.f32"));
+    }
+
+    // =========================================================================
+    // Blackwell (sm_100) Tests
+    // =========================================================================
+
+    #[test]
+    fn test_blackwell_ptx_version() {
+        // Verify correct PTX version selection for Blackwell
+        let ptx_ver = PtxCodegen::recommended_ptx_version((10, 0));
+        assert_eq!(ptx_ver, (8, 5));
+
+        let ptx_ver_ultra = PtxCodegen::recommended_ptx_version((12, 0));
+        assert_eq!(ptx_ver_ultra, (8, 6));
+    }
+
+    #[test]
+    fn test_blackwell_target_header() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (10, 0),
+        };
+        let mut module = GpuModule::new("blackwell_test", target);
+
+        let mut kernel = GpuKernel::new("blackwell_kernel");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ThreadIdX);
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((10, 0));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains(".target sm_100"));
+        assert!(ptx.contains(".version 8.5"));
+    }
+
+    #[test]
+    fn test_blackwell_cluster_ops() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (10, 0),
+        };
+        let mut module = GpuModule::new("cluster_test", target);
+
+        let mut kernel = GpuKernel::new("cluster_kernel");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ClusterId);
+        block.add_instruction(ValueId(1), GpuOp::ClusterDim);
+        block.add_instruction(ValueId(2), GpuOp::BlockIdInCluster);
+        block.add_instruction(ValueId(3), GpuOp::ClusterBarrier);
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((10, 0));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("%clusterid"));
+        assert!(ptx.contains("%nclusterid"));
+        assert!(ptx.contains("%cluster_ctaid"));
+        assert!(ptx.contains("barrier.cluster.sync.aligned"));
+    }
+
+    #[test]
+    fn test_blackwell_wgmma_bf16() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (10, 0),
+        };
+        let mut module = GpuModule::new("wgmma_test", target);
+
+        let mut kernel = GpuKernel::new("wgmma_kernel");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Set up matrix operands
+        block.add_instruction(ValueId(0), GpuOp::ConstInt(0, GpuType::U64)); // A ptr
+        block.add_instruction(ValueId(1), GpuOp::ConstInt(0, GpuType::U64)); // B ptr
+        block.add_instruction(ValueId(2), GpuOp::ConstFloat(0.0, GpuType::F32)); // C accumulator
+        block.add_instruction(
+            ValueId(3),
+            GpuOp::WgmmaBf16 {
+                a: ValueId(0),
+                b: ValueId(1),
+                c: ValueId(2),
+                m: 64,
+                n: 128,
+                k: 16,
+            },
+        );
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((10, 0));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("WGMMA BF16"));
+        assert!(ptx.contains("wgmma.mma_async"));
+        assert!(ptx.contains("bf16.bf16"));
+    }
+
+    #[test]
+    fn test_blackwell_wgmma_fp4() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (10, 0),
+        };
+        let mut module = GpuModule::new("wgmma_fp4_test", target);
+
+        let mut kernel = GpuKernel::new("wgmma_fp4_kernel");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ConstInt(0, GpuType::U64)); // A
+        block.add_instruction(ValueId(1), GpuOp::ConstInt(0, GpuType::U64)); // B
+        block.add_instruction(ValueId(2), GpuOp::ConstFloat(0.0, GpuType::F32)); // C
+        block.add_instruction(ValueId(3), GpuOp::ConstFloat(1.0, GpuType::F32)); // scale_a
+        block.add_instruction(ValueId(4), GpuOp::ConstFloat(1.0, GpuType::F32)); // scale_b
+        block.add_instruction(
+            ValueId(5),
+            GpuOp::WgmmaFp4 {
+                a: ValueId(0),
+                b: ValueId(1),
+                c: ValueId(2),
+                m: 64,
+                n: 128,
+                k: 32,
+                scale_a: ValueId(3),
+                scale_b: ValueId(4),
+            },
+        );
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((10, 0));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("WGMMA FP4"));
+        assert!(ptx.contains("5th-gen Tensor Cores"));
+        assert!(ptx.contains("e2m1"));
+    }
+
+    #[test]
+    fn test_blackwell_tma_operations() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (10, 0),
+        };
+        let mut module = GpuModule::new("tma_test", target);
+
+        let mut kernel = GpuKernel::new("tma_kernel");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ConstInt(0, GpuType::U64)); // shared ptr
+        block.add_instruction(ValueId(1), GpuOp::ConstInt(0, GpuType::U64)); // global ptr
+        block.add_instruction(ValueId(2), GpuOp::ConstInt(0, GpuType::U64)); // barrier
+        block.add_instruction(
+            ValueId(3),
+            GpuOp::TmaLoadAsync {
+                dst_shared: ValueId(0),
+                src_global: ValueId(1),
+                size: 4096,
+                barrier: ValueId(2),
+            },
+        );
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((10, 0));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("TMA async load"));
+        assert!(ptx.contains("cp.async.bulk.tensor"));
+    }
+
+    #[test]
+    fn test_blackwell_decompression() {
+        let target = GpuTarget::Cuda {
+            compute_capability: (10, 0),
+        };
+        let mut module = GpuModule::new("decompress_test", target);
+
+        let mut kernel = GpuKernel::new("decompress_kernel");
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        block.add_instruction(ValueId(0), GpuOp::ConstInt(0, GpuType::U64)); // dst
+        block.add_instruction(ValueId(1), GpuOp::ConstInt(0, GpuType::U64)); // src
+        block.add_instruction(
+            ValueId(2),
+            GpuOp::DecompressLz4 {
+                dst: ValueId(0),
+                src: ValueId(1),
+                compressed_size: 1024,
+                uncompressed_size: 4096,
+            },
+        );
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((10, 0));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("Hardware LZ4 decompression"));
+        assert!(ptx.contains("decompress.lz4"));
+    }
+
+    #[test]
+    fn test_cuda_arch_features() {
+        // CudaArch and CudaFeatures imported via super::* from ir module
+
+        // Test Blackwell features
+        let blackwell = CudaArch::Blackwell;
+        assert_eq!(blackwell.compute_capability(), (10, 0));
+        assert_eq!(blackwell.tensor_core_gen(), 5);
+        assert_eq!(blackwell.name(), "Blackwell");
+
+        // Test feature detection
+        let features = CudaFeatures::from_compute_capability((10, 0));
+        assert!(features.bf16);
+        assert!(features.fp8);
+        assert!(features.tma);
+        assert!(features.clusters);
+        assert!(features.tensor_fp4);
+        assert!(features.tensor_core_gen5);
+        assert!(features.nvlink5);
+        assert!(features.is_blackwell());
+
+        // Test Hopper doesn't have Blackwell features
+        let hopper_features = CudaFeatures::from_compute_capability((9, 0));
+        assert!(hopper_features.tma);
+        assert!(!hopper_features.tensor_fp4);
+        assert!(!hopper_features.tensor_core_gen5);
+        assert!(hopper_features.is_hopper());
+    }
+
+    #[test]
+    fn test_supports_feature() {
+        let codegen = PtxCodegen::new((10, 0));
+        assert!(codegen.supports_feature("bf16"));
+        assert!(codegen.supports_feature("fp8"));
+        assert!(codegen.supports_feature("tma"));
+        assert!(codegen.supports_feature("fp4"));
+        assert!(codegen.supports_feature("tensor_gen5"));
+        assert!(codegen.supports_feature("decompression"));
+        assert!(codegen.supports_feature("nvlink5"));
+
+        let turing = PtxCodegen::new((7, 5));
+        assert!(!turing.supports_feature("bf16"));
+        assert!(!turing.supports_feature("fp8"));
+        assert!(!turing.supports_feature("tma"));
     }
 }
