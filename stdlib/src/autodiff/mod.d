@@ -1,593 +1,402 @@
-//! Automatic differentiation library
+// mod.d - Automatic Differentiation Library for Demetrios
+//
+// Implements forward-mode AD using dual numbers.
+// Simplified implementation compatible with current Demetrios syntax.
+//
+// Module: autodiff (for future module system)
 
-use linalg::{Vector, Matrix}
+// =============================================================================
+// MATH HELPERS
+// =============================================================================
 
-/// Forward mode AD using dual numbers
-pub mod forward {
-    /// Dual number: value + epsilon * derivative
-    #[derive(Clone, Copy, Debug)]
-    pub struct Dual {
-        /// The primal value
-        pub val: f64,
+fn abs_f64(x: f64) -> f64 {
+    if x < 0.0 { return 0.0 - x }
+    return x
+}
 
-        /// The tangent (derivative)
-        pub dot: f64,
+fn sqrt_f64(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 }
+    let mut y = x
+    let mut i = 0
+    while i < 15 {
+        y = 0.5 * (y + x / y)
+        i = i + 1
     }
+    return y
+}
 
-    impl Dual {
-        pub fn new(val: f64, dot: f64) -> Self {
-            Dual { val, dot }
-        }
-
-        /// Create a constant (derivative = 0)
-        pub fn constant(val: f64) -> Self {
-            Dual { val, dot: 0.0 }
-        }
-
-        /// Create a variable (derivative = 1)
-        pub fn variable(val: f64) -> Self {
-            Dual { val, dot: 1.0 }
-        }
-
-        /// Extract value
-        pub fn value(&self) -> f64 { self.val }
-
-        /// Extract derivative
-        pub fn derivative(&self) -> f64 { self.dot }
-
-        // Arithmetic operations
-        pub fn add(self, other: Dual) -> Dual {
-            Dual {
-                val: self.val + other.val,
-                dot: self.dot + other.dot,
-            }
-        }
-
-        pub fn sub(self, other: Dual) -> Dual {
-            Dual {
-                val: self.val - other.val,
-                dot: self.dot - other.dot,
-            }
-        }
-
-        pub fn mul(self, other: Dual) -> Dual {
-            // Product rule: (f*g)' = f'*g + f*g'
-            Dual {
-                val: self.val * other.val,
-                dot: self.dot * other.val + self.val * other.dot,
-            }
-        }
-
-        pub fn div(self, other: Dual) -> Dual {
-            // Quotient rule: (f/g)' = (f'*g - f*g') / g^2
-            let g2 = other.val * other.val;
-            Dual {
-                val: self.val / other.val,
-                dot: (self.dot * other.val - self.val * other.dot) / g2,
-            }
-        }
-
-        pub fn neg(self) -> Dual {
-            Dual { val: -self.val, dot: -self.dot }
-        }
-
-        // Mathematical functions
-        pub fn sqrt(self) -> Dual {
-            let v = self.val.sqrt();
-            Dual {
-                val: v,
-                dot: self.dot / (2.0 * v),
-            }
-        }
-
-        pub fn exp(self) -> Dual {
-            let e = self.val.exp();
-            Dual {
-                val: e,
-                dot: self.dot * e,
-            }
-        }
-
-        pub fn ln(self) -> Dual {
-            Dual {
-                val: self.val.ln(),
-                dot: self.dot / self.val,
-            }
-        }
-
-        pub fn pow(self, n: f64) -> Dual {
-            let v = self.val.powf(n);
-            Dual {
-                val: v,
-                dot: self.dot * n * self.val.powf(n - 1.0),
-            }
-        }
-
-        pub fn sin(self) -> Dual {
-            Dual {
-                val: self.val.sin(),
-                dot: self.dot * self.val.cos(),
-            }
-        }
-
-        pub fn cos(self) -> Dual {
-            Dual {
-                val: self.val.cos(),
-                dot: -self.dot * self.val.sin(),
-            }
-        }
-
-        pub fn tan(self) -> Dual {
-            let c = self.val.cos();
-            Dual {
-                val: self.val.tan(),
-                dot: self.dot / (c * c),
-            }
-        }
-
-        pub fn abs(self) -> Dual {
-            Dual {
-                val: self.val.abs(),
-                dot: self.dot * self.val.signum(),
-            }
-        }
-
-        pub fn max(self, other: Dual) -> Dual {
-            if self.val >= other.val {
-                self
-            } else {
-                other
-            }
-        }
-
-        pub fn min(self, other: Dual) -> Dual {
-            if self.val <= other.val {
-                self
-            } else {
-                other
-            }
-        }
+fn exp_f64(x: f64) -> f64 {
+    if x > 20.0 { return exp_f64(x / 2.0) * exp_f64(x / 2.0) }
+    if x < 0.0 - 20.0 { return 1.0 / exp_f64(0.0 - x) }
+    let mut sum = 1.0
+    let mut term = 1.0
+    let mut i = 1
+    while i <= 20 {
+        term = term * x / i
+        sum = sum + term
+        i = i + 1
     }
+    return sum
+}
 
-    // Operator implementations
-    impl Add for Dual {
-        type Output = Dual;
-        fn add(self, other: Dual) -> Dual { self.add(other) }
-    }
+fn ln_f64(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 - 1000000.0 }
+    let e = 2.718281828459045
+    let mut val = x
+    let mut k = 0.0
+    while val > e { val = val / e; k = k + 1.0 }
+    while val < 1.0 / e { val = val * e; k = k - 1.0 }
+    let u = (val - 1.0) / (val + 1.0)
+    let u2 = u * u
+    let mut sum = u
+    let mut term = u
+    term = term * u2; sum = sum + term / 3.0
+    term = term * u2; sum = sum + term / 5.0
+    term = term * u2; sum = sum + term / 7.0
+    term = term * u2; sum = sum + term / 9.0
+    term = term * u2; sum = sum + term / 11.0
+    return 2.0 * sum + k
+}
 
-    impl Sub for Dual {
-        type Output = Dual;
-        fn sub(self, other: Dual) -> Dual { self.sub(other) }
-    }
+fn pow_f64(x: f64, n: f64) -> f64 {
+    if x <= 0.0 { return 0.0 }
+    return exp_f64(n * ln_f64(x))
+}
 
-    impl Mul for Dual {
-        type Output = Dual;
-        fn mul(self, other: Dual) -> Dual { self.mul(other) }
-    }
+fn sin_f64(x: f64) -> f64 {
+    let pi = 3.141592653589793
+    let mut y = x
+    while y > pi { y = y - 2.0 * pi }
+    while y < 0.0 - pi { y = y + 2.0 * pi }
+    let y2 = y * y
+    let mut sum = y
+    let mut term = y
+    term = term * (0.0 - y2) / 6.0; sum = sum + term
+    term = term * (0.0 - y2) / 20.0; sum = sum + term
+    term = term * (0.0 - y2) / 42.0; sum = sum + term
+    term = term * (0.0 - y2) / 72.0; sum = sum + term
+    term = term * (0.0 - y2) / 110.0; sum = sum + term
+    return sum
+}
 
-    impl Div for Dual {
-        type Output = Dual;
-        fn div(self, other: Dual) -> Dual { self.div(other) }
-    }
+fn cos_f64(x: f64) -> f64 {
+    let pi = 3.141592653589793
+    let mut y = x
+    while y > pi { y = y - 2.0 * pi }
+    while y < 0.0 - pi { y = y + 2.0 * pi }
+    let y2 = y * y
+    let mut sum = 1.0
+    let mut term = 1.0
+    term = term * (0.0 - y2) / 2.0; sum = sum + term
+    term = term * (0.0 - y2) / 12.0; sum = sum + term
+    term = term * (0.0 - y2) / 30.0; sum = sum + term
+    term = term * (0.0 - y2) / 56.0; sum = sum + term
+    term = term * (0.0 - y2) / 90.0; sum = sum + term
+    return sum
+}
 
-    impl Neg for Dual {
-        type Output = Dual;
-        fn neg(self) -> Dual { self.neg() }
-    }
+// =============================================================================
+// DUAL NUMBER TYPE (Forward-Mode AD)
+// =============================================================================
 
-    /// Compute gradient using forward mode
-    pub fn gradient<F>(f: F, x: &Vector<f64>) -> Vector<f64>
-    where F: Fn(&Vector<Dual>) -> Dual
-    {
-        let n = x.len();
-        let mut grad = Vector::new(n);
+// Dual number: value + epsilon * derivative
+// Used for forward-mode automatic differentiation
+struct Dual {
+    val: f64,   // The primal value
+    dot: f64    // The tangent (derivative)
+}
 
-        for i in 0..n {
-            // Set i-th variable as the differentiation variable
-            let mut x_dual = Vector::new(n);
-            for j in 0..n {
-                x_dual[j] = if i == j {
-                    Dual::variable(x[j])
-                } else {
-                    Dual::constant(x[j])
-                };
-            }
+// Create a dual number
+fn dual_new(val: f64, dot: f64) -> Dual {
+    return Dual { val: val, dot: dot }
+}
 
-            let result = f(&x_dual);
-            grad[i] = result.derivative();
-        }
+// Create a constant (derivative = 0)
+fn dual_const(val: f64) -> Dual {
+    return Dual { val: val, dot: 0.0 }
+}
 
-        grad
-    }
+// Create a variable (derivative = 1)
+fn dual_var(val: f64) -> Dual {
+    return Dual { val: val, dot: 1.0 }
+}
 
-    /// Compute directional derivative
-    pub fn directional_derivative<F>(f: F, x: &Vector<f64>, v: &Vector<f64>) -> f64
-    where F: Fn(&Vector<Dual>) -> Dual
-    {
-        let n = x.len();
-        let mut x_dual = Vector::new(n);
+// Extract value
+fn dual_value(d: Dual) -> f64 {
+    return d.val
+}
 
-        for i in 0..n {
-            x_dual[i] = Dual::new(x[i], v[i]);
-        }
+// Extract derivative
+fn dual_deriv(d: Dual) -> f64 {
+    return d.dot
+}
 
-        f(&x_dual).derivative()
-    }
+// =============================================================================
+// ARITHMETIC OPERATIONS
+// =============================================================================
 
-    /// Compute Jacobian-vector product (JVP)
-    pub fn jvp<F>(f: F, x: &Vector<f64>, v: &Vector<f64>) -> Vector<f64>
-    where F: Fn(&Vector<Dual>) -> Vector<Dual>
-    {
-        let n = x.len();
-        let mut x_dual = Vector::new(n);
-
-        for i in 0..n {
-            x_dual[i] = Dual::new(x[i], v[i]);
-        }
-
-        let result = f(&x_dual);
-        let m = result.len();
-        let mut jvp_result = Vector::new(m);
-
-        for i in 0..m {
-            jvp_result[i] = result[i].derivative();
-        }
-
-        jvp_result
+fn dual_add(a: Dual, b: Dual) -> Dual {
+    return Dual {
+        val: a.val + b.val,
+        dot: a.dot + b.dot
     }
 }
 
-/// Reverse mode AD using a tape (Wengert list)
-pub mod reverse {
-    use std::cell::RefCell;
-
-    /// Node in the computation graph
-    #[derive(Clone, Debug)]
-    struct Node {
-        /// Value at this node
-        value: f64,
-
-        /// Accumulated adjoint (∂L/∂v)
-        adjoint: f64,
-
-        /// Parent indices and local gradients
-        parents: Vec<(usize, f64)>,
+fn dual_sub(a: Dual, b: Dual) -> Dual {
+    return Dual {
+        val: a.val - b.val,
+        dot: a.dot - b.dot
     }
+}
 
-    /// Tape recording computation graph
-    thread_local! {
-        static TAPE: RefCell<Vec<Node>> = RefCell::new(Vec::new());
+fn dual_mul(a: Dual, b: Dual) -> Dual {
+    // Product rule: (f*g)' = f'*g + f*g'
+    return Dual {
+        val: a.val * b.val,
+        dot: a.dot * b.val + a.val * b.dot
     }
+}
 
-    /// Tracked value for reverse mode AD
-    #[derive(Clone, Copy)]
-    pub struct Var {
-        /// Index in the tape
-        idx: usize,
-
-        /// Cached value
-        val: f64,
+fn dual_div(a: Dual, b: Dual) -> Dual {
+    // Quotient rule: (f/g)' = (f'*g - f*g') / g^2
+    let g2 = b.val * b.val
+    return Dual {
+        val: a.val / b.val,
+        dot: (a.dot * b.val - a.val * b.dot) / g2
     }
+}
 
-    impl Var {
-        /// Create a new input variable
-        pub fn new(val: f64) -> Self {
-            TAPE.with(|tape| {
-                let mut t = tape.borrow_mut();
-                let idx = t.len();
-                t.push(Node {
-                    value: val,
-                    adjoint: 0.0,
-                    parents: Vec::new(),
-                });
-                Var { idx, val }
-            })
-        }
+fn dual_neg(a: Dual) -> Dual {
+    return Dual { val: 0.0 - a.val, dot: 0.0 - a.dot }
+}
 
-        /// Get the value
-        pub fn value(&self) -> f64 { self.val }
+// Scale by constant
+fn dual_scale(a: Dual, s: f64) -> Dual {
+    return Dual { val: a.val * s, dot: a.dot * s }
+}
 
-        /// Create a node with parents
-        fn from_op(val: f64, parents: Vec<(usize, f64)>) -> Self {
-            TAPE.with(|tape| {
-                let mut t = tape.borrow_mut();
-                let idx = t.len();
-                t.push(Node {
-                    value: val,
-                    adjoint: 0.0,
-                    parents,
-                });
-                Var { idx, val }
-            })
-        }
+// Add constant
+fn dual_add_const(a: Dual, c: f64) -> Dual {
+    return Dual { val: a.val + c, dot: a.dot }
+}
 
-        /// Run backward pass from this node
-        pub fn backward(&self) {
-            TAPE.with(|tape| {
-                let mut t = tape.borrow_mut();
+// =============================================================================
+// MATHEMATICAL FUNCTIONS
+// =============================================================================
 
-                // Set the adjoint of the output to 1
-                t[self.idx].adjoint = 1.0;
+fn dual_sqrt(a: Dual) -> Dual {
+    let v = sqrt_f64(a.val)
+    return Dual {
+        val: v,
+        dot: a.dot / (2.0 * v)
+    }
+}
 
-                // Backward pass in reverse topological order
-                for i in (0..=self.idx).rev() {
-                    let node = &t[i];
-                    let adj = node.adjoint;
-                    let parents = node.parents.clone();
+fn dual_exp(a: Dual) -> Dual {
+    let e = exp_f64(a.val)
+    return Dual {
+        val: e,
+        dot: a.dot * e
+    }
+}
 
-                    for (parent_idx, local_grad) in parents {
-                        t[parent_idx].adjoint += adj * local_grad;
+fn dual_ln(a: Dual) -> Dual {
+    return Dual {
+        val: ln_f64(a.val),
+        dot: a.dot / a.val
+    }
+}
+
+fn dual_pow(a: Dual, n: f64) -> Dual {
+    let v = pow_f64(a.val, n)
+    return Dual {
+        val: v,
+        dot: a.dot * n * pow_f64(a.val, n - 1.0)
+    }
+}
+
+fn dual_sin(a: Dual) -> Dual {
+    return Dual {
+        val: sin_f64(a.val),
+        dot: a.dot * cos_f64(a.val)
+    }
+}
+
+fn dual_cos(a: Dual) -> Dual {
+    return Dual {
+        val: cos_f64(a.val),
+        dot: 0.0 - a.dot * sin_f64(a.val)
+    }
+}
+
+fn dual_abs(a: Dual) -> Dual {
+    if a.val >= 0.0 {
+        return a
+    }
+    return Dual { val: 0.0 - a.val, dot: 0.0 - a.dot }
+}
+
+// =============================================================================
+// COMMON ACTIVATION FUNCTIONS
+// =============================================================================
+
+fn dual_relu(a: Dual) -> Dual {
+    if a.val > 0.0 {
+        return a
+    }
+    return Dual { val: 0.0, dot: 0.0 }
+}
+
+fn dual_sigmoid(a: Dual) -> Dual {
+    let s = 1.0 / (1.0 + exp_f64(0.0 - a.val))
+    return Dual {
+        val: s,
+        dot: a.dot * s * (1.0 - s)
+    }
+}
+
+fn dual_tanh(a: Dual) -> Dual {
+    let ep = exp_f64(a.val)
+    let em = exp_f64(0.0 - a.val)
+    let t = (ep - em) / (ep + em)
+    return Dual {
+        val: t,
+        dot: a.dot * (1.0 - t * t)
+    }
+}
+
+// =============================================================================
+// GRADIENT COMPUTATION HELPERS
+// =============================================================================
+
+// Compute df/dx at point x using forward-mode AD
+// f must be a function that takes Dual and returns Dual
+fn derivative_at(x: f64, f_val: f64, f_deriv: f64) -> f64 {
+    return f_deriv
+}
+
+// Finite difference check (for validation)
+fn finite_diff(x: f64, fx: f64, fx_plus_h: f64, h: f64) -> f64 {
+    return (fx_plus_h - fx) / h
+}
+
+// =============================================================================
+// TESTS
+// =============================================================================
+
+fn main() -> i32 {
+    println("=== Automatic Differentiation Tests ===")
+    println("")
+
+    // Test 1: Basic arithmetic derivatives
+    println("Test 1: d/dx(x^2) at x=3")
+    let x1 = dual_var(3.0)
+    let y1 = dual_mul(x1, x1)  // x^2
+    println("  f(3) = ")
+    println(y1.val)
+    println("  f'(3) = ")
+    println(y1.dot)
+    // Expected: f(3) = 9, f'(3) = 6
+    println("")
+
+    // Test 2: Chain rule
+    println("Test 2: d/dx(exp(x^2)) at x=1")
+    let x2 = dual_var(1.0)
+    let x2_sq = dual_mul(x2, x2)
+    let y2 = dual_exp(x2_sq)  // exp(x^2)
+    println("  f(1) = ")
+    println(y2.val)
+    println("  f'(1) = ")
+    println(y2.dot)
+    // Expected: f(1) = e, f'(1) = 2*e ≈ 5.436
+    println("")
+
+    // Test 3: Product rule
+    println("Test 3: d/dx(x * sin(x)) at x=pi/2")
+    let pi = 3.141592653589793
+    let x3 = dual_var(pi / 2.0)
+    let sin_x3 = dual_sin(x3)
+    let y3 = dual_mul(x3, sin_x3)  // x * sin(x)
+    println("  f(pi/2) = ")
+    println(y3.val)
+    println("  f'(pi/2) = ")
+    println(y3.dot)
+    // Expected: f(pi/2) = pi/2, f'(pi/2) = sin(pi/2) + (pi/2)*cos(pi/2) = 1
+    println("")
+
+    // Test 4: Quotient rule
+    println("Test 4: d/dx(x / (1 + x^2)) at x=1")
+    let x4 = dual_var(1.0)
+    let one = dual_const(1.0)
+    let x4_sq = dual_mul(x4, x4)
+    let denom = dual_add(one, x4_sq)
+    let y4 = dual_div(x4, denom)  // x / (1 + x^2)
+    println("  f(1) = ")
+    println(y4.val)
+    println("  f'(1) = ")
+    println(y4.dot)
+    // Expected: f(1) = 0.5, f'(1) = (1*(1+1) - 1*2*1) / (1+1)^2 = 0
+    println("")
+
+    // Test 5: Sigmoid derivative
+    println("Test 5: d/dx(sigmoid(x)) at x=0")
+    let x5 = dual_var(0.0)
+    let y5 = dual_sigmoid(x5)
+    println("  sigmoid(0) = ")
+    println(y5.val)
+    println("  sigmoid'(0) = ")
+    println(y5.dot)
+    // Expected: sigmoid(0) = 0.5, sigmoid'(0) = 0.25
+    println("")
+
+    // Test 6: Compose multiple operations
+    println("Test 6: d/dx(sqrt(1 + x^2)) at x=2")
+    let x6 = dual_var(2.0)
+    let x6_sq = dual_mul(x6, x6)
+    let sum6 = dual_add(dual_const(1.0), x6_sq)
+    let y6 = dual_sqrt(sum6)
+    println("  f(2) = ")
+    println(y6.val)
+    println("  f'(2) = ")
+    println(y6.dot)
+    // Expected: f(2) = sqrt(5) ≈ 2.236, f'(2) = 2/sqrt(5) ≈ 0.894
+    println("")
+
+    // Validation
+    let err1 = abs_f64(y1.val - 9.0)
+    let err2 = abs_f64(y1.dot - 6.0)
+    let err3 = abs_f64(y4.val - 0.5)
+    let err4 = abs_f64(y4.dot - 0.0)
+    let err5 = abs_f64(y5.val - 0.5)
+    let err6 = abs_f64(y5.dot - 0.25)
+
+    if err1 < 0.001 {
+        if err2 < 0.001 {
+            if err3 < 0.001 {
+                if err4 < 0.001 {
+                    if err5 < 0.001 {
+                        if err6 < 0.001 {
+                            println("ALL TESTS PASSED")
+                            return 0
+                        }
                     }
                 }
-            })
-        }
-
-        /// Get gradient after backward pass
-        pub fn grad(&self) -> f64 {
-            TAPE.with(|tape| {
-                tape.borrow()[self.idx].adjoint
-            })
-        }
-
-        // Arithmetic operations
-        pub fn add(self, other: Var) -> Var {
-            Var::from_op(
-                self.val + other.val,
-                vec![(self.idx, 1.0), (other.idx, 1.0)]
-            )
-        }
-
-        pub fn sub(self, other: Var) -> Var {
-            Var::from_op(
-                self.val - other.val,
-                vec![(self.idx, 1.0), (other.idx, -1.0)]
-            )
-        }
-
-        pub fn mul(self, other: Var) -> Var {
-            Var::from_op(
-                self.val * other.val,
-                vec![(self.idx, other.val), (other.idx, self.val)]
-            )
-        }
-
-        pub fn div(self, other: Var) -> Var {
-            let g2 = other.val * other.val;
-            Var::from_op(
-                self.val / other.val,
-                vec![
-                    (self.idx, 1.0 / other.val),
-                    (other.idx, -self.val / g2)
-                ]
-            )
-        }
-
-        pub fn neg(self) -> Var {
-            Var::from_op(-self.val, vec![(self.idx, -1.0)])
-        }
-
-        // Mathematical functions
-        pub fn exp(self) -> Var {
-            let e = self.val.exp();
-            Var::from_op(e, vec![(self.idx, e)])
-        }
-
-        pub fn ln(self) -> Var {
-            Var::from_op(
-                self.val.ln(),
-                vec![(self.idx, 1.0 / self.val)]
-            )
-        }
-
-        pub fn pow(self, n: f64) -> Var {
-            let v = self.val.powf(n);
-            Var::from_op(
-                v,
-                vec![(self.idx, n * self.val.powf(n - 1.0))]
-            )
-        }
-
-        pub fn sqrt(self) -> Var {
-            let v = self.val.sqrt();
-            Var::from_op(v, vec![(self.idx, 0.5 / v)])
-        }
-
-        pub fn sin(self) -> Var {
-            Var::from_op(
-                self.val.sin(),
-                vec![(self.idx, self.val.cos())]
-            )
-        }
-
-        pub fn cos(self) -> Var {
-            Var::from_op(
-                self.val.cos(),
-                vec![(self.idx, -self.val.sin())]
-            )
-        }
-
-        pub fn tanh(self) -> Var {
-            let t = self.val.tanh();
-            Var::from_op(t, vec![(self.idx, 1.0 - t * t)])
-        }
-
-        pub fn sigmoid(self) -> Var {
-            let s = 1.0 / (1.0 + (-self.val).exp());
-            Var::from_op(s, vec![(self.idx, s * (1.0 - s))])
-        }
-
-        pub fn relu(self) -> Var {
-            if self.val > 0.0 {
-                Var::from_op(self.val, vec![(self.idx, 1.0)])
-            } else {
-                Var::from_op(0.0, vec![(self.idx, 0.0)])
             }
         }
     }
 
-    // Operator implementations
-    impl Add for Var {
-        type Output = Var;
-        fn add(self, other: Var) -> Var { self.add(other) }
-    }
-
-    impl Sub for Var {
-        type Output = Var;
-        fn sub(self, other: Var) -> Var { self.sub(other) }
-    }
-
-    impl Mul for Var {
-        type Output = Var;
-        fn mul(self, other: Var) -> Var { self.mul(other) }
-    }
-
-    impl Div for Var {
-        type Output = Var;
-        fn div(self, other: Var) -> Var { self.div(other) }
-    }
-
-    impl Neg for Var {
-        type Output = Var;
-        fn neg(self) -> Var { self.neg() }
-    }
-
-    /// Clear the tape
-    pub fn reset_tape() {
-        TAPE.with(|tape| {
-            tape.borrow_mut().clear();
-        })
-    }
-
-    /// Compute gradient using reverse mode
-    pub fn gradient<F>(f: F, x: &Vector<f64>) -> Vector<f64>
-    where F: Fn(&Vector<Var>) -> Var
-    {
-        reset_tape();
-
-        let n = x.len();
-        let mut x_vars = Vector::new(n);
-
-        for i in 0..n {
-            x_vars[i] = Var::new(x[i]);
-        }
-
-        let result = f(&x_vars);
-        result.backward();
-
-        let mut grad = Vector::new(n);
-        for i in 0..n {
-            grad[i] = x_vars[i].grad();
-        }
-
-        grad
-    }
-
-    /// Compute vector-Jacobian product (VJP)
-    pub fn vjp<F>(f: F, x: &Vector<f64>, v: &Vector<f64>) -> Vector<f64>
-    where F: Fn(&Vector<Var>) -> Vector<Var>
-    {
-        reset_tape();
-
-        let n = x.len();
-        let mut x_vars = Vector::new(n);
-
-        for i in 0..n {
-            x_vars[i] = Var::new(x[i]);
-        }
-
-        let result = f(&x_vars);
-        let m = result.len();
-
-        // Set adjoints according to v
-        TAPE.with(|tape| {
-            let mut t = tape.borrow_mut();
-            for i in 0..m {
-                t[result[i].idx].adjoint = v[i];
-            }
-
-            // Backward pass
-            let max_idx = result.iter().map(|r| r.idx).max().unwrap_or(0);
-            for i in (0..=max_idx).rev() {
-                let adj = t[i].adjoint;
-                let parents = t[i].parents.clone();
-
-                for (parent_idx, local_grad) in parents {
-                    t[parent_idx].adjoint += adj * local_grad;
-                }
-            }
-        });
-
-        let mut vjp_result = Vector::new(n);
-        for i in 0..n {
-            vjp_result[i] = x_vars[i].grad();
-        }
-
-        vjp_result
-    }
-
-    /// Compute full Jacobian matrix
-    pub fn jacobian<F>(f: F, x: &Vector<f64>) -> Matrix<f64>
-    where F: Fn(&Vector<Var>) -> Vector<Var> + Clone
-    {
-        reset_tape();
-
-        let n = x.len();
-
-        // First pass to get output dimension
-        let mut x_vars = Vector::new(n);
-        for i in 0..n {
-            x_vars[i] = Var::new(x[i]);
-        }
-        let result = f(&x_vars);
-        let m = result.len();
-
-        // Compute Jacobian column by column using VJP
-        let mut jac = Matrix::zeros(m, n);
-
-        for i in 0..m {
-            let mut v = Vector::zeros(m);
-            v[i] = 1.0;
-
-            let col = vjp(f.clone(), x, &v);
-            for j in 0..n {
-                jac[(i, j)] = col[j];
-            }
-        }
-
-        jac
-    }
-
-    /// Compute Hessian matrix
-    pub fn hessian<F>(f: F, x: &Vector<f64>) -> Matrix<f64>
-    where F: Fn(&Vector<Var>) -> Var + Clone
-    {
-        let n = x.len();
-        let mut hess = Matrix::zeros(n, n);
-
-        // Use finite differences on the gradient
-        let eps = 1e-7;
-        let grad_at_x = gradient(f.clone(), x);
-
-        for i in 0..n {
-            let mut x_plus = x.clone();
-            x_plus[i] += eps;
-
-            let grad_plus = gradient(f.clone(), &x_plus);
-
-            for j in 0..n {
-                hess[(i, j)] = (grad_plus[j] - grad_at_x[j]) / eps;
-            }
-        }
-
-        // Symmetrize
-        for i in 0..n {
-            for j in i+1..n {
-                let avg = (hess[(i, j)] + hess[(j, i)]) / 2.0;
-                hess[(i, j)] = avg;
-                hess[(j, i)] = avg;
-            }
-        }
-
-        hess
-    }
+    println("TESTS FAILED")
+    println("  err1:")
+    println(err1)
+    println("  err2:")
+    println(err2)
+    println("  err3:")
+    println(err3)
+    println("  err4:")
+    println(err4)
+    println("  err5:")
+    println(err5)
+    println("  err6:")
+    println(err6)
+    return 1
 }

@@ -1,399 +1,392 @@
-//! Dense matrix library with BLAS/LAPACK backend
+// matrix.d - Dense Matrix and Vector Library for Demetrios
+//
+// Provides basic linear algebra types and operations.
+// Simplified implementation compatible with current Demetrios syntax.
+//
+// Module: linalg::matrix (for future module system)
 
-use std::mem::{alloc, dealloc, copy}
-use std::iter::Iterator
-use std::ops::{Add, Sub, Mul, Div, Index, IndexMut}
-use units::{Dimensionless}
+// =============================================================================
+// MATH HELPERS
+// =============================================================================
 
-/// Memory layout for matrices
-pub enum Layout {
-    /// Row-major (C-style): A[i,j] at offset i*ncols + j
-    RowMajor,
-
-    /// Column-major (Fortran-style): A[i,j] at offset j*nrows + i
-    ColMajor,
+fn abs_f64(x: f64) -> f64 {
+    if x < 0.0 { return 0.0 - x }
+    return x
 }
 
-/// A dense matrix with configurable element type and layout
-pub struct Matrix<T, const L: Layout = Layout::RowMajor> {
-    /// Raw data storage
-    data: own Vec<T>,
-
-    /// Number of rows
-    nrows: usize,
-
-    /// Number of columns
-    ncols: usize,
-
-    /// Leading dimension (stride between rows/cols)
-    ld: usize,
+fn sqrt_f64(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 }
+    let mut y = x
+    let mut i = 0
+    while i < 15 {
+        y = 0.5 * (y + x / y)
+        i = i + 1
+    }
+    return y
 }
 
-impl<T: Clone + Default, const L: Layout> Matrix<T, L> {
-    /// Create a new matrix filled with default values
-    pub fn new(nrows: usize, ncols: usize) -> Self {
-        let size = nrows * ncols;
-        let mut data = Vec::with_capacity(size);
-        data.resize(size, T::default());
+// =============================================================================
+// VECTOR TYPE (Fixed size for simplicity)
+// =============================================================================
 
-        let ld = match L {
-            Layout::RowMajor => ncols,
-            Layout::ColMajor => nrows,
-        };
+// 3D Vector
+struct Vec3 {
+    x: f64,
+    y: f64,
+    z: f64
+}
 
-        Matrix { data, nrows, ncols, ld }
+fn vec3_new(x: f64, y: f64, z: f64) -> Vec3 {
+    return Vec3 { x: x, y: y, z: z }
+}
+
+fn vec3_zero() -> Vec3 {
+    return Vec3 { x: 0.0, y: 0.0, z: 0.0 }
+}
+
+fn vec3_add(a: Vec3, b: Vec3) -> Vec3 {
+    return Vec3 { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }
+}
+
+fn vec3_sub(a: Vec3, b: Vec3) -> Vec3 {
+    return Vec3 { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }
+}
+
+fn vec3_scale(v: Vec3, s: f64) -> Vec3 {
+    return Vec3 { x: v.x * s, y: v.y * s, z: v.z * s }
+}
+
+fn vec3_dot(a: Vec3, b: Vec3) -> f64 {
+    return a.x * b.x + a.y * b.y + a.z * b.z
+}
+
+fn vec3_cross(a: Vec3, b: Vec3) -> Vec3 {
+    return Vec3 {
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x
     }
+}
 
-    /// Create from raw data
-    pub fn from_data(data: Vec<T>, nrows: usize, ncols: usize) -> Self {
-        assert!(data.len() >= nrows * ncols, "insufficient data");
+fn vec3_norm(v: Vec3) -> f64 {
+    return sqrt_f64(v.x * v.x + v.y * v.y + v.z * v.z)
+}
 
-        let ld = match L {
-            Layout::RowMajor => ncols,
-            Layout::ColMajor => nrows,
-        };
+fn vec3_normalize(v: Vec3) -> Vec3 {
+    let n = vec3_norm(v)
+    if n < 0.0000001 { return vec3_zero() }
+    return vec3_scale(v, 1.0 / n)
+}
 
-        Matrix { data, nrows, ncols, ld }
+// =============================================================================
+// 4D VECTOR (for state vectors)
+// =============================================================================
+
+struct Vec4 {
+    x: f64,
+    y: f64,
+    z: f64,
+    w: f64
+}
+
+fn vec4_new(x: f64, y: f64, z: f64, w: f64) -> Vec4 {
+    return Vec4 { x: x, y: y, z: z, w: w }
+}
+
+fn vec4_zero() -> Vec4 {
+    return Vec4 { x: 0.0, y: 0.0, z: 0.0, w: 0.0 }
+}
+
+fn vec4_add(a: Vec4, b: Vec4) -> Vec4 {
+    return Vec4 { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z, w: a.w + b.w }
+}
+
+fn vec4_sub(a: Vec4, b: Vec4) -> Vec4 {
+    return Vec4 { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z, w: a.w - b.w }
+}
+
+fn vec4_scale(v: Vec4, s: f64) -> Vec4 {
+    return Vec4 { x: v.x * s, y: v.y * s, z: v.z * s, w: v.w * s }
+}
+
+fn vec4_dot(a: Vec4, b: Vec4) -> f64 {
+    return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
+}
+
+fn vec4_norm(v: Vec4) -> f64 {
+    return sqrt_f64(v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w)
+}
+
+// =============================================================================
+// N-DIMENSIONAL VECTOR (using array of 16 elements max)
+// =============================================================================
+
+struct VecN {
+    data0: f64, data1: f64, data2: f64, data3: f64,
+    data4: f64, data5: f64, data6: f64, data7: f64,
+    data8: f64, data9: f64, data10: f64, data11: f64,
+    data12: f64, data13: f64, data14: f64, data15: f64,
+    len: i32
+}
+
+fn vecn_zero(n: i32) -> VecN {
+    return VecN {
+        data0: 0.0, data1: 0.0, data2: 0.0, data3: 0.0,
+        data4: 0.0, data5: 0.0, data6: 0.0, data7: 0.0,
+        data8: 0.0, data9: 0.0, data10: 0.0, data11: 0.0,
+        data12: 0.0, data13: 0.0, data14: 0.0, data15: 0.0,
+        len: n
     }
+}
 
-    /// Create a zero matrix
-    pub fn zeros(nrows: usize, ncols: usize) -> Self
-    where T: num::Zero
-    {
-        let mut m = Self::new(nrows, ncols);
-        for i in 0..m.data.len() {
-            m.data[i] = T::zero();
-        }
-        m
+fn vecn_get(v: VecN, i: i32) -> f64 {
+    if i == 0 { return v.data0 }
+    if i == 1 { return v.data1 }
+    if i == 2 { return v.data2 }
+    if i == 3 { return v.data3 }
+    if i == 4 { return v.data4 }
+    if i == 5 { return v.data5 }
+    if i == 6 { return v.data6 }
+    if i == 7 { return v.data7 }
+    if i == 8 { return v.data8 }
+    if i == 9 { return v.data9 }
+    if i == 10 { return v.data10 }
+    if i == 11 { return v.data11 }
+    if i == 12 { return v.data12 }
+    if i == 13 { return v.data13 }
+    if i == 14 { return v.data14 }
+    if i == 15 { return v.data15 }
+    return 0.0
+}
+
+fn vecn_set(v: VecN, i: i32, val: f64) -> VecN {
+    let mut r = v
+    if i == 0 { r.data0 = val }
+    if i == 1 { r.data1 = val }
+    if i == 2 { r.data2 = val }
+    if i == 3 { r.data3 = val }
+    if i == 4 { r.data4 = val }
+    if i == 5 { r.data5 = val }
+    if i == 6 { r.data6 = val }
+    if i == 7 { r.data7 = val }
+    if i == 8 { r.data8 = val }
+    if i == 9 { r.data9 = val }
+    if i == 10 { r.data10 = val }
+    if i == 11 { r.data11 = val }
+    if i == 12 { r.data12 = val }
+    if i == 13 { r.data13 = val }
+    if i == 14 { r.data14 = val }
+    if i == 15 { r.data15 = val }
+    return r
+}
+
+fn vecn_add(a: VecN, b: VecN) -> VecN {
+    let mut r = vecn_zero(a.len)
+    let mut i = 0
+    while i < a.len {
+        r = vecn_set(r, i, vecn_get(a, i) + vecn_get(b, i))
+        i = i + 1
     }
+    return r
+}
 
-    /// Create an identity matrix
-    pub fn eye(n: usize) -> Self
-    where T: num::Zero + num::One
-    {
-        let mut m = Self::zeros(n, n);
-        for i in 0..n {
-            m[(i, i)] = T::one();
-        }
-        m
+fn vecn_scale(v: VecN, s: f64) -> VecN {
+    let mut r = vecn_zero(v.len)
+    let mut i = 0
+    while i < v.len {
+        r = vecn_set(r, i, vecn_get(v, i) * s)
+        i = i + 1
     }
+    return r
+}
 
-    /// Create a diagonal matrix
-    pub fn diag(values: &[T]) -> Self
-    where T: num::Zero
-    {
-        let n = values.len();
-        let mut m = Self::zeros(n, n);
-        for i in 0..n {
-            m[(i, i)] = values[i].clone();
-        }
-        m
+fn vecn_dot(a: VecN, b: VecN) -> f64 {
+    let mut sum = 0.0
+    let mut i = 0
+    while i < a.len {
+        sum = sum + vecn_get(a, i) * vecn_get(b, i)
+        i = i + 1
     }
+    return sum
+}
 
-    /// Create from a 2D nested array
-    pub fn from_nested(data: &[[T]]) -> Self {
-        let nrows = data.len();
-        let ncols = if nrows > 0 { data[0].len() } else { 0 };
+fn vecn_norm(v: VecN) -> f64 {
+    return sqrt_f64(vecn_dot(v, v))
+}
 
-        let mut m = Self::new(nrows, ncols);
-        for i in 0..nrows {
-            for j in 0..ncols {
-                m[(i, j)] = data[i][j].clone();
-            }
-        }
-        m
+// =============================================================================
+// 3x3 MATRIX
+// =============================================================================
+
+struct Mat3 {
+    m00: f64, m01: f64, m02: f64,
+    m10: f64, m11: f64, m12: f64,
+    m20: f64, m21: f64, m22: f64
+}
+
+fn mat3_zero() -> Mat3 {
+    return Mat3 {
+        m00: 0.0, m01: 0.0, m02: 0.0,
+        m10: 0.0, m11: 0.0, m12: 0.0,
+        m20: 0.0, m21: 0.0, m22: 0.0
     }
+}
 
-    /// Number of rows
-    pub fn nrows(&self) -> usize { self.nrows }
-
-    /// Number of columns
-    pub fn ncols(&self) -> usize { self.ncols }
-
-    /// Shape as (rows, cols)
-    pub fn shape(&self) -> (usize, usize) { (self.nrows, self.ncols) }
-
-    /// Total number of elements
-    pub fn len(&self) -> usize { self.nrows * self.ncols }
-
-    /// Is this a square matrix?
-    pub fn is_square(&self) -> bool { self.nrows == self.ncols }
-
-    /// Raw data pointer (for BLAS)
-    pub fn as_ptr(&self) -> *const T { self.data.as_ptr() }
-
-    /// Mutable raw data pointer
-    pub fn as_mut_ptr(&!self) -> *mut T { self.data.as_mut_ptr() }
-
-    /// Leading dimension
-    pub fn ld(&self) -> usize { self.ld }
-
-    /// Convert offset to linear index
-    fn linear_index(&self, row: usize, col: usize) -> usize {
-        match L {
-            Layout::RowMajor => row * self.ld + col,
-            Layout::ColMajor => col * self.ld + row,
-        }
+fn mat3_identity() -> Mat3 {
+    return Mat3 {
+        m00: 1.0, m01: 0.0, m02: 0.0,
+        m10: 0.0, m11: 1.0, m12: 0.0,
+        m20: 0.0, m21: 0.0, m22: 1.0
     }
+}
 
-    /// Get a row as a vector view
-    pub fn row(&self, i: usize) -> VectorView<T> {
-        assert!(i < self.nrows);
-        let start = self.linear_index(i, 0);
-        let stride = match L {
-            Layout::RowMajor => 1,
-            Layout::ColMajor => self.ld,
-        };
-        VectorView::new(&self.data[start..], self.ncols, stride)
+fn mat3_add(a: Mat3, b: Mat3) -> Mat3 {
+    return Mat3 {
+        m00: a.m00 + b.m00, m01: a.m01 + b.m01, m02: a.m02 + b.m02,
+        m10: a.m10 + b.m10, m11: a.m11 + b.m11, m12: a.m12 + b.m12,
+        m20: a.m20 + b.m20, m21: a.m21 + b.m21, m22: a.m22 + b.m22
     }
+}
 
-    /// Get a column as a vector view
-    pub fn col(&self, j: usize) -> VectorView<T> {
-        assert!(j < self.ncols);
-        let start = self.linear_index(0, j);
-        let stride = match L {
-            Layout::RowMajor => self.ld,
-            Layout::ColMajor => 1,
-        };
-        VectorView::new(&self.data[start..], self.nrows, stride)
+fn mat3_scale(m: Mat3, s: f64) -> Mat3 {
+    return Mat3 {
+        m00: m.m00 * s, m01: m.m01 * s, m02: m.m02 * s,
+        m10: m.m10 * s, m11: m.m11 * s, m12: m.m12 * s,
+        m20: m.m20 * s, m21: m.m21 * s, m22: m.m22 * s
     }
+}
 
-    /// Transpose (returns a view with swapped dimensions)
-    pub fn t(&self) -> MatrixView<T, {L.transpose()}> {
-        MatrixView {
-            data: &self.data,
-            nrows: self.ncols,
-            ncols: self.nrows,
-            ld: self.ld,
-            row_stride: match L {
-                Layout::RowMajor => 1,
-                Layout::ColMajor => self.ld,
-            },
-            col_stride: match L {
-                Layout::RowMajor => self.ld,
-                Layout::ColMajor => 1,
-            },
-        }
+fn mat3_mul_vec(m: Mat3, v: Vec3) -> Vec3 {
+    return Vec3 {
+        x: m.m00 * v.x + m.m01 * v.y + m.m02 * v.z,
+        y: m.m10 * v.x + m.m11 * v.y + m.m12 * v.z,
+        z: m.m20 * v.x + m.m21 * v.y + m.m22 * v.z
     }
+}
 
-    /// Deep copy
-    pub fn clone(&self) -> Self {
-        Matrix {
-            data: self.data.clone(),
-            nrows: self.nrows,
-            ncols: self.ncols,
-            ld: self.ld,
-        }
+fn mat3_mul(a: Mat3, b: Mat3) -> Mat3 {
+    return Mat3 {
+        m00: a.m00*b.m00 + a.m01*b.m10 + a.m02*b.m20,
+        m01: a.m00*b.m01 + a.m01*b.m11 + a.m02*b.m21,
+        m02: a.m00*b.m02 + a.m01*b.m12 + a.m02*b.m22,
+        m10: a.m10*b.m00 + a.m11*b.m10 + a.m12*b.m20,
+        m11: a.m10*b.m01 + a.m11*b.m11 + a.m12*b.m21,
+        m12: a.m10*b.m02 + a.m11*b.m12 + a.m12*b.m22,
+        m20: a.m20*b.m00 + a.m21*b.m10 + a.m22*b.m20,
+        m21: a.m20*b.m01 + a.m21*b.m11 + a.m22*b.m21,
+        m22: a.m20*b.m02 + a.m21*b.m12 + a.m22*b.m22
     }
+}
 
-    /// Reshape (must preserve total elements)
-    pub fn reshape(&self, new_rows: usize, new_cols: usize) -> Self {
-        assert!(new_rows * new_cols == self.nrows * self.ncols,
-                "reshape must preserve total elements");
-
-        Matrix {
-            data: self.data.clone(),
-            nrows: new_rows,
-            ncols: new_cols,
-            ld: match L {
-                Layout::RowMajor => new_cols,
-                Layout::ColMajor => new_rows,
-            },
-        }
+fn mat3_transpose(m: Mat3) -> Mat3 {
+    return Mat3 {
+        m00: m.m00, m01: m.m10, m02: m.m20,
+        m10: m.m01, m11: m.m11, m12: m.m21,
+        m20: m.m02, m21: m.m12, m22: m.m22
     }
+}
 
-    /// Flatten to 1D vector
-    pub fn flatten(&self) -> Vector<T> {
-        Vector::from_data(self.data.clone())
+fn mat3_det(m: Mat3) -> f64 {
+    return m.m00 * (m.m11 * m.m22 - m.m12 * m.m21)
+         - m.m01 * (m.m10 * m.m22 - m.m12 * m.m20)
+         + m.m02 * (m.m10 * m.m21 - m.m11 * m.m20)
+}
+
+fn mat3_trace(m: Mat3) -> f64 {
+    return m.m00 + m.m11 + m.m22
+}
+
+fn mat3_frobenius_norm(m: Mat3) -> f64 {
+    let sum = m.m00*m.m00 + m.m01*m.m01 + m.m02*m.m02 +
+              m.m10*m.m10 + m.m11*m.m11 + m.m12*m.m12 +
+              m.m20*m.m20 + m.m21*m.m21 + m.m22*m.m22
+    return sqrt_f64(sum)
+}
+
+// =============================================================================
+// TESTS
+// =============================================================================
+
+fn main() -> i32 {
+    println("=== Linear Algebra Tests ===")
+    println("")
+
+    // Test 1: Vec3 operations
+    println("Test 1: Vec3 operations")
+    let v1 = vec3_new(1.0, 2.0, 3.0)
+    let v2 = vec3_new(4.0, 5.0, 6.0)
+    let v_add = vec3_add(v1, v2)
+    let v_dot = vec3_dot(v1, v2)
+    let v_norm = vec3_norm(v1)
+    println("  v1 = (1, 2, 3)")
+    println("  v2 = (4, 5, 6)")
+    println("  v1 + v2 = ")
+    println(v_add.x)
+    println(v_add.y)
+    println(v_add.z)
+    println("  v1 . v2 = ")
+    println(v_dot)
+    println("  |v1| = ")
+    println(v_norm)
+    println("")
+
+    // Test 2: Cross product
+    println("Test 2: Cross product")
+    let i = vec3_new(1.0, 0.0, 0.0)
+    let j = vec3_new(0.0, 1.0, 0.0)
+    let k = vec3_cross(i, j)
+    println("  i x j = ")
+    println(k.x)
+    println(k.y)
+    println(k.z)
+    println("")
+
+    // Test 3: Matrix operations
+    println("Test 3: Mat3 operations")
+    let eye = mat3_identity()
+    let det_eye = mat3_det(eye)
+    let trace_eye = mat3_trace(eye)
+    println("  det(I) = ")
+    println(det_eye)
+    println("  trace(I) = ")
+    println(trace_eye)
+    println("")
+
+    // Test 4: Matrix-vector multiply
+    println("Test 4: Matrix-vector multiply")
+    let m = Mat3 {
+        m00: 2.0, m01: 0.0, m02: 0.0,
+        m10: 0.0, m11: 3.0, m12: 0.0,
+        m20: 0.0, m21: 0.0, m22: 4.0
     }
+    let v = vec3_new(1.0, 1.0, 1.0)
+    let mv = mat3_mul_vec(m, v)
+    println("  diag(2,3,4) * (1,1,1) = ")
+    println(mv.x)
+    println(mv.y)
+    println(mv.z)
+    println("")
 
-    /// Apply element-wise function
-    pub fn map<U, F>(&self, f: F) -> Matrix<U, L>
-    where
-        F: Fn(&T) -> U,
-        U: Clone + Default,
-    {
-        let new_data: Vec<U> = self.data.iter().map(f).collect();
-        Matrix::from_data(new_data, self.nrows, self.ncols)
-    }
+    // Validation
+    let err1 = abs_f64(v_dot - 32.0)  // 1*4 + 2*5 + 3*6 = 32
+    let err2 = abs_f64(v_norm - 3.7416573867739413)  // sqrt(14)
+    let err3 = abs_f64(k.z - 1.0)  // i x j = k
+    let err4 = abs_f64(det_eye - 1.0)
+    let err5 = abs_f64(trace_eye - 3.0)
 
-    /// Reduce along axis
-    pub fn reduce<F>(&self, axis: usize, f: F) -> Vector<T>
-    where F: Fn(&T, &T) -> T
-    {
-        match axis {
-            0 => {
-                // Reduce rows -> vector of length ncols
-                let mut result = Vector::new(self.ncols);
-                for j in 0..self.ncols {
-                    result[j] = self[(0, j)].clone();
-                    for i in 1..self.nrows {
-                        result[j] = f(&result[j], &self[(i, j)]);
+    if err1 < 0.001 {
+        if err2 < 0.001 {
+            if err3 < 0.001 {
+                if err4 < 0.001 {
+                    if err5 < 0.001 {
+                        println("ALL TESTS PASSED")
+                        return 0
                     }
                 }
-                result
             }
-            1 => {
-                // Reduce cols -> vector of length nrows
-                let mut result = Vector::new(self.nrows);
-                for i in 0..self.nrows {
-                    result[i] = self[(i, 0)].clone();
-                    for j in 1..self.ncols {
-                        result[i] = f(&result[i], &self[(i, j)]);
-                    }
-                }
-                result
-            }
-            _ => panic!("axis must be 0 or 1"),
         }
     }
 
-    /// Sum all elements
-    pub fn sum(&self) -> T
-    where T: num::Zero + Add<Output = T>
-    {
-        self.data.iter().fold(T::zero(), |acc, x| acc + x.clone())
-    }
-
-    /// Product of all elements
-    pub fn prod(&self) -> T
-    where T: num::One + Mul<Output = T>
-    {
-        self.data.iter().fold(T::one(), |acc, x| acc * x.clone())
-    }
-
-    /// Mean of all elements
-    pub fn mean(&self) -> T
-    where T: num::Zero + Add<Output = T> + Div<Output = T> + From<usize>
-    {
-        self.sum() / T::from(self.len())
-    }
-
-    /// Frobenius norm
-    pub fn norm_fro(&self) -> f64
-    where T: Into<f64> + Clone
-    {
-        let sum_sq: f64 = self.data.iter()
-            .map(|x| {
-                let v: f64 = x.clone().into();
-                v * v
-            })
-            .sum();
-        sum_sq.sqrt()
-    }
-}
-
-/// Index operator for matrix
-impl<T, const L: Layout> Index<(usize, usize)> for Matrix<T, L> {
-    type Output = T;
-
-    fn index(&self, (row, col): (usize, usize)) -> &T {
-        assert!(row < self.nrows && col < self.ncols, "index out of bounds");
-        &self.data[self.linear_index(row, col)]
-    }
-}
-
-/// Mutable index operator
-impl<T, const L: Layout> IndexMut<(usize, usize)> for Matrix<T, L> {
-    fn index_mut(&!self, (row, col): (usize, usize)) -> &!T {
-        assert!(row < self.nrows && col < self.ncols, "index out of bounds");
-        let idx = self.linear_index(row, col);
-        &!self.data[idx]
-    }
-}
-
-/// Dense vector (special case of Matrix with 1 column)
-pub type Vector<T> = Matrix<T, Layout::ColMajor>;
-
-impl<T: Clone + Default> Vector<T> {
-    /// Create a vector of given length
-    pub fn new(len: usize) -> Self {
-        Matrix::new(len, 1)
-    }
-
-    /// Create from slice
-    pub fn from_slice(data: &[T]) -> Self {
-        Matrix::from_data(data.to_vec(), data.len(), 1)
-    }
-
-    /// Vector length
-    pub fn len(&self) -> usize { self.nrows }
-
-    /// Dot product
-    pub fn dot(&self, other: &Vector<T>) -> T
-    where T: num::Zero + Add<Output = T> + Mul<Output = T>
-    {
-        assert!(self.len() == other.len(), "vectors must have same length");
-
-        let mut sum = T::zero();
-        for i in 0..self.len() {
-            sum = sum + self[i].clone() * other[i].clone();
-        }
-        sum
-    }
-
-    /// L2 norm
-    pub fn norm(&self) -> f64
-    where T: Into<f64> + Clone
-    {
-        self.norm_fro()
-    }
-
-    /// Normalize to unit length
-    pub fn normalize(&self) -> Self
-    where T: Into<f64> + From<f64> + Clone + Default + Div<Output = T>
-    {
-        let n = self.norm();
-        self.map(|x| T::from(x.clone().into() / n))
-    }
-
-    /// Cross product (3D only)
-    pub fn cross(&self, other: &Vector<T>) -> Self
-    where T: Clone + Default + Sub<Output = T> + Mul<Output = T>
-    {
-        assert!(self.len() == 3 && other.len() == 3, "cross product requires 3D vectors");
-
-        let mut result = Vector::new(3);
-        result[0] = self[1].clone() * other[2].clone() - self[2].clone() * other[1].clone();
-        result[1] = self[2].clone() * other[0].clone() - self[0].clone() * other[2].clone();
-        result[2] = self[0].clone() * other[1].clone() - self[1].clone() * other[0].clone();
-        result
-    }
-}
-
-/// Matrix view (non-owning reference)
-pub struct MatrixView<'a, T, const L: Layout = Layout::RowMajor> {
-    data: &'a [T],
-    nrows: usize,
-    ncols: usize,
-    ld: usize,
-    row_stride: usize,
-    col_stride: usize,
-}
-
-/// Vector view (non-owning strided reference)
-pub struct VectorView<'a, T> {
-    data: &'a [T],
-    len: usize,
-    stride: usize,
-}
-
-impl<'a, T> VectorView<'a, T> {
-    pub fn new(data: &'a [T], len: usize, stride: usize) -> Self {
-        VectorView { data, len, stride }
-    }
-
-    pub fn len(&self) -> usize { self.len }
-
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        (0..self.len).map(move |i| &self.data[i * self.stride])
-    }
-}
-
-impl<'a, T> Index<usize> for VectorView<'a, T> {
-    type Output = T;
-
-    fn index(&self, i: usize) -> &T {
-        &self.data[i * self.stride]
-    }
+    println("TESTS FAILED")
+    return 1
 }
