@@ -25,12 +25,13 @@ use super::value::{Value, ControlFlow};
 ///
 /// # Example
 ///
+/// In D code:
 /// ```d
 /// let f = |t: f64, y: [f64]| -> [f64] { [...] }
 /// ```
 ///
-/// This can be wrapped and called as:
-/// ```rust
+/// This can be wrapped and called from Rust:
+/// ```ignore
 /// let closure = InterpreterClosure::new(func, captures, interpreter);
 /// let result = closure.call_with_floats(&[1.0, 2.0])?;
 /// ```
