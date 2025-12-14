@@ -27,6 +27,7 @@
 //! let ptx = PtxCodegen::new((8, 0)).generate(&gpu_module);
 //! ```
 
+pub mod bio;
 pub mod counterfactual;
 pub mod counterfactual_metal;
 pub mod epistemic_ptx;
@@ -87,4 +88,10 @@ pub use counterfactual_metal::{
 pub use metal_runtime::{
     EpistemicMetalRunner, MetalBuffer, MetalCommandBuffer, MetalDeviceInfo, MetalDispatchSize,
     MetalError, MetalKernel, MetalLibrary, MetalResourceOptions, MetalRuntime, MetalStorageMode,
+};
+
+// Bio/Quaternion GPU kernels - from "The Quaternionic Syntax of Existence"
+pub use bio::{
+    add_bio_kernels, gen_dna_complement_kernel, gen_gf4_add_kernel, gen_quaternion_mul_kernel,
+    gen_quaternion_normalize_kernel, gen_quaternion_slerp_kernel, gen_transmission_compose_kernel,
 };

@@ -33,6 +33,7 @@
 
 pub mod analyze;
 pub mod ast;
+pub mod bio;
 pub mod build;
 pub mod causal;
 pub mod check;

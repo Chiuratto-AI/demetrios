@@ -255,6 +255,16 @@ pub enum GpuType {
     F32,
     F64,
 
+    // Modern ML/scientific types (CUDA 13.x / Blackwell)
+    /// BFloat16 - 1 sign, 8 exponent, 7 mantissa (same exponent range as f32)
+    BF16,
+    /// FP8 E4M3 - 1 sign, 4 exponent, 3 mantissa (IEEE 754 style, higher precision)
+    F8E4M3,
+    /// FP8 E5M2 - 1 sign, 5 exponent, 2 mantissa (IEEE 754 style, larger range)
+    F8E5M2,
+    /// 4-bit float for extreme quantization (2-bit exponent, 1-bit mantissa)
+    F4,
+
     // Vector types
     Vec2(Box<GpuType>),
     Vec3(Box<GpuType>),
@@ -274,10 +284,11 @@ impl GpuType {
     pub fn size_bytes(&self) -> u32 {
         match self {
             GpuType::Void => 0,
-            GpuType::Bool | GpuType::I8 | GpuType::U8 => 1,
-            GpuType::I16 | GpuType::U16 | GpuType::F16 => 2,
+            GpuType::Bool | GpuType::I8 | GpuType::U8 | GpuType::F8E4M3 | GpuType::F8E5M2 => 1,
+            GpuType::I16 | GpuType::U16 | GpuType::F16 | GpuType::BF16 => 2,
             GpuType::I32 | GpuType::U32 | GpuType::F32 => 4,
             GpuType::I64 | GpuType::U64 | GpuType::F64 => 8,
+            GpuType::F4 => 1, // Packed: 2 values per byte, but allocate 1 byte for single value
             GpuType::Vec2(t) => t.size_bytes() * 2,
             GpuType::Vec3(t) => t.size_bytes() * 3,
             GpuType::Vec4(t) => t.size_bytes() * 4,
@@ -300,7 +311,16 @@ impl GpuType {
 
     /// Check if this is a floating point type
     pub fn is_float(&self) -> bool {
-        matches!(self, GpuType::F16 | GpuType::F32 | GpuType::F64)
+        matches!(
+            self,
+            GpuType::F16
+                | GpuType::F32
+                | GpuType::F64
+                | GpuType::BF16
+                | GpuType::F8E4M3
+                | GpuType::F8E5M2
+                | GpuType::F4
+        )
     }
 
     /// Check if this is a signed integer type
@@ -341,6 +361,10 @@ impl fmt::Display for GpuType {
             GpuType::F16 => write!(f, "f16"),
             GpuType::F32 => write!(f, "f32"),
             GpuType::F64 => write!(f, "f64"),
+            GpuType::BF16 => write!(f, "bf16"),
+            GpuType::F8E4M3 => write!(f, "f8e4m3"),
+            GpuType::F8E5M2 => write!(f, "f8e5m2"),
+            GpuType::F4 => write!(f, "f4"),
             GpuType::Vec2(t) => write!(f, "vec2<{}>", t),
             GpuType::Vec3(t) => write!(f, "vec3<{}>", t),
             GpuType::Vec4(t) => write!(f, "vec4<{}>", t),
@@ -609,6 +633,39 @@ pub enum GpuOp {
 
     // === Shared memory ===
     SharedAddr(String), // Get address of shared memory variable
+
+    // === Bio/Quaternion Operations (from Quaternionic Syntax preprint) ===
+    /// Quaternion multiplication (Hamilton product)
+    /// q1 * q2 is noncommutative
+    QuatMul(ValueId, ValueId),
+
+    /// Quaternion conjugate: q* = w - xi - yj - zk
+    QuatConj(ValueId),
+
+    /// Quaternion norm squared: |q|² = w² + x² + y² + z²
+    QuatNormSq(ValueId),
+
+    /// Quaternion normalize to unit: q / |q|
+    QuatNormalize(ValueId),
+
+    /// Quaternion SLERP (spherical linear interpolation)
+    /// slerp(q1, q2, t) for t ∈ [0, 1]
+    QuatSlerp(ValueId, ValueId, ValueId),
+
+    /// DNA base complement (A↔T, C↔G)
+    DnaComplement(ValueId),
+
+    /// GF(4) addition (characteristic 2 field)
+    Gf4Add(ValueId, ValueId),
+
+    /// GF(4) multiplication (using α² + α + 1 = 0)
+    Gf4Mul(ValueId, ValueId),
+
+    /// Transmission channel composition (quaternion product for info channels)
+    TransmissionCompose(ValueId, ValueId),
+
+    /// Transmission distortion with renormalization
+    TransmissionDistort(ValueId, ValueId, ValueId, ValueId, ValueId), // trans, dg, dt, dp, de
 }
 
 /// Warp vote operations

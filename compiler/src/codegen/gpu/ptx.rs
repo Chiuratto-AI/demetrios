@@ -1637,6 +1637,128 @@ impl PtxCodegen {
                 self.registers.push("phi_placeholder".to_string());
                 self.value_types.push(GpuType::I64);
             }
+
+            // === Bio/Quaternion Operations (from Quaternionic Syntax preprint) ===
+
+            // Quaternion multiplication (Hamilton product)
+            // q1 * q2 = (w1w2 - x1x2 - y1y2 - z1z2)
+            //         + (w1x2 + x1w2 + y1z2 - z1y2)i
+            //         + (w1y2 - x1z2 + y1w2 + z1x2)j
+            //         + (w1z2 + x1y2 - y1x2 + z1w2)k
+            GpuOp::QuatMul(q1, q2) => {
+                let _r1 = self.get_register(*q1);
+                let _r2 = self.get_register(*q2);
+                // Output is vec4<f32> stored in 4 consecutive f32 registers
+                let reg = self.alloc_register(&GpuType::Vec4(Box::new(GpuType::F32)));
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
+                // Emit inline quaternion multiply code
+                writeln!(self.output, "{}// QuatMul: Hamilton product (noncommutative)", indent).unwrap();
+                writeln!(self.output, "{}// Result = q1 * q2 stored in {}", indent, reg).unwrap();
+                writeln!(self.output, "{}call.uni __quat_mul, ({});", indent, reg).unwrap();
+            }
+
+            // Quaternion conjugate: q* = w - xi - yj - zk
+            GpuOp::QuatConj(q) => {
+                let _r = self.get_register(*q);
+                let reg = self.alloc_register(&GpuType::Vec4(Box::new(GpuType::F32)));
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
+                writeln!(self.output, "{}// QuatConj: negate imaginary parts", indent).unwrap();
+                writeln!(self.output, "{}call.uni __quat_conj, ({});", indent, reg).unwrap();
+            }
+
+            // Quaternion norm squared: |q|² = w² + x² + y² + z²
+            GpuOp::QuatNormSq(q) => {
+                let _r = self.get_register(*q);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+                writeln!(self.output, "{}// QuatNormSq: |q|² = w² + x² + y² + z²", indent).unwrap();
+                writeln!(self.output, "{}call.uni __quat_norm_sq, ({});", indent, reg).unwrap();
+            }
+
+            // Quaternion normalize to unit: q / |q|
+            GpuOp::QuatNormalize(q) => {
+                let _r = self.get_register(*q);
+                let reg = self.alloc_register(&GpuType::Vec4(Box::new(GpuType::F32)));
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
+                writeln!(self.output, "{}// QuatNormalize: q / |q| for SU(2)", indent).unwrap();
+                writeln!(self.output, "{}call.uni __quat_normalize, ({});", indent, reg).unwrap();
+            }
+
+            // Quaternion SLERP (spherical linear interpolation)
+            GpuOp::QuatSlerp(q1, q2, t) => {
+                let _r1 = self.get_register(*q1);
+                let _r2 = self.get_register(*q2);
+                let _rt = self.get_register(*t);
+                let reg = self.alloc_register(&GpuType::Vec4(Box::new(GpuType::F32)));
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
+                writeln!(self.output, "{}// QuatSlerp: spherical interpolation", indent).unwrap();
+                writeln!(self.output, "{}call.uni __quat_slerp, ({});", indent, reg).unwrap();
+            }
+
+            // DNA base complement (A↔T, C↔G)
+            // Uses XOR with 3: complement(x) = x ^ 3
+            GpuOp::DnaComplement(base) => {
+                let r = self.get_register(*base);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+                writeln!(self.output, "{}// DnaComplement: A↔T (0↔3), C↔G (1↔2)", indent).unwrap();
+                writeln!(self.output, "{}xor.b32 {}, {}, 3;", indent, reg, r).unwrap();
+            }
+
+            // GF(4) addition (characteristic 2 field, uses lookup table)
+            GpuOp::Gf4Add(a, b) => {
+                let ra = self.get_register(*a);
+                let rb = self.get_register(*b);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+                // GF(4) addition is XOR of indices into addition table
+                // But for efficiency, we inline the table lookup
+                writeln!(self.output, "{}// GF(4) addition: characteristic 2", indent).unwrap();
+                writeln!(self.output, "{}call.uni __gf4_add, ({}, {}, {});", indent, reg, ra, rb).unwrap();
+            }
+
+            // GF(4) multiplication (uses α² + α + 1 = 0)
+            GpuOp::Gf4Mul(a, b) => {
+                let ra = self.get_register(*a);
+                let rb = self.get_register(*b);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+                writeln!(self.output, "{}// GF(4) multiply: α² + α + 1 = 0", indent).unwrap();
+                writeln!(self.output, "{}call.uni __gf4_mul, ({}, {}, {});", indent, reg, ra, rb).unwrap();
+            }
+
+            // Transmission channel composition (quaternion product + renormalize)
+            GpuOp::TransmissionCompose(t1, t2) => {
+                let _r1 = self.get_register(*t1);
+                let _r2 = self.get_register(*t2);
+                let reg = self.alloc_register(&GpuType::Vec4(Box::new(GpuType::F32)));
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
+                writeln!(self.output, "{}// TransmissionCompose: (g,t,p,e) quaternion product", indent).unwrap();
+                writeln!(self.output, "{}call.uni __transmission_compose, ({});", indent, reg).unwrap();
+            }
+
+            // Transmission distortion with renormalization
+            GpuOp::TransmissionDistort(trans, dg, dt, dp, de) => {
+                let _rt = self.get_register(*trans);
+                let _rdg = self.get_register(*dg);
+                let _rdt = self.get_register(*dt);
+                let _rdp = self.get_register(*dp);
+                let _rde = self.get_register(*de);
+                let reg = self.alloc_register(&GpuType::Vec4(Box::new(GpuType::F32)));
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
+                writeln!(self.output, "{}// TransmissionDistort: perturb + renormalize", indent).unwrap();
+                writeln!(self.output, "{}call.uni __transmission_distort, ({});", indent, reg).unwrap();
+            }
         }
     }
 
@@ -1805,6 +1927,11 @@ impl PtxCodegen {
             GpuType::F16 => ".f16",
             GpuType::F32 => ".f32",
             GpuType::F64 => ".f64",
+            // Modern ML types (PTX 8.x+, Blackwell architecture)
+            GpuType::BF16 => ".bf16",          // BFloat16
+            GpuType::F8E4M3 => ".b8",          // FP8 E4M3 stored as byte
+            GpuType::F8E5M2 => ".b8",          // FP8 E5M2 stored as byte
+            GpuType::F4 => ".b8",              // FP4 stored as byte (2 packed)
             GpuType::Ptr(_, _) => ".b64",
             _ => ".b64",
         }
@@ -1820,8 +1947,14 @@ impl PtxCodegen {
             GpuType::U16 => "u16",
             GpuType::U32 => "u32",
             GpuType::U64 => "u64",
+            GpuType::F16 => "f16",
             GpuType::F32 => "f32",
             GpuType::F64 => "f64",
+            // Modern ML types (PTX 8.x+, Blackwell architecture)
+            GpuType::BF16 => "bf16",       // BFloat16
+            GpuType::F8E4M3 => "e4m3",     // FP8 E4M3 format
+            GpuType::F8E5M2 => "e5m2",     // FP8 E5M2 format
+            GpuType::F4 => "b8",           // 4-bit packed (stored as byte)
             _ => "b64",
         }
     }

@@ -1038,6 +1038,11 @@ impl MetalCodegen {
             GpuType::F16 => "half",
             GpuType::F32 => "float",
             GpuType::F64 => "float", // Metal doesn't have native double on all devices
+            // Modern ML types - Metal has bfloat support on Apple Silicon M1+
+            GpuType::BF16 => "bfloat",  // BFloat16 supported natively
+            GpuType::F8E4M3 => "uchar", // FP8 emulated as byte (no native support)
+            GpuType::F8E5M2 => "uchar", // FP8 emulated as byte
+            GpuType::F4 => "uchar",     // FP4 packed as byte
             GpuType::Vec2(_) => "float2",
             GpuType::Vec3(_) => "float3",
             GpuType::Vec4(_) => "float4",
