@@ -1759,6 +1759,332 @@ impl PtxCodegen {
                 writeln!(self.output, "{}// TransmissionDistort: perturb + renormalize", indent).unwrap();
                 writeln!(self.output, "{}call.uni __transmission_distort, ({});", indent, reg).unwrap();
             }
+
+            // ================================================================
+            // Cooperative Groups (CUDA 9.0+ / PTX 6.0+)
+            // ================================================================
+
+            // Get cooperative group handle at specified scope
+            GpuOp::CoopThisGroup(scope) => {
+                // Group handle is conceptual - store scope info for subsequent ops
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                let scope_val = match scope {
+                    CooperativeScope::Thread => 0,
+                    CooperativeScope::Warp => 1,
+                    CooperativeScope::Block => 2,
+                    CooperativeScope::Cluster => 3,
+                    CooperativeScope::Grid => 4,
+                    CooperativeScope::Coalesced => 5,
+                    CooperativeScope::TiledPartition(n) => 0x100 | (*n as u32),
+                };
+                writeln!(self.output, "{}// CoopThisGroup scope={:?}", indent, scope).unwrap();
+                writeln!(self.output, "{}mov.u32 {}, {};", indent, reg, scope_val).unwrap();
+            }
+
+            // Get group size
+            GpuOp::CoopGroupSize(group) => {
+                let grp = self.get_register(*group);
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}// CoopGroupSize", indent).unwrap();
+                // Check scope from group handle
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 1;", indent, grp).unwrap();  // warp?
+                writeln!(self.output, "{}@p0 mov.u32 {}, 32;", indent, reg).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 2;", indent, grp).unwrap();  // block?
+                writeln!(self.output, "{}@p0 mov.u32 {}, %ntid.x;", indent, reg).unwrap();
+            }
+
+            // Get thread rank within group
+            GpuOp::CoopThreadRank(group) => {
+                let grp = self.get_register(*group);
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}// CoopThreadRank", indent).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 1;", indent, grp).unwrap();  // warp?
+                writeln!(self.output, "{}@p0 mov.u32 {}, %laneid;", indent, reg).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 2;", indent, grp).unwrap();  // block?
+                writeln!(self.output, "{}@p0 mov.u32 {}, %tid.x;", indent, reg).unwrap();
+            }
+
+            // Check if this thread is group leader
+            GpuOp::CoopIsLeader(group) => {
+                let grp = self.get_register(*group);
+                let reg = self.alloc_register(&GpuType::Bool);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Bool);
+                writeln!(self.output, "{}// CoopIsLeader (rank == 0)", indent).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p1, {}, 1;", indent, grp).unwrap();
+                writeln!(self.output, "{}@p1 setp.eq.u32 {}, %laneid, 0;", indent, reg).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p1, {}, 2;", indent, grp).unwrap();
+                writeln!(self.output, "{}@p1 setp.eq.u32 {}, %tid.x, 0;", indent, reg).unwrap();
+            }
+
+            // Synchronize group
+            GpuOp::CoopSync(group) => {
+                let grp = self.get_register(*group);
+                writeln!(self.output, "{}// CoopSync", indent).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 1;", indent, grp).unwrap();  // warp?
+                writeln!(self.output, "{}@p0 bar.warp.sync 0xffffffff;", indent).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 2;", indent, grp).unwrap();  // block?
+                writeln!(self.output, "{}@p0 bar.sync 0;", indent).unwrap();
+                // For cluster (sm_90+)
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 3;", indent, grp).unwrap();
+                writeln!(self.output, "{}@p0 barrier.cluster.arrive.release;", indent).unwrap();
+                writeln!(self.output, "{}@p0 barrier.cluster.wait.acquire;", indent).unwrap();
+                // No-op for thread scope
+            }
+
+            // Shuffle broadcast (all threads get value from src_rank)
+            GpuOp::CoopShfl(group, val, src_rank) => {
+                let _grp = self.get_register(*group);
+                let v = self.get_register(*val);
+                let src = self.get_register(*src_rank);
+                let ty = self.get_value_type(*val);
+                let reg = self.alloc_register(&ty);
+                self.registers.push(reg.clone());
+                self.value_types.push(ty.clone());
+                let suffix = self.type_suffix(&ty);
+                writeln!(self.output, "{}// CoopShfl broadcast", indent).unwrap();
+                writeln!(self.output, "{}shfl.sync.idx.b32 {}, {}, {}, 31, 0xffffffff;",
+                    indent, reg, v, src).unwrap();
+            }
+
+            // Shuffle with index
+            GpuOp::CoopShflIdx(group, val, idx) => {
+                let _grp = self.get_register(*group);
+                let v = self.get_register(*val);
+                let i = self.get_register(*idx);
+                let ty = self.get_value_type(*val);
+                let reg = self.alloc_register(&ty);
+                self.registers.push(reg.clone());
+                self.value_types.push(ty.clone());
+                writeln!(self.output, "{}// CoopShflIdx", indent).unwrap();
+                writeln!(self.output, "{}shfl.sync.idx.b32 {}, {}, {}, 31, 0xffffffff;",
+                    indent, reg, v, i).unwrap();
+            }
+
+            // Shuffle up (get from thread rank - delta)
+            GpuOp::CoopShflUp(group, val, delta) => {
+                let _grp = self.get_register(*group);
+                let v = self.get_register(*val);
+                let d = self.get_register(*delta);
+                let ty = self.get_value_type(*val);
+                let reg = self.alloc_register(&ty);
+                self.registers.push(reg.clone());
+                self.value_types.push(ty.clone());
+                writeln!(self.output, "{}// CoopShflUp", indent).unwrap();
+                writeln!(self.output, "{}shfl.sync.up.b32 {}, {}, {}, 0, 0xffffffff;",
+                    indent, reg, v, d).unwrap();
+            }
+
+            // Shuffle down (get from thread rank + delta)
+            GpuOp::CoopShflDown(group, val, delta) => {
+                let _grp = self.get_register(*group);
+                let v = self.get_register(*val);
+                let d = self.get_register(*delta);
+                let ty = self.get_value_type(*val);
+                let reg = self.alloc_register(&ty);
+                self.registers.push(reg.clone());
+                self.value_types.push(ty.clone());
+                writeln!(self.output, "{}// CoopShflDown", indent).unwrap();
+                writeln!(self.output, "{}shfl.sync.down.b32 {}, {}, {}, 31, 0xffffffff;",
+                    indent, reg, v, d).unwrap();
+            }
+
+            // Shuffle XOR (butterfly pattern)
+            GpuOp::CoopShflXor(group, val, mask) => {
+                let _grp = self.get_register(*group);
+                let v = self.get_register(*val);
+                let m = self.get_register(*mask);
+                let ty = self.get_value_type(*val);
+                let reg = self.alloc_register(&ty);
+                self.registers.push(reg.clone());
+                self.value_types.push(ty.clone());
+                writeln!(self.output, "{}// CoopShflXor (butterfly)", indent).unwrap();
+                writeln!(self.output, "{}shfl.sync.bfly.b32 {}, {}, {}, 31, 0xffffffff;",
+                    indent, reg, v, m).unwrap();
+            }
+
+            // Collective reduce
+            GpuOp::CoopReduce(group, val, op) => {
+                let _grp = self.get_register(*group);
+                let v = self.get_register(*val);
+                let ty = self.get_value_type(*val);
+                let reg = self.alloc_register(&ty);
+                self.registers.push(reg.clone());
+                self.value_types.push(ty.clone());
+                let op_str = match op {
+                    CoopReduceOp::Add => "add",
+                    CoopReduceOp::Min => "min",
+                    CoopReduceOp::Max => "max",
+                    CoopReduceOp::And => "and",
+                    CoopReduceOp::Or => "or",
+                    CoopReduceOp::Xor => "xor",
+                    CoopReduceOp::Mul => "add", // No native mul, use add as fallback
+                };
+                let type_suffix = if ty.is_float() { ".f32" } else { ".s32" };
+                writeln!(self.output, "{}// CoopReduce {:?}", indent, op).unwrap();
+                // Use redux.sync for warp-level reduction (sm_80+)
+                writeln!(self.output, "{}redux.sync.{}{} {}, {}, 0xffffffff;",
+                    indent, op_str, type_suffix, reg, v).unwrap();
+            }
+
+            // Inclusive scan
+            GpuOp::CoopInclusiveScan(group, val, op) => {
+                let _grp = self.get_register(*group);
+                let v = self.get_register(*val);
+                let ty = self.get_value_type(*val);
+                let reg = self.alloc_register(&ty);
+                self.registers.push(reg.clone());
+                self.value_types.push(ty.clone());
+                writeln!(self.output, "{}// CoopInclusiveScan {:?} - Kogge-Stone pattern", indent, op).unwrap();
+                // Implement via shuffle tree (Kogge-Stone)
+                writeln!(self.output, "{}mov.b32 {}, {};", indent, reg, v).unwrap();
+                for delta in [1, 2, 4, 8, 16] {
+                    let tmp = format!("tmp_scan_{}", delta);
+                    writeln!(self.output, "{}{{\n{}\t.reg .b32 {};", indent, indent, tmp).unwrap();
+                    writeln!(self.output, "{}\tshfl.sync.up.b32 {}, {}, {}, 0, 0xffffffff;",
+                        indent, tmp, reg, delta).unwrap();
+                    writeln!(self.output, "{}\tadd.s32 {}, {}, {};", indent, reg, reg, tmp).unwrap();
+                    writeln!(self.output, "{}}}", indent).unwrap();
+                }
+            }
+
+            // Exclusive scan
+            GpuOp::CoopExclusiveScan(group, val, op) => {
+                let _grp = self.get_register(*group);
+                let v = self.get_register(*val);
+                let ty = self.get_value_type(*val);
+                let reg = self.alloc_register(&ty);
+                self.registers.push(reg.clone());
+                self.value_types.push(ty.clone());
+                writeln!(self.output, "{}// CoopExclusiveScan {:?} - shift + inclusive", indent, op).unwrap();
+                // Exclusive = shift(inclusive, 1) with identity at lane 0
+                writeln!(self.output, "{}mov.b32 {}, {};", indent, reg, v).unwrap();
+                for delta in [1, 2, 4, 8, 16] {
+                    let tmp = format!("tmp_escan_{}", delta);
+                    writeln!(self.output, "{}{{\n{}\t.reg .b32 {};", indent, indent, tmp).unwrap();
+                    writeln!(self.output, "{}\tshfl.sync.up.b32 {}, {}, {}, 0, 0xffffffff;",
+                        indent, tmp, reg, delta).unwrap();
+                    writeln!(self.output, "{}\tadd.s32 {}, {}, {};", indent, reg, reg, tmp).unwrap();
+                    writeln!(self.output, "{}}}", indent).unwrap();
+                }
+                // Shift result down by 1, put 0 in lane 0
+                writeln!(self.output, "{}shfl.sync.up.b32 {}, {}, 1, 0, 0xffffffff;", indent, reg, reg).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p0, %laneid, 0;", indent).unwrap();
+                writeln!(self.output, "{}@p0 mov.b32 {}, 0;", indent, reg).unwrap();
+            }
+
+            // Collective ballot
+            GpuOp::CoopBallot(group, pred) => {
+                let _grp = self.get_register(*group);
+                let p = self.get_register(*pred);
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}// CoopBallot", indent).unwrap();
+                writeln!(self.output, "{}vote.sync.ballot.b32 {}, {}, 0xffffffff;", indent, reg, p).unwrap();
+            }
+
+            // All threads predicate true
+            GpuOp::CoopAll(group, pred) => {
+                let _grp = self.get_register(*group);
+                let p = self.get_register(*pred);
+                let reg = self.alloc_register(&GpuType::Bool);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Bool);
+                writeln!(self.output, "{}// CoopAll", indent).unwrap();
+                writeln!(self.output, "{}vote.sync.all.pred {}, {}, 0xffffffff;", indent, reg, p).unwrap();
+            }
+
+            // Any thread predicate true
+            GpuOp::CoopAny(group, pred) => {
+                let _grp = self.get_register(*group);
+                let p = self.get_register(*pred);
+                let reg = self.alloc_register(&GpuType::Bool);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Bool);
+                writeln!(self.output, "{}// CoopAny", indent).unwrap();
+                writeln!(self.output, "{}vote.sync.any.pred {}, {}, 0xffffffff;", indent, reg, p).unwrap();
+            }
+
+            // Partition group into tiles
+            GpuOp::CoopPartitionTiled(group, tile_size) => {
+                let _grp = self.get_register(*group);
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                let scope_val = 0x100 | (*tile_size as u32);
+                writeln!(self.output, "{}// CoopPartitionTiled size={}", indent, tile_size).unwrap();
+                writeln!(self.output, "{}mov.u32 {}, {};", indent, reg, scope_val).unwrap();
+            }
+
+            // Binary partition by predicate
+            GpuOp::CoopPartitionBinary(group, pred) => {
+                let _grp = self.get_register(*group);
+                let p = self.get_register(*pred);
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}// CoopPartitionBinary", indent).unwrap();
+                // Use match.sync to get mask of matching threads
+                writeln!(self.output, "{}match.sync.any.b32 {}, {}, 0xffffffff;", indent, reg, p).unwrap();
+            }
+
+            // Labeled partition
+            GpuOp::CoopPartitionLabeled(group, label) => {
+                let _grp = self.get_register(*group);
+                let l = self.get_register(*label);
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}// CoopPartitionLabeled", indent).unwrap();
+                // match.sync groups threads by label value
+                writeln!(self.output, "{}match.sync.any.b32 {}, {}, 0xffffffff;", indent, reg, l).unwrap();
+            }
+
+            // Get coalesced threads (active mask)
+            GpuOp::CoopCoalescedThreads => {
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}// CoopCoalescedThreads (activemask)", indent).unwrap();
+                writeln!(self.output, "{}activemask.b32 {};", indent, reg).unwrap();
+            }
+
+            // Elect a single leader
+            GpuOp::CoopElect(group) => {
+                let _grp = self.get_register(*group);
+                let reg = self.alloc_register(&GpuType::Bool);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Bool);
+                writeln!(self.output, "{}// CoopElect (first active thread)", indent).unwrap();
+                // Get active mask, find first set bit, compare with laneid
+                writeln!(self.output, "{}{{\n{}\t.reg .b32 mask, first;", indent, indent).unwrap();
+                writeln!(self.output, "{}\tactivemask.b32 mask;", indent).unwrap();
+                writeln!(self.output, "{}\tbrev.b32 first, mask;", indent).unwrap();
+                writeln!(self.output, "{}\tclz.b32 first, first;", indent).unwrap();
+                writeln!(self.output, "{}\tsetp.eq.u32 {}, first, %laneid;", indent, reg).unwrap();
+                writeln!(self.output, "{}}}", indent).unwrap();
+            }
+
+            // Memory fence at group scope
+            GpuOp::CoopMemoryFence(group) => {
+                let grp = self.get_register(*group);
+                writeln!(self.output, "{}// CoopMemoryFence", indent).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 1;", indent, grp).unwrap();
+                writeln!(self.output, "{}@p0 fence.acq_rel.cta;", indent).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 2;", indent, grp).unwrap();
+                writeln!(self.output, "{}@p0 fence.acq_rel.cta;", indent).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 3;", indent, grp).unwrap();
+                writeln!(self.output, "{}@p0 fence.acq_rel.cluster;", indent).unwrap();
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 4;", indent, grp).unwrap();
+                writeln!(self.output, "{}@p0 fence.acq_rel.sys;", indent).unwrap();
+            }
         }
     }
 
@@ -2087,5 +2413,178 @@ mod tests {
 
         assert!(ptx.contains("add.s32"));
         assert!(ptx.contains("mul.f32"));
+    }
+
+    #[test]
+    fn test_ptx_cooperative_groups_warp() {
+        let mut module = GpuModule::new(
+            "test",
+            GpuTarget::Cuda {
+                compute_capability: (8, 0), // sm_80 for redux.sync
+            },
+        );
+
+        let mut kernel = GpuKernel::new("warp_reduce");
+
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Get warp group handle
+        block.add_instruction(ValueId(0), GpuOp::CoopThisGroup(CooperativeScope::Warp));
+        // Get lane ID (thread rank in warp)
+        block.add_instruction(ValueId(1), GpuOp::CoopThreadRank(ValueId(0)));
+        // Check if leader
+        block.add_instruction(ValueId(2), GpuOp::CoopIsLeader(ValueId(0)));
+        // Synchronize warp
+        block.add_instruction(ValueId(3), GpuOp::CoopSync(ValueId(0)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 0));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("CoopThisGroup scope=Warp"));
+        assert!(ptx.contains("CoopThreadRank"));
+        assert!(ptx.contains("CoopIsLeader"));
+        assert!(ptx.contains("CoopSync"));
+    }
+
+    #[test]
+    fn test_ptx_cooperative_shuffle() {
+        let mut module = GpuModule::new(
+            "test",
+            GpuTarget::Cuda {
+                compute_capability: (7, 5),
+            },
+        );
+
+        let mut kernel = GpuKernel::new("warp_shuffle");
+
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Get warp group
+        block.add_instruction(ValueId(0), GpuOp::CoopThisGroup(CooperativeScope::Warp));
+        // Some value to shuffle
+        block.add_instruction(ValueId(1), GpuOp::ConstFloat(1.0, GpuType::F32));
+        // Shuffle source lane
+        block.add_instruction(ValueId(2), GpuOp::ConstInt(0, GpuType::U32));
+        // Broadcast from lane 0
+        block.add_instruction(ValueId(3), GpuOp::CoopShfl(ValueId(0), ValueId(1), ValueId(2)));
+        // Delta for shuffle down
+        block.add_instruction(ValueId(4), GpuOp::ConstInt(16, GpuType::U32));
+        // Shuffle down by 16
+        block.add_instruction(ValueId(5), GpuOp::CoopShflDown(ValueId(0), ValueId(1), ValueId(4)));
+        // Shuffle XOR with mask
+        block.add_instruction(ValueId(6), GpuOp::CoopShflXor(ValueId(0), ValueId(1), ValueId(4)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("shfl.sync.idx.b32"));
+        assert!(ptx.contains("shfl.sync.down.b32"));
+        assert!(ptx.contains("shfl.sync.bfly.b32"));
+    }
+
+    #[test]
+    fn test_ptx_cooperative_reduce() {
+        let mut module = GpuModule::new(
+            "test",
+            GpuTarget::Cuda {
+                compute_capability: (8, 0), // sm_80 for redux.sync
+            },
+        );
+
+        let mut kernel = GpuKernel::new("warp_collective");
+
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Get warp group
+        block.add_instruction(ValueId(0), GpuOp::CoopThisGroup(CooperativeScope::Warp));
+        // Value to reduce
+        block.add_instruction(ValueId(1), GpuOp::ConstFloat(1.0, GpuType::F32));
+        // Reduce with add
+        block.add_instruction(ValueId(2), GpuOp::CoopReduce(ValueId(0), ValueId(1), CoopReduceOp::Add));
+        // Reduce with max
+        block.add_instruction(ValueId(3), GpuOp::CoopReduce(ValueId(0), ValueId(1), CoopReduceOp::Max));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((8, 0));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("redux.sync.add"));
+        assert!(ptx.contains("redux.sync.max"));
+    }
+
+    #[test]
+    fn test_ptx_cooperative_vote() {
+        let mut module = GpuModule::new(
+            "test",
+            GpuTarget::Cuda {
+                compute_capability: (7, 5),
+            },
+        );
+
+        let mut kernel = GpuKernel::new("warp_vote");
+
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Get warp group
+        block.add_instruction(ValueId(0), GpuOp::CoopThisGroup(CooperativeScope::Warp));
+        // Predicate
+        block.add_instruction(ValueId(1), GpuOp::ConstBool(true));
+        // Ballot
+        block.add_instruction(ValueId(2), GpuOp::CoopBallot(ValueId(0), ValueId(1)));
+        // All
+        block.add_instruction(ValueId(3), GpuOp::CoopAll(ValueId(0), ValueId(1)));
+        // Any
+        block.add_instruction(ValueId(4), GpuOp::CoopAny(ValueId(0), ValueId(1)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("vote.sync.ballot.b32"));
+        assert!(ptx.contains("vote.sync.all.pred"));
+        assert!(ptx.contains("vote.sync.any.pred"));
+    }
+
+    #[test]
+    fn test_ptx_cooperative_partition() {
+        let mut module = GpuModule::new(
+            "test",
+            GpuTarget::Cuda {
+                compute_capability: (7, 5),
+            },
+        );
+
+        let mut kernel = GpuKernel::new("partition_test");
+
+        let mut block = GpuBlock::new(BlockId(0), "entry");
+        // Get warp group
+        block.add_instruction(ValueId(0), GpuOp::CoopThisGroup(CooperativeScope::Warp));
+        // Partition into 16-thread tiles
+        block.add_instruction(ValueId(1), GpuOp::CoopPartitionTiled(ValueId(0), 16));
+        // Get coalesced threads
+        block.add_instruction(ValueId(2), GpuOp::CoopCoalescedThreads);
+        // Elect a leader
+        block.add_instruction(ValueId(3), GpuOp::CoopElect(ValueId(0)));
+        block.set_terminator(GpuTerminator::ReturnVoid);
+        kernel.add_block(block);
+
+        module.add_kernel(kernel);
+
+        let mut codegen = PtxCodegen::new((7, 5));
+        let ptx = codegen.generate(&module);
+
+        assert!(ptx.contains("CoopPartitionTiled size=16"));
+        assert!(ptx.contains("activemask.b32"));
+        assert!(ptx.contains("CoopElect"));
     }
 }

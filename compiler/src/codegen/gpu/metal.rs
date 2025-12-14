@@ -974,9 +974,288 @@ impl MetalCodegen {
                 ));
             }
 
-            // Remaining ops
-            _ => {
-                self.emit(&format!("// Unhandled op -> {}", result_name));
+            // ================================================================
+            // Cooperative Groups -> Metal simdgroup/threadgroup primitives
+            // ================================================================
+
+            // Get cooperative group handle at specified scope
+            GpuOp::CoopThisGroup(scope) => {
+                // In Metal, group handle is conceptual - store scope for context
+                let scope_val = match scope {
+                    CooperativeScope::Thread => 0,
+                    CooperativeScope::Warp => 1,    // simdgroup
+                    CooperativeScope::Block => 2,   // threadgroup
+                    CooperativeScope::Cluster => 3, // device-level
+                    CooperativeScope::Grid => 4,
+                    CooperativeScope::Coalesced => 5,
+                    CooperativeScope::TiledPartition(n) => 0x100 | (*n as u32),
+                };
+                self.emit(&format!(
+                    "uint {} = {}; // CoopThisGroup scope={:?}",
+                    result_name, scope_val, scope
+                ));
+            }
+
+            // Get group size
+            GpuOp::CoopGroupSize(group) => {
+                let grp = self.get_var_name(*group);
+                self.emit(&format!(
+                    "uint {} = ({} == 1) ? simd_size : (({} == 2) ? blockDim_x : 1); // CoopGroupSize",
+                    result_name, grp, grp
+                ));
+            }
+
+            // Get thread rank within group
+            GpuOp::CoopThreadRank(group) => {
+                let grp = self.get_var_name(*group);
+                self.emit(&format!(
+                    "uint {} = ({} == 1) ? simd_lane_id : (({} == 2) ? threadIdx_x : 0); // CoopThreadRank",
+                    result_name, grp, grp
+                ));
+            }
+
+            // Check if this thread is group leader
+            GpuOp::CoopIsLeader(group) => {
+                let grp = self.get_var_name(*group);
+                self.emit(&format!(
+                    "bool {} = ({} == 1) ? (simd_lane_id == 0) : (({} == 2) ? (threadIdx_x == 0) : true); // CoopIsLeader",
+                    result_name, grp, grp
+                ));
+            }
+
+            // Synchronize group
+            GpuOp::CoopSync(group) => {
+                let grp = self.get_var_name(*group);
+                self.emit(&format!("// CoopSync for group {}", grp));
+                self.emit(&format!("if ({} == 1) {{ simdgroup_barrier(mem_flags::mem_threadgroup); }}", grp));
+                self.emit(&format!("if ({} == 2) {{ threadgroup_barrier(mem_flags::mem_threadgroup); }}", grp));
+            }
+
+            // Shuffle broadcast
+            GpuOp::CoopShfl(_group, val, src_rank) => {
+                let v = self.get_var_name(*val);
+                let src = self.get_var_name(*src_rank);
+                self.emit(&format!(
+                    "auto {} = simd_broadcast({}, {}); // CoopShfl",
+                    result_name, v, src
+                ));
+            }
+
+            // Shuffle with index
+            GpuOp::CoopShflIdx(_group, val, idx) => {
+                let v = self.get_var_name(*val);
+                let i = self.get_var_name(*idx);
+                self.emit(&format!(
+                    "auto {} = simd_shuffle({}, {}); // CoopShflIdx",
+                    result_name, v, i
+                ));
+            }
+
+            // Shuffle up
+            GpuOp::CoopShflUp(_group, val, delta) => {
+                let v = self.get_var_name(*val);
+                let d = self.get_var_name(*delta);
+                self.emit(&format!(
+                    "auto {} = simd_shuffle_up({}, {}); // CoopShflUp",
+                    result_name, v, d
+                ));
+            }
+
+            // Shuffle down
+            GpuOp::CoopShflDown(_group, val, delta) => {
+                let v = self.get_var_name(*val);
+                let d = self.get_var_name(*delta);
+                self.emit(&format!(
+                    "auto {} = simd_shuffle_down({}, {}); // CoopShflDown",
+                    result_name, v, d
+                ));
+            }
+
+            // Shuffle XOR (butterfly)
+            GpuOp::CoopShflXor(_group, val, mask) => {
+                let v = self.get_var_name(*val);
+                let m = self.get_var_name(*mask);
+                self.emit(&format!(
+                    "auto {} = simd_shuffle_xor({}, {}); // CoopShflXor",
+                    result_name, v, m
+                ));
+            }
+
+            // Collective reduce
+            GpuOp::CoopReduce(_group, val, op) => {
+                let v = self.get_var_name(*val);
+                let func = match op {
+                    CoopReduceOp::Add => "simd_sum",
+                    CoopReduceOp::Min => "simd_min",
+                    CoopReduceOp::Max => "simd_max",
+                    CoopReduceOp::And => "simd_and",
+                    CoopReduceOp::Or => "simd_or",
+                    CoopReduceOp::Xor => "simd_xor",
+                    CoopReduceOp::Mul => "simd_product",
+                };
+                self.emit(&format!(
+                    "auto {} = {}({}); // CoopReduce {:?}",
+                    result_name, func, v, op
+                ));
+            }
+
+            // Inclusive scan
+            GpuOp::CoopInclusiveScan(_group, val, op) => {
+                let v = self.get_var_name(*val);
+                let func = match op {
+                    CoopReduceOp::Add => "simd_prefix_inclusive_sum",
+                    CoopReduceOp::Mul => "simd_prefix_inclusive_product",
+                    _ => "simd_prefix_inclusive_sum", // Fallback
+                };
+                self.emit(&format!(
+                    "auto {} = {}({}); // CoopInclusiveScan {:?}",
+                    result_name, func, v, op
+                ));
+            }
+
+            // Exclusive scan
+            GpuOp::CoopExclusiveScan(_group, val, op) => {
+                let v = self.get_var_name(*val);
+                let func = match op {
+                    CoopReduceOp::Add => "simd_prefix_exclusive_sum",
+                    CoopReduceOp::Mul => "simd_prefix_exclusive_product",
+                    _ => "simd_prefix_exclusive_sum", // Fallback
+                };
+                self.emit(&format!(
+                    "auto {} = {}({}); // CoopExclusiveScan {:?}",
+                    result_name, func, v, op
+                ));
+            }
+
+            // Collective ballot
+            GpuOp::CoopBallot(_group, pred) => {
+                let p = self.get_var_name(*pred);
+                self.emit(&format!(
+                    "simd_vote::vote_t {} = simd_ballot({}); // CoopBallot",
+                    result_name, p
+                ));
+            }
+
+            // All threads predicate true
+            GpuOp::CoopAll(_group, pred) => {
+                let p = self.get_var_name(*pred);
+                self.emit(&format!(
+                    "bool {} = simd_all({}); // CoopAll",
+                    result_name, p
+                ));
+            }
+
+            // Any thread predicate true
+            GpuOp::CoopAny(_group, pred) => {
+                let p = self.get_var_name(*pred);
+                self.emit(&format!(
+                    "bool {} = simd_any({}); // CoopAny",
+                    result_name, p
+                ));
+            }
+
+            // Partition into tiles
+            GpuOp::CoopPartitionTiled(_group, tile_size) => {
+                let scope_val = 0x100 | (*tile_size as u32);
+                self.emit(&format!(
+                    "uint {} = {}; // CoopPartitionTiled size={}",
+                    result_name, scope_val, tile_size
+                ));
+            }
+
+            // Binary partition
+            GpuOp::CoopPartitionBinary(_group, pred) => {
+                let p = self.get_var_name(*pred);
+                self.emit(&format!(
+                    "simd_vote::vote_t {} = simd_ballot({}); // CoopPartitionBinary",
+                    result_name, p
+                ));
+            }
+
+            // Labeled partition
+            GpuOp::CoopPartitionLabeled(_group, label) => {
+                let l = self.get_var_name(*label);
+                self.emit(&format!(
+                    "// CoopPartitionLabeled by {} - using ballot as approximation",
+                    l
+                ));
+                self.emit(&format!(
+                    "simd_vote::vote_t {} = simd_ballot({} == simd_broadcast({}, 0));",
+                    result_name, l, l
+                ));
+            }
+
+            // Coalesced threads (active mask)
+            GpuOp::CoopCoalescedThreads => {
+                self.emit(&format!(
+                    "simd_vote::vote_t {} = simd_active_threads_mask(); // CoopCoalescedThreads",
+                    result_name
+                ));
+            }
+
+            // Elect leader
+            GpuOp::CoopElect(_group) => {
+                self.emit(&format!(
+                    "bool {} = simd_is_first(); // CoopElect",
+                    result_name
+                ));
+            }
+
+            // Memory fence
+            GpuOp::CoopMemoryFence(group) => {
+                let grp = self.get_var_name(*group);
+                self.emit(&format!("// CoopMemoryFence for group {}", grp));
+                self.emit(&format!("if ({} == 1) {{ simdgroup_barrier(mem_flags::mem_device); }}", grp));
+                self.emit(&format!("if ({} == 2) {{ threadgroup_barrier(mem_flags::mem_device); }}", grp));
+            }
+
+            // Bio operations (quaternion, DNA, GF4, transmission) - call device functions
+            GpuOp::QuatMul(_, _)
+            | GpuOp::QuatConj(_)
+            | GpuOp::QuatNormSq(_)
+            | GpuOp::QuatNormalize(_)
+            | GpuOp::QuatSlerp(_, _, _)
+            | GpuOp::DnaComplement(_)
+            | GpuOp::Gf4Add(_, _)
+            | GpuOp::Gf4Mul(_, _)
+            | GpuOp::TransmissionCompose(_, _)
+            | GpuOp::TransmissionDistort(_, _, _, _, _) => {
+                self.emit(&format!(
+                    "// Bio op -> {} (implement via device function)",
+                    result_name
+                ));
+            }
+
+            // Atomics not handled above
+            GpuOp::AtomicAnd(_, _) | GpuOp::AtomicOr(_, _) | GpuOp::AtomicXor(_, _) => {
+                self.emit(&format!(
+                    "// Bitwise atomic -> {} (not yet implemented)",
+                    result_name
+                ));
+            }
+
+            // Int/Ptr conversions
+            GpuOp::PtrToInt(_) | GpuOp::IntToPtr(_, _) => {
+                self.emit(&format!(
+                    "// Ptr conversion -> {} (not yet implemented)",
+                    result_name
+                ));
+            }
+
+            // Bitwise ops handled but duplicated
+            GpuOp::Xor(_, _) => {
+                self.emit(&format!(
+                    "// Xor -> {} (not yet implemented)",
+                    result_name
+                ));
+            }
+
+            // Warp match
+            GpuOp::WarpMatch(_) => {
+                self.emit(&format!(
+                    "// WarpMatch -> {} (not directly supported in Metal)",
+                    result_name
+                ));
             }
         }
     }

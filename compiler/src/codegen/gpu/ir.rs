@@ -666,6 +666,76 @@ pub enum GpuOp {
 
     /// Transmission distortion with renormalization
     TransmissionDistort(ValueId, ValueId, ValueId, ValueId, ValueId), // trans, dg, dt, dp, de
+
+    // === Cooperative Groups (CUDA 9.0+ / PTX 6.0+) ===
+
+    /// Get this thread's cooperative group at specified scope
+    /// Returns a group handle for subsequent operations
+    CoopThisGroup(CooperativeScope),
+
+    /// Get group size (number of threads in the group)
+    CoopGroupSize(ValueId), // group handle
+
+    /// Get thread rank within group (0 to size-1)
+    CoopThreadRank(ValueId), // group handle
+
+    /// Check if this thread is the group leader (rank 0)
+    CoopIsLeader(ValueId), // group handle
+
+    /// Synchronize all threads in the group
+    CoopSync(ValueId), // group handle
+
+    /// Collective shuffle within group
+    /// Broadcasts value from src_rank to all threads
+    CoopShfl(ValueId, ValueId, ValueId), // group, value, src_rank
+
+    /// Shuffle with index (each thread gets value from thread at idx)
+    CoopShflIdx(ValueId, ValueId, ValueId), // group, value, idx
+
+    /// Shuffle up (get value from thread rank - delta)
+    CoopShflUp(ValueId, ValueId, ValueId), // group, value, delta
+
+    /// Shuffle down (get value from thread rank + delta)
+    CoopShflDown(ValueId, ValueId, ValueId), // group, value, delta
+
+    /// Shuffle XOR (get value from thread rank ^ mask)
+    CoopShflXor(ValueId, ValueId, ValueId), // group, value, mask
+
+    /// Collective reduce within group
+    CoopReduce(ValueId, ValueId, CoopReduceOp), // group, value, op
+
+    /// Inclusive scan within group
+    CoopInclusiveScan(ValueId, ValueId, CoopReduceOp), // group, value, op
+
+    /// Exclusive scan within group
+    CoopExclusiveScan(ValueId, ValueId, CoopReduceOp), // group, value, op
+
+    /// Collective ballot (bitmask of predicate across group)
+    CoopBallot(ValueId, ValueId), // group, predicate
+
+    /// Check if all threads in group have predicate true
+    CoopAll(ValueId, ValueId), // group, predicate
+
+    /// Check if any thread in group has predicate true
+    CoopAny(ValueId, ValueId), // group, predicate
+
+    /// Partition group into tiles of specified size
+    CoopPartitionTiled(ValueId, u32), // group, tile_size -> new group
+
+    /// Partition group by predicate (binary partition)
+    CoopPartitionBinary(ValueId, ValueId), // group, predicate -> new group
+
+    /// Partition group by label (threads with same label together)
+    CoopPartitionLabeled(ValueId, ValueId), // group, label -> new group
+
+    /// Get coalesced threads (active threads in current warp)
+    CoopCoalescedThreads,
+
+    /// Elect a single leader thread from the group
+    CoopElect(ValueId), // group -> bool (true for elected thread)
+
+    /// Memory fence at group scope
+    CoopMemoryFence(ValueId), // group
 }
 
 /// Warp vote operations
@@ -686,6 +756,78 @@ pub enum WarpReduceOp {
     And,
     Or,
     Xor,
+}
+
+// ============================================================================
+// Cooperative Groups (CUDA 9.0+ / PTX 6.0+)
+// ============================================================================
+
+/// Cooperative group scope - defines the set of threads that participate
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CooperativeScope {
+    /// Single thread (trivial group)
+    Thread,
+    /// Warp-level (32 threads on NVIDIA, 64 on AMD)
+    Warp,
+    /// Thread block level
+    Block,
+    /// Multiple blocks (cluster, requires sm_90+)
+    Cluster,
+    /// Entire grid (requires cooperative launch)
+    Grid,
+    /// Coalesced threads (dynamically formed from active threads)
+    Coalesced,
+    /// Tiled partition (static subdivision of parent group)
+    TiledPartition(u32), // tile size: 1, 2, 4, 8, 16, 32
+}
+
+impl CooperativeScope {
+    /// Get the maximum size for this scope
+    pub fn max_size(&self) -> Option<u32> {
+        match self {
+            CooperativeScope::Thread => Some(1),
+            CooperativeScope::Warp => Some(32),
+            CooperativeScope::TiledPartition(n) => Some(*n),
+            _ => None, // Dynamic or hardware-dependent
+        }
+    }
+
+    /// Check if this scope requires cooperative launch
+    pub fn requires_cooperative_launch(&self) -> bool {
+        matches!(self, CooperativeScope::Grid)
+    }
+
+    /// Check if this scope requires sm_90+ (Hopper)
+    pub fn requires_cluster_support(&self) -> bool {
+        matches!(self, CooperativeScope::Cluster)
+    }
+}
+
+/// Cooperative group handle (runtime representation)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CooperativeGroupId(pub u32);
+
+/// Cooperative group partition type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PartitionType {
+    /// Partition by tile size
+    Tiled(u32),
+    /// Partition by label (threads with same label)
+    Labeled,
+    /// Binary partition (predicate-based)
+    Binary,
+}
+
+/// Cooperative group reduce operation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoopReduceOp {
+    Add,
+    Min,
+    Max,
+    And,
+    Or,
+    Xor,
+    Mul,
 }
 
 /// GPU terminator

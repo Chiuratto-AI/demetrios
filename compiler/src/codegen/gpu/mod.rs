@@ -28,6 +28,7 @@
 //! ```
 
 pub mod bio;
+pub mod cooperative;
 pub mod counterfactual;
 pub mod counterfactual_metal;
 pub mod epistemic_ptx;
@@ -44,9 +45,10 @@ pub mod tensor_epistemic;
 
 pub use intrinsics::{GpuIntrinsic, all_intrinsics, get_intrinsic, is_gpu_intrinsic};
 pub use ir::{
-    BlockId, GpuBlock, GpuConstValue, GpuConstant, GpuFunction, GpuKernel, GpuModule, GpuOp,
-    GpuParam, GpuTarget, GpuTerminator, GpuType, MemorySpace, MetalGpuFamily, SharedMemDecl,
-    ValueId, WarpReduceOp, WarpVoteOp,
+    BlockId, CoopReduceOp, CooperativeGroupId, CooperativeScope, GpuBlock, GpuConstValue,
+    GpuConstant, GpuFunction, GpuKernel, GpuModule, GpuOp, GpuParam, GpuTarget, GpuTerminator,
+    GpuType, MemorySpace, MetalGpuFamily, PartitionType, SharedMemDecl, ValueId, WarpReduceOp,
+    WarpVoteOp,
 };
 pub use ptx::PtxCodegen;
 pub use runtime::{
@@ -94,4 +96,10 @@ pub use metal_runtime::{
 pub use bio::{
     add_bio_kernels, gen_dna_complement_kernel, gen_gf4_add_kernel, gen_quaternion_mul_kernel,
     gen_quaternion_normalize_kernel, gen_quaternion_slerp_kernel, gen_transmission_compose_kernel,
+};
+
+// Cooperative Groups kernel generators (CUDA 9.0+ / PTX 6.0+)
+pub use cooperative::{
+    add_cooperative_kernels, gen_ballot_count_kernel, gen_block_reduce_kernel,
+    gen_warp_broadcast_kernel, gen_warp_inclusive_scan_kernel, gen_warp_reduce_sum_kernel,
 };
