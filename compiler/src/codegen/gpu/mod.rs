@@ -27,6 +27,7 @@
 //! let ptx = PtxCodegen::new((8, 0)).generate(&gpu_module);
 //! ```
 
+pub mod autotune;
 pub mod bio;
 pub mod cooperative;
 pub mod counterfactual;
@@ -135,4 +136,11 @@ pub use fusion::{
     FusionCandidate, FusionCandidateId, FusionConfig, FusionCostModel, FusionError, FusionGroup,
     FusionGroupId, FusionPlan, FusionStats, FusionTransformer, FusionType, KernelDependencyGraph,
     KernelId, LaunchConfig as FusionLaunchConfig, ResourceEstimate, SharedMemLayout,
+};
+
+// Auto-tuning for kernel launch configuration (Phase 4)
+pub use autotune::{
+    ArchConstants, AutoTuneConfig, AutoTuner, BlockShape, InstructionMix, KernelAnalyzer,
+    KernelPattern, KernelProfile, MemoryPattern, OccupancyCalculator, OccupancyInfo,
+    OccupancyLimiter, TileConfig, TunedConfig, TuningStrategy, tune_module,
 };
