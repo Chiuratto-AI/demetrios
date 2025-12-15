@@ -30,6 +30,7 @@
 pub mod bio;
 pub mod cooperative;
 pub mod counterfactual;
+pub mod fusion;
 pub mod graph;
 pub mod tile;
 pub mod counterfactual_metal;
@@ -126,4 +127,12 @@ pub use tile::{
     align_to, compute_swizzle_pattern, element_size_bytes, recommended_tile_size,
     shared_memory_bytes, supports_tiles, supports_tma, supports_wgmma, threads_per_tile,
     validate_tile_dims, validate_tile_dims_2d,
+};
+
+// Kernel fusion optimization (Phase 3)
+pub use fusion::{
+    analyze_and_fuse_kernels, ArchConstraints, CostWeights, DependencyType, FusionAnalysis,
+    FusionCandidate, FusionCandidateId, FusionConfig, FusionCostModel, FusionError, FusionGroup,
+    FusionGroupId, FusionPlan, FusionStats, FusionTransformer, FusionType, KernelDependencyGraph,
+    KernelId, LaunchConfig as FusionLaunchConfig, ResourceEstimate, SharedMemLayout,
 };
