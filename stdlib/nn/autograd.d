@@ -887,6 +887,59 @@ fn sgd_nesterov_step(param: f64, g: f64, velocity: f64, lr: f64, momentum: f64) 
 }
 
 // ============================================================================
+// RMSPROP OPTIMIZER
+// ============================================================================
+
+// RMSprop hyperparameters (Hinton, 2012)
+fn RMSPROP_DECAY() -> f64 { return 0.9 }
+fn RMSPROP_EPS() -> f64 { return 0.00000001 }
+
+// Result struct for RMSprop
+struct RMSpropResult {
+    param: f64,
+    cache: f64
+}
+
+// RMSprop update for single parameter
+// Formula: cache = decay * cache + (1 - decay) * gradient^2
+//          param = param - lr * gradient / (sqrt(cache) + epsilon)
+// RMSprop adapts learning rate per-parameter using moving average of squared gradients
+fn rmsprop_step(param: f64, g: f64, cache: f64, lr: f64, decay: f64) -> RMSpropResult {
+    let eps = RMSPROP_EPS()
+
+    // Update cache: moving average of squared gradients
+    let new_cache = decay * cache + (1.0 - decay) * g * g
+
+    // Parameter update with adaptive learning rate
+    let new_param = param - lr * g / (sqrt_f64(new_cache) + eps)
+
+    return RMSpropResult { param: new_param, cache: new_cache }
+}
+
+// RMSprop with momentum (combines RMSprop adaptive lr with momentum)
+struct RMSpropMomentumResult {
+    param: f64,
+    cache: f64,
+    velocity: f64
+}
+
+fn rmsprop_momentum_step(param: f64, g: f64, cache: f64, velocity: f64, lr: f64, decay: f64, momentum: f64) -> RMSpropMomentumResult {
+    let eps = RMSPROP_EPS()
+
+    // Update cache
+    let new_cache = decay * cache + (1.0 - decay) * g * g
+
+    // Compute adaptive gradient
+    let adaptive_g = g / (sqrt_f64(new_cache) + eps)
+
+    // Apply momentum to adaptive gradient
+    let new_velocity = momentum * velocity + adaptive_g
+    let new_param = param - lr * new_velocity
+
+    return RMSpropMomentumResult { param: new_param, cache: new_cache, velocity: new_velocity }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -1533,6 +1586,93 @@ fn main() -> i32 {
     if y1_24 >= y0_24 { ok = false; println("  FAIL: y1 >= y0") }
     if y2_24 >= y1_24 { ok = false; println("  FAIL: y2 >= y1") }
     if y5_24 >= 2.0 { ok = false; println("  FAIL: y5 should be < 2 after 5 steps") }
+    println("")
+
+    // Test 25: RMSprop single step verification
+    println("Test 25: RMSprop single step")
+    let x25 = 5.0
+    let cache25 = 0.0
+    let lr25 = 0.1
+    let decay25 = 0.9
+    let g25 = 2.0 * x25  // gradient = 10.0
+
+    // Manual calculation:
+    // new_cache = 0.9 * 0 + 0.1 * 10^2 = 10
+    // new_param = 5 - 0.1 * 10 / (sqrt(10) + 1e-8) = 5 - 1/sqrt(10) ≈ 4.684
+    let expected_cache25 = decay25 * cache25 + (1.0 - decay25) * g25 * g25
+    let expected_x25 = x25 - lr25 * g25 / (sqrt_f64(expected_cache25) + 0.00000001)
+
+    let result25 = rmsprop_step(x25, g25, cache25, lr25, decay25)
+
+    println("  Manual calculation:")
+    println("    new_cache = ")
+    println(expected_cache25)
+    println("    new_param = ")
+    println(expected_x25)
+    println("  rmsprop_step result:")
+    println("    result.cache = ")
+    println(result25.cache)
+    println("    result.param = ")
+    println(result25.param)
+
+    if abs_f64(expected_cache25 - 10.0) > tol { ok = false; println("  FAIL: expected_cache") }
+    if abs_f64(result25.cache - expected_cache25) > tol { ok = false; println("  FAIL: result.cache") }
+    if abs_f64(result25.param - expected_x25) > tol { ok = false; println("  FAIL: result.param") }
+    println("")
+
+    // Test 26: RMSprop 5-step descent (unrolled)
+    println("Test 26: RMSprop 5-step descent (unrolled)")
+    let z0_26 = 5.0
+    let c0_26 = 0.0
+    let lr26 = 0.1
+    let decay26 = 0.9
+
+    // Step 1
+    let gz1 = 2.0 * z0_26
+    let r1 = rmsprop_step(z0_26, gz1, c0_26, lr26, decay26)
+    let z1_26 = r1.param
+    let c1_26 = r1.cache
+
+    // Step 2
+    let gz2 = 2.0 * z1_26
+    let r2 = rmsprop_step(z1_26, gz2, c1_26, lr26, decay26)
+    let z2_26 = r2.param
+    let c2_26 = r2.cache
+
+    // Step 3
+    let gz3 = 2.0 * z2_26
+    let r3 = rmsprop_step(z2_26, gz3, c2_26, lr26, decay26)
+    let z3_26 = r3.param
+    let c3_26 = r3.cache
+
+    // Step 4
+    let gz4 = 2.0 * z3_26
+    let r4 = rmsprop_step(z3_26, gz4, c3_26, lr26, decay26)
+    let z4_26 = r4.param
+    let c4_26 = r4.cache
+
+    // Step 5
+    let gz5 = 2.0 * z4_26
+    let r5 = rmsprop_step(z4_26, gz5, c4_26, lr26, decay26)
+    let z5_26 = r5.param
+
+    println("  Descent from z=5 with decay=0.9:")
+    println("    z0 = 5.0")
+    println("    z1 = ")
+    println(z1_26)
+    println("    z2 = ")
+    println(z2_26)
+    println("    z3 = ")
+    println(z3_26)
+    println("    z4 = ")
+    println(z4_26)
+    println("    z5 = ")
+    println(z5_26)
+
+    // z should decrease toward 0 (RMSprop converges slower than momentum due to adaptive lr)
+    if z1_26 >= z0_26 { ok = false; println("  FAIL: z1 >= z0") }
+    if z2_26 >= z1_26 { ok = false; println("  FAIL: z2 >= z1") }
+    if z5_26 >= 4.5 { ok = false; println("  FAIL: z5 should be < 4.5 after 5 steps") }
     println("")
 
     if ok {
