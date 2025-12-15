@@ -940,6 +940,36 @@ fn rmsprop_momentum_step(param: f64, g: f64, cache: f64, velocity: f64, lr: f64,
 }
 
 // ============================================================================
+// ADAGRAD OPTIMIZER
+// ============================================================================
+
+// AdaGrad hyperparameters (Duchi et al., 2011)
+fn ADAGRAD_EPS() -> f64 { return 0.00000001 }
+
+// Result struct for AdaGrad
+struct AdaGradResult {
+    param: f64,
+    sum_sq: f64
+}
+
+// AdaGrad update for single parameter
+// Formula: sum_sq = sum_sq + gradient^2  (accumulates ALL past squared gradients)
+//          param = param - lr * gradient / (sqrt(sum_sq) + epsilon)
+// AdaGrad adapts learning rate per-parameter, but lr monotonically decreases
+// Good for sparse gradients, but can stop learning too early in deep nets
+fn adagrad_step(param: f64, g: f64, sum_sq: f64, lr: f64) -> AdaGradResult {
+    let eps = ADAGRAD_EPS()
+
+    // Accumulate squared gradient (no decay - key difference from RMSprop)
+    let new_sum_sq = sum_sq + g * g
+
+    // Parameter update with adaptive learning rate
+    let new_param = param - lr * g / (sqrt_f64(new_sum_sq) + eps)
+
+    return AdaGradResult { param: new_param, sum_sq: new_sum_sq }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -1673,6 +1703,91 @@ fn main() -> i32 {
     if z1_26 >= z0_26 { ok = false; println("  FAIL: z1 >= z0") }
     if z2_26 >= z1_26 { ok = false; println("  FAIL: z2 >= z1") }
     if z5_26 >= 4.5 { ok = false; println("  FAIL: z5 should be < 4.5 after 5 steps") }
+    println("")
+
+    // Test 27: AdaGrad single step verification
+    println("Test 27: AdaGrad single step")
+    let x27 = 5.0
+    let sum_sq27 = 0.0
+    let lr27 = 0.5
+    let g27 = 2.0 * x27  // gradient = 10.0
+
+    // Manual calculation:
+    // new_sum_sq = 0 + 10^2 = 100
+    // new_param = 5 - 0.5 * 10 / (sqrt(100) + 1e-8) = 5 - 5/10 = 4.5
+    let expected_sum_sq27 = sum_sq27 + g27 * g27
+    let expected_x27 = x27 - lr27 * g27 / (sqrt_f64(expected_sum_sq27) + 0.00000001)
+
+    let result27 = adagrad_step(x27, g27, sum_sq27, lr27)
+
+    println("  Manual calculation:")
+    println("    new_sum_sq = ")
+    println(expected_sum_sq27)
+    println("    new_param = ")
+    println(expected_x27)
+    println("  adagrad_step result:")
+    println("    result.sum_sq = ")
+    println(result27.sum_sq)
+    println("    result.param = ")
+    println(result27.param)
+
+    if abs_f64(expected_sum_sq27 - 100.0) > tol { ok = false; println("  FAIL: expected_sum_sq") }
+    if abs_f64(result27.sum_sq - expected_sum_sq27) > tol { ok = false; println("  FAIL: result.sum_sq") }
+    if abs_f64(result27.param - expected_x27) > tol { ok = false; println("  FAIL: result.param") }
+    println("")
+
+    // Test 28: AdaGrad 5-step descent (unrolled)
+    println("Test 28: AdaGrad 5-step descent (unrolled)")
+    let w0_28 = 5.0
+    let sq0_28 = 0.0
+    let lr28 = 0.5
+
+    // Step 1
+    let gw1 = 2.0 * w0_28
+    let a1 = adagrad_step(w0_28, gw1, sq0_28, lr28)
+    let w1_28 = a1.param
+    let sq1_28 = a1.sum_sq
+
+    // Step 2
+    let gw2 = 2.0 * w1_28
+    let a2 = adagrad_step(w1_28, gw2, sq1_28, lr28)
+    let w2_28 = a2.param
+    let sq2_28 = a2.sum_sq
+
+    // Step 3
+    let gw3 = 2.0 * w2_28
+    let a3 = adagrad_step(w2_28, gw3, sq2_28, lr28)
+    let w3_28 = a3.param
+    let sq3_28 = a3.sum_sq
+
+    // Step 4
+    let gw4 = 2.0 * w3_28
+    let a4 = adagrad_step(w3_28, gw4, sq3_28, lr28)
+    let w4_28 = a4.param
+    let sq4_28 = a4.sum_sq
+
+    // Step 5
+    let gw5 = 2.0 * w4_28
+    let a5 = adagrad_step(w4_28, gw5, sq4_28, lr28)
+    let w5_28 = a5.param
+
+    println("  Descent from w=5 (AdaGrad lr decays over time):")
+    println("    w0 = 5.0")
+    println("    w1 = ")
+    println(w1_28)
+    println("    w2 = ")
+    println(w2_28)
+    println("    w3 = ")
+    println(w3_28)
+    println("    w4 = ")
+    println(w4_28)
+    println("    w5 = ")
+    println(w5_28)
+
+    // w should decrease toward 0 (AdaGrad converges even slower as sum_sq grows)
+    if w1_28 >= w0_28 { ok = false; println("  FAIL: w1 >= w0") }
+    if w2_28 >= w1_28 { ok = false; println("  FAIL: w2 >= w1") }
+    if w5_28 >= 4.5 { ok = false; println("  FAIL: w5 should be < 4.5 after 5 steps") }
     println("")
 
     if ok {
