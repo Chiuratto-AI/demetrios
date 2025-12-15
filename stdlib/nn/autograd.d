@@ -1651,6 +1651,356 @@ fn lr_cyclic(min_lr: f64, max_lr: f64, step: f64, cycle_length: f64) -> f64 {
 }
 
 // ============================================================================
+// LOSS FUNCTIONS
+// ============================================================================
+// Each loss function has:
+// - loss_*: compute the loss value
+// - loss_*_grad: compute gradient w.r.t. prediction
+// For use with autograd, use tape operations instead
+
+// Natural log function using Taylor series
+fn ln_f64(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 - 1000000.0 }  // -inf approximation
+    if x == 1.0 { return 0.0 }
+
+    // Use identity: ln(x) = 2 * arctanh((x-1)/(x+1))
+    // arctanh(y) = y + y³/3 + y⁵/5 + y⁷/7 + ...
+    let y = (x - 1.0) / (x + 1.0)
+    let y2 = y * y
+    let y3 = y2 * y
+    let y5 = y3 * y2
+    let y7 = y5 * y2
+    let y9 = y7 * y2
+    let y11 = y9 * y2
+    let y13 = y11 * y2
+
+    return 2.0 * (y + y3/3.0 + y5/5.0 + y7/7.0 + y9/9.0 + y11/11.0 + y13/13.0)
+}
+
+// ----------------------------------------------------------------------------
+// MEAN SQUARED ERROR (MSE) - L2 Loss
+// ----------------------------------------------------------------------------
+// MSE = (1/n) * Σ(pred - target)²
+// Used for: regression tasks
+
+// MSE for single sample
+fn loss_mse(pred: f64, target: f64) -> f64 {
+    let diff = pred - target
+    return diff * diff
+}
+
+// MSE gradient: d(MSE)/d(pred) = 2 * (pred - target)
+fn loss_mse_grad(pred: f64, target: f64) -> f64 {
+    return 2.0 * (pred - target)
+}
+
+// MSE for n samples (mean)
+fn loss_mse_mean(preds: f64, targets: f64, n: f64) -> f64 {
+    let diff = preds - targets
+    return (diff * diff) / n
+}
+
+// ----------------------------------------------------------------------------
+// MEAN ABSOLUTE ERROR (MAE) - L1 Loss
+// ----------------------------------------------------------------------------
+// MAE = (1/n) * Σ|pred - target|
+// Used for: regression, more robust to outliers than MSE
+
+fn loss_mae(pred: f64, target: f64) -> f64 {
+    return abs_f64(pred - target)
+}
+
+// MAE gradient: d(MAE)/d(pred) = sign(pred - target)
+fn loss_mae_grad(pred: f64, target: f64) -> f64 {
+    let diff = pred - target
+    if diff > 0.0 { return 1.0 }
+    if diff < 0.0 { return 0.0 - 1.0 }
+    return 0.0
+}
+
+// ----------------------------------------------------------------------------
+// HUBER LOSS - Smooth L1
+// ----------------------------------------------------------------------------
+// Huber(x) = 0.5 * x² if |x| <= δ
+//          = δ * (|x| - 0.5 * δ) otherwise
+// Used for: regression, robust to outliers
+
+fn HUBER_DELTA() -> f64 { return 1.0 }
+
+fn loss_huber(pred: f64, target: f64, delta: f64) -> f64 {
+    let diff = pred - target
+    let abs_diff = abs_f64(diff)
+    if abs_diff <= delta {
+        return 0.5 * diff * diff
+    } else {
+        return delta * (abs_diff - 0.5 * delta)
+    }
+}
+
+// Huber gradient
+fn loss_huber_grad(pred: f64, target: f64, delta: f64) -> f64 {
+    let diff = pred - target
+    let abs_diff = abs_f64(diff)
+    if abs_diff <= delta {
+        return diff
+    } else {
+        if diff > 0.0 { return delta }
+        return 0.0 - delta
+    }
+}
+
+// Huber with default delta=1.0
+fn loss_huber_default(pred: f64, target: f64) -> f64 {
+    return loss_huber(pred, target, HUBER_DELTA())
+}
+
+fn loss_huber_grad_default(pred: f64, target: f64) -> f64 {
+    return loss_huber_grad(pred, target, HUBER_DELTA())
+}
+
+// ----------------------------------------------------------------------------
+// BINARY CROSS-ENTROPY (BCE)
+// ----------------------------------------------------------------------------
+// BCE = -[y * log(p) + (1-y) * log(1-p)]
+// Used for: binary classification
+// Note: pred should be in (0, 1), typically after sigmoid
+
+fn loss_bce(pred: f64, target: f64) -> f64 {
+    // Clamp pred to avoid log(0)
+    let eps = 0.0000001
+    let p = if pred < eps { eps } else { if pred > 1.0 - eps { 1.0 - eps } else { pred } }
+    return 0.0 - (target * ln_f64(p) + (1.0 - target) * ln_f64(1.0 - p))
+}
+
+// BCE gradient: d(BCE)/d(pred) = (pred - target) / (pred * (1 - pred))
+fn loss_bce_grad(pred: f64, target: f64) -> f64 {
+    let eps = 0.0000001
+    let p = if pred < eps { eps } else { if pred > 1.0 - eps { 1.0 - eps } else { pred } }
+    return (p - target) / (p * (1.0 - p))
+}
+
+// BCE with logits (more numerically stable)
+// BCE_logits = max(z, 0) - z*y + log(1 + exp(-|z|))
+fn loss_bce_logits(logit: f64, target: f64) -> f64 {
+    let abs_logit = abs_f64(logit)
+    let max_val = if logit > 0.0 { logit } else { 0.0 }
+    return max_val - logit * target + ln_f64(1.0 + exp_f64(0.0 - abs_logit))
+}
+
+// BCE with logits gradient: sigmoid(z) - y
+fn loss_bce_logits_grad(logit: f64, target: f64) -> f64 {
+    let sigmoid_z = 1.0 / (1.0 + exp_f64(0.0 - logit))
+    return sigmoid_z - target
+}
+
+// ----------------------------------------------------------------------------
+// CROSS-ENTROPY (CE) - for multi-class (single sample, single class)
+// ----------------------------------------------------------------------------
+// CE = -log(p_correct)
+// Used for: multi-class classification
+// Note: For full softmax CE, sum over all samples
+
+// Cross-entropy for the correct class probability
+fn loss_ce(pred_prob: f64) -> f64 {
+    let eps = 0.0000001
+    let p = if pred_prob < eps { eps } else { pred_prob }
+    return 0.0 - ln_f64(p)
+}
+
+// CE gradient w.r.t. correct class probability: -1/p
+fn loss_ce_grad(pred_prob: f64) -> f64 {
+    let eps = 0.0000001
+    let p = if pred_prob < eps { eps } else { pred_prob }
+    return 0.0 - 1.0 / p
+}
+
+// Softmax cross-entropy gradient (after softmax): pred - one_hot
+// For the correct class: pred - 1
+// For other classes: pred - 0 = pred
+fn loss_softmax_ce_grad(pred_prob: f64, is_correct: f64) -> f64 {
+    return pred_prob - is_correct
+}
+
+// ----------------------------------------------------------------------------
+// HINGE LOSS - SVM-style
+// ----------------------------------------------------------------------------
+// Hinge = max(0, 1 - y * pred)
+// Used for: binary classification (y ∈ {-1, +1})
+
+fn loss_hinge(pred: f64, target: f64) -> f64 {
+    let margin = 1.0 - target * pred
+    if margin > 0.0 { return margin }
+    return 0.0
+}
+
+// Hinge gradient
+fn loss_hinge_grad(pred: f64, target: f64) -> f64 {
+    let margin = 1.0 - target * pred
+    if margin > 0.0 { return 0.0 - target }
+    return 0.0
+}
+
+// Squared hinge loss: max(0, 1 - y * pred)²
+fn loss_hinge_squared(pred: f64, target: f64) -> f64 {
+    let margin = 1.0 - target * pred
+    if margin > 0.0 { return margin * margin }
+    return 0.0
+}
+
+fn loss_hinge_squared_grad(pred: f64, target: f64) -> f64 {
+    let margin = 1.0 - target * pred
+    if margin > 0.0 { return 0.0 - 2.0 * margin * target }
+    return 0.0
+}
+
+// ----------------------------------------------------------------------------
+// KL DIVERGENCE
+// ----------------------------------------------------------------------------
+// KL(P||Q) = Σ p * log(p/q)
+// Used for: comparing probability distributions, VAEs
+
+// KL divergence for single probability pair
+fn loss_kl_div(p: f64, q: f64) -> f64 {
+    let eps = 0.0000001
+    if p < eps { return 0.0 }  // 0 * log(0/q) = 0
+    let q_safe = if q < eps { eps } else { q }
+    return p * ln_f64(p / q_safe)
+}
+
+// KL gradient w.r.t. q: -p/q
+fn loss_kl_div_grad_q(p: f64, q: f64) -> f64 {
+    let eps = 0.0000001
+    let q_safe = if q < eps { eps } else { q }
+    return 0.0 - p / q_safe
+}
+
+// ----------------------------------------------------------------------------
+// FOCAL LOSS - for imbalanced classification
+// ----------------------------------------------------------------------------
+// Focal = -α * (1-p)^γ * log(p) for positive class
+// Used for: object detection, imbalanced datasets (Lin et al., 2017)
+
+fn FOCAL_ALPHA() -> f64 { return 0.25 }
+fn FOCAL_GAMMA() -> f64 { return 2.0 }
+
+fn loss_focal(pred: f64, target: f64, alpha: f64, gamma: f64) -> f64 {
+    let eps = 0.0000001
+    let p = if pred < eps { eps } else { if pred > 1.0 - eps { 1.0 - eps } else { pred } }
+
+    if target > 0.5 {
+        // Positive class: -α * (1-p)^γ * log(p)
+        let focal_weight = pow_f64(1.0 - p, gamma)
+        return 0.0 - alpha * focal_weight * ln_f64(p)
+    } else {
+        // Negative class: -(1-α) * p^γ * log(1-p)
+        let focal_weight = pow_f64(p, gamma)
+        return 0.0 - (1.0 - alpha) * focal_weight * ln_f64(1.0 - p)
+    }
+}
+
+// Focal loss with default parameters
+fn loss_focal_default(pred: f64, target: f64) -> f64 {
+    return loss_focal(pred, target, FOCAL_ALPHA(), FOCAL_GAMMA())
+}
+
+// ----------------------------------------------------------------------------
+// SMOOTH L1 LOSS (same as Huber with delta=1)
+// ----------------------------------------------------------------------------
+// Used in: Faster R-CNN, object detection
+
+fn loss_smooth_l1(pred: f64, target: f64) -> f64 {
+    return loss_huber(pred, target, 1.0)
+}
+
+fn loss_smooth_l1_grad(pred: f64, target: f64) -> f64 {
+    return loss_huber_grad(pred, target, 1.0)
+}
+
+// ----------------------------------------------------------------------------
+// LOG COSH LOSS - smooth approximation to MAE
+// ----------------------------------------------------------------------------
+// LogCosh = log(cosh(pred - target))
+// Used for: regression, smoother than Huber
+
+fn cosh_f64(x: f64) -> f64 {
+    return (exp_f64(x) + exp_f64(0.0 - x)) / 2.0
+}
+
+fn tanh_f64(x: f64) -> f64 {
+    let e2x = exp_f64(2.0 * x)
+    return (e2x - 1.0) / (e2x + 1.0)
+}
+
+fn loss_log_cosh(pred: f64, target: f64) -> f64 {
+    let diff = pred - target
+    return ln_f64(cosh_f64(diff))
+}
+
+// LogCosh gradient: tanh(pred - target)
+fn loss_log_cosh_grad(pred: f64, target: f64) -> f64 {
+    return tanh_f64(pred - target)
+}
+
+// ----------------------------------------------------------------------------
+// QUANTILE LOSS - for quantile regression
+// ----------------------------------------------------------------------------
+// Quantile(q) = q * max(y - pred, 0) + (1-q) * max(pred - y, 0)
+// Used for: predicting confidence intervals
+
+fn loss_quantile(pred: f64, target: f64, quantile: f64) -> f64 {
+    let diff = target - pred
+    if diff >= 0.0 {
+        return quantile * diff
+    } else {
+        return (quantile - 1.0) * diff
+    }
+}
+
+fn loss_quantile_grad(pred: f64, target: f64, quantile: f64) -> f64 {
+    let diff = target - pred
+    if diff >= 0.0 {
+        return 0.0 - quantile
+    } else {
+        return 1.0 - quantile
+    }
+}
+
+// ----------------------------------------------------------------------------
+// COSINE SIMILARITY LOSS
+// ----------------------------------------------------------------------------
+// CosineLoss = 1 - cos_sim(a, b) = 1 - (a·b)/(|a||b|)
+// For single values, this simplifies
+// Used for: embedding similarity, contrastive learning
+
+fn loss_cosine(pred: f64, target: f64) -> f64 {
+    let eps = 0.0000001
+    let pred_norm = abs_f64(pred) + eps
+    let target_norm = abs_f64(target) + eps
+    let cos_sim = (pred * target) / (pred_norm * target_norm)
+    return 1.0 - cos_sim
+}
+
+// ----------------------------------------------------------------------------
+// TRIPLET MARGIN LOSS
+// ----------------------------------------------------------------------------
+// Triplet = max(0, d(a,p) - d(a,n) + margin)
+// Used for: metric learning, face recognition
+// Note: This is a simplified version for scalar values
+
+fn loss_triplet_margin(anchor: f64, positive: f64, negative: f64, margin: f64) -> f64 {
+    let d_pos = abs_f64(anchor - positive)
+    let d_neg = abs_f64(anchor - negative)
+    let loss = d_pos - d_neg + margin
+    if loss > 0.0 { return loss }
+    return 0.0
+}
+
+// Default margin = 1.0
+fn loss_triplet_default(anchor: f64, positive: f64, negative: f64) -> f64 {
+    return loss_triplet_margin(anchor, positive, negative, 1.0)
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -3346,6 +3696,209 @@ fn main() -> i32 {
     // Check inverse sqrt: lr(200) = lr(100) * sqrt(100/200) = 0.001 * sqrt(0.5) ≈ 0.000707
     let expected_isq200 = lr_init48 * sqrt_f64(warmup_steps48) / sqrt_f64(200.0)
     if abs_f64(lr_isq200 - expected_isq200) > tol { ok = false; println("  FAIL: isq200 mismatch") }
+    println("")
+
+    // ========================================================================
+    // LOSS FUNCTION TESTS
+    // ========================================================================
+
+    // Test 49: MSE loss and gradient
+    println("Test 49: MSE loss and gradient")
+    let pred49 = 3.0
+    let target49 = 1.0
+    let mse49 = loss_mse(pred49, target49)
+    let mse_grad49 = loss_mse_grad(pred49, target49)
+
+    println("  pred=3, target=1")
+    println("  MSE = ")
+    println(mse49)
+    println("  MSE grad = ")
+    println(mse_grad49)
+
+    // MSE = (3-1)² = 4, grad = 2*(3-1) = 4
+    if abs_f64(mse49 - 4.0) > tol { ok = false; println("  FAIL: MSE should be 4") }
+    if abs_f64(mse_grad49 - 4.0) > tol { ok = false; println("  FAIL: MSE grad should be 4") }
+    println("")
+
+    // Test 50: MAE loss and gradient
+    println("Test 50: MAE loss and gradient")
+    let pred50 = 5.0
+    let target50 = 2.0
+    let mae50 = loss_mae(pred50, target50)
+    let mae_grad50 = loss_mae_grad(pred50, target50)
+
+    println("  pred=5, target=2")
+    println("  MAE = ")
+    println(mae50)
+    println("  MAE grad = ")
+    println(mae_grad50)
+
+    // MAE = |5-2| = 3, grad = sign(5-2) = 1
+    if abs_f64(mae50 - 3.0) > tol { ok = false; println("  FAIL: MAE should be 3") }
+    if abs_f64(mae_grad50 - 1.0) > tol { ok = false; println("  FAIL: MAE grad should be 1") }
+    println("")
+
+    // Test 51: Huber loss (smooth L1)
+    println("Test 51: Huber loss")
+    let delta51 = 1.0
+
+    // Small error (quadratic region): pred=1.5, target=1.0, diff=0.5
+    let huber_small = loss_huber(1.5, 1.0, delta51)
+    let huber_small_grad = loss_huber_grad(1.5, 1.0, delta51)
+
+    // Large error (linear region): pred=5.0, target=1.0, diff=4.0
+    let huber_large = loss_huber(5.0, 1.0, delta51)
+    let huber_large_grad = loss_huber_grad(5.0, 1.0, delta51)
+
+    println("  Small diff (0.5): loss = ")
+    println(huber_small)
+    println("  Small diff grad = ")
+    println(huber_small_grad)
+    println("  Large diff (4.0): loss = ")
+    println(huber_large)
+    println("  Large diff grad = ")
+    println(huber_large_grad)
+
+    // Small: 0.5 * 0.5² = 0.125, grad = 0.5
+    if abs_f64(huber_small - 0.125) > tol { ok = false; println("  FAIL: Huber small should be 0.125") }
+    if abs_f64(huber_small_grad - 0.5) > tol { ok = false; println("  FAIL: Huber small grad should be 0.5") }
+    // Large: 1.0 * (4.0 - 0.5) = 3.5, grad = 1.0 (delta)
+    if abs_f64(huber_large - 3.5) > tol { ok = false; println("  FAIL: Huber large should be 3.5") }
+    if abs_f64(huber_large_grad - 1.0) > tol { ok = false; println("  FAIL: Huber large grad should be 1.0") }
+    println("")
+
+    // Test 52: Binary cross-entropy
+    println("Test 52: Binary cross-entropy")
+    // BCE for pred=0.8, target=1.0: -log(0.8) ≈ 0.223
+    let bce52 = loss_bce(0.8, 1.0)
+    let bce_grad52 = loss_bce_grad(0.8, 1.0)
+
+    println("  pred=0.8, target=1.0")
+    println("  BCE = ")
+    println(bce52)
+    println("  BCE grad = ")
+    println(bce_grad52)
+
+    // -log(0.8) ≈ 0.223
+    let expected_bce = 0.0 - ln_f64(0.8)
+    if abs_f64(bce52 - expected_bce) > 0.01 { ok = false; println("  FAIL: BCE mismatch") }
+    // grad = (0.8 - 1) / (0.8 * 0.2) = -0.2 / 0.16 = -1.25
+    let expected_bce_grad = (0.8 - 1.0) / (0.8 * 0.2)
+    if abs_f64(bce_grad52 - expected_bce_grad) > 0.01 { ok = false; println("  FAIL: BCE grad mismatch") }
+    println("")
+
+    // Test 53: Hinge loss (SVM)
+    println("Test 53: Hinge loss (SVM)")
+    // Correct classification with margin: pred=2.0, target=1.0
+    let hinge_correct = loss_hinge(2.0, 1.0)
+    // margin = 1 - 1*2 = -1, so loss = max(0, -1) = 0
+
+    // Misclassification: pred=-0.5, target=1.0
+    let hinge_wrong = loss_hinge(0.0 - 0.5, 1.0)
+    // margin = 1 - 1*(-0.5) = 1.5, so loss = max(0, 1.5) = 1.5
+
+    println("  Correct (pred=2, y=1): loss = ")
+    println(hinge_correct)
+    println("  Wrong (pred=-0.5, y=1): loss = ")
+    println(hinge_wrong)
+
+    if abs_f64(hinge_correct - 0.0) > tol { ok = false; println("  FAIL: Hinge correct should be 0") }
+    if abs_f64(hinge_wrong - 1.5) > tol { ok = false; println("  FAIL: Hinge wrong should be 1.5") }
+    println("")
+
+    // Test 54: Log-cosh loss
+    println("Test 54: Log-cosh loss")
+    let logcosh54 = loss_log_cosh(3.0, 1.0)
+    let logcosh_grad54 = loss_log_cosh_grad(3.0, 1.0)
+
+    println("  pred=3, target=1")
+    println("  LogCosh = ")
+    println(logcosh54)
+    println("  LogCosh grad = ")
+    println(logcosh_grad54)
+
+    // log(cosh(2)) ≈ 1.325, tanh(2) ≈ 0.964
+    let expected_logcosh = ln_f64(cosh_f64(2.0))
+    let expected_logcosh_grad = tanh_f64(2.0)
+    if abs_f64(logcosh54 - expected_logcosh) > 0.01 { ok = false; println("  FAIL: LogCosh mismatch") }
+    if abs_f64(logcosh_grad54 - expected_logcosh_grad) > 0.01 { ok = false; println("  FAIL: LogCosh grad mismatch") }
+    println("")
+
+    // Test 55: Focal loss (for imbalanced classification)
+    println("Test 55: Focal loss")
+    // High confidence correct: pred=0.9, target=1.0
+    let focal_high = loss_focal_default(0.9, 1.0)
+    // Low confidence correct: pred=0.6, target=1.0
+    let focal_low = loss_focal_default(0.6, 1.0)
+
+    println("  High confidence (p=0.9, y=1): loss = ")
+    println(focal_high)
+    println("  Low confidence (p=0.6, y=1): loss = ")
+    println(focal_low)
+
+    // Focal loss should be lower for high confidence (downweights easy examples)
+    if focal_high >= focal_low { ok = false; println("  FAIL: Focal should be lower for high conf") }
+    // Both should be positive
+    if focal_high < 0.0 { ok = false; println("  FAIL: Focal should be >= 0") }
+    if focal_low < 0.0 { ok = false; println("  FAIL: Focal should be >= 0") }
+    println("")
+
+    // Test 56: KL divergence
+    println("Test 56: KL divergence")
+    // KL(p=0.3 || q=0.5) = 0.3 * log(0.3/0.5)
+    let kl56 = loss_kl_div(0.3, 0.5)
+
+    println("  KL(p=0.3 || q=0.5) = ")
+    println(kl56)
+
+    let expected_kl = 0.3 * ln_f64(0.3 / 0.5)
+    if abs_f64(kl56 - expected_kl) > 0.01 { ok = false; println("  FAIL: KL mismatch") }
+    // KL should be negative when p < q (for this single term)
+    println("")
+
+    // Test 57: Quantile loss
+    println("Test 57: Quantile loss")
+    // Median (q=0.5): symmetric
+    let quant_under = loss_quantile(1.0, 3.0, 0.5)  // pred=1, target=3, underprediction
+    let quant_over = loss_quantile(5.0, 3.0, 0.5)   // pred=5, target=3, overprediction
+
+    // 90th percentile (q=0.9): penalizes underprediction more
+    let quant90_under = loss_quantile(1.0, 3.0, 0.9)
+    let quant90_over = loss_quantile(5.0, 3.0, 0.9)
+
+    println("  Median (q=0.5), under: ")
+    println(quant_under)
+    println("  Median (q=0.5), over: ")
+    println(quant_over)
+    println("  q=0.9, under: ")
+    println(quant90_under)
+    println("  q=0.9, over: ")
+    println(quant90_over)
+
+    // Median should be symmetric: 0.5 * |3-1| = 1.0, 0.5 * |3-5| = 1.0
+    if abs_f64(quant_under - 1.0) > tol { ok = false; println("  FAIL: Quant median under") }
+    if abs_f64(quant_over - 1.0) > tol { ok = false; println("  FAIL: Quant median over") }
+    // 90th: underprediction = 0.9 * 2 = 1.8, overprediction = 0.1 * 2 = 0.2
+    if abs_f64(quant90_under - 1.8) > tol { ok = false; println("  FAIL: Quant 90 under") }
+    if abs_f64(quant90_over - 0.2) > tol { ok = false; println("  FAIL: Quant 90 over") }
+    println("")
+
+    // Test 58: Triplet margin loss
+    println("Test 58: Triplet margin loss")
+    // Good embedding: anchor closer to positive than negative
+    let trip_good = loss_triplet_default(0.0, 0.1, 2.0)  // d_pos=0.1, d_neg=2.0
+    // Bad embedding: anchor closer to negative
+    let trip_bad = loss_triplet_default(0.0, 2.0, 0.1)   // d_pos=2.0, d_neg=0.1
+
+    println("  Good (d_pos < d_neg): loss = ")
+    println(trip_good)
+    println("  Bad (d_pos > d_neg): loss = ")
+    println(trip_bad)
+
+    // Good: max(0, 0.1 - 2.0 + 1.0) = max(0, -0.9) = 0
+    if abs_f64(trip_good - 0.0) > tol { ok = false; println("  FAIL: Triplet good should be 0") }
+    // Bad: max(0, 2.0 - 0.1 + 1.0) = max(0, 2.9) = 2.9
+    if abs_f64(trip_bad - 2.9) > tol { ok = false; println("  FAIL: Triplet bad should be 2.9") }
     println("")
 
     if ok {
