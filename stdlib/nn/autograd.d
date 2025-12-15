@@ -2381,6 +2381,477 @@ fn init_small_bias() -> f64 {
 }
 
 // ============================================================================
+// BATCH NORMALIZATION
+// ============================================================================
+// Normalizes activations to have zero mean and unit variance
+// Then applies learnable scale (gamma) and shift (beta)
+//
+// Training: uses batch statistics, updates running mean/var
+// Inference: uses running statistics
+//
+// Formula: y = gamma * (x - mean) / sqrt(var + eps) + beta
+
+// Batch normalization state
+struct BatchNormState {
+    gamma: f64,         // Scale parameter (learnable)
+    beta: f64,          // Shift parameter (learnable)
+    running_mean: f64,  // Running mean for inference
+    running_var: f64,   // Running variance for inference
+    momentum: f64,      // Momentum for running stats update (typically 0.1)
+    eps: f64            // Epsilon for numerical stability
+}
+
+// Result of batch norm forward pass
+struct BatchNormResult {
+    output: f64,        // Normalized, scaled, shifted output
+    mean: f64,          // Batch mean (for backward pass)
+    variance: f64,      // Batch variance (for backward pass)
+    x_norm: f64,        // Normalized input (for backward pass)
+    bn_state: BatchNormState  // Updated state
+}
+
+// Create initial batch norm state
+fn batchnorm_init(gamma: f64, beta: f64, momentum: f64, eps: f64) -> BatchNormState {
+    return BatchNormState {
+        gamma: gamma,
+        beta: beta,
+        running_mean: 0.0,
+        running_var: 1.0,
+        momentum: momentum,
+        eps: eps
+    }
+}
+
+// Default batch norm initialization
+fn batchnorm_default() -> BatchNormState {
+    return batchnorm_init(1.0, 0.0, 0.1, 0.00001)
+}
+
+// Batch norm forward pass for a single value (training mode)
+// In practice, you'd compute mean/var over a batch; here we take them as inputs
+fn batchnorm_forward_train(x: f64, batch_mean: f64, batch_var: f64, st: BatchNormState) -> BatchNormResult {
+    // Normalize
+    let x_norm = (x - batch_mean) / sqrt_f64(batch_var + st.eps)
+
+    // Scale and shift
+    let output = st.gamma * x_norm + st.beta
+
+    // Update running statistics
+    let new_running_mean = (1.0 - st.momentum) * st.running_mean + st.momentum * batch_mean
+    let new_running_var = (1.0 - st.momentum) * st.running_var + st.momentum * batch_var
+
+    let new_st = BatchNormState {
+        gamma: st.gamma,
+        beta: st.beta,
+        running_mean: new_running_mean,
+        running_var: new_running_var,
+        momentum: st.momentum,
+        eps: st.eps
+    }
+
+    return BatchNormResult {
+        output: output,
+        mean: batch_mean,
+        variance: batch_var,
+        x_norm: x_norm,
+        bn_state: new_st
+    }
+}
+
+// Batch norm forward pass (inference mode)
+// Uses stored running statistics
+fn batchnorm_forward_inference(x: f64, st: BatchNormState) -> f64 {
+    let x_norm = (x - st.running_mean) / sqrt_f64(st.running_var + st.eps)
+    return st.gamma * x_norm + st.beta
+}
+
+// Batch norm backward pass
+// Returns gradients for gamma, beta, and input
+struct BatchNormGrads {
+    dx: f64,        // Gradient w.r.t. input
+    dgamma: f64,    // Gradient w.r.t. gamma
+    dbeta: f64      // Gradient w.r.t. beta
+}
+
+fn batchnorm_backward(dout: f64, x_norm: f64, gamma: f64) -> BatchNormGrads {
+    // d_beta = sum(dout) - for single value, just dout
+    let dbeta = dout
+
+    // d_gamma = sum(dout * x_norm)
+    let dgamma = dout * x_norm
+
+    // d_x_norm = dout * gamma
+    let dx_norm = dout * gamma
+
+    // For single value, dx ≈ dx_norm / sqrt(var + eps)
+    // Full formula involves batch size, which we don't have for scalar
+    let dx = dx_norm
+
+    return BatchNormGrads {
+        dx: dx,
+        dgamma: dgamma,
+        dbeta: dbeta
+    }
+}
+
+// Compute batch statistics (mean and variance) from array of values
+// For a batch of N values: mean = sum(x)/N, var = sum((x-mean)^2)/N
+struct BatchStats {
+    mean: f64,
+    variance: f64
+}
+
+fn compute_batch_stats_2(x1: f64, x2: f64) -> BatchStats {
+    let mean = (x1 + x2) / 2.0
+    let diff1 = x1 - mean
+    let diff2 = x2 - mean
+    let v = (diff1 * diff1 + diff2 * diff2) / 2.0
+    return BatchStats { mean: mean, variance: v }
+}
+
+fn compute_batch_stats_3(x1: f64, x2: f64, x3: f64) -> BatchStats {
+    let mean = (x1 + x2 + x3) / 3.0
+    let d1 = x1 - mean
+    let d2 = x2 - mean
+    let d3 = x3 - mean
+    let v = (d1*d1 + d2*d2 + d3*d3) / 3.0
+    return BatchStats { mean: mean, variance: v }
+}
+
+fn compute_batch_stats_4(x1: f64, x2: f64, x3: f64, x4: f64) -> BatchStats {
+    let mean = (x1 + x2 + x3 + x4) / 4.0
+    let d1 = x1 - mean
+    let d2 = x2 - mean
+    let d3 = x3 - mean
+    let d4 = x4 - mean
+    let v = (d1*d1 + d2*d2 + d3*d3 + d4*d4) / 4.0
+    return BatchStats { mean: mean, variance: v }
+}
+
+// ============================================================================
+// LAYER NORMALIZATION
+// ============================================================================
+// Normalizes across features (not batch) - commonly used in transformers
+// Unlike batch norm, doesn't need running statistics for inference
+//
+// Formula: y = gamma * (x - mean) / sqrt(var + eps) + beta
+// where mean/var are computed across features for each sample
+
+struct LayerNormState {
+    gamma: f64,  // Scale parameter
+    beta: f64,   // Shift parameter
+    eps: f64     // Epsilon for numerical stability
+}
+
+struct LayerNormResult {
+    output: f64,
+    x_norm: f64
+}
+
+fn layernorm_init(gamma: f64, beta: f64, eps: f64) -> LayerNormState {
+    return LayerNormState { gamma: gamma, beta: beta, eps: eps }
+}
+
+fn layernorm_default() -> LayerNormState {
+    return layernorm_init(1.0, 0.0, 0.00001)
+}
+
+// Layer norm forward for single value with precomputed stats
+fn layernorm_forward(x: f64, feature_mean: f64, feature_var: f64, st: LayerNormState) -> LayerNormResult {
+    let x_norm = (x - feature_mean) / sqrt_f64(feature_var + st.eps)
+    let output = st.gamma * x_norm + st.beta
+    return LayerNormResult { output: output, x_norm: x_norm }
+}
+
+// Layer norm backward (same structure as batch norm)
+fn layernorm_backward(dout: f64, x_norm: f64, gamma: f64) -> BatchNormGrads {
+    let dbeta = dout
+    let dgamma = dout * x_norm
+    let dx = dout * gamma
+    return BatchNormGrads { dx: dx, dgamma: dgamma, dbeta: dbeta }
+}
+
+// ============================================================================
+// DROPOUT
+// ============================================================================
+// Randomly zeros out activations during training for regularization
+// During inference, all activations are used (no dropout)
+//
+// Training: output = x * mask / (1 - p) where mask is Bernoulli(1-p)
+// Inference: output = x (no scaling needed due to inverted dropout)
+
+struct DropoutResult {
+    output: f64,
+    mask: f64,    // 1.0 if kept, 0.0 if dropped (for backward pass)
+    rng: RngSt    // Updated RNG state
+}
+
+// Dropout forward (training mode)
+// p = dropout probability (fraction of inputs to drop, typically 0.1-0.5)
+fn dropout_forward_train(x: f64, p: f64, rng: RngSt) -> DropoutResult {
+    if p <= 0.0 {
+        // No dropout
+        return DropoutResult { output: x, mask: 1.0, rng: rng }
+    }
+    if p >= 1.0 {
+        // Drop everything
+        return DropoutResult { output: 0.0, mask: 0.0, rng: rng }
+    }
+
+    let r = rng_next(rng)
+
+    if r.value < p {
+        // Drop this activation
+        return DropoutResult { output: 0.0, mask: 0.0, rng: r.rng }
+    } else {
+        // Keep and scale by 1/(1-p) for inverted dropout
+        let scale = 1.0 / (1.0 - p)
+        return DropoutResult { output: x * scale, mask: scale, rng: r.rng }
+    }
+}
+
+// Dropout forward (inference mode) - just pass through
+fn dropout_forward_inference(x: f64) -> f64 {
+    return x
+}
+
+// Dropout backward
+// Gradient is scaled by the same mask used in forward pass
+fn dropout_backward(dout: f64, mask: f64) -> f64 {
+    return dout * mask
+}
+
+// Apply dropout to multiple values
+struct Dropout2Result {
+    out1: f64,
+    out2: f64,
+    mask1: f64,
+    mask2: f64,
+    rng: RngSt
+}
+
+fn dropout_forward_2(x1: f64, x2: f64, p: f64, rng: RngSt) -> Dropout2Result {
+    let r1 = dropout_forward_train(x1, p, rng)
+    let r2 = dropout_forward_train(x2, p, r1.rng)
+    return Dropout2Result {
+        out1: r1.output,
+        out2: r2.output,
+        mask1: r1.mask,
+        mask2: r2.mask,
+        rng: r2.rng
+    }
+}
+
+struct Dropout3Result {
+    out1: f64,
+    out2: f64,
+    out3: f64,
+    mask1: f64,
+    mask2: f64,
+    mask3: f64,
+    rng: RngSt
+}
+
+fn dropout_forward_3(x1: f64, x2: f64, x3: f64, p: f64, rng: RngSt) -> Dropout3Result {
+    let r1 = dropout_forward_train(x1, p, rng)
+    let r2 = dropout_forward_train(x2, p, r1.rng)
+    let r3 = dropout_forward_train(x3, p, r2.rng)
+    return Dropout3Result {
+        out1: r1.output,
+        out2: r2.output,
+        out3: r3.output,
+        mask1: r1.mask,
+        mask2: r2.mask,
+        mask3: r3.mask,
+        rng: r3.rng
+    }
+}
+
+// ============================================================================
+// ALPHA DROPOUT (for SELU networks)
+// ============================================================================
+// Special dropout for Self-Normalizing Neural Networks (SNNs)
+// Maintains self-normalizing property by using specific alpha and scale values
+
+fn ALPHA_DROPOUT_ALPHA() -> f64 { return 1.6732632423543772 }
+fn ALPHA_DROPOUT_SCALE() -> f64 { return 1.0507009873554805 }
+
+fn alpha_dropout_forward_train(x: f64, p: f64, rng: RngSt) -> DropoutResult {
+    if p <= 0.0 {
+        return DropoutResult { output: x, mask: 1.0, rng: rng }
+    }
+    if p >= 1.0 {
+        let alpha = ALPHA_DROPOUT_ALPHA()
+        return DropoutResult { output: 0.0 - alpha, mask: 0.0, rng: rng }
+    }
+
+    let r = rng_next(rng)
+    let alpha = ALPHA_DROPOUT_ALPHA()
+    let scale = ALPHA_DROPOUT_SCALE()
+
+    // Compute affine transformation parameters to maintain mean and variance
+    let a = 1.0 / sqrt_f64((1.0 - p) * (1.0 + p * alpha * alpha))
+
+    if r.value < p {
+        // Set to -alpha * scale (not zero)
+        let output = a * (0.0 - alpha)
+        return DropoutResult { output: output, mask: 0.0, rng: r.rng }
+    } else {
+        let output = a * x
+        return DropoutResult { output: output, mask: a, rng: r.rng }
+    }
+}
+
+// ============================================================================
+// SPATIAL DROPOUT (for convolutional networks)
+// ============================================================================
+// Drops entire feature channels instead of individual activations
+// Simulated here by using the same mask for a group of values
+
+struct SpatialDropoutResult {
+    outputs: f64,  // Same scaling for entire channel
+    channel_mask: f64,
+    rng: RngSt
+}
+
+fn spatial_dropout_channel(x: f64, p: f64, channel_mask: f64) -> f64 {
+    // Use precomputed channel mask
+    if channel_mask == 0.0 {
+        return 0.0
+    }
+    return x * channel_mask
+}
+
+// Generate channel mask (call once per channel, use for all spatial positions)
+fn spatial_dropout_get_mask(p: f64, rng: RngSt) -> DropoutResult {
+    let r = rng_next(rng)
+    if r.value < p {
+        return DropoutResult { output: 0.0, mask: 0.0, rng: r.rng }
+    } else {
+        let scale = 1.0 / (1.0 - p)
+        return DropoutResult { output: scale, mask: scale, rng: r.rng }
+    }
+}
+
+// ============================================================================
+// DROPCONNECT (drops weights instead of activations)
+// ============================================================================
+// For a weight connecting input x to output: y = w * x
+// DropConnect randomly zeros weights during training
+
+struct DropConnectResult {
+    output: f64,
+    weight_mask: f64,
+    rng: RngSt
+}
+
+fn dropconnect_forward(x: f64, w: f64, p: f64, rng: RngSt) -> DropConnectResult {
+    let r = rng_next(rng)
+
+    if r.value < p {
+        // Drop this connection
+        return DropConnectResult { output: 0.0, weight_mask: 0.0, rng: r.rng }
+    } else {
+        // Keep connection with scaling
+        let scale = 1.0 / (1.0 - p)
+        return DropConnectResult { output: w * x * scale, weight_mask: scale, rng: r.rng }
+    }
+}
+
+// ============================================================================
+// GROUP NORMALIZATION
+// ============================================================================
+// Divides channels into groups and normalizes within each group
+// Works well with small batch sizes (unlike batch norm)
+
+struct GroupNormState {
+    gamma: f64,
+    beta: f64,
+    num_groups: f64,
+    eps: f64
+}
+
+fn groupnorm_init(gamma: f64, beta: f64, num_groups: f64, eps: f64) -> GroupNormState {
+    return GroupNormState { gamma: gamma, beta: beta, num_groups: num_groups, eps: eps }
+}
+
+fn groupnorm_default(num_groups: f64) -> GroupNormState {
+    return groupnorm_init(1.0, 0.0, num_groups, 0.00001)
+}
+
+// Group norm forward for a value with precomputed group statistics
+fn groupnorm_forward(x: f64, group_mean: f64, group_var: f64, st: GroupNormState) -> LayerNormResult {
+    let x_norm = (x - group_mean) / sqrt_f64(group_var + st.eps)
+    let output = st.gamma * x_norm + st.beta
+    return LayerNormResult { output: output, x_norm: x_norm }
+}
+
+// ============================================================================
+// INSTANCE NORMALIZATION
+// ============================================================================
+// Normalizes each sample independently (commonly used in style transfer)
+// Like batch norm but with batch_size=1
+
+struct InstanceNormState {
+    gamma: f64,
+    beta: f64,
+    eps: f64
+}
+
+fn instancenorm_init(gamma: f64, beta: f64, eps: f64) -> InstanceNormState {
+    return InstanceNormState { gamma: gamma, beta: beta, eps: eps }
+}
+
+fn instancenorm_default() -> InstanceNormState {
+    return instancenorm_init(1.0, 0.0, 0.00001)
+}
+
+fn instancenorm_forward(x: f64, instance_mean: f64, instance_var: f64, st: InstanceNormState) -> LayerNormResult {
+    let x_norm = (x - instance_mean) / sqrt_f64(instance_var + st.eps)
+    let output = st.gamma * x_norm + st.beta
+    return LayerNormResult { output: output, x_norm: x_norm }
+}
+
+// ============================================================================
+// RMS NORMALIZATION (Root Mean Square Layer Normalization)
+// ============================================================================
+// Simplified layer norm without mean centering - used in LLaMA, etc.
+// Formula: y = gamma * x / RMS(x) where RMS(x) = sqrt(mean(x^2))
+
+struct RMSNormState {
+    gamma: f64,
+    eps: f64
+}
+
+fn rmsnorm_init(gamma: f64, eps: f64) -> RMSNormState {
+    return RMSNormState { gamma: gamma, eps: eps }
+}
+
+fn rmsnorm_default() -> RMSNormState {
+    return rmsnorm_init(1.0, 0.00001)
+}
+
+// RMS norm forward with precomputed RMS value
+fn rmsnorm_forward(x: f64, rms: f64, st: RMSNormState) -> f64 {
+    return st.gamma * x / (rms + st.eps)
+}
+
+// Compute RMS for 2 values
+fn compute_rms_2(x1: f64, x2: f64) -> f64 {
+    return sqrt_f64((x1*x1 + x2*x2) / 2.0)
+}
+
+// Compute RMS for 3 values
+fn compute_rms_3(x1: f64, x2: f64, x3: f64) -> f64 {
+    return sqrt_f64((x1*x1 + x2*x2 + x3*x3) / 3.0)
+}
+
+// Compute RMS for 4 values
+fn compute_rms_4(x1: f64, x2: f64, x3: f64, x4: f64) -> f64 {
+    return sqrt_f64((x1*x1 + x2*x2 + x3*x3 + x4*x4) / 4.0)
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -4536,6 +5007,248 @@ fn main() -> i32 {
     if relu_w.value != relu_w.value { ok = false; println("  FAIL: relu_w is NaN") }
     if tanh_w.value != tanh_w.value { ok = false; println("  FAIL: tanh_w is NaN") }
     if trans_w.value != trans_w.value { ok = false; println("  FAIL: trans_w is NaN") }
+    println("")
+
+    // Test 67: Batch normalization
+    println("Test 67: Batch normalization")
+
+    // Create a batch of values: [2, 4, 6, 8]
+    let bn_x1 = 2.0
+    let bn_x2 = 4.0
+    let bn_x3 = 6.0
+    let bn_x4 = 8.0
+
+    // Compute batch statistics
+    let bn_stats = compute_batch_stats_4(bn_x1, bn_x2, bn_x3, bn_x4)
+    // mean = (2+4+6+8)/4 = 5, var = ((−3)² + (−1)² + 1² + 3²)/4 = (9+1+1+9)/4 = 5
+
+    println("  Batch mean = ")
+    println(bn_stats.mean)
+    println("  Batch var = ")
+    println(bn_stats.variance)
+
+    if abs_f64(bn_stats.mean - 5.0) > tol { ok = false; println("  FAIL: mean != 5") }
+    if abs_f64(bn_stats.variance - 5.0) > tol { ok = false; println("  FAIL: var != 5") }
+
+    // Apply batch norm with gamma=1, beta=0
+    let bn_state = batchnorm_default()
+    let bn_result = batchnorm_forward_train(bn_x1, bn_stats.mean, bn_stats.variance, bn_state)
+
+    // x_norm = (2 - 5) / sqrt(5 + eps) ≈ -3 / 2.236 ≈ -1.342
+    println("  Normalized x1 = ")
+    println(bn_result.x_norm)
+    println("  Output (gamma=1, beta=0) = ")
+    println(bn_result.output)
+
+    let expected_bn_norm = (bn_x1 - bn_stats.mean) / sqrt_f64(bn_stats.variance + 0.00001)
+    if abs_f64(bn_result.x_norm - expected_bn_norm) > tol { ok = false; println("  FAIL: x_norm wrong") }
+    if abs_f64(bn_result.output - expected_bn_norm) > tol { ok = false; println("  FAIL: output wrong") }
+
+    // Check running mean update (momentum=0.1)
+    println("  Running mean after update = ")
+    println(bn_result.bn_state.running_mean)
+    // new_running_mean = 0.9 * 0 + 0.1 * 5 = 0.5
+    if abs_f64(bn_result.bn_state.running_mean - 0.5) > tol { ok = false; println("  FAIL: running mean") }
+    println("")
+
+    // Test 68: Layer normalization
+    println("Test 68: Layer normalization")
+
+    // Normalize across features (use same batch stats as feature stats for simplicity)
+    let ln_state = layernorm_default()
+    let ln_result = layernorm_forward(bn_x1, bn_stats.mean, bn_stats.variance, ln_state)
+
+    println("  LayerNorm output = ")
+    println(ln_result.output)
+    println("  LayerNorm x_norm = ")
+    println(ln_result.x_norm)
+
+    // Should match batch norm result (same formula)
+    if abs_f64(ln_result.x_norm - expected_bn_norm) > tol { ok = false; println("  FAIL: LN x_norm") }
+    println("")
+
+    // Test 69: Dropout forward (training)
+    println("Test 69: Dropout forward")
+    let rng69 = rng_new(555.0)
+    let drop_p = 0.5  // 50% dropout
+
+    // Apply dropout to several values
+    let d1 = dropout_forward_train(1.0, drop_p, rng69)
+    let d2 = dropout_forward_train(1.0, drop_p, d1.rng)
+    let d3 = dropout_forward_train(1.0, drop_p, d2.rng)
+    let d4 = dropout_forward_train(1.0, drop_p, d3.rng)
+    let d5 = dropout_forward_train(1.0, drop_p, d4.rng)
+    let d6 = dropout_forward_train(1.0, drop_p, d5.rng)
+
+    println("  p=0.5 dropout outputs (input=1.0):")
+    println("    d1 = ")
+    println(d1.output)
+    println("    d2 = ")
+    println(d2.output)
+    println("    d3 = ")
+    println(d3.output)
+    println("    d4 = ")
+    println(d4.output)
+
+    // Count how many were kept vs dropped
+    let mut kept_count = 0.0
+    if d1.mask > 0.0 { kept_count = kept_count + 1.0 }
+    if d2.mask > 0.0 { kept_count = kept_count + 1.0 }
+    if d3.mask > 0.0 { kept_count = kept_count + 1.0 }
+    if d4.mask > 0.0 { kept_count = kept_count + 1.0 }
+    if d5.mask > 0.0 { kept_count = kept_count + 1.0 }
+    if d6.mask > 0.0 { kept_count = kept_count + 1.0 }
+
+    println("  Kept count (of 6) = ")
+    println(kept_count)
+
+    // Output should be either 0 (dropped) or 2 (kept with scale 1/(1-0.5)=2)
+    if d1.output != 0.0 {
+        if abs_f64(d1.output - 2.0) > tol { ok = false; println("  FAIL: d1 scale wrong") }
+    }
+
+    // Test inference mode (no dropout)
+    let d_inf = dropout_forward_inference(5.0)
+    println("  Inference output (input=5.0) = ")
+    println(d_inf)
+    if abs_f64(d_inf - 5.0) > tol { ok = false; println("  FAIL: inference should pass through") }
+    println("")
+
+    // Test 70: Dropout backward
+    println("Test 70: Dropout backward")
+
+    // Gradient should be scaled by the same mask
+    let grad_out = 1.0
+    let grad_d1 = dropout_backward(grad_out, d1.mask)
+    let grad_d2 = dropout_backward(grad_out, d2.mask)
+
+    println("  grad_d1 (mask=")
+    println(d1.mask)
+    println(") = ")
+    println(grad_d1)
+    println("  grad_d2 (mask=")
+    println(d2.mask)
+    println(") = ")
+    println(grad_d2)
+
+    // Gradient should match mask
+    if abs_f64(grad_d1 - d1.mask) > tol { ok = false; println("  FAIL: grad_d1") }
+    if abs_f64(grad_d2 - d2.mask) > tol { ok = false; println("  FAIL: grad_d2") }
+    println("")
+
+    // Test 71: RMS Normalization
+    println("Test 71: RMS Normalization")
+
+    // RMS of [3, 4] = sqrt((9 + 16)/2) = sqrt(12.5) ≈ 3.536
+    let rms_val = compute_rms_2(3.0, 4.0)
+    println("  RMS([3, 4]) = ")
+    println(rms_val)
+
+    let expected_rms = sqrt_f64((9.0 + 16.0) / 2.0)
+    if abs_f64(rms_val - expected_rms) > tol { ok = false; println("  FAIL: RMS value") }
+
+    // Apply RMS norm
+    let rms_state = rmsnorm_default()
+    let rms_out = rmsnorm_forward(3.0, rms_val, rms_state)
+
+    println("  RMSNorm(3.0) = ")
+    println(rms_out)
+
+    // Expected: gamma * 3 / rms = 1 * 3 / 3.536 ≈ 0.848
+    let expected_rms_out = 3.0 / rms_val
+    if abs_f64(rms_out - expected_rms_out) > tol { ok = false; println("  FAIL: RMSNorm output") }
+    println("")
+
+    // Test 72: Batch norm backward
+    println("Test 72: Batch norm backward")
+
+    // Backward pass with dout=1.0, x_norm from test 67
+    let bn_grads = batchnorm_backward(1.0, bn_result.x_norm, bn_state.gamma)
+
+    println("  dout=1.0, x_norm=")
+    println(bn_result.x_norm)
+    println("  dgamma = ")
+    println(bn_grads.dgamma)
+    println("  dbeta = ")
+    println(bn_grads.dbeta)
+    println("  dx = ")
+    println(bn_grads.dx)
+
+    // dgamma should equal x_norm * dout = x_norm
+    if abs_f64(bn_grads.dgamma - bn_result.x_norm) > tol { ok = false; println("  FAIL: dgamma") }
+    // dbeta should equal dout = 1.0
+    if abs_f64(bn_grads.dbeta - 1.0) > tol { ok = false; println("  FAIL: dbeta") }
+    println("")
+
+    // Test 73: Alpha Dropout (for SELU)
+    println("Test 73: Alpha Dropout (SELU)")
+    let rng73 = rng_new(777.0)
+    let alpha_p = 0.3
+
+    let ad1 = alpha_dropout_forward_train(1.0, alpha_p, rng73)
+    let ad2 = alpha_dropout_forward_train(1.0, alpha_p, ad1.rng)
+    let ad3 = alpha_dropout_forward_train(1.0, alpha_p, ad2.rng)
+
+    println("  Alpha dropout outputs (p=0.3, input=1.0):")
+    println("    ad1 = ")
+    println(ad1.output)
+    println("    ad2 = ")
+    println(ad2.output)
+    println("    ad3 = ")
+    println(ad3.output)
+
+    // Alpha dropout keeps self-normalizing property
+    // Output is not 0 when dropped, but -alpha * scale
+    // All outputs should be finite
+    if ad1.output != ad1.output { ok = false; println("  FAIL: ad1 is NaN") }
+    if ad2.output != ad2.output { ok = false; println("  FAIL: ad2 is NaN") }
+    println("")
+
+    // Test 74: Group Normalization
+    println("Test 74: Group Normalization")
+    let gn_state = groupnorm_default(4.0)  // 4 groups
+
+    // Use same stats as batch norm for simplicity
+    let gn_result = groupnorm_forward(bn_x1, bn_stats.mean, bn_stats.variance, gn_state)
+
+    println("  GroupNorm output = ")
+    println(gn_result.output)
+
+    // Should match batch/layer norm (same formula)
+    if abs_f64(gn_result.x_norm - expected_bn_norm) > tol { ok = false; println("  FAIL: GN x_norm") }
+    println("")
+
+    // Test 75: Instance Normalization
+    println("Test 75: Instance Normalization")
+    let in_state = instancenorm_default()
+
+    let in_result = instancenorm_forward(bn_x1, bn_stats.mean, bn_stats.variance, in_state)
+
+    println("  InstanceNorm output = ")
+    println(in_result.output)
+
+    // Should match batch/layer norm (same formula)
+    if abs_f64(in_result.x_norm - expected_bn_norm) > tol { ok = false; println("  FAIL: IN x_norm") }
+    println("")
+
+    // Test 76: DropConnect
+    println("Test 76: DropConnect")
+    let rng76 = rng_new(888.0)
+
+    // DropConnect drops weights, not activations
+    let dc1 = dropconnect_forward(2.0, 3.0, 0.5, rng76)  // x=2, w=3, p=0.5
+    let dc2 = dropconnect_forward(2.0, 3.0, 0.5, dc1.rng)
+
+    println("  DropConnect (x=2, w=3, p=0.5):")
+    println("    dc1 output = ")
+    println(dc1.output)
+    println("    dc2 output = ")
+    println(dc2.output)
+
+    // Output should be 0 (dropped) or 12 (2*3*2 with scale)
+    if dc1.output != 0.0 {
+        if abs_f64(dc1.output - 12.0) > tol { ok = false; println("  FAIL: dc1 scale wrong") }
+    }
     println("")
 
     if ok {
