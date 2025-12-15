@@ -1014,6 +1014,81 @@ fn adadelta_step(param: f64, g: f64, acc_grad: f64, acc_delta: f64, rho: f64) ->
 }
 
 // ============================================================================
+// ADAMW OPTIMIZER (DECOUPLED WEIGHT DECAY)
+// ============================================================================
+
+// AdamW hyperparameters (Loshchilov & Hutter, 2017)
+fn ADAMW_BETA1() -> f64 { return 0.9 }
+fn ADAMW_BETA2() -> f64 { return 0.999 }
+fn ADAMW_EPS() -> f64 { return 0.00000001 }
+fn ADAMW_WEIGHT_DECAY() -> f64 { return 0.01 }  // Common default
+
+// Result struct for AdamW (same as Adam)
+struct AdamWResult {
+    param: f64,
+    m: f64,
+    v: f64
+}
+
+// AdamW update for single parameter
+// Key difference from Adam: weight decay is DECOUPLED from gradient update
+// Adam + L2: g = g + λ*w, then apply Adam (couples decay with adaptive lr)
+// AdamW: apply Adam update, then subtract λ*w separately (proper regularization)
+//
+// Formula: m = β1*m + (1-β1)*g
+//          v = β2*v + (1-β2)*g²
+//          m_hat = m / (1-β1^t)
+//          v_hat = v / (1-β2^t)
+//          param = param - lr * (m_hat/(√v_hat+ε) + λ*param)
+//
+// This is equivalent to:
+//          param = (1 - lr*λ)*param - lr*m_hat/(√v_hat+ε)
+fn adamw_step(param: f64, g: f64, m: f64, v: f64, timestep: f64, lr: f64, weight_decay: f64) -> AdamWResult {
+    let beta1 = ADAMW_BETA1()
+    let beta2 = ADAMW_BETA2()
+    let eps = ADAMW_EPS()
+
+    // Update biased first moment estimate
+    let new_m = beta1 * m + (1.0 - beta1) * g
+
+    // Update biased second raw moment estimate
+    let new_v = beta2 * v + (1.0 - beta2) * g * g
+
+    // Compute bias-corrected estimates
+    let m_hat = new_m / (1.0 - pow_f64(beta1, timestep))
+    let v_hat = new_v / (1.0 - pow_f64(beta2, timestep))
+
+    // AdamW update: decoupled weight decay
+    // First apply Adam update, then apply weight decay separately
+    let adam_update = lr * m_hat / (sqrt_f64(v_hat) + eps)
+    let decay_update = lr * weight_decay * param
+    let new_param = param - adam_update - decay_update
+
+    return AdamWResult { param: new_param, m: new_m, v: new_v }
+}
+
+// AdamW with running powers (more efficient for training loops)
+// Instead of computing pow_f64(beta, t) each step, caller tracks beta1^t and beta2^t
+fn adamw_step_fast(param: f64, g: f64, m: f64, v: f64, beta1_t: f64, beta2_t: f64, lr: f64, weight_decay: f64) -> AdamWResult {
+    let beta1 = ADAMW_BETA1()
+    let beta2 = ADAMW_BETA2()
+    let eps = ADAMW_EPS()
+
+    // Update moments
+    let new_m = beta1 * m + (1.0 - beta1) * g
+    let new_v = beta2 * v + (1.0 - beta2) * g * g
+
+    // Bias correction using pre-computed powers
+    let m_hat = new_m / (1.0 - beta1_t)
+    let v_hat = new_v / (1.0 - beta2_t)
+
+    // Decoupled weight decay update
+    let new_param = param - lr * m_hat / (sqrt_f64(v_hat) + eps) - lr * weight_decay * param
+
+    return AdamWResult { param: new_param, m: new_m, v: new_v }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -1933,6 +2008,108 @@ fn main() -> i32 {
     if p1_30 >= p0_30 { ok = false; println("  FAIL: p1 >= p0") }
     if p2_30 >= p1_30 { ok = false; println("  FAIL: p2 >= p1") }
     if p5_30 >= p0_30 { ok = false; println("  FAIL: p5 should be < p0 after 5 steps") }
+    println("")
+
+    // Test 31: AdamW single step - verify weight decay is applied
+    println("Test 31: AdamW single step with weight decay")
+    let x31 = 5.0
+    let m31 = 0.0
+    let v31 = 0.0
+    let lr31 = 0.1
+    let wd31 = 0.01  // weight decay
+    let g31 = 2.0 * x31  // gradient = 10.0
+
+    // Compare Adam vs AdamW at timestep 1
+    // Adam: just gradient update
+    // AdamW: gradient update + weight decay
+    let adam_result31 = adam_step_single(x31, g31, m31, v31, 1.0, lr31)
+    let adamw_result31 = adamw_step(x31, g31, m31, v31, 1.0, lr31, wd31)
+
+    // Weight decay should make AdamW param smaller than Adam param
+    // decay_term = lr * wd * param = 0.1 * 0.01 * 5 = 0.005
+    let expected_decay = lr31 * wd31 * x31
+
+    println("  Adam result (no weight decay):")
+    println("    param = ")
+    println(adam_result31.param)
+    println("  AdamW result (with weight decay):")
+    println("    param = ")
+    println(adamw_result31.param)
+    println("  Expected decay term = ")
+    println(expected_decay)
+    println("  Difference (Adam - AdamW) = ")
+    println(adam_result31.param - adamw_result31.param)
+
+    // AdamW should produce smaller param due to weight decay
+    if adamw_result31.param >= adam_result31.param { ok = false; println("  FAIL: AdamW should be < Adam") }
+    // The difference should be approximately the decay term
+    if abs_f64((adam_result31.param - adamw_result31.param) - expected_decay) > tol {
+        ok = false
+        println("  FAIL: decay difference incorrect")
+    }
+    // Moments should be the same (weight decay doesn't affect moments)
+    if abs_f64(adamw_result31.m - adam_result31.m) > tol { ok = false; println("  FAIL: m should match") }
+    if abs_f64(adamw_result31.v - adam_result31.v) > tol { ok = false; println("  FAIL: v should match") }
+    println("")
+
+    // Test 32: AdamW 5-step descent with weight decay (unrolled)
+    println("Test 32: AdamW 5-step descent (unrolled)")
+    let q0_32 = 5.0
+    let mq0_32 = 0.0
+    let vq0_32 = 0.0
+    let lr32 = 0.1
+    let wd32 = 0.01
+
+    // Step 1
+    let gq1 = 2.0 * q0_32
+    let w1 = adamw_step(q0_32, gq1, mq0_32, vq0_32, 1.0, lr32, wd32)
+    let q1_32 = w1.param
+    let mq1_32 = w1.m
+    let vq1_32 = w1.v
+
+    // Step 2
+    let gq2 = 2.0 * q1_32
+    let w2 = adamw_step(q1_32, gq2, mq1_32, vq1_32, 2.0, lr32, wd32)
+    let q2_32 = w2.param
+    let mq2_32 = w2.m
+    let vq2_32 = w2.v
+
+    // Step 3
+    let gq3 = 2.0 * q2_32
+    let w3 = adamw_step(q2_32, gq3, mq2_32, vq2_32, 3.0, lr32, wd32)
+    let q3_32 = w3.param
+    let mq3_32 = w3.m
+    let vq3_32 = w3.v
+
+    // Step 4
+    let gq4 = 2.0 * q3_32
+    let w4 = adamw_step(q3_32, gq4, mq3_32, vq3_32, 4.0, lr32, wd32)
+    let q4_32 = w4.param
+    let mq4_32 = w4.m
+    let vq4_32 = w4.v
+
+    // Step 5
+    let gq5 = 2.0 * q4_32
+    let w5 = adamw_step(q4_32, gq5, mq4_32, vq4_32, 5.0, lr32, wd32)
+    let q5_32 = w5.param
+
+    println("  Descent from q=5 with AdamW (lr=0.1, wd=0.01):")
+    println("    q0 = 5.0")
+    println("    q1 = ")
+    println(q1_32)
+    println("    q2 = ")
+    println(q2_32)
+    println("    q3 = ")
+    println(q3_32)
+    println("    q4 = ")
+    println(q4_32)
+    println("    q5 = ")
+    println(q5_32)
+
+    // q should decrease toward 0 (AdamW converges slightly slower due to weight decay)
+    if q1_32 >= q0_32 { ok = false; println("  FAIL: q1 >= q0") }
+    if q2_32 >= q1_32 { ok = false; println("  FAIL: q2 >= q1") }
+    if q5_32 >= 4.5 { ok = false; println("  FAIL: q5 should be < 4.5 after 5 steps") }
     println("")
 
     if ok {
