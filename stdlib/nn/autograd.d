@@ -58,6 +58,18 @@ fn leaky_relu_f64(x: f64, alpha: f64) -> f64 {
     return alpha * x
 }
 
+// Max of two f64 values
+fn max_f64(a: f64, b: f64) -> f64 {
+    if a > b { return a }
+    return b
+}
+
+// Min of two f64 values
+fn min_f64(a: f64, b: f64) -> f64 {
+    if a < b { return a }
+    return b
+}
+
 // ============================================================================
 // OPERATION CODES
 // ============================================================================
@@ -4975,6 +4987,804 @@ fn seq2seq_output_3(
 }
 
 // ============================================================================
+// CONVOLUTIONAL NEURAL NETWORK LAYERS
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Conv1D - 1D Convolution for Sequences
+// Input shape: (sequence_length,), Kernel shape: (kernel_size,)
+// Output shape: (output_length,) where output_length = (input - kernel + 2*pad) / stride + 1
+// ----------------------------------------------------------------------------
+
+// Conv1D result for kernel size 3
+struct Conv1DResult3 {
+    y1: f64,
+    y2: f64,
+    y3: f64
+}
+
+// Simple Conv1D with kernel size 3, stride 1, no padding
+// input: 5 elements, kernel: 3 elements -> output: 3 elements
+fn conv1d_k3_s1(
+    x1: f64, x2: f64, x3: f64, x4: f64, x5: f64,
+    k1: f64, k2: f64, k3: f64,
+    bias: f64
+) -> Conv1DResult3 {
+    // y[i] = sum(x[i:i+k] * kernel) + bias
+    let y1 = x1 * k1 + x2 * k2 + x3 * k3 + bias
+    let y2 = x2 * k1 + x3 * k2 + x4 * k3 + bias
+    let y3 = x3 * k1 + x4 * k2 + x5 * k3 + bias
+    return Conv1DResult3 { y1: y1, y2: y2, y3: y3 }
+}
+
+// Conv1D with stride 2
+struct Conv1DStride2Result {
+    y1: f64,
+    y2: f64
+}
+
+fn conv1d_k3_s2(
+    x1: f64, x2: f64, x3: f64, x4: f64, x5: f64,
+    k1: f64, k2: f64, k3: f64,
+    bias: f64
+) -> Conv1DStride2Result {
+    // stride=2: take every 2nd position
+    let y1 = x1 * k1 + x2 * k2 + x3 * k3 + bias
+    let y2 = x3 * k1 + x4 * k2 + x5 * k3 + bias
+    return Conv1DStride2Result { y1: y1, y2: y2 }
+}
+
+// Conv1D with padding (same padding for kernel size 3 means pad=1)
+fn conv1d_k3_same(
+    x1: f64, x2: f64, x3: f64, x4: f64, x5: f64,
+    k1: f64, k2: f64, k3: f64,
+    bias: f64
+) -> Vec5 {
+    // Pad with zeros: [0, x1, x2, x3, x4, x5, 0]
+    // Output has same size as input
+    let y1 = 0.0 * k1 + x1 * k2 + x2 * k3 + bias
+    let y2 = x1 * k1 + x2 * k2 + x3 * k3 + bias
+    let y3 = x2 * k1 + x3 * k2 + x4 * k3 + bias
+    let y4 = x3 * k1 + x4 * k2 + x5 * k3 + bias
+    let y5 = x4 * k1 + x5 * k2 + 0.0 * k3 + bias
+    return Vec5 { x1: y1, x2: y2, x3: y3, x4: y4, x5: y5 }
+}
+
+// Conv1D with dilation (atrous convolution)
+// Dilation=2 means skip every other element in input
+fn conv1d_k3_dilated(
+    x1: f64, x2: f64, x3: f64, x4: f64, x5: f64,
+    k1: f64, k2: f64, k3: f64,
+    bias: f64,
+    dilation: f64
+) -> f64 {
+    // With dilation=2, kernel spans positions 0, 2, 4 of input
+    // effective receptive field = kernel_size + (kernel_size - 1) * (dilation - 1)
+    // = 3 + 2 * 1 = 5 for dilation=2
+    if dilation > 1.5 {
+        // dilation=2: use x1, x3, x5
+        return x1 * k1 + x3 * k2 + x5 * k3 + bias
+    }
+    // dilation=1: normal convolution
+    return x1 * k1 + x2 * k2 + x3 * k3 + bias
+}
+
+// ----------------------------------------------------------------------------
+// Conv2D - 2D Convolution for Images
+// Input shape: (H, W), Kernel shape: (kH, kW)
+// For simplicity, using 3x3 input and 2x2 kernel -> 2x2 output
+// ----------------------------------------------------------------------------
+
+// 3x3 matrix (image patch)
+struct Mat3x3 {
+    m11: f64, m12: f64, m13: f64,
+    m21: f64, m22: f64, m23: f64,
+    m31: f64, m32: f64, m33: f64
+}
+
+// 2x2 convolution filter
+struct ConvFilter2x2 {
+    k11: f64, k12: f64,
+    k21: f64, k22: f64
+}
+
+// 2x2 output
+struct Conv2DResult2x2 {
+    y11: f64, y12: f64,
+    y21: f64, y22: f64
+}
+
+// Conv2D with 2x2 kernel, stride 1, no padding
+// 3x3 input -> 2x2 output
+fn conv2d_k2_s1(input: Mat3x3, filt: ConvFilter2x2, bias: f64) -> Conv2DResult2x2 {
+    // Top-left
+    let y11 = input.m11 * filt.k11 + input.m12 * filt.k12 +
+              input.m21 * filt.k21 + input.m22 * filt.k22 + bias
+    // Top-right
+    let y12 = input.m12 * filt.k11 + input.m13 * filt.k12 +
+              input.m22 * filt.k21 + input.m23 * filt.k22 + bias
+    // Bottom-left
+    let y21 = input.m21 * filt.k11 + input.m22 * filt.k12 +
+              input.m31 * filt.k21 + input.m32 * filt.k22 + bias
+    // Bottom-right
+    let y22 = input.m22 * filt.k11 + input.m23 * filt.k12 +
+              input.m32 * filt.k21 + input.m33 * filt.k22 + bias
+
+    return Conv2DResult2x2 { y11: y11, y12: y12, y21: y21, y22: y22 }
+}
+
+// 3x3 convolution filter for larger convolutions
+struct ConvFilter3x3 {
+    k11: f64, k12: f64, k13: f64,
+    k21: f64, k22: f64, k23: f64,
+    k31: f64, k32: f64, k33: f64
+}
+
+// Conv2D with 3x3 kernel on 3x3 input (valid padding) -> scalar output
+fn conv2d_k3_valid(input: Mat3x3, filt: ConvFilter3x3, bias: f64) -> f64 {
+    let sum_val = input.m11 * filt.k11 + input.m12 * filt.k12 + input.m13 * filt.k13 +
+           input.m21 * filt.k21 + input.m22 * filt.k22 + input.m23 * filt.k23 +
+           input.m31 * filt.k31 + input.m32 * filt.k32 + input.m33 * filt.k33
+    return sum_val + bias
+}
+
+// Conv2D with 3x3 kernel, same padding on 3x3 input -> 3x3 output
+// This requires padding the input to 5x5
+fn conv2d_k3_same_center(input: Mat3x3, filt: ConvFilter3x3, bias: f64) -> f64 {
+    // Just compute center element (which equals valid conv result)
+    return conv2d_k3_valid(input, filt, bias)
+}
+
+// ----------------------------------------------------------------------------
+// Pooling Layers - MaxPool and AvgPool
+// ----------------------------------------------------------------------------
+
+// MaxPool1D with kernel size 2
+struct MaxPool1DResult {
+    y1: f64,
+    y2: f64
+}
+
+fn maxpool1d_k2(x1: f64, x2: f64, x3: f64, x4: f64) -> MaxPool1DResult {
+    let max1 = if x1 > x2 { x1 } else { x2 }
+    let max2 = if x3 > x4 { x3 } else { x4 }
+    return MaxPool1DResult { y1: max1, y2: max2 }
+}
+
+// MaxPool1D with kernel size 3, stride 1
+fn maxpool1d_k3_s1(x1: f64, x2: f64, x3: f64, x4: f64, x5: f64) -> Conv1DResult3 {
+    let max1 = max_f64(max_f64(x1, x2), x3)
+    let max2 = max_f64(max_f64(x2, x3), x4)
+    let max3 = max_f64(max_f64(x3, x4), x5)
+    return Conv1DResult3 { y1: max1, y2: max2, y3: max3 }
+}
+
+// AvgPool1D with kernel size 2
+fn avgpool1d_k2(x1: f64, x2: f64, x3: f64, x4: f64) -> MaxPool1DResult {
+    let avg1 = (x1 + x2) / 2.0
+    let avg2 = (x3 + x4) / 2.0
+    return MaxPool1DResult { y1: avg1, y2: avg2 }
+}
+
+// MaxPool2D with 2x2 kernel
+fn maxpool2d_k2(input: Conv2DResult2x2) -> f64 {
+    let max1 = max_f64(input.y11, input.y12)
+    let max2 = max_f64(input.y21, input.y22)
+    return max_f64(max1, max2)
+}
+
+// AvgPool2D with 2x2 kernel
+fn avgpool2d_k2(input: Conv2DResult2x2) -> f64 {
+    return (input.y11 + input.y12 + input.y21 + input.y22) / 4.0
+}
+
+// MaxPool2D on 3x3 with 2x2 kernel, stride 1 -> 2x2 output
+fn maxpool2d_3x3_k2(input: Mat3x3) -> Conv2DResult2x2 {
+    let y11 = max_f64(max_f64(input.m11, input.m12), max_f64(input.m21, input.m22))
+    let y12 = max_f64(max_f64(input.m12, input.m13), max_f64(input.m22, input.m23))
+    let y21 = max_f64(max_f64(input.m21, input.m22), max_f64(input.m31, input.m32))
+    let y22 = max_f64(max_f64(input.m22, input.m23), max_f64(input.m32, input.m33))
+    return Conv2DResult2x2 { y11: y11, y12: y12, y21: y21, y22: y22 }
+}
+
+// ----------------------------------------------------------------------------
+// Global Pooling - Reduces spatial dimensions to 1
+// ----------------------------------------------------------------------------
+
+// Global Average Pooling 1D
+fn global_avgpool1d_5(x1: f64, x2: f64, x3: f64, x4: f64, x5: f64) -> f64 {
+    return (x1 + x2 + x3 + x4 + x5) / 5.0
+}
+
+// Global Max Pooling 1D
+fn global_maxpool1d_5(x1: f64, x2: f64, x3: f64, x4: f64, x5: f64) -> f64 {
+    let max1 = max_f64(max_f64(x1, x2), x3)
+    let max2 = max_f64(x4, x5)
+    return max_f64(max1, max2)
+}
+
+// Global Average Pooling 2D
+fn global_avgpool2d(input: Mat3x3) -> f64 {
+    let sum_val = input.m11 + input.m12 + input.m13 +
+           input.m21 + input.m22 + input.m23 +
+           input.m31 + input.m32 + input.m33
+    return sum_val / 9.0
+}
+
+// Global Max Pooling 2D
+fn global_maxpool2d(input: Mat3x3) -> f64 {
+    let max_row1 = max_f64(max_f64(input.m11, input.m12), input.m13)
+    let max_row2 = max_f64(max_f64(input.m21, input.m22), input.m23)
+    let max_row3 = max_f64(max_f64(input.m31, input.m32), input.m33)
+    return max_f64(max_f64(max_row1, max_row2), max_row3)
+}
+
+// ----------------------------------------------------------------------------
+// Depthwise Separable Convolution
+// Splits convolution into depthwise (spatial) and pointwise (1x1) parts
+// More efficient: O(k²·C + C·C') vs O(k²·C·C') for standard conv
+// ----------------------------------------------------------------------------
+
+// Depthwise conv: apply separate filter per channel
+struct DepthwiseResult {
+    ch1: f64,
+    ch2: f64
+}
+
+fn depthwise_conv1d_k3(
+    // Channel 1 input
+    c1_x1: f64, c1_x2: f64, c1_x3: f64,
+    // Channel 2 input
+    c2_x1: f64, c2_x2: f64, c2_x3: f64,
+    // Channel 1 kernel
+    c1_k1: f64, c1_k2: f64, c1_k3: f64,
+    // Channel 2 kernel
+    c2_k1: f64, c2_k2: f64, c2_k3: f64
+) -> DepthwiseResult {
+    // Each channel convolved with its own kernel
+    let ch1 = c1_x1 * c1_k1 + c1_x2 * c1_k2 + c1_x3 * c1_k3
+    let ch2 = c2_x1 * c2_k1 + c2_x2 * c2_k2 + c2_x3 * c2_k3
+    return DepthwiseResult { ch1: ch1, ch2: ch2 }
+}
+
+// Pointwise conv (1x1): mix channels
+fn pointwise_conv(
+    ch1: f64, ch2: f64,
+    w11: f64, w12: f64,  // weights for output channel 1
+    w21: f64, w22: f64   // weights for output channel 2
+) -> DepthwiseResult {
+    let out1 = ch1 * w11 + ch2 * w12
+    let out2 = ch1 * w21 + ch2 * w22
+    return DepthwiseResult { ch1: out1, ch2: out2 }
+}
+
+// Full depthwise separable conv
+fn depthwise_separable_conv(
+    // Input (2 channels, 3 positions each)
+    c1_x1: f64, c1_x2: f64, c1_x3: f64,
+    c2_x1: f64, c2_x2: f64, c2_x3: f64,
+    // Depthwise kernels
+    c1_k1: f64, c1_k2: f64, c1_k3: f64,
+    c2_k1: f64, c2_k2: f64, c2_k3: f64,
+    // Pointwise weights
+    w11: f64, w12: f64,
+    w21: f64, w22: f64
+) -> DepthwiseResult {
+    let dw = depthwise_conv1d_k3(
+        c1_x1, c1_x2, c1_x3, c2_x1, c2_x2, c2_x3,
+        c1_k1, c1_k2, c1_k3, c2_k1, c2_k2, c2_k3
+    )
+    return pointwise_conv(dw.ch1, dw.ch2, w11, w12, w21, w22)
+}
+
+// ----------------------------------------------------------------------------
+// Transposed Convolution (Deconvolution / Fractionally Strided Conv)
+// Used for upsampling in autoencoders, GANs, semantic segmentation
+// ----------------------------------------------------------------------------
+
+// TransposedConv1D: upsamples by stride factor
+// Input: 2 elements, output: 3 elements (with kernel size 2, stride 1)
+struct TransConv1DResult {
+    y1: f64,
+    y2: f64,
+    y3: f64
+}
+
+fn transposed_conv1d_k2(
+    x1: f64, x2: f64,
+    k1: f64, k2: f64,
+    bias: f64
+) -> TransConv1DResult {
+    // Transposed conv: scatter input values through kernel
+    // y[0] = x[0] * k[0]
+    // y[1] = x[0] * k[1] + x[1] * k[0]
+    // y[2] = x[1] * k[1]
+    let y1 = x1 * k1 + bias
+    let y2 = x1 * k2 + x2 * k1 + bias
+    let y3 = x2 * k2 + bias
+    return TransConv1DResult { y1: y1, y2: y2, y3: y3 }
+}
+
+// TransposedConv1D with stride 2 (doubles length)
+// Input: 2 elements -> Output: 5 elements
+struct TransConv1DStride2Result {
+    y1: f64,
+    y2: f64,
+    y3: f64,
+    y4: f64,
+    y5: f64
+}
+
+fn transposed_conv1d_k3_s2(
+    x1: f64, x2: f64,
+    k1: f64, k2: f64, k3: f64,
+    bias: f64
+) -> TransConv1DStride2Result {
+    // Stride 2: insert zeros between inputs, then convolve
+    // Equivalent to placing kernels at stride-2 positions
+    let y1 = x1 * k1 + bias
+    let y2 = x1 * k2 + bias
+    let y3 = x1 * k3 + x2 * k1 + bias
+    let y4 = x2 * k2 + bias
+    let y5 = x2 * k3 + bias
+    return TransConv1DStride2Result { y1: y1, y2: y2, y3: y3, y4: y4, y5: y5 }
+}
+
+// TransposedConv2D 2x2 kernel: 2x2 input -> 3x3 output
+fn transposed_conv2d_k2(
+    x11: f64, x12: f64,
+    x21: f64, x22: f64,
+    k11: f64, k12: f64,
+    k21: f64, k22: f64,
+    bias: f64
+) -> Mat3x3 {
+    // Scatter each input through kernel
+    let m11 = x11 * k11 + bias
+    let m12 = x11 * k12 + x12 * k11 + bias
+    let m13 = x12 * k12 + bias
+    let m21 = x11 * k21 + x21 * k11 + bias
+    let m22 = x11 * k22 + x12 * k21 + x21 * k12 + x22 * k11 + bias
+    let m23 = x12 * k22 + x22 * k12 + bias
+    let m31 = x21 * k21 + bias
+    let m32 = x21 * k22 + x22 * k21 + bias
+    let m33 = x22 * k22 + bias
+
+    return Mat3x3 {
+        m11: m11, m12: m12, m13: m13,
+        m21: m21, m22: m22, m23: m23,
+        m31: m31, m32: m32, m33: m33
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Batch Normalization for Convolutions
+// Normalizes across batch and spatial dimensions, per channel
+// ----------------------------------------------------------------------------
+
+struct ConvBNResult {
+    normalized: f64,
+    running_mean: f64,
+    running_var: f64
+}
+
+fn conv_batch_norm(
+    conv_output: f64,
+    running_mean: f64,
+    running_var: f64,
+    gamma: f64,
+    beta: f64,
+    momentum: f64,
+    is_training: f64
+) -> ConvBNResult {
+    let epsilon = 0.00001
+
+    if is_training > 0.5 {
+        // During training, update running stats
+        let new_mean = momentum * running_mean + (1.0 - momentum) * conv_output
+        let diff = conv_output - running_mean
+        let new_var = momentum * running_var + (1.0 - momentum) * diff * diff
+
+        let normalized = (conv_output - new_mean) / sqrt_f64(new_var + epsilon)
+        let scaled = gamma * normalized + beta
+
+        return ConvBNResult {
+            normalized: scaled,
+            running_mean: new_mean,
+            running_var: new_var
+        }
+    }
+
+    // Inference: use running stats
+    let normalized = (conv_output - running_mean) / sqrt_f64(running_var + epsilon)
+    let scaled = gamma * normalized + beta
+
+    return ConvBNResult {
+        normalized: scaled,
+        running_mean: running_mean,
+        running_var: running_var
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Conv Blocks - Common patterns combining Conv + BN + Activation
+// ----------------------------------------------------------------------------
+
+// Conv1D + ReLU
+fn conv1d_relu(
+    x1: f64, x2: f64, x3: f64,
+    k1: f64, k2: f64, k3: f64,
+    bias: f64
+) -> f64 {
+    let conv_out = x1 * k1 + x2 * k2 + x3 * k3 + bias
+    return relu_f64(conv_out)
+}
+
+// Conv1D + BatchNorm + ReLU (CBR block)
+struct CBRResult {
+    output: f64,
+    bn_mean: f64,
+    bn_var: f64
+}
+
+fn conv1d_bn_relu(
+    x1: f64, x2: f64, x3: f64,
+    k1: f64, k2: f64, k3: f64,
+    bias: f64,
+    bn_mean: f64, bn_var: f64,
+    gamma: f64, beta: f64
+) -> CBRResult {
+    let conv_out = x1 * k1 + x2 * k2 + x3 * k3 + bias
+    let bn = conv_batch_norm(conv_out, bn_mean, bn_var, gamma, beta, 0.1, 0.0)
+    let relu_out = relu_f64(bn.normalized)
+
+    return CBRResult {
+        output: relu_out,
+        bn_mean: bn.running_mean,
+        bn_var: bn.running_var
+    }
+}
+
+// Residual block: Conv + BN + ReLU + Conv + BN + Add + ReLU
+struct ResBlockResult {
+    output: f64
+}
+
+fn residual_block_1d(
+    input_val: f64,
+    // First conv
+    k1_1: f64, k1_2: f64, k1_3: f64, b1: f64,
+    // Second conv
+    k2_1: f64, k2_2: f64, k2_3: f64, b2: f64,
+    // BN params (simplified: using input as proxy for spatial neighbors)
+    gamma1: f64, beta1: f64,
+    gamma2: f64, beta2: f64
+) -> ResBlockResult {
+    // First conv (using input repeated as 3-element sequence for simplicity)
+    let conv1 = input_val * k1_1 + input_val * k1_2 + input_val * k1_3 + b1
+    let bn1 = gamma1 * conv1 + beta1  // simplified BN
+    let relu1 = relu_f64(bn1)
+
+    // Second conv
+    let conv2 = relu1 * k2_1 + relu1 * k2_2 + relu1 * k2_3 + b2
+    let bn2 = gamma2 * conv2 + beta2
+
+    // Residual connection
+    let output_val = relu_f64(bn2 + input_val)
+
+    return ResBlockResult { output: output_val }
+}
+
+// Bottleneck block (1x1 -> 3x3 -> 1x1)
+struct BottleneckResult {
+    output: f64
+}
+
+fn bottleneck_block(
+    input_val: f64,
+    // 1x1 reduce
+    w_reduce: f64, b_reduce: f64,
+    // 3x3 conv (simplified)
+    k_mid: f64, b_mid: f64,
+    // 1x1 expand
+    w_expand: f64, b_expand: f64
+) -> BottleneckResult {
+    // 1x1 conv to reduce channels
+    let reduced = relu_f64(input_val * w_reduce + b_reduce)
+
+    // 3x3 conv in bottleneck
+    let mid = relu_f64(reduced * k_mid + b_mid)
+
+    // 1x1 conv to expand channels
+    let expanded = mid * w_expand + b_expand
+
+    // Residual
+    let output_val = relu_f64(expanded + input_val)
+
+    return BottleneckResult { output: output_val }
+}
+
+// ----------------------------------------------------------------------------
+// Activation Functions for CNNs
+// ----------------------------------------------------------------------------
+
+// Swish (SiLU): x * sigmoid(x) - used in EfficientNet
+fn swish(input_x: f64) -> f64 {
+    return input_x * sigmoid_f64(input_x)
+}
+
+// Swish with learnable beta: x * sigmoid(beta * x)
+fn swish_beta(input_x: f64, beta: f64) -> f64 {
+    return input_x * sigmoid_f64(beta * input_x)
+}
+
+// Mish: x * tanh(softplus(x)) = x * tanh(ln(1 + e^x))
+fn mish(input_x: f64) -> f64 {
+    let softplus = log_f64(1.0 + exp_f64(input_x))
+    return input_x * tanh_f64(softplus)
+}
+
+// GELU approximation (used in BERT, GPT)
+fn gelu_approx(input_x: f64) -> f64 {
+    // 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+    let sqrt_2_over_pi = 0.7978845608028654
+    let inner = sqrt_2_over_pi * (input_x + 0.044715 * input_x * input_x * input_x)
+    return 0.5 * input_x * (1.0 + tanh_f64(inner))
+}
+
+// Hard Swish: x * ReLU6(x + 3) / 6 - efficient approximation
+fn hard_swish(input_x: f64) -> f64 {
+    let relu6_val = min_f64(max_f64(input_x + 3.0, 0.0), 6.0)
+    return input_x * relu6_val / 6.0
+}
+
+// Hard Sigmoid: ReLU6(x + 3) / 6
+fn hard_sigmoid(input_x: f64) -> f64 {
+    return min_f64(max_f64(input_x + 3.0, 0.0), 6.0) / 6.0
+}
+
+// ----------------------------------------------------------------------------
+// Squeeze-and-Excitation (SE) Block
+// Channel attention mechanism used in SENet, EfficientNet
+// ----------------------------------------------------------------------------
+
+struct SEResult {
+    ch1_scaled: f64,
+    ch2_scaled: f64,
+    attention1: f64,
+    attention2: f64
+}
+
+fn squeeze_excitation_2ch(
+    // Input feature maps (2 channels, each globally pooled to 1 value)
+    ch1_pooled: f64, ch2_pooled: f64,
+    // SE reduction weights (2 -> 1)
+    w_reduce1: f64, w_reduce2: f64, b_reduce: f64,
+    // SE expansion weights (1 -> 2)
+    w_expand1: f64, w_expand2: f64, b_expand1: f64, b_expand2: f64,
+    // Original channel values to scale
+    ch1_orig: f64, ch2_orig: f64
+) -> SEResult {
+    // Squeeze: global average pool (already done)
+    // Excitation: FC -> ReLU -> FC -> Sigmoid
+    let reduced = relu_f64(ch1_pooled * w_reduce1 + ch2_pooled * w_reduce2 + b_reduce)
+
+    let attn1 = sigmoid_f64(reduced * w_expand1 + b_expand1)
+    let attn2 = sigmoid_f64(reduced * w_expand2 + b_expand2)
+
+    // Scale original features
+    return SEResult {
+        ch1_scaled: ch1_orig * attn1,
+        ch2_scaled: ch2_orig * attn2,
+        attention1: attn1,
+        attention2: attn2
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Spatial Pyramid Pooling (SPP)
+// Multi-scale pooling for fixed-size output regardless of input size
+// ----------------------------------------------------------------------------
+
+struct SPPResult {
+    pool1x1: f64,
+    pool2x2_1: f64,
+    pool2x2_2: f64,
+    pool2x2_3: f64,
+    pool2x2_4: f64
+}
+
+fn spatial_pyramid_pool(input: Mat3x3) -> SPPResult {
+    // Level 1: 1x1 (global pool)
+    let pool1x1 = global_avgpool2d(input)
+
+    // Level 2: 2x2 bins (approximate by quadrant pooling)
+    let pool2x2_1 = (input.m11 + input.m12 + input.m21 + input.m22) / 4.0
+    let pool2x2_2 = (input.m12 + input.m13 + input.m22 + input.m23) / 4.0
+    let pool2x2_3 = (input.m21 + input.m22 + input.m31 + input.m32) / 4.0
+    let pool2x2_4 = (input.m22 + input.m23 + input.m32 + input.m33) / 4.0
+
+    return SPPResult {
+        pool1x1: pool1x1,
+        pool2x2_1: pool2x2_1,
+        pool2x2_2: pool2x2_2,
+        pool2x2_3: pool2x2_3,
+        pool2x2_4: pool2x2_4
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Upsampling Methods
+// ----------------------------------------------------------------------------
+
+// Nearest neighbor upsampling (2x)
+struct Upsample2xResult {
+    y11: f64, y12: f64,
+    y21: f64, y22: f64
+}
+
+fn upsample_nearest_2x(val: f64) -> Upsample2xResult {
+    // Duplicate value to 2x2
+    return Upsample2xResult {
+        y11: val, y12: val,
+        y21: val, y22: val
+    }
+}
+
+// Bilinear upsampling (2x) from 2x2 corners
+fn upsample_bilinear_2x(
+    c00: f64, c01: f64,
+    c10: f64, c11: f64
+) -> Mat3x3 {
+    // Interpolate to 3x3 (2x upsampling with overlap)
+    let m11 = c00
+    let m13 = c01
+    let m31 = c10
+    let m33 = c11
+
+    // Edge interpolations
+    let m12 = (c00 + c01) / 2.0
+    let m21 = (c00 + c10) / 2.0
+    let m23 = (c01 + c11) / 2.0
+    let m32 = (c10 + c11) / 2.0
+
+    // Center is average of all 4 corners
+    let m22 = (c00 + c01 + c10 + c11) / 4.0
+
+    return Mat3x3 {
+        m11: m11, m12: m12, m13: m13,
+        m21: m21, m22: m22, m23: m23,
+        m31: m31, m32: m32, m33: m33
+    }
+}
+
+// PixelShuffle (sub-pixel convolution) for super-resolution
+// Rearranges (C*r², H, W) -> (C, H*r, W*r)
+struct PixelShuffleResult {
+    y11: f64, y12: f64,
+    y21: f64, y22: f64
+}
+
+fn pixel_shuffle_2x(c1: f64, c2: f64, c3: f64, c4: f64) -> PixelShuffleResult {
+    // 4 channels at 1x1 -> 1 channel at 2x2
+    return PixelShuffleResult {
+        y11: c1, y12: c2,
+        y21: c3, y22: c4
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Feature Pyramid Network (FPN) operations
+// Multi-scale feature fusion for object detection
+// ----------------------------------------------------------------------------
+
+struct FPNLateralResult {
+    lateral: f64,
+    merged: f64
+}
+
+fn fpn_lateral_connection(
+    high_res_feature: f64,
+    low_res_feature: f64,
+    lateral_weight: f64,
+    lateral_bias: f64
+) -> FPNLateralResult {
+    // 1x1 conv on high-res to match channels
+    let lateral = high_res_feature * lateral_weight + lateral_bias
+
+    // Upsample low-res (2x) and add (simplified: just add for same scale)
+    let merged = lateral + low_res_feature
+
+    return FPNLateralResult {
+        lateral: lateral,
+        merged: merged
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Adaptive Pooling - Pool to target size regardless of input size
+// ----------------------------------------------------------------------------
+
+// Adaptive average pool to single value (equivalent to global avg pool)
+fn adaptive_avgpool1d_1(x1: f64, x2: f64, x3: f64, x4: f64, x5: f64) -> f64 {
+    return (x1 + x2 + x3 + x4 + x5) / 5.0
+}
+
+// Adaptive average pool to 2 values
+fn adaptive_avgpool1d_2(x1: f64, x2: f64, x3: f64, x4: f64, x5: f64) -> MaxPool1DResult {
+    // Split into 2 bins: [x1, x2, x3] and [x3, x4, x5] (with overlap for odd sizes)
+    let bin1 = (x1 + x2 + x3) / 3.0
+    let bin2 = (x3 + x4 + x5) / 3.0
+    return MaxPool1DResult { y1: bin1, y2: bin2 }
+}
+
+// ----------------------------------------------------------------------------
+// Convolution Gradient Computations
+// For backpropagation through conv layers
+// ----------------------------------------------------------------------------
+
+struct Conv1DGradients {
+    grad_input1: f64,
+    grad_input2: f64,
+    grad_input3: f64,
+    grad_kernel1: f64,
+    grad_kernel2: f64,
+    grad_kernel3: f64,
+    grad_bias: f64
+}
+
+fn conv1d_backward(
+    // Forward pass inputs
+    x1: f64, x2: f64, x3: f64,
+    k1: f64, k2: f64, k3: f64,
+    // Gradient from next layer
+    grad_output: f64
+) -> Conv1DGradients {
+    // d(output)/d(input) = kernel (flipped for correlation)
+    // d(output)/d(kernel) = input
+
+    // Gradient w.r.t. input: convolve grad_output with flipped kernel
+    let grad_input1 = grad_output * k1
+    let grad_input2 = grad_output * k2
+    let grad_input3 = grad_output * k3
+
+    // Gradient w.r.t. kernel: convolve grad_output with input
+    let grad_kernel1 = grad_output * x1
+    let grad_kernel2 = grad_output * x2
+    let grad_kernel3 = grad_output * x3
+
+    // Gradient w.r.t. bias: sum of grad_output
+    let grad_bias = grad_output
+
+    return Conv1DGradients {
+        grad_input1: grad_input1,
+        grad_input2: grad_input2,
+        grad_input3: grad_input3,
+        grad_kernel1: grad_kernel1,
+        grad_kernel2: grad_kernel2,
+        grad_kernel3: grad_kernel3,
+        grad_bias: grad_bias
+    }
+}
+
+// MaxPool gradient (only flows to max element)
+struct MaxPoolGrad {
+    grad_x1: f64,
+    grad_x2: f64
+}
+
+fn maxpool_backward(x1: f64, x2: f64, grad_output: f64) -> MaxPoolGrad {
+    if x1 > x2 {
+        return MaxPoolGrad { grad_x1: grad_output, grad_x2: 0.0 }
+    }
+    return MaxPoolGrad { grad_x1: 0.0, grad_x2: grad_output }
+}
+
+// AvgPool gradient (distributes equally)
+fn avgpool_backward(grad_output: f64, pool_size: f64) -> f64 {
+    return grad_output / pool_size
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -8797,6 +9607,337 @@ fn main() -> i32 {
     // keep_prob = 0.5, so scale is 1/0.5 = 2 when keeping
     if abs_f64(drop_mask_keep.keep_hidden - 2.0) > tol { ok = false; println("  FAIL: dropout keep") }
     if abs_f64(drop_mask_drop.keep_hidden - 0.0) > tol { ok = false; println("  FAIL: dropout drop") }
+    println("")
+
+    // ========================================================================
+    // CNN TESTS (141-160)
+    // ========================================================================
+
+    // Test 141: Conv1D with kernel size 3
+    println("Test 141: Conv1D kernel=3, stride=1")
+    let conv1d_res = conv1d_k3_s1(1.0, 2.0, 3.0, 4.0, 5.0, 1.0, 0.5, 0.25, 0.0)
+
+    println("  Conv1D [1,2,3,4,5] * [1,0.5,0.25]:")
+    println("    y1 = ")
+    println(conv1d_res.y1)
+    println("    y2 = ")
+    println(conv1d_res.y2)
+    println("    y3 = ")
+    println(conv1d_res.y3)
+
+    // y1 = 1*1 + 2*0.5 + 3*0.25 = 1 + 1 + 0.75 = 2.75
+    // y2 = 2*1 + 3*0.5 + 4*0.25 = 2 + 1.5 + 1 = 4.5
+    // y3 = 3*1 + 4*0.5 + 5*0.25 = 3 + 2 + 1.25 = 6.25
+    if abs_f64(conv1d_res.y1 - 2.75) > tol { ok = false; println("  FAIL: conv1d y1") }
+    if abs_f64(conv1d_res.y2 - 4.5) > tol { ok = false; println("  FAIL: conv1d y2") }
+    if abs_f64(conv1d_res.y3 - 6.25) > tol { ok = false; println("  FAIL: conv1d y3") }
+    println("")
+
+    // Test 142: Conv1D with stride 2
+    println("Test 142: Conv1D stride=2")
+    let conv1d_s2 = conv1d_k3_s2(1.0, 2.0, 3.0, 4.0, 5.0, 1.0, 1.0, 1.0, 0.0)
+
+    println("  Conv1D stride=2 [1,2,3,4,5] * [1,1,1]:")
+    println("    y1 = ")
+    println(conv1d_s2.y1)
+    println("    y2 = ")
+    println(conv1d_s2.y2)
+
+    // y1 = 1+2+3 = 6, y2 = 3+4+5 = 12
+    if abs_f64(conv1d_s2.y1 - 6.0) > tol { ok = false; println("  FAIL: conv1d s2 y1") }
+    if abs_f64(conv1d_s2.y2 - 12.0) > tol { ok = false; println("  FAIL: conv1d s2 y2") }
+    println("")
+
+    // Test 143: Conv1D with same padding
+    println("Test 143: Conv1D same padding")
+    let conv1d_same = conv1d_k3_same(1.0, 2.0, 3.0, 4.0, 5.0, 1.0, 1.0, 1.0, 0.0)
+
+    println("  Conv1D same padding (output size = input size):")
+    println("    y1 = ")
+    println(conv1d_same.x1)
+    println("    y3 = ")
+    println(conv1d_same.x3)
+    println("    y5 = ")
+    println(conv1d_same.x5)
+
+    // Padded: [0, 1, 2, 3, 4, 5, 0]
+    // y1 = 0+1+2 = 3, y3 = 2+3+4 = 9, y5 = 4+5+0 = 9
+    if abs_f64(conv1d_same.x1 - 3.0) > tol { ok = false; println("  FAIL: conv1d same y1") }
+    if abs_f64(conv1d_same.x3 - 9.0) > tol { ok = false; println("  FAIL: conv1d same y3") }
+    if abs_f64(conv1d_same.x5 - 9.0) > tol { ok = false; println("  FAIL: conv1d same y5") }
+    println("")
+
+    // Test 144: Conv1D dilated
+    println("Test 144: Conv1D dilated (atrous)")
+    let conv1d_d1 = conv1d_k3_dilated(1.0, 2.0, 3.0, 4.0, 5.0, 1.0, 1.0, 1.0, 0.0, 1.0)
+    let conv1d_d2 = conv1d_k3_dilated(1.0, 2.0, 3.0, 4.0, 5.0, 1.0, 1.0, 1.0, 0.0, 2.0)
+
+    println("  Dilation=1: ")
+    println(conv1d_d1)
+    println("  Dilation=2: ")
+    println(conv1d_d2)
+
+    // d=1: 1+2+3 = 6
+    // d=2: 1+3+5 = 9 (skips every other element)
+    if abs_f64(conv1d_d1 - 6.0) > tol { ok = false; println("  FAIL: dilated d=1") }
+    if abs_f64(conv1d_d2 - 9.0) > tol { ok = false; println("  FAIL: dilated d=2") }
+    println("")
+
+    // Test 145: Conv2D with 2x2 kernel
+    println("Test 145: Conv2D 2x2 kernel")
+    let img = Mat3x3 {
+        m11: 1.0, m12: 2.0, m13: 3.0,
+        m21: 4.0, m22: 5.0, m23: 6.0,
+        m31: 7.0, m32: 8.0, m33: 9.0
+    }
+    let kernel2x2 = ConvFilter2x2 { k11: 1.0, k12: 0.0, k21: 0.0, k22: 1.0 }
+    let conv2d_res = conv2d_k2_s1(img, kernel2x2, 0.0)
+
+    println("  Conv2D 3x3 * 2x2 [identity-like kernel]:")
+    println("    y11 = ")
+    println(conv2d_res.y11)
+    println("    y22 = ")
+    println(conv2d_res.y22)
+
+    // y11 = 1*1 + 2*0 + 4*0 + 5*1 = 6 (sum of diagonal)
+    // y22 = 5*1 + 6*0 + 8*0 + 9*1 = 14
+    if abs_f64(conv2d_res.y11 - 6.0) > tol { ok = false; println("  FAIL: conv2d y11") }
+    if abs_f64(conv2d_res.y22 - 14.0) > tol { ok = false; println("  FAIL: conv2d y22") }
+    println("")
+
+    // Test 146: Conv2D with 3x3 kernel (valid)
+    println("Test 146: Conv2D 3x3 kernel (valid)")
+    let kernel3x3 = ConvFilter3x3 {
+        k11: 1.0, k12: 1.0, k13: 1.0,
+        k21: 1.0, k22: 1.0, k23: 1.0,
+        k31: 1.0, k32: 1.0, k33: 1.0
+    }
+    let conv2d_3x3 = conv2d_k3_valid(img, kernel3x3, 0.0)
+
+    println("  Conv2D 3x3 * 3x3 all-ones kernel:")
+    println("    result = ")
+    println(conv2d_3x3)
+
+    // Sum of all elements: 1+2+3+4+5+6+7+8+9 = 45
+    if abs_f64(conv2d_3x3 - 45.0) > tol { ok = false; println("  FAIL: conv2d 3x3") }
+    println("")
+
+    // Test 147: MaxPool1D
+    println("Test 147: MaxPool1D kernel=2")
+    let maxpool_res = maxpool1d_k2(1.0, 4.0, 2.0, 3.0)
+
+    println("  MaxPool1D [1,4,2,3] k=2:")
+    println("    y1 = ")
+    println(maxpool_res.y1)
+    println("    y2 = ")
+    println(maxpool_res.y2)
+
+    // max(1,4)=4, max(2,3)=3
+    if abs_f64(maxpool_res.y1 - 4.0) > tol { ok = false; println("  FAIL: maxpool y1") }
+    if abs_f64(maxpool_res.y2 - 3.0) > tol { ok = false; println("  FAIL: maxpool y2") }
+    println("")
+
+    // Test 148: AvgPool1D
+    println("Test 148: AvgPool1D kernel=2")
+    let avgpool_res = avgpool1d_k2(2.0, 4.0, 6.0, 8.0)
+
+    println("  AvgPool1D [2,4,6,8] k=2:")
+    println("    y1 = ")
+    println(avgpool_res.y1)
+    println("    y2 = ")
+    println(avgpool_res.y2)
+
+    // avg(2,4)=3, avg(6,8)=7
+    if abs_f64(avgpool_res.y1 - 3.0) > tol { ok = false; println("  FAIL: avgpool y1") }
+    if abs_f64(avgpool_res.y2 - 7.0) > tol { ok = false; println("  FAIL: avgpool y2") }
+    println("")
+
+    // Test 149: Global Average Pooling 1D
+    println("Test 149: Global AvgPool1D")
+    let gap1d = global_avgpool1d_5(1.0, 2.0, 3.0, 4.0, 5.0)
+
+    println("  GlobalAvgPool [1,2,3,4,5] = ")
+    println(gap1d)
+
+    // (1+2+3+4+5)/5 = 3
+    if abs_f64(gap1d - 3.0) > tol { ok = false; println("  FAIL: global avgpool1d") }
+    println("")
+
+    // Test 150: Global Max Pooling 1D
+    println("Test 150: Global MaxPool1D")
+    let gmp1d = global_maxpool1d_5(1.0, 5.0, 3.0, 2.0, 4.0)
+
+    println("  GlobalMaxPool [1,5,3,2,4] = ")
+    println(gmp1d)
+
+    if abs_f64(gmp1d - 5.0) > tol { ok = false; println("  FAIL: global maxpool1d") }
+    println("")
+
+    // Test 151: Global Average Pooling 2D
+    println("Test 151: Global AvgPool2D")
+    let gap2d = global_avgpool2d(img)
+
+    println("  GlobalAvgPool2D 3x3 (1-9) = ")
+    println(gap2d)
+
+    // Mean of 1-9 = 45/9 = 5
+    if abs_f64(gap2d - 5.0) > tol { ok = false; println("  FAIL: global avgpool2d") }
+    println("")
+
+    // Test 152: Global Max Pooling 2D
+    println("Test 152: Global MaxPool2D")
+    let gmp2d = global_maxpool2d(img)
+
+    println("  GlobalMaxPool2D 3x3 (1-9) = ")
+    println(gmp2d)
+
+    if abs_f64(gmp2d - 9.0) > tol { ok = false; println("  FAIL: global maxpool2d") }
+    println("")
+
+    // Test 153: Depthwise Separable Convolution
+    println("Test 153: Depthwise Separable Conv")
+    let dwsep = depthwise_separable_conv(
+        1.0, 2.0, 3.0,   // channel 1 input
+        4.0, 5.0, 6.0,   // channel 2 input
+        1.0, 1.0, 1.0,   // channel 1 kernel (sum)
+        1.0, 1.0, 1.0,   // channel 2 kernel (sum)
+        1.0, 0.0,        // pointwise: out1 = ch1
+        0.0, 1.0         // pointwise: out2 = ch2
+    )
+
+    println("  Depthwise sep conv (identity pointwise):")
+    println("    ch1 = ")
+    println(dwsep.ch1)
+    println("    ch2 = ")
+    println(dwsep.ch2)
+
+    // DW: ch1 = 1+2+3 = 6, ch2 = 4+5+6 = 15
+    // PW with identity: out1 = 6, out2 = 15
+    if abs_f64(dwsep.ch1 - 6.0) > tol { ok = false; println("  FAIL: dwsep ch1") }
+    if abs_f64(dwsep.ch2 - 15.0) > tol { ok = false; println("  FAIL: dwsep ch2") }
+    println("")
+
+    // Test 154: Transposed Conv1D (deconvolution)
+    println("Test 154: Transposed Conv1D")
+    let tconv = transposed_conv1d_k2(1.0, 2.0, 1.0, 0.5, 0.0)
+
+    println("  TransposedConv1D [1,2] * [1,0.5]:")
+    println("    y1 = ")
+    println(tconv.y1)
+    println("    y2 = ")
+    println(tconv.y2)
+    println("    y3 = ")
+    println(tconv.y3)
+
+    // y1 = 1*1 = 1, y2 = 1*0.5 + 2*1 = 2.5, y3 = 2*0.5 = 1
+    if abs_f64(tconv.y1 - 1.0) > tol { ok = false; println("  FAIL: tconv y1") }
+    if abs_f64(tconv.y2 - 2.5) > tol { ok = false; println("  FAIL: tconv y2") }
+    if abs_f64(tconv.y3 - 1.0) > tol { ok = false; println("  FAIL: tconv y3") }
+    println("")
+
+    // Test 155: Swish activation
+    println("Test 155: Swish activation")
+    let swish_0 = swish(0.0)
+    let swish_1 = swish(1.0)
+
+    println("  Swish(0) = ")
+    println(swish_0)
+    println("  Swish(1) = ")
+    println(swish_1)
+
+    // Swish(0) = 0 * sigmoid(0) = 0 * 0.5 = 0
+    // Swish(1) = 1 * sigmoid(1) ≈ 0.731
+    if abs_f64(swish_0 - 0.0) > tol { ok = false; println("  FAIL: swish 0") }
+    if abs_f64(swish_1 - 0.731) > 0.01 { ok = false; println("  FAIL: swish 1") }
+    println("")
+
+    // Test 156: Mish activation
+    println("Test 156: Mish activation")
+    let mish_0 = mish(0.0)
+    let mish_1 = mish(1.0)
+
+    println("  Mish(0) = ")
+    println(mish_0)
+    println("  Mish(1) = ")
+    println(mish_1)
+
+    // Mish(0) = 0 * tanh(ln(2)) ≈ 0
+    // Mish(1) ≈ 0.865
+    if abs_f64(mish_0 - 0.0) > tol { ok = false; println("  FAIL: mish 0") }
+    if abs_f64(mish_1 - 0.865) > 0.01 { ok = false; println("  FAIL: mish 1") }
+    println("")
+
+    // Test 157: GELU activation
+    println("Test 157: GELU activation")
+    let gelu_0 = gelu_approx(0.0)
+    let gelu_1 = gelu_approx(1.0)
+
+    println("  GELU(0) = ")
+    println(gelu_0)
+    println("  GELU(1) = ")
+    println(gelu_1)
+
+    // GELU(0) = 0
+    // GELU(1) ≈ 0.841
+    if abs_f64(gelu_0 - 0.0) > tol { ok = false; println("  FAIL: gelu 0") }
+    if abs_f64(gelu_1 - 0.841) > 0.01 { ok = false; println("  FAIL: gelu 1") }
+    println("")
+
+    // Test 158: Squeeze-and-Excitation
+    println("Test 158: Squeeze-and-Excitation block")
+    let se_res = squeeze_excitation_2ch(
+        3.0, 5.0,       // pooled values (avg of channels)
+        1.0, 1.0, 0.0,  // reduce weights
+        1.0, 1.0, 0.0, 0.0,  // expand weights
+        2.0, 4.0        // original values to scale
+    )
+
+    println("  SE block:")
+    println("    attention1 = ")
+    println(se_res.attention1)
+    println("    ch1_scaled = ")
+    println(se_res.ch1_scaled)
+
+    // reduced = ReLU(3*1 + 5*1 + 0) = 8, attn1 = sigmoid(8)
+    // Verify attention is valid (between 0 and 1)
+    if se_res.attention1 < 0.0 { ok = false; println("  FAIL: se attn < 0") }
+    if se_res.attention1 > 1.0 { ok = false; println("  FAIL: se attn > 1") }
+    // ch1_scaled should be ch1_orig * attention (2 * attention)
+    if abs_f64(se_res.ch1_scaled - 2.0 * se_res.attention1) > tol { ok = false; println("  FAIL: se scaled") }
+    println("")
+
+    // Test 159: Bilinear upsampling
+    println("Test 159: Bilinear upsampling 2x")
+    let bilin = upsample_bilinear_2x(0.0, 2.0, 4.0, 6.0)
+
+    println("  Bilinear 2x2 -> 3x3:")
+    println("    center (m22) = ")
+    println(bilin.m22)
+    println("    top-mid (m12) = ")
+    println(bilin.m12)
+
+    // Center = avg of all 4 = (0+2+4+6)/4 = 3
+    // Top-mid = avg(0,2) = 1
+    if abs_f64(bilin.m22 - 3.0) > tol { ok = false; println("  FAIL: bilinear center") }
+    if abs_f64(bilin.m12 - 1.0) > tol { ok = false; println("  FAIL: bilinear edge") }
+    println("")
+
+    // Test 160: Conv1D backward (gradients)
+    println("Test 160: Conv1D backward")
+    let conv_grad = conv1d_backward(1.0, 2.0, 3.0, 0.5, 0.5, 0.5, 2.0)
+
+    println("  Conv1D backward (grad_output=2):")
+    println("    grad_kernel1 = ")
+    println(conv_grad.grad_kernel1)
+    println("    grad_input1 = ")
+    println(conv_grad.grad_input1)
+
+    // grad_kernel = grad_output * input
+    // grad_kernel1 = 2 * 1 = 2
+    // grad_input = grad_output * kernel
+    // grad_input1 = 2 * 0.5 = 1
+    if abs_f64(conv_grad.grad_kernel1 - 2.0) > tol { ok = false; println("  FAIL: conv grad kernel") }
+    if abs_f64(conv_grad.grad_input1 - 1.0) > tol { ok = false; println("  FAIL: conv grad input") }
     println("")
 
     if ok {
