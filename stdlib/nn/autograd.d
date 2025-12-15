@@ -1174,6 +1174,117 @@ fn nadam_step_fast(param: f64, g: f64, m: f64, v: f64, beta1_t: f64, beta2_t: f6
 }
 
 // ============================================================================
+// RADAM OPTIMIZER (RECTIFIED ADAM)
+// ============================================================================
+
+// RAdam hyperparameters (Liu et al., 2019)
+fn RADAM_BETA1() -> f64 { return 0.9 }
+fn RADAM_BETA2() -> f64 { return 0.999 }
+fn RADAM_EPS() -> f64 { return 0.00000001 }
+
+// Result struct for RAdam
+struct RAdamResult {
+    param: f64,
+    m: f64,
+    v: f64
+}
+
+// RAdam update for single parameter
+// Addresses variance issue in Adam during early training by computing
+// the length of the approximated SMA (Simple Moving Average) and only
+// using adaptive learning rate when variance is tractable.
+//
+// Key insight: Early in training, v has high variance due to few samples.
+// RAdam detects this and falls back to SGD with momentum until variance stabilizes.
+//
+// Formula:
+//   m = β1*m + (1-β1)*g
+//   v = β2*v + (1-β2)*g²
+//   m_hat = m / (1-β1^t)
+//
+//   ρ_inf = 2/(1-β2) - 1           (max SMA length ≈ 999 for β2=0.999)
+//   ρ_t = ρ_inf - 2*t*β2^t/(1-β2^t) (SMA length at timestep t)
+//
+//   if ρ_t > 5 (variance tractable):
+//     r_t = sqrt((ρ_t-4)(ρ_t-2)ρ_inf / ((ρ_inf-4)(ρ_inf-2)ρ_t))  (rectification)
+//     v_hat = v / (1-β2^t)
+//     param = param - lr * r_t * m_hat / (√v_hat + ε)
+//   else (variance not tractable, use unadapted):
+//     param = param - lr * m_hat
+fn radam_step(param: f64, g: f64, m: f64, v: f64, timestep: f64, lr: f64) -> RAdamResult {
+    let beta1 = RADAM_BETA1()
+    let beta2 = RADAM_BETA2()
+    let eps = RADAM_EPS()
+
+    // Update biased first moment estimate
+    let new_m = beta1 * m + (1.0 - beta1) * g
+
+    // Update biased second raw moment estimate
+    let new_v = beta2 * v + (1.0 - beta2) * g * g
+
+    // Compute bias correction for first moment
+    let beta1_t = pow_f64(beta1, timestep)
+    let beta2_t = pow_f64(beta2, timestep)
+    let m_hat = new_m / (1.0 - beta1_t)
+
+    // Compute maximum length of the approximated SMA
+    let rho_inf = 2.0 / (1.0 - beta2) - 1.0
+
+    // Compute length of the approximated SMA at current timestep
+    let rho_t = rho_inf - 2.0 * timestep * beta2_t / (1.0 - beta2_t)
+
+    // Check if variance is tractable (ρ_t > 5)
+    let new_param = if rho_t > 5.0 {
+        // Variance is tractable - use adaptive learning rate with rectification
+        let v_hat = new_v / (1.0 - beta2_t)
+
+        // Compute variance rectification term
+        let rect_num = (rho_t - 4.0) * (rho_t - 2.0) * rho_inf
+        let rect_den = (rho_inf - 4.0) * (rho_inf - 2.0) * rho_t
+        let r_t = sqrt_f64(rect_num / rect_den)
+
+        // Rectified adaptive update
+        param - lr * r_t * m_hat / (sqrt_f64(v_hat) + eps)
+    } else {
+        // Variance not tractable - use unadapted update (like SGD with momentum)
+        param - lr * m_hat
+    }
+
+    return RAdamResult { param: new_param, m: new_m, v: new_v }
+}
+
+// RAdam with running powers (more efficient for training loops)
+fn radam_step_fast(param: f64, g: f64, m: f64, v: f64, timestep: f64, beta1_t: f64, beta2_t: f64, lr: f64) -> RAdamResult {
+    let beta1 = RADAM_BETA1()
+    let beta2 = RADAM_BETA2()
+    let eps = RADAM_EPS()
+
+    // Update moments
+    let new_m = beta1 * m + (1.0 - beta1) * g
+    let new_v = beta2 * v + (1.0 - beta2) * g * g
+
+    // Bias-corrected first moment
+    let m_hat = new_m / (1.0 - beta1_t)
+
+    // SMA lengths
+    let rho_inf = 2.0 / (1.0 - beta2) - 1.0
+    let rho_t = rho_inf - 2.0 * timestep * beta2_t / (1.0 - beta2_t)
+
+    // Adaptive or unadapted update
+    let new_param = if rho_t > 5.0 {
+        let v_hat = new_v / (1.0 - beta2_t)
+        let rect_num = (rho_t - 4.0) * (rho_t - 2.0) * rho_inf
+        let rect_den = (rho_inf - 4.0) * (rho_inf - 2.0) * rho_t
+        let r_t = sqrt_f64(rect_num / rect_den)
+        param - lr * r_t * m_hat / (sqrt_f64(v_hat) + eps)
+    } else {
+        param - lr * m_hat
+    }
+
+    return RAdamResult { param: new_param, m: new_m, v: new_v }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -2287,6 +2398,106 @@ fn main() -> i32 {
     if n1_34 >= n0_34 { ok = false; println("  FAIL: n1 >= n0") }
     if n2_34 >= n1_34 { ok = false; println("  FAIL: n2 >= n1") }
     if n5_34 >= 4.5 { ok = false; println("  FAIL: n5 should be < 4.5 after 5 steps") }
+    println("")
+
+    // Test 35: RAdam - verify variance rectification behavior
+    println("Test 35: RAdam variance rectification")
+    let x35 = 5.0
+    let m35 = 0.0
+    let v35 = 0.0
+    let lr35 = 0.1
+    let g35 = 2.0 * x35  // gradient = 10.0
+
+    // At timestep 1, RAdam should use unadapted update (ρ_t < 5)
+    // At later timesteps, it should switch to adaptive update
+    let radam_t1 = radam_step(x35, g35, m35, v35, 1.0, lr35)
+    let radam_t5 = radam_step(x35, g35, m35, v35, 5.0, lr35)
+
+    // Compute ρ values to verify behavior
+    let beta2 = 0.999
+    let rho_inf = 2.0 / (1.0 - beta2) - 1.0  // ≈ 1999
+    let beta2_t1 = pow_f64(beta2, 1.0)
+    let beta2_t5 = pow_f64(beta2, 5.0)
+    let rho_t1 = rho_inf - 2.0 * 1.0 * beta2_t1 / (1.0 - beta2_t1)
+    let rho_t5 = rho_inf - 2.0 * 5.0 * beta2_t5 / (1.0 - beta2_t5)
+
+    println("  ρ_inf (max SMA length) = ")
+    println(rho_inf)
+    println("  ρ at t=1 = ")
+    println(rho_t1)
+    println("  ρ at t=5 = ")
+    println(rho_t5)
+    println("  RAdam at t=1 (unadapted if ρ<5):")
+    println("    param = ")
+    println(radam_t1.param)
+    println("  RAdam at t=5 (adaptive if ρ>5):")
+    println("    param = ")
+    println(radam_t5.param)
+
+    // Both should decrease from initial
+    if radam_t1.param >= x35 { ok = false; println("  FAIL: RAdam t=1 should decrease") }
+    if radam_t5.param >= x35 { ok = false; println("  FAIL: RAdam t=5 should decrease") }
+    // ρ_inf should be approximately 1999 for β2=0.999
+    if abs_f64(rho_inf - 1999.0) > 1.0 { ok = false; println("  FAIL: rho_inf should be ~1999") }
+    println("")
+
+    // Test 36: RAdam 5-step descent (unrolled)
+    println("Test 36: RAdam 5-step descent (unrolled)")
+    let r0_36 = 5.0
+    let mr0_36 = 0.0
+    let vr0_36 = 0.0
+    let lr36 = 0.1
+
+    // Step 1
+    let gr1 = 2.0 * r0_36
+    let rd1 = radam_step(r0_36, gr1, mr0_36, vr0_36, 1.0, lr36)
+    let r1_36 = rd1.param
+    let mr1_36 = rd1.m
+    let vr1_36 = rd1.v
+
+    // Step 2
+    let gr2 = 2.0 * r1_36
+    let rd2 = radam_step(r1_36, gr2, mr1_36, vr1_36, 2.0, lr36)
+    let r2_36 = rd2.param
+    let mr2_36 = rd2.m
+    let vr2_36 = rd2.v
+
+    // Step 3
+    let gr3 = 2.0 * r2_36
+    let rd3 = radam_step(r2_36, gr3, mr2_36, vr2_36, 3.0, lr36)
+    let r3_36 = rd3.param
+    let mr3_36 = rd3.m
+    let vr3_36 = rd3.v
+
+    // Step 4
+    let gr4 = 2.0 * r3_36
+    let rd4 = radam_step(r3_36, gr4, mr3_36, vr3_36, 4.0, lr36)
+    let r4_36 = rd4.param
+    let mr4_36 = rd4.m
+    let vr4_36 = rd4.v
+
+    // Step 5
+    let gr5 = 2.0 * r4_36
+    let rd5 = radam_step(r4_36, gr5, mr4_36, vr4_36, 5.0, lr36)
+    let r5_36 = rd5.param
+
+    println("  Descent from r=5 with RAdam (rectified variance):")
+    println("    r0 = 5.0")
+    println("    r1 = ")
+    println(r1_36)
+    println("    r2 = ")
+    println(r2_36)
+    println("    r3 = ")
+    println(r3_36)
+    println("    r4 = ")
+    println(r4_36)
+    println("    r5 = ")
+    println(r5_36)
+
+    // r should decrease toward 0
+    if r1_36 >= r0_36 { ok = false; println("  FAIL: r1 >= r0") }
+    if r2_36 >= r1_36 { ok = false; println("  FAIL: r2 >= r1") }
+    if r5_36 >= 4.5 { ok = false; println("  FAIL: r5 should be < 4.5 after 5 steps") }
     println("")
 
     if ok {
