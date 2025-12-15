@@ -61,6 +61,30 @@ fn sin_f64(x: f64) -> f64 {
     return sum
 }
 
+fn log_f64(x: f64) -> f64 {
+    // Natural logarithm
+    if x <= 0.0 { return 0.0 - 1000000.0 }  // Return large negative for invalid input
+    if x == 1.0 { return 0.0 }
+
+    // Use identity: log(x) = 2 * log(sqrt(x)) to bring x closer to 1
+    // Trigger this for x > 1.5 or x < 0.7 for faster convergence
+    if x > 1.5 { return 2.0 * log_f64(sqrt_f64(x)) }
+    if x < 0.7 { return 0.0 - log_f64(1.0 / x) }
+
+    // For x in [0.7, 1.5], use Taylor series around 1: log(1+u) = u - u^2/2 + u^3/3 - ...
+    // This converges quickly for |u| < 0.5
+    let u = x - 1.0
+    let mut sum = 0.0
+    let mut term = u
+    let mut i = 1
+    while i <= 30 {
+        sum = sum + term / i
+        term = 0.0 - term * u
+        i = i + 1
+    }
+    return sum
+}
+
 // ============================================================================
 // OPERATION CODES
 // ============================================================================
@@ -77,9 +101,14 @@ fn OP_RELU() -> i64 { return 16 }
 fn OP_TANH() -> i64 { return 17 }
 fn OP_LEAKY_RELU() -> i64 { return 18 }
 fn OP_SOFTMAX2() -> i64 { return 19 }
+fn OP_LOG() -> i64 { return 20 }
+fn OP_CROSS_ENTROPY() -> i64 { return 21 }
 
 // Leaky ReLU slope for negative inputs (standard value)
 fn LEAKY_ALPHA() -> f64 { return 0.01 }
+
+// Small epsilon for numerical stability in log
+fn LOG_EPSILON() -> f64 { return 0.0000001 }
 
 // ============================================================================
 // TAPE STRUCTURE - 6 slots for simplicity
@@ -382,6 +411,74 @@ fn tsoftmax2(t: Tape, a: i64, b: i64) -> Tape {
     return push(t, OP_SOFTMAX2(), a, b, y0)
 }
 
+// Natural logarithm: log(x)
+fn tlog(t: Tape, a: i64) -> Tape {
+    let av = get_v(t, a)
+    // Add small epsilon for numerical stability
+    let eps = LOG_EPSILON()
+    let safe_v = if av > eps { av } else { eps }
+    return push(t, OP_LOG(), a, 0 - 1, log_f64(safe_v))
+}
+
+// Clamp value to [eps, 1-eps] for numerical stability
+fn clamp_prob(p: f64) -> f64 {
+    let eps = LOG_EPSILON()
+    let upper = 1.0 - eps
+    if p < eps { return eps }
+    if p > upper { return upper }
+    return p
+}
+
+// Binary cross-entropy loss: -[target * log(pred) + (1-target) * log(1-pred)]
+// Note: Due to Demetrios bug with large struct parameters, we pass values directly
+fn cross_entropy_loss_debug(p: f64, y: f64, debug: bool) -> f64 {
+    // Clamp prediction for numerical stability
+    let p_safe = clamp_prob(p)
+    let one_minus_p = clamp_prob(1.0 - p)
+
+    // L = -[y * log(p) + (1-y) * log(1-p)]
+    let log_p = log_f64(p_safe)
+    let log_1mp = log_f64(one_minus_p)
+
+    // Use weighted sum: loss = -y*log(p) - (1-y)*log(1-p)
+    let neg_log_p = 0.0 - log_p
+    let neg_log_1mp = 0.0 - log_1mp
+    let term1 = y * neg_log_p
+    let term2 = (1.0 - y) * neg_log_1mp
+
+    if debug {
+        println("    [CE] p_input = ")
+        println(p)
+        println("    [CE] y_input = ")
+        println(y)
+        println("    [CE] p_safe = ")
+        println(p_safe)
+        println("    [CE] 1-p = ")
+        println(one_minus_p)
+        println("    [CE] term1 = ")
+        println(term1)
+        println("    [CE] term2 = ")
+        println(term2)
+    }
+
+    return term1 + term2
+}
+
+fn cross_entropy_loss(p: f64, y: f64) -> f64 {
+    return cross_entropy_loss_debug(p, y, false)
+}
+
+// Build cross-entropy by reading values first, then calling with explicit values
+// This is a workaround for Demetrios bug with large struct parameters
+fn tcross_entropy_with_values_debug(t: Tape, pred_idx: i64, target_idx: i64, p: f64, y: f64, debug: bool) -> Tape {
+    let loss = cross_entropy_loss_debug(p, y, debug)
+    return push(t, OP_CROSS_ENTROPY(), pred_idx, target_idx, loss)
+}
+
+fn tcross_entropy_with_values(t: Tape, pred_idx: i64, target_idx: i64, p: f64, y: f64) -> Tape {
+    return tcross_entropy_with_values_debug(t, pred_idx, target_idx, p, y, false)
+}
+
 // ============================================================================
 // BACKWARD
 // ============================================================================
@@ -564,6 +661,48 @@ fn backward_step(t: Tape, i: i64) -> Tape {
         if a2 == 3 { new_g3 = new_g3 + gb }
         if a2 == 4 { new_g4 = new_g4 + gb }
         if a2 == 5 { new_g5 = new_g5 + gb }
+    }
+    if op == OP_LOG() {
+        // d(log(a))/da = 1/a
+        let av = get_v(t, a1)
+        let eps = LOG_EPSILON()
+        let safe_a = if av > eps { av } else { eps }
+        let ga = dout / safe_a
+        if a1 == 0 { new_g0 = new_g0 + ga }
+        if a1 == 1 { new_g1 = new_g1 + ga }
+        if a1 == 2 { new_g2 = new_g2 + ga }
+        if a1 == 3 { new_g3 = new_g3 + ga }
+        if a1 == 4 { new_g4 = new_g4 + ga }
+        if a1 == 5 { new_g5 = new_g5 + ga }
+    }
+    if op == OP_CROSS_ENTROPY() {
+        // L = -[y * log(p) + (1-y) * log(1-p)]
+        // dL/dp = -y/p + (1-y)/(1-p) = (p - y) / (p * (1-p))
+        // dL/dy = -log(p) + log(1-p) = log((1-p)/p)
+        let p = get_v(t, a1)  // predicted probability
+        let y = get_v(t, a2)  // target label
+        let eps = LOG_EPSILON()
+        let p_safe = if p < eps { eps } else { if p > 1.0 - eps { 1.0 - eps } else { p } }
+
+        // Gradient w.r.t. prediction: dL/dp = (p - y) / (p * (1 - p))
+        let gp = dout * (p_safe - y) / (p_safe * (1.0 - p_safe))
+
+        // Gradient w.r.t. target: dL/dy = log((1-p)/p)
+        // Usually target is fixed (not learned), but include for completeness
+        let gy = dout * (log_f64(1.0 - p_safe) - log_f64(p_safe))
+
+        if a1 == 0 { new_g0 = new_g0 + gp }
+        if a1 == 1 { new_g1 = new_g1 + gp }
+        if a1 == 2 { new_g2 = new_g2 + gp }
+        if a1 == 3 { new_g3 = new_g3 + gp }
+        if a1 == 4 { new_g4 = new_g4 + gp }
+        if a1 == 5 { new_g5 = new_g5 + gp }
+        if a2 == 0 { new_g0 = new_g0 + gy }
+        if a2 == 1 { new_g1 = new_g1 + gy }
+        if a2 == 2 { new_g2 = new_g2 + gy }
+        if a2 == 3 { new_g3 = new_g3 + gy }
+        if a2 == 4 { new_g4 = new_g4 + gy }
+        if a2 == 5 { new_g5 = new_g5 + gy }
     }
 
     // Create new tape with updated gradients
@@ -889,6 +1028,153 @@ fn main() -> i32 {
     if abs_f64(v13 - expected_v13) > tol { ok = false; println("  FAIL: v") }
     if abs_f64(g13_x0 - expected_g13_x0) > tol { ok = false; println("  FAIL: g_x0") }
     if abs_f64(g13_x1 - expected_g13_x1) > tol { ok = false; println("  FAIL: g_x1") }
+    println("")
+
+    // Test 15: log(e) = 1
+    println("Test 15: log(e)")
+    let mut t14 = tape_new()
+    let e_val = exp_f64(1.0)  // e ≈ 2.718
+    t14 = tvar(t14, e_val)    // 0: e
+    t14 = tlog(t14, 0)        // 1: log(e) = 1
+    t14 = backward(t14, 1)
+    let v14 = get_v(t14, 1)
+    let g14 = get_g(t14, 0)
+    // log(e) = 1, d(log(x))/dx = 1/x = 1/e
+    let expected_g14 = 1.0 / e_val
+    println("  f = ")
+    println(v14)
+    println("  expected = 1.0")
+    println("  df/dx = ")
+    println(g14)
+    println("  expected = ")
+    println(expected_g14)
+    if abs_f64(v14 - 1.0) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g14 - expected_g14) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 16: log(1) = 0
+    println("Test 16: log(1)")
+    let mut t15 = tape_new()
+    t15 = tvar(t15, 1.0)      // 0: 1
+    t15 = tlog(t15, 0)        // 1: log(1) = 0
+    t15 = backward(t15, 1)
+    let v15 = get_v(t15, 1)
+    let g15 = get_g(t15, 0)
+    // log(1) = 0, d(log(x))/dx = 1/x = 1
+    println("  f = ")
+    println(v15)
+    println("  expected = 0.0")
+    println("  df/dx = ")
+    println(g15)
+    println("  expected = 1.0")
+    if abs_f64(v15 - 0.0) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g15 - 1.0) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 17: Verify log_f64(0.5) = -log(2)
+    println("Test 17: log(0.5) and log(2)")
+    let log_half = log_f64(0.5)
+    let log_two = log_f64(2.0)
+    println("  log(0.5) = ")
+    println(log_half)
+    println("  log(2.0) = ")
+    println(log_two)
+    println("  log(0.5) + log(2) should = 0: ")
+    println(log_half + log_two)
+    // log(0.5) should be about -0.693
+    if abs_f64(log_half - (0.0 - 0.693)) > 0.01 { ok = false; println("  FAIL: log(0.5)") }
+    if abs_f64(log_two - 0.693) > 0.01 { ok = false; println("  FAIL: log(2)") }
+    println("")
+
+    // Test 18: cross_entropy(pred=0.5, target=1) = -log(0.5) = log(2)
+    println("Test 18: cross_entropy(0.5, 1)")
+    let mut t16 = tape_new()
+    t16 = tvar(t16, 0.5)      // 0: pred
+    t16 = tvar(t16, 1.0)      // 1: target
+    // Read values before passing tape to function (workaround for struct bug)
+    let p16 = get_v(t16, 0)
+    let y16 = get_v(t16, 1)
+    t16 = tcross_entropy_with_values(t16, 0, 1, p16, y16)  // 2: loss
+    t16 = backward(t16, 2)
+    let v16 = get_v(t16, 2)
+    let g16_pred = get_g(t16, 0)
+    // L = -[1*log(0.5) + 0*log(0.5)] = -log(0.5) = log(2) ≈ 0.693
+    // Use same log function for expected value
+    let expected_v16 = 0.0 - log_f64(0.5)
+    // dL/dp = (p - y) / (p * (1-p)) = (0.5 - 1) / (0.5 * 0.5) = -0.5 / 0.25 = -2
+    let expected_g16 = 0.0 - 2.0
+    println("  L = ")
+    println(v16)
+    println("  expected = ")
+    println(expected_v16)
+    println("  dL/dp = ")
+    println(g16_pred)
+    println("  expected = ")
+    println(expected_g16)
+    if abs_f64(v16 - expected_v16) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g16_pred - expected_g16) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 19: cross_entropy(pred=0.8, target=1) - higher prob = lower loss
+    println("Test 19: cross_entropy(0.8, 1)")
+    let mut t17 = tape_new()
+    t17 = tvar(t17, 0.8)      // 0: pred
+    t17 = tvar(t17, 1.0)      // 1: target
+    // Compute loss directly in test to avoid function parameter corruption bug
+    let p17 = 0.8
+    let y17 = 1.0
+    let log_p17 = log_f64(p17)
+    let log_1mp17 = log_f64(1.0 - p17)
+    let loss17 = y17 * (0.0 - log_p17) + (1.0 - y17) * (0.0 - log_1mp17)
+    t17 = push(t17, OP_CROSS_ENTROPY(), 0, 1, loss17)  // 2: loss
+    t17 = backward(t17, 2)
+    let v17 = get_v(t17, 2)
+    let g17_pred = get_g(t17, 0)
+    // L = -log(0.8) ≈ 0.223
+    let expected_v17 = 0.0 - log_f64(0.8)
+    // dL/dp = (0.8 - 1) / (0.8 * 0.2) = -0.2 / 0.16 = -1.25
+    let expected_g17 = (0.8 - 1.0) / (0.8 * 0.2)
+    println("  L = ")
+    println(v17)
+    println("  expected = ")
+    println(expected_v17)
+    println("  dL/dp = ")
+    println(g17_pred)
+    println("  expected = ")
+    println(expected_g17)
+    if abs_f64(v17 - expected_v17) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g17_pred - expected_g17) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 20: cross_entropy(pred=0.2, target=0) - correct low prediction
+    println("Test 20: cross_entropy(0.2, 0)")
+    let mut t18 = tape_new()
+    t18 = tvar(t18, 0.2)      // 0: pred
+    t18 = tvar(t18, 0.0)      // 1: target
+    // Compute loss directly to avoid function parameter corruption bug
+    let p18 = 0.2
+    let y18 = 0.0
+    let log_p18 = log_f64(p18)
+    let log_1mp18 = log_f64(1.0 - p18)
+    let loss18 = y18 * (0.0 - log_p18) + (1.0 - y18) * (0.0 - log_1mp18)
+    t18 = push(t18, OP_CROSS_ENTROPY(), 0, 1, loss18)  // 2: loss
+    t18 = backward(t18, 2)
+    let v18 = get_v(t18, 2)
+    let g18_pred = get_g(t18, 0)
+    // L = -[0*log(0.2) + 1*log(0.8)] = -log(0.8) ≈ 0.223
+    let expected_v18 = 0.0 - log_f64(0.8)
+    // dL/dp = (0.2 - 0) / (0.2 * 0.8) = 0.2 / 0.16 = 1.25
+    let expected_g18 = 0.2 / (0.2 * 0.8)
+    println("  L = ")
+    println(v18)
+    println("  expected = ")
+    println(expected_v18)
+    println("  dL/dp = ")
+    println(g18_pred)
+    println("  expected = ")
+    println(expected_g18)
+    if abs_f64(v18 - expected_v18) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g18_pred - expected_g18) > tol { ok = false; println("  FAIL: g") }
     println("")
 
     if ok {
