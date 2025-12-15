@@ -27,6 +27,7 @@
 //! let ptx = PtxCodegen::new((8, 0)).generate(&gpu_module);
 //! ```
 
+pub mod async_pipeline;
 pub mod autotune;
 pub mod bio;
 pub mod cooperative;
@@ -143,4 +144,13 @@ pub use autotune::{
     ArchConstants, AutoTuneConfig, AutoTuner, BlockShape, InstructionMix, KernelAnalyzer,
     KernelPattern, KernelProfile, MemoryPattern, OccupancyCalculator, OccupancyInfo,
     OccupancyLimiter, TileConfig, TunedConfig, TuningStrategy, tune_module,
+};
+
+// Async memory pipeline (Phase 5)
+pub use async_pipeline::{
+    AsyncOp, AsyncOpGraph, AsyncOpId, AsyncOpKind, AsyncPipeline, Barrier, BarrierKind,
+    BarrierId, BarrierPool, BarrierScheduler, BufferConfig, DependencyAnalyzer,
+    PipelineBuilder, PipelineCodegen, PipelineSchedule, PipelineScheduler, PipelineStage,
+    ScheduledOp, StageBuffer, StageId, apply_pipeline, create_pipeline_from_tile,
+    schedule_pipeline,
 };
