@@ -30,59 +30,9 @@ fn exp_f64(x: f64) -> f64 {
     return sum
 }
 
-fn cos_f64(x: f64) -> f64 {
-    let pi = 3.141592653589793
-    let mut y = x
-    while y > pi { y = y - 2.0 * pi }
-    while y < 0.0 - pi { y = y + 2.0 * pi }
-    let y2 = y * y
-    let mut sum = 1.0
-    let mut term = 1.0
-    term = term * (0.0 - y2) / 2.0; sum = sum + term
-    term = term * (0.0 - y2) / 12.0; sum = sum + term
-    term = term * (0.0 - y2) / 30.0; sum = sum + term
-    term = term * (0.0 - y2) / 56.0; sum = sum + term
-    term = term * (0.0 - y2) / 90.0; sum = sum + term
-    return sum
-}
-
-fn sin_f64(x: f64) -> f64 {
-    let pi = 3.141592653589793
-    let mut y = x
-    while y > pi { y = y - 2.0 * pi }
-    while y < 0.0 - pi { y = y + 2.0 * pi }
-    let y2 = y * y
-    let mut sum = y
-    let mut term = y
-    term = term * (0.0 - y2) / 6.0; sum = sum + term
-    term = term * (0.0 - y2) / 20.0; sum = sum + term
-    term = term * (0.0 - y2) / 42.0; sum = sum + term
-    term = term * (0.0 - y2) / 72.0; sum = sum + term
-    return sum
-}
-
+// Alias log_f64 -> ln_f64 (defined below in loss functions section)
 fn log_f64(x: f64) -> f64 {
-    // Natural logarithm
-    if x <= 0.0 { return 0.0 - 1000000.0 }  // Return large negative for invalid input
-    if x == 1.0 { return 0.0 }
-
-    // Use identity: log(x) = 2 * log(sqrt(x)) to bring x closer to 1
-    // Trigger this for x > 1.5 or x < 0.7 for faster convergence
-    if x > 1.5 { return 2.0 * log_f64(sqrt_f64(x)) }
-    if x < 0.7 { return 0.0 - log_f64(1.0 / x) }
-
-    // For x in [0.7, 1.5], use Taylor series around 1: log(1+u) = u - u^2/2 + u^3/3 - ...
-    // This converges quickly for |u| < 0.5
-    let u = x - 1.0
-    let mut sum = 0.0
-    let mut term = u
-    let mut i = 1
-    while i <= 30 {
-        sum = sum + term / i
-        term = 0.0 - term * u
-        i = i + 1
-    }
-    return sum
+    return ln_f64(x)
 }
 
 // ============================================================================
@@ -1492,28 +1442,34 @@ fn lr_step_decay(initial_lr: f64, step: f64, step_size: f64, gamma: f64) -> f64 
     return initial_lr * pow_f64(gamma, num_decays)
 }
 
-// Floor function for step decay
+// Floor function - efficient non-recursive implementation
 fn floor_f64(x: f64) -> f64 {
-    // Simple floor implementation
-    let truncated = x - (x - (x / 1.0))  // This doesn't work, need different approach
     if x >= 0.0 {
-        // For positive numbers, truncate toward zero
+        // For small positive numbers, use simple digit extraction
+        if x < 1.0 { return 0.0 }
+
+        // Decompose using powers of 10 (fast for reasonable numbers)
         let mut result = 0.0
-        let mut i = 0.0
-        while i <= x {
-            result = i
-            i = i + 1.0
+        let mut remaining = x
+
+        // Handle up to 10^15 (well within f64 precision)
+        let mut power = 1000000000000000.0  // 10^15
+        while power >= 1.0 {
+            while remaining >= power {
+                remaining = remaining - power
+                result = result + power
+            }
+            power = power / 10.0
         }
         return result
     } else {
-        // For negative, truncate away from zero
-        let mut result = 0.0
-        let mut i = 0.0
-        while i >= x {
-            result = i
-            i = i - 1.0
+        // For negative numbers: floor(-2.3) = -3
+        let pos = 0.0 - x
+        let pos_floor = floor_f64(pos)
+        if pos > pos_floor {
+            return 0.0 - pos_floor - 1.0
         }
-        return result
+        return 0.0 - pos_floor
     }
 }
 
@@ -1553,23 +1509,37 @@ fn lr_cosine_annealing(initial_lr: f64, min_lr: f64, step: f64, total_steps: f64
     return min_lr + 0.5 * (initial_lr - min_lr) * (1.0 + cosine_value)
 }
 
-// Cosine function using Taylor series
+// Cosine function using Taylor series with proper range reduction
 fn cos_f64(x: f64) -> f64 {
-    // Normalize x to [0, 2π]
     let pi = 3.14159265358979323846
     let two_pi = 2.0 * pi
-    let mut normalized = x
-    while normalized >= two_pi { normalized = normalized - two_pi }
-    while normalized < 0.0 { normalized = normalized + two_pi }
+    let half_pi = pi / 2.0
 
-    // Taylor series: cos(x) = 1 - x²/2! + x⁴/4! - x⁶/6! + ...
-    let x2 = normalized * normalized
+    // Normalize to [0, 2π)
+    let mut a = x
+    while a >= two_pi { a = a - two_pi }
+    while a < 0.0 { a = a + two_pi }
+
+    // Reduce to [0, π/2] using symmetry
+    // cos(x) = cos(2π - x) for x in [π, 2π]
+    // cos(x) = -cos(π - x) for x in [π/2, π]
+    let mut sign = 1.0
+    if a > pi {
+        a = two_pi - a
+    }
+    if a > half_pi {
+        sign = 0.0 - 1.0
+        a = pi - a
+    }
+
+    // Now a is in [0, π/2], Taylor series converges well
+    let x2 = a * a
     let x4 = x2 * x2
     let x6 = x4 * x2
     let x8 = x4 * x4
     let x10 = x6 * x4
 
-    return 1.0 - x2/2.0 + x4/24.0 - x6/720.0 + x8/40320.0 - x10/3628800.0
+    return sign * (1.0 - x2/2.0 + x4/24.0 - x6/720.0 + x8/40320.0 - x10/3628800.0)
 }
 
 // Linear warmup: gradually increase LR from 0 to initial_lr
@@ -1663,9 +1633,26 @@ fn ln_f64(x: f64) -> f64 {
     if x <= 0.0 { return 0.0 - 1000000.0 }  // -inf approximation
     if x == 1.0 { return 0.0 }
 
-    // Use identity: ln(x) = 2 * arctanh((x-1)/(x+1))
-    // arctanh(y) = y + y³/3 + y⁵/5 + y⁷/7 + ...
-    let y = (x - 1.0) / (x + 1.0)
+    // Range reduction: bring x to [0.5, 2] for better convergence
+    let ln2 = 0.6931471805599453
+    let mut val = x
+    let mut adj = 0.0
+
+    // Handle large values: divide by 2 repeatedly
+    while val > 2.0 {
+        val = val / 2.0
+        adj = adj + ln2
+    }
+
+    // Handle small values: multiply by 2 repeatedly
+    while val < 0.5 {
+        val = val * 2.0
+        adj = adj - ln2
+    }
+
+    // Now val is in [0.5, 2], use arctanh series
+    // ln(x) = 2 * arctanh((x-1)/(x+1))
+    let y = (val - 1.0) / (val + 1.0)
     let y2 = y * y
     let y3 = y2 * y
     let y5 = y3 * y2
@@ -1673,8 +1660,10 @@ fn ln_f64(x: f64) -> f64 {
     let y9 = y7 * y2
     let y11 = y9 * y2
     let y13 = y11 * y2
+    let y15 = y13 * y2
 
-    return 2.0 * (y + y3/3.0 + y5/5.0 + y7/7.0 + y9/9.0 + y11/11.0 + y13/13.0)
+    let ln_val = 2.0 * (y + y3/3.0 + y5/5.0 + y7/7.0 + y9/9.0 + y11/11.0 + y13/13.0 + y15/15.0)
+    return ln_val + adj
 }
 
 // ----------------------------------------------------------------------------
@@ -1998,6 +1987,397 @@ fn loss_triplet_margin(anchor: f64, positive: f64, negative: f64, margin: f64) -
 // Default margin = 1.0
 fn loss_triplet_default(anchor: f64, positive: f64, negative: f64) -> f64 {
     return loss_triplet_margin(anchor, positive, negative, 1.0)
+}
+
+// ============================================================================
+// WEIGHT INITIALIZATION
+// ============================================================================
+// Proper weight initialization is critical for training deep networks.
+// Different activation functions require different initialization strategies.
+
+// ----------------------------------------------------------------------------
+// PSEUDO-RANDOM NUMBER GENERATOR (LCG)
+// ----------------------------------------------------------------------------
+// Linear Congruential Generator for reproducible random weights
+// State is passed through and returned for functional style
+
+struct RngSt {
+    seed: f64
+}
+
+fn rng_new(seed: f64) -> RngSt {
+    // Ensure seed is in valid range [1, m-1]
+    let m = 2147483647.0  // 2^31 - 1
+    let mut s = seed
+    if s <= 0.0 { s = 1.0 }
+    if s >= m { s = m - 1.0 }
+    return RngSt { seed: s }
+}
+
+// Generate next random number, returns (value in [0,1), new_state)
+// Uses Parks-Miller MINSTD: seed' = (16807 * seed) mod (2^31-1)
+// This keeps intermediate values within f64 precision (max ~3.6e13 < 2^53)
+struct RngResult {
+    value: f64,
+    rng: RngSt
+}
+
+fn rng_next(st: RngSt) -> RngResult {
+    // MINSTD parameters - safe for f64 arithmetic
+    let a = 16807.0
+    let m = 2147483647.0  // 2^31 - 1 (Mersenne prime)
+
+    // Use Schrage's method to avoid overflow:
+    // (a * seed) mod m = a * (seed mod q) - r * (seed / q)
+    // where q = m / a, r = m mod a
+    let q = 127773.0   // floor(m/a)
+    let r = 2836.0     // m mod a
+
+    let k = floor_f64(st.seed / q)
+    let new_seed_raw = a * (st.seed - k * q) - r * k
+
+    // Handle negative result
+    let new_seed = if new_seed_raw < 0.0 { new_seed_raw + m } else { new_seed_raw }
+
+    let value = new_seed / m
+    return RngResult { value: value, rng: RngSt { seed: new_seed } }
+}
+
+// Floating point modulo (kept for other uses)
+fn fmod_f64(x: f64, y: f64) -> f64 {
+    if y == 0.0 { return 0.0 }
+    let quotient = floor_f64(x / y)
+    return x - quotient * y
+}
+
+// Generate uniform random in [low, high)
+fn rng_uniform(st: RngSt, low: f64, high: f64) -> RngResult {
+    let r = rng_next(st)
+    let scaled = low + r.value * (high - low)
+    return RngResult { value: scaled, rng: r.rng }
+}
+
+// Box-Muller transform for normal distribution
+// Returns two independent normal samples
+struct RngNormalResult {
+    value1: f64,
+    value2: f64,
+    rng: RngSt
+}
+
+fn rng_normal_pair(st: RngSt, mean: f64, std: f64) -> RngNormalResult {
+    // Generate two uniform samples
+    let r1 = rng_next(st)
+    let r2 = rng_next(r1.rng)
+
+    // Avoid log(0)
+    let u1 = if r1.value < 0.0000001 { 0.0000001 } else { r1.value }
+    let u2 = r2.value
+
+    // Box-Muller transform
+    let pi = 3.14159265358979323846
+    let mag = std * sqrt_f64(0.0 - 2.0 * ln_f64(u1))
+    let z1 = mag * cos_f64(2.0 * pi * u2) + mean
+    let z2 = mag * sin_f64(2.0 * pi * u2) + mean
+
+    return RngNormalResult { value1: z1, value2: z2, rng: r2.rng }
+}
+
+// Sine function using Taylor series with proper range reduction
+fn sin_f64(x: f64) -> f64 {
+    let pi = 3.14159265358979323846
+    let two_pi = 2.0 * pi
+    let half_pi = pi / 2.0
+
+    // Normalize to [0, 2π)
+    let mut a = x
+    while a >= two_pi { a = a - two_pi }
+    while a < 0.0 { a = a + two_pi }
+
+    // Reduce to [0, π/2] using symmetry
+    let mut sign = 1.0
+    if a > pi {
+        sign = 0.0 - 1.0
+        a = a - pi
+    }
+    if a > half_pi {
+        a = pi - a
+    }
+
+    // Now a is in [0, π/2], Taylor series converges well
+    let x2 = a * a
+    let x3 = x2 * a
+    let x5 = x3 * x2
+    let x7 = x5 * x2
+    let x9 = x7 * x2
+    let x11 = x9 * x2
+
+    return sign * (a - x3/6.0 + x5/120.0 - x7/5040.0 + x9/362880.0 - x11/39916800.0)
+}
+
+// Single normal sample (uses first of pair)
+fn rng_normal(st: RngSt, mean: f64, std: f64) -> RngResult {
+    let pair = rng_normal_pair(st, mean, std)
+    return RngResult { value: pair.value1, rng: pair.rng }
+}
+
+// ----------------------------------------------------------------------------
+// XAVIER/GLOROT INITIALIZATION
+// ----------------------------------------------------------------------------
+// For tanh and sigmoid activations
+// Maintains variance across layers to prevent vanishing/exploding gradients
+//
+// Xavier Uniform: U[-limit, limit] where limit = sqrt(6 / (fan_in + fan_out))
+// Xavier Normal: N(0, std) where std = sqrt(2 / (fan_in + fan_out))
+
+// Calculate Xavier uniform bounds
+fn xavier_uniform_bound(fan_in: f64, fan_out: f64) -> f64 {
+    return sqrt_f64(6.0 / (fan_in + fan_out))
+}
+
+// Calculate Xavier normal std
+fn xavier_normal_std(fan_in: f64, fan_out: f64) -> f64 {
+    return sqrt_f64(2.0 / (fan_in + fan_out))
+}
+
+// Generate Xavier uniform weight
+fn init_xavier_uniform(st: RngSt, fan_in: f64, fan_out: f64) -> RngResult {
+    let bound = xavier_uniform_bound(fan_in, fan_out)
+    return rng_uniform(st, 0.0 - bound, bound)
+}
+
+// Generate Xavier normal weight
+fn init_xavier_normal(st: RngSt, fan_in: f64, fan_out: f64) -> RngResult {
+    let std = xavier_normal_std(fan_in, fan_out)
+    return rng_normal(st, 0.0, std)
+}
+
+// ----------------------------------------------------------------------------
+// HE/KAIMING INITIALIZATION
+// ----------------------------------------------------------------------------
+// For ReLU and variants (designed for asymmetric activations)
+// Accounts for the fact that ReLU zeros out negative values
+//
+// He Uniform: U[-limit, limit] where limit = sqrt(6 / fan_in)
+// He Normal: N(0, std) where std = sqrt(2 / fan_in)
+//
+// For LeakyReLU with negative_slope a:
+// std = sqrt(2 / ((1 + a²) * fan_in))
+
+// Calculate He uniform bound
+fn he_uniform_bound(fan_in: f64) -> f64 {
+    return sqrt_f64(6.0 / fan_in)
+}
+
+// Calculate He normal std
+fn he_normal_std(fan_in: f64) -> f64 {
+    return sqrt_f64(2.0 / fan_in)
+}
+
+// He for LeakyReLU
+fn he_normal_std_leaky(fan_in: f64, negative_slope: f64) -> f64 {
+    return sqrt_f64(2.0 / ((1.0 + negative_slope * negative_slope) * fan_in))
+}
+
+// Generate He uniform weight
+fn init_he_uniform(st: RngSt, fan_in: f64) -> RngResult {
+    let bound = he_uniform_bound(fan_in)
+    return rng_uniform(st, 0.0 - bound, bound)
+}
+
+// Generate He normal weight
+fn init_he_normal(st: RngSt, fan_in: f64) -> RngResult {
+    let std = he_normal_std(fan_in)
+    return rng_normal(st, 0.0, std)
+}
+
+// He for LeakyReLU
+fn init_he_leaky(st: RngSt, fan_in: f64, negative_slope: f64) -> RngResult {
+    let std = he_normal_std_leaky(fan_in, negative_slope)
+    return rng_normal(st, 0.0, std)
+}
+
+// Alias: Kaiming = He
+fn init_kaiming_uniform(st: RngSt, fan_in: f64) -> RngResult {
+    return init_he_uniform(st, fan_in)
+}
+
+fn init_kaiming_normal(st: RngSt, fan_in: f64) -> RngResult {
+    return init_he_normal(st, fan_in)
+}
+
+// ----------------------------------------------------------------------------
+// LECUN INITIALIZATION
+// ----------------------------------------------------------------------------
+// For SELU activation (self-normalizing networks)
+// LeCun Normal: N(0, std) where std = sqrt(1 / fan_in)
+
+fn lecun_normal_std(fan_in: f64) -> f64 {
+    return sqrt_f64(1.0 / fan_in)
+}
+
+fn init_lecun_normal(st: RngSt, fan_in: f64) -> RngResult {
+    let std = lecun_normal_std(fan_in)
+    return rng_normal(st, 0.0, std)
+}
+
+fn init_lecun_uniform(st: RngSt, fan_in: f64) -> RngResult {
+    let bound = sqrt_f64(3.0 / fan_in)
+    return rng_uniform(st, 0.0 - bound, bound)
+}
+
+// ----------------------------------------------------------------------------
+// BASIC INITIALIZATIONS
+// ----------------------------------------------------------------------------
+
+// Constant initialization
+fn init_constant(value: f64) -> f64 {
+    return value
+}
+
+// Zero initialization (use sparingly - can cause dead neurons)
+fn init_zeros() -> f64 {
+    return 0.0
+}
+
+// One initialization
+fn init_ones() -> f64 {
+    return 1.0
+}
+
+// Uniform initialization in [low, high)
+fn init_uniform(st: RngSt, low: f64, high: f64) -> RngResult {
+    return rng_uniform(st, low, high)
+}
+
+// Normal initialization with given mean and std
+fn init_normal(st: RngSt, mean: f64, std: f64) -> RngResult {
+    return rng_normal(st, mean, std)
+}
+
+// Standard normal N(0, 1)
+fn init_standard_normal(st: RngSt) -> RngResult {
+    return rng_normal(st, 0.0, 1.0)
+}
+
+// ----------------------------------------------------------------------------
+// TRUNCATED NORMAL INITIALIZATION
+// ----------------------------------------------------------------------------
+// Normal distribution but values beyond 2*std are redrawn
+// Used in TensorFlow's default initializers
+
+fn init_truncated_normal(st: RngSt, mean: f64, std: f64) -> RngResult {
+    let mut cur_rng = st
+    let mut value = 0.0
+    let mut found = false
+    let mut iterations = 0
+
+    // Rejection sampling (max 10 iterations to avoid infinite loop)
+    while iterations < 10 {
+        let r = rng_normal(cur_rng, mean, std)
+        cur_rng = r.rng
+        value = r.value
+
+        // Accept if within 2 standard deviations
+        if abs_f64(value - mean) <= 2.0 * std {
+            found = true
+            iterations = 10  // Exit loop
+        }
+        iterations = iterations + 1
+    }
+
+    // If not found after 10 tries, clamp to bounds
+    if found == false {
+        if value > mean + 2.0 * std {
+            value = mean + 2.0 * std
+        }
+        if value < mean - 2.0 * std {
+            value = mean - 2.0 * std
+        }
+    }
+
+    return RngResult { value: value, rng: cur_rng }
+}
+
+// ----------------------------------------------------------------------------
+// SPARSE INITIALIZATION
+// ----------------------------------------------------------------------------
+// Initialize with zeros except for a fraction of weights
+// sparsity: fraction of weights to set to zero (0.0 = dense, 0.9 = 90% zeros)
+
+fn init_sparse(st: RngSt, std: f64, sparsity: f64) -> RngResult {
+    let r1 = rng_next(st)
+
+    if r1.value < sparsity {
+        // Zero with probability = sparsity
+        return RngResult { value: 0.0, rng: r1.rng }
+    } else {
+        // Normal with probability = 1 - sparsity
+        return rng_normal(r1.rng, 0.0, std)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// ORTHOGONAL INITIALIZATION (simplified scalar version)
+// ----------------------------------------------------------------------------
+// For matrices, orthogonal init uses QR decomposition
+// For scalars, we return ±1 scaled by gain
+// gain: scaling factor (1.0 for linear, sqrt(2) for ReLU)
+
+fn init_orthogonal_scalar(st: RngSt, gain: f64) -> RngResult {
+    let r = rng_next(st)
+    // Random sign
+    if r.value < 0.5 {
+        return RngResult { value: gain, rng: r.rng }
+    } else {
+        return RngResult { value: 0.0 - gain, rng: r.rng }
+    }
+}
+
+// Orthogonal gain for different activations
+fn orthogonal_gain_linear() -> f64 { return 1.0 }
+fn orthogonal_gain_relu() -> f64 { return 1.4142135623730951 }  // sqrt(2)
+fn orthogonal_gain_tanh() -> f64 { return 1.6666666666666667 }  // 5/3
+fn orthogonal_gain_sigmoid() -> f64 { return 1.0 }
+
+// ----------------------------------------------------------------------------
+// CONVENIENCE FUNCTIONS (recommended defaults)
+// ----------------------------------------------------------------------------
+
+// Best for ReLU networks (most common)
+fn init_default_relu(st: RngSt, fan_in: f64) -> RngResult {
+    return init_he_normal(st, fan_in)
+}
+
+// Best for tanh/sigmoid networks
+fn init_default_tanh(st: RngSt, fan_in: f64, fan_out: f64) -> RngResult {
+    return init_xavier_normal(st, fan_in, fan_out)
+}
+
+// Best for SELU networks
+fn init_default_selu(st: RngSt, fan_in: f64) -> RngResult {
+    return init_lecun_normal(st, fan_in)
+}
+
+// Best for transformers (scaled normal)
+fn init_default_transformer(st: RngSt, d_model: f64) -> RngResult {
+    let std = 1.0 / sqrt_f64(d_model)
+    return rng_normal(st, 0.0, std)
+}
+
+// Best for embeddings
+fn init_default_embedding(st: RngSt) -> RngResult {
+    return rng_normal(st, 0.0, 1.0)
+}
+
+// Best for biases (usually zeros or small constant)
+fn init_default_bias() -> f64 {
+    return 0.0
+}
+
+// Small constant bias (sometimes better for ReLU)
+fn init_small_bias() -> f64 {
+    return 0.01
 }
 
 // ============================================================================
@@ -3899,6 +4279,263 @@ fn main() -> i32 {
     if abs_f64(trip_good - 0.0) > tol { ok = false; println("  FAIL: Triplet good should be 0") }
     // Bad: max(0, 2.0 - 0.1 + 1.0) = max(0, 2.9) = 2.9
     if abs_f64(trip_bad - 2.9) > tol { ok = false; println("  FAIL: Triplet bad should be 2.9") }
+    println("")
+
+    // ========================================================================
+    // WEIGHT INITIALIZATION TESTS
+    // ========================================================================
+
+    // Test 59: RNG basic functionality
+    println("Test 59: RNG basic functionality")
+    let rng59 = rng_new(42.0)  // Seed with 42
+
+    // Generate several random numbers
+    let r1_59 = rng_next(rng59)
+    let r2_59 = rng_next(r1_59.rng)
+    let r3_59 = rng_next(r2_59.rng)
+
+    println("  seed=42, r1 = ")
+    println(r1_59.value)
+    println("  r2 = ")
+    println(r2_59.value)
+    println("  r3 = ")
+    println(r3_59.value)
+
+    // All values should be in [0, 1)
+    if r1_59.value < 0.0 { ok = false; println("  FAIL: r1 < 0") }
+    if r1_59.value >= 1.0 { ok = false; println("  FAIL: r1 >= 1") }
+    if r2_59.value < 0.0 { ok = false; println("  FAIL: r2 < 0") }
+    if r2_59.value >= 1.0 { ok = false; println("  FAIL: r2 >= 1") }
+    // Values should be different
+    if abs_f64(r1_59.value - r2_59.value) < 0.0001 { ok = false; println("  FAIL: r1 == r2") }
+    if abs_f64(r2_59.value - r3_59.value) < 0.0001 { ok = false; println("  FAIL: r2 == r3") }
+    println("")
+
+    // Test 60: Xavier initialization bounds
+    println("Test 60: Xavier initialization")
+    let fan_in60 = 256.0
+    let fan_out60 = 128.0
+
+    // Xavier uniform bound = sqrt(6 / (256 + 128)) = sqrt(6/384) ≈ 0.125
+    let xavier_bound = xavier_uniform_bound(fan_in60, fan_out60)
+    // Xavier normal std = sqrt(2 / (256 + 128)) = sqrt(2/384) ≈ 0.0722
+    let xavier_std = xavier_normal_std(fan_in60, fan_out60)
+
+    println("  fan_in=256, fan_out=128")
+    println("  Xavier uniform bound = ")
+    println(xavier_bound)
+    println("  Xavier normal std = ")
+    println(xavier_std)
+
+    let expected_xavier_bound = sqrt_f64(6.0 / 384.0)
+    let expected_xavier_std = sqrt_f64(2.0 / 384.0)
+    if abs_f64(xavier_bound - expected_xavier_bound) > tol { ok = false; println("  FAIL: Xavier bound") }
+    if abs_f64(xavier_std - expected_xavier_std) > tol { ok = false; println("  FAIL: Xavier std") }
+
+    // Generate a few Xavier uniform weights
+    let rng60 = rng_new(123.0)
+    let xu1 = init_xavier_uniform(rng60, fan_in60, fan_out60)
+    let xu2 = init_xavier_uniform(xu1.rng, fan_in60, fan_out60)
+
+    println("  Xavier uniform w1 = ")
+    println(xu1.value)
+    println("  Xavier uniform w2 = ")
+    println(xu2.value)
+
+    // Weights should be within bounds
+    if abs_f64(xu1.value) > xavier_bound + 0.001 { ok = false; println("  FAIL: xu1 out of bounds") }
+    if abs_f64(xu2.value) > xavier_bound + 0.001 { ok = false; println("  FAIL: xu2 out of bounds") }
+    println("")
+
+    // Test 61: He initialization bounds
+    println("Test 61: He/Kaiming initialization")
+    let fan_in61 = 512.0
+
+    // He uniform bound = sqrt(6 / 512) ≈ 0.108
+    let he_bound = he_uniform_bound(fan_in61)
+    // He normal std = sqrt(2 / 512) ≈ 0.0625
+    let he_std = he_normal_std(fan_in61)
+
+    println("  fan_in=512")
+    println("  He uniform bound = ")
+    println(he_bound)
+    println("  He normal std = ")
+    println(he_std)
+
+    let expected_he_bound = sqrt_f64(6.0 / 512.0)
+    let expected_he_std = sqrt_f64(2.0 / 512.0)
+    if abs_f64(he_bound - expected_he_bound) > tol { ok = false; println("  FAIL: He bound") }
+    if abs_f64(he_std - expected_he_std) > tol { ok = false; println("  FAIL: He std") }
+
+    // Generate He normal weights
+    let rng61 = rng_new(456.0)
+    let he1 = init_he_normal(rng61, fan_in61)
+    let he2 = init_he_normal(he1.rng, fan_in61)
+
+    println("  He normal w1 = ")
+    println(he1.value)
+    println("  He normal w2 = ")
+    println(he2.value)
+
+    // He normal should have reasonable magnitude (within 4 std)
+    if abs_f64(he1.value) > 4.0 * he_std { ok = false; println("  FAIL: he1 too large") }
+    if abs_f64(he2.value) > 4.0 * he_std { ok = false; println("  FAIL: he2 too large") }
+    println("")
+
+    // Test 62: LeCun initialization
+    println("Test 62: LeCun initialization")
+    let fan_in62 = 1024.0
+
+    // LeCun std = sqrt(1 / 1024) ≈ 0.03125
+    let lecun_std = lecun_normal_std(fan_in62)
+
+    println("  fan_in=1024")
+    println("  LeCun normal std = ")
+    println(lecun_std)
+
+    let expected_lecun_std = sqrt_f64(1.0 / 1024.0)
+    if abs_f64(lecun_std - expected_lecun_std) > tol { ok = false; println("  FAIL: LeCun std") }
+
+    // Generate LeCun weight
+    let rng62 = rng_new(789.0)
+    let lc1 = init_lecun_normal(rng62, fan_in62)
+
+    println("  LeCun normal w1 = ")
+    println(lc1.value)
+
+    if abs_f64(lc1.value) > 4.0 * lecun_std { ok = false; println("  FAIL: lc1 too large") }
+    println("")
+
+    // Test 63: Normal distribution via Box-Muller
+    println("Test 63: Box-Muller normal distribution")
+    let rng63 = rng_new(111.0)
+    let mean63 = 5.0
+    let std63 = 2.0
+
+    // Generate several normal samples
+    let n1 = rng_normal(rng63, mean63, std63)
+    let n2 = rng_normal(n1.rng, mean63, std63)
+    let n3 = rng_normal(n2.rng, mean63, std63)
+    let n4 = rng_normal(n3.rng, mean63, std63)
+    let n5 = rng_normal(n4.rng, mean63, std63)
+
+    println("  N(5, 2) samples:")
+    println("    n1 = ")
+    println(n1.value)
+    println("    n2 = ")
+    println(n2.value)
+    println("    n3 = ")
+    println(n3.value)
+
+    // Compute sample mean
+    let sample_mean = (n1.value + n2.value + n3.value + n4.value + n5.value) / 5.0
+    println("  Sample mean (5 samples) = ")
+    println(sample_mean)
+
+    // Sample mean should be roughly near 5.0 (within 2 std of mean = 4 std errors)
+    // With 5 samples, std error = 2/sqrt(5) ≈ 0.894, so 4*0.894 ≈ 3.58
+    if abs_f64(sample_mean - mean63) > 4.0 { ok = false; println("  FAIL: sample mean too far") }
+
+    // All values should be finite (not NaN or inf)
+    if n1.value != n1.value { ok = false; println("  FAIL: n1 is NaN") }
+    if n2.value != n2.value { ok = false; println("  FAIL: n2 is NaN") }
+    println("")
+
+    // Test 64: Sparse initialization
+    println("Test 64: Sparse initialization")
+    let rng64 = rng_new(222.0)
+    let sparsity64 = 0.7  // 70% zeros
+
+    // Generate several sparse weights
+    let mut zero_count = 0.0
+    let mut s_rng = rng64
+
+    let s1 = init_sparse(s_rng, 1.0, sparsity64)
+    s_rng = s1.rng
+    if abs_f64(s1.value) < 0.0001 { zero_count = zero_count + 1.0 }
+
+    let s2 = init_sparse(s_rng, 1.0, sparsity64)
+    s_rng = s2.rng
+    if abs_f64(s2.value) < 0.0001 { zero_count = zero_count + 1.0 }
+
+    let s3 = init_sparse(s_rng, 1.0, sparsity64)
+    s_rng = s3.rng
+    if abs_f64(s3.value) < 0.0001 { zero_count = zero_count + 1.0 }
+
+    let s4 = init_sparse(s_rng, 1.0, sparsity64)
+    s_rng = s4.rng
+    if abs_f64(s4.value) < 0.0001 { zero_count = zero_count + 1.0 }
+
+    let s5 = init_sparse(s_rng, 1.0, sparsity64)
+    if abs_f64(s5.value) < 0.0001 { zero_count = zero_count + 1.0 }
+
+    println("  Sparse(std=1, sparsity=0.7):")
+    println("    s1 = ")
+    println(s1.value)
+    println("    s2 = ")
+    println(s2.value)
+    println("    s3 = ")
+    println(s3.value)
+    println("  Zero count (of 5) = ")
+    println(zero_count)
+
+    // With 70% sparsity, expect some zeros (but random, so just check it works)
+    // Non-zero values should be reasonable
+    println("")
+
+    // Test 65: Truncated normal
+    println("Test 65: Truncated normal initialization")
+    let rng65 = rng_new(333.0)
+    let mean65 = 0.0
+    let std65 = 1.0
+
+    // Generate truncated normal samples
+    let tn1 = init_truncated_normal(rng65, mean65, std65)
+    let tn2 = init_truncated_normal(tn1.rng, mean65, std65)
+    let tn3 = init_truncated_normal(tn2.rng, mean65, std65)
+
+    println("  Truncated N(0, 1) samples:")
+    println("    tn1 = ")
+    println(tn1.value)
+    println("    tn2 = ")
+    println(tn2.value)
+    println("    tn3 = ")
+    println(tn3.value)
+
+    // All values should be within [-2, 2] (2 std from mean)
+    if abs_f64(tn1.value) > 2.0 + 0.001 { ok = false; println("  FAIL: tn1 outside [-2, 2]") }
+    if abs_f64(tn2.value) > 2.0 + 0.001 { ok = false; println("  FAIL: tn2 outside [-2, 2]") }
+    if abs_f64(tn3.value) > 2.0 + 0.001 { ok = false; println("  FAIL: tn3 outside [-2, 2]") }
+    println("")
+
+    // Test 66: Convenience initialization functions
+    println("Test 66: Convenience initialization functions")
+    let rng66 = rng_new(444.0)
+
+    // ReLU default (He)
+    let relu_w = init_default_relu(rng66, 256.0)
+    // Tanh default (Xavier)
+    let tanh_w = init_default_tanh(relu_w.rng, 256.0, 128.0)
+    // Transformer default
+    let trans_w = init_default_transformer(tanh_w.rng, 512.0)
+    // Bias default
+    let bias = init_default_bias()
+
+    println("  ReLU default (fan_in=256) = ")
+    println(relu_w.value)
+    println("  Tanh default (256->128) = ")
+    println(tanh_w.value)
+    println("  Transformer default (d=512) = ")
+    println(trans_w.value)
+    println("  Bias default = ")
+    println(bias)
+
+    // Bias should be 0
+    if abs_f64(bias - 0.0) > tol { ok = false; println("  FAIL: bias should be 0") }
+    // All weights should be finite
+    if relu_w.value != relu_w.value { ok = false; println("  FAIL: relu_w is NaN") }
+    if tanh_w.value != tanh_w.value { ok = false; println("  FAIL: tanh_w is NaN") }
+    if trans_w.value != trans_w.value { ok = false; println("  FAIL: trans_w is NaN") }
     println("")
 
     if ok {
