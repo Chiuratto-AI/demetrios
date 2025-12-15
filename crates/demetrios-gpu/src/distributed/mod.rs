@@ -40,6 +40,7 @@ pub mod data_parallel;
 pub mod fault_tolerance;
 pub mod formal;
 pub mod hardware;
+pub mod heterogeneous;
 pub mod model;
 pub mod pipeline;
 pub mod primitives;
@@ -66,6 +67,19 @@ pub use pipeline::{PipelineExecutor, PipelinePartitioner, PipelineSchedule, Pipe
 pub use fault_tolerance::{
     Checkpoint, CheckpointId, CheckpointManager, DeviceHealth, ElasticExecutor, FailureDetector,
     RecoveryAction, ReplicatedBuffer,
+};
+
+// Heterogeneous multi-GPU support (Volta + Ampere + Ada + Hopper + Blackwell)
+pub use heterogeneous::{
+    ArchCapabilities, ArchFeature, ArchFeatures, CoherenceMode, CompileError, CompiledKernel,
+    CompiledKernelSet, DeviceBuffer, DevicePool, DevicePoolError, DeviceResult,
+    DiscoveredDevice, DiscoveryError, DistributedLaunchConfig, DistributionStrategy,
+    ExecutionSummary, GpuArchitecture, HeterogeneousCompiler, HeterogeneousDevice,
+    HeterogeneousDeviceManager, HeterogeneousError, HeterogeneousMemoryManager,
+    HeterogeneousScheduler, InputMode, KernelArg, KernelSignature, KernelSource,
+    LaunchConfig, LaunchConfigHint, MemoryError, MemoryInfo, NVLinkInfo, OptSettings,
+    OutputMode, P2PCapability, ParamType, ReduceOp, SyncMode, TransferPath, UnifiedBuffer,
+    WorkAssignment, WorkDistribution,
 };
 
 use crate::backend::CpuBackend;
