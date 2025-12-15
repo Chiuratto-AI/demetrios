@@ -970,6 +970,50 @@ fn adagrad_step(param: f64, g: f64, sum_sq: f64, lr: f64) -> AdaGradResult {
 }
 
 // ============================================================================
+// ADADELTA OPTIMIZER
+// ============================================================================
+
+// AdaDelta hyperparameters (Zeiler, 2012)
+fn ADADELTA_RHO() -> f64 { return 0.95 }
+fn ADADELTA_EPS() -> f64 { return 0.000001 }  // Typically larger eps than other optimizers
+
+// Result struct for AdaDelta
+struct AdaDeltaResult {
+    param: f64,
+    acc_grad: f64,   // E[g²] - accumulated squared gradients
+    acc_delta: f64   // E[Δx²] - accumulated squared updates
+}
+
+// AdaDelta update for single parameter
+// Key innovation: NO learning rate hyperparameter needed!
+// Formula: E[g²]_t = ρ * E[g²]_{t-1} + (1-ρ) * g²
+//          Δx = -RMS[Δx]_{t-1} / RMS[g]_t * g
+//          E[Δx²]_t = ρ * E[Δx²]_{t-1} + (1-ρ) * Δx²
+//          x_t = x_{t-1} + Δx
+// where RMS[x] = sqrt(E[x²] + ε)
+fn adadelta_step(param: f64, g: f64, acc_grad: f64, acc_delta: f64, rho: f64) -> AdaDeltaResult {
+    let eps = ADADELTA_EPS()
+
+    // Accumulate squared gradient with decay
+    let new_acc_grad = rho * acc_grad + (1.0 - rho) * g * g
+
+    // Compute RMS of gradients and previous updates
+    let rms_grad = sqrt_f64(new_acc_grad + eps)
+    let rms_delta = sqrt_f64(acc_delta + eps)
+
+    // Compute update (note: no learning rate!)
+    let delta_x = 0.0 - rms_delta / rms_grad * g
+
+    // Accumulate squared updates
+    let new_acc_delta = rho * acc_delta + (1.0 - rho) * delta_x * delta_x
+
+    // Apply update
+    let new_param = param + delta_x
+
+    return AdaDeltaResult { param: new_param, acc_grad: new_acc_grad, acc_delta: new_acc_delta }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -1788,6 +1832,107 @@ fn main() -> i32 {
     if w1_28 >= w0_28 { ok = false; println("  FAIL: w1 >= w0") }
     if w2_28 >= w1_28 { ok = false; println("  FAIL: w2 >= w1") }
     if w5_28 >= 4.5 { ok = false; println("  FAIL: w5 should be < 4.5 after 5 steps") }
+    println("")
+
+    // Test 29: AdaDelta single step verification
+    println("Test 29: AdaDelta single step")
+    let x29 = 5.0
+    let acc_g29 = 0.0
+    let acc_d29 = 0.0
+    let rho29 = 0.95
+    let g29 = 2.0 * x29  // gradient = 10.0
+
+    // Manual calculation:
+    // new_acc_grad = 0.95 * 0 + 0.05 * 100 = 5
+    // rms_grad = sqrt(5 + 1e-6) ≈ 2.236
+    // rms_delta = sqrt(0 + 1e-6) = 0.001
+    // delta_x = -0.001/2.236 * 10 ≈ -0.00447
+    // new_param ≈ 4.9955
+    let eps29 = 0.000001
+    let expected_acc_g29 = rho29 * acc_g29 + (1.0 - rho29) * g29 * g29
+    let rms_g29 = sqrt_f64(expected_acc_g29 + eps29)
+    let rms_d29 = sqrt_f64(acc_d29 + eps29)
+    let delta29 = 0.0 - rms_d29 / rms_g29 * g29
+    let expected_x29 = x29 + delta29
+
+    let result29 = adadelta_step(x29, g29, acc_g29, acc_d29, rho29)
+
+    println("  Manual calculation:")
+    println("    new_acc_grad = ")
+    println(expected_acc_g29)
+    println("    delta_x = ")
+    println(delta29)
+    println("    new_param = ")
+    println(expected_x29)
+    println("  adadelta_step result:")
+    println("    result.acc_grad = ")
+    println(result29.acc_grad)
+    println("    result.param = ")
+    println(result29.param)
+
+    if abs_f64(result29.acc_grad - expected_acc_g29) > tol { ok = false; println("  FAIL: result.acc_grad") }
+    if abs_f64(result29.param - expected_x29) > tol { ok = false; println("  FAIL: result.param") }
+    // First step should decrease param (gradient points away from 0)
+    if result29.param >= x29 { ok = false; println("  FAIL: param should decrease") }
+    println("")
+
+    // Test 30: AdaDelta 5-step descent (unrolled)
+    println("Test 30: AdaDelta 5-step descent (unrolled)")
+    let p0_30 = 5.0
+    let ag0_30 = 0.0
+    let ad0_30 = 0.0
+    let rho30 = 0.95
+
+    // Step 1
+    let gp1 = 2.0 * p0_30
+    let d1 = adadelta_step(p0_30, gp1, ag0_30, ad0_30, rho30)
+    let p1_30 = d1.param
+    let ag1_30 = d1.acc_grad
+    let ad1_30 = d1.acc_delta
+
+    // Step 2
+    let gp2 = 2.0 * p1_30
+    let d2 = adadelta_step(p1_30, gp2, ag1_30, ad1_30, rho30)
+    let p2_30 = d2.param
+    let ag2_30 = d2.acc_grad
+    let ad2_30 = d2.acc_delta
+
+    // Step 3
+    let gp3 = 2.0 * p2_30
+    let d3 = adadelta_step(p2_30, gp3, ag2_30, ad2_30, rho30)
+    let p3_30 = d3.param
+    let ag3_30 = d3.acc_grad
+    let ad3_30 = d3.acc_delta
+
+    // Step 4
+    let gp4 = 2.0 * p3_30
+    let d4 = adadelta_step(p3_30, gp4, ag3_30, ad3_30, rho30)
+    let p4_30 = d4.param
+    let ag4_30 = d4.acc_grad
+    let ad4_30 = d4.acc_delta
+
+    // Step 5
+    let gp5 = 2.0 * p4_30
+    let d5 = adadelta_step(p4_30, gp5, ag4_30, ad4_30, rho30)
+    let p5_30 = d5.param
+
+    println("  Descent from p=5 (AdaDelta - no learning rate!):")
+    println("    p0 = 5.0")
+    println("    p1 = ")
+    println(p1_30)
+    println("    p2 = ")
+    println(p2_30)
+    println("    p3 = ")
+    println(p3_30)
+    println("    p4 = ")
+    println(p4_30)
+    println("    p5 = ")
+    println(p5_30)
+
+    // p should decrease toward 0
+    if p1_30 >= p0_30 { ok = false; println("  FAIL: p1 >= p0") }
+    if p2_30 >= p1_30 { ok = false; println("  FAIL: p2 >= p1") }
+    if p5_30 >= p0_30 { ok = false; println("  FAIL: p5 should be < p0 after 5 steps") }
     println("")
 
     if ok {
