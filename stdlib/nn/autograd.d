@@ -4240,6 +4240,741 @@ fn molecule_readout_3atoms(
 }
 
 // ============================================================================
+// RECURRENT NEURAL NETWORK LAYERS
+// ============================================================================
+// RNN, LSTM, GRU implementations for sequence modeling
+
+// ----------------------------------------------------------------------------
+// Simple RNN (Elman Network)
+// h_t = tanh(W_ih * x_t + W_hh * h_{t-1} + b)
+// ----------------------------------------------------------------------------
+
+struct RNNCell {
+    hidden: f64,
+    output: f64
+}
+
+// Simple RNN cell: h_t = tanh(w_ih * x + w_hh * h_prev + bias)
+fn rnn_cell(
+    input_val: f64,
+    h_prev: f64,
+    w_ih: f64,
+    w_hh: f64,
+    bias: f64
+) -> RNNCell {
+    let pre_act = w_ih * input_val + w_hh * h_prev + bias
+    let h_new = tanh_f64(pre_act)
+    return RNNCell { hidden: h_new, output: h_new }
+}
+
+// RNN cell with ReLU activation (sometimes more stable)
+fn rnn_cell_relu(
+    input_val: f64,
+    h_prev: f64,
+    w_ih: f64,
+    w_hh: f64,
+    bias: f64
+) -> RNNCell {
+    let pre_act = w_ih * input_val + w_hh * h_prev + bias
+    let h_new = relu_f64(pre_act)
+    return RNNCell { hidden: h_new, output: h_new }
+}
+
+// Process sequence of 3 timesteps with simple RNN
+struct RNNSeq3Result {
+    h1: f64,
+    h2: f64,
+    h3: f64,
+    final_hidden: f64
+}
+
+fn rnn_sequence_3(
+    x1: f64,
+    x2: f64,
+    x3: f64,
+    h0: f64,
+    w_ih: f64,
+    w_hh: f64,
+    bias: f64
+) -> RNNSeq3Result {
+    let cell1 = rnn_cell(x1, h0, w_ih, w_hh, bias)
+    let cell2 = rnn_cell(x2, cell1.hidden, w_ih, w_hh, bias)
+    let cell3 = rnn_cell(x3, cell2.hidden, w_ih, w_hh, bias)
+
+    return RNNSeq3Result {
+        h1: cell1.hidden,
+        h2: cell2.hidden,
+        h3: cell3.hidden,
+        final_hidden: cell3.hidden
+    }
+}
+
+// ----------------------------------------------------------------------------
+// LSTM (Long Short-Term Memory) - Hochreiter & Schmidhuber, 1997
+// f_t = σ(W_f · [h_{t-1}, x_t] + b_f)     -- forget gate
+// i_t = σ(W_i · [h_{t-1}, x_t] + b_i)     -- input gate
+// c̃_t = tanh(W_c · [h_{t-1}, x_t] + b_c) -- candidate cell
+// c_t = f_t * c_{t-1} + i_t * c̃_t        -- cell state
+// o_t = σ(W_o · [h_{t-1}, x_t] + b_o)     -- output gate
+// h_t = o_t * tanh(c_t)                   -- hidden state
+// ----------------------------------------------------------------------------
+
+struct LSTMCell {
+    hidden: f64,
+    cell: f64,
+    forget_gate: f64,
+    input_gate: f64,
+    output_gate: f64,
+    candidate: f64
+}
+
+// LSTM cell (simplified 1D version)
+fn lstm_cell(
+    input_val: f64,
+    h_prev: f64,
+    c_prev: f64,
+    // Forget gate weights
+    w_f_i: f64,
+    w_f_h: f64,
+    b_f: f64,
+    // Input gate weights
+    w_i_i: f64,
+    w_i_h: f64,
+    b_i: f64,
+    // Cell candidate weights
+    w_c_i: f64,
+    w_c_h: f64,
+    b_c: f64,
+    // Output gate weights
+    w_o_i: f64,
+    w_o_h: f64,
+    b_o: f64
+) -> LSTMCell {
+    // Forget gate: how much of previous cell to keep
+    let f_gate = sigmoid_f64(w_f_i * input_val + w_f_h * h_prev + b_f)
+
+    // Input gate: how much of new candidate to add
+    let i_gate = sigmoid_f64(w_i_i * input_val + w_i_h * h_prev + b_i)
+
+    // Cell candidate: new potential cell content
+    let c_candidate = tanh_f64(w_c_i * input_val + w_c_h * h_prev + b_c)
+
+    // New cell state: forget old + add new
+    let c_new = f_gate * c_prev + i_gate * c_candidate
+
+    // Output gate: how much of cell to expose
+    let o_gate = sigmoid_f64(w_o_i * input_val + w_o_h * h_prev + b_o)
+
+    // New hidden state
+    let h_new = o_gate * tanh_f64(c_new)
+
+    return LSTMCell {
+        hidden: h_new,
+        cell: c_new,
+        forget_gate: f_gate,
+        input_gate: i_gate,
+        output_gate: o_gate,
+        candidate: c_candidate
+    }
+}
+
+// Simplified LSTM with packed weights (easier to use)
+struct LSTMWeights {
+    w_f_i: f64, w_f_h: f64, b_f: f64,
+    w_i_i: f64, w_i_h: f64, b_i: f64,
+    w_c_i: f64, w_c_h: f64, b_c: f64,
+    w_o_i: f64, w_o_h: f64, b_o: f64
+}
+
+fn lstm_cell_packed(
+    input_val: f64,
+    h_prev: f64,
+    c_prev: f64,
+    w: LSTMWeights
+) -> LSTMCell {
+    return lstm_cell(
+        input_val, h_prev, c_prev,
+        w.w_f_i, w.w_f_h, w.b_f,
+        w.w_i_i, w.w_i_h, w.b_i,
+        w.w_c_i, w.w_c_h, w.b_c,
+        w.w_o_i, w.w_o_h, w.b_o
+    )
+}
+
+// LSTM sequence of 3 timesteps
+struct LSTMSeq3Result {
+    h1: f64, c1: f64,
+    h2: f64, c2: f64,
+    h3: f64, c3: f64,
+    final_hidden: f64,
+    final_cell: f64
+}
+
+fn lstm_sequence_3(
+    x1: f64, x2: f64, x3: f64,
+    h0: f64, c0: f64,
+    w: LSTMWeights
+) -> LSTMSeq3Result {
+    let cell1 = lstm_cell_packed(x1, h0, c0, w)
+    let cell2 = lstm_cell_packed(x2, cell1.hidden, cell1.cell, w)
+    let cell3 = lstm_cell_packed(x3, cell2.hidden, cell2.cell, w)
+
+    return LSTMSeq3Result {
+        h1: cell1.hidden, c1: cell1.cell,
+        h2: cell2.hidden, c2: cell2.cell,
+        h3: cell3.hidden, c3: cell3.cell,
+        final_hidden: cell3.hidden,
+        final_cell: cell3.cell
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Peephole LSTM (adds cell state to gate computations)
+// Gates can "peek" at the cell state for better long-range dependencies
+// ----------------------------------------------------------------------------
+
+struct PeepholeLSTMCell {
+    hidden: f64,
+    cell: f64
+}
+
+fn peephole_lstm_cell(
+    input_val: f64,
+    h_prev: f64,
+    c_prev: f64,
+    // Standard weights
+    w_f_i: f64, w_f_h: f64, b_f: f64,
+    w_i_i: f64, w_i_h: f64, b_i: f64,
+    w_c_i: f64, w_c_h: f64, b_c: f64,
+    w_o_i: f64, w_o_h: f64, b_o: f64,
+    // Peephole weights (connect cell to gates)
+    p_f: f64,  // forget gate peephole
+    p_i: f64,  // input gate peephole
+    p_o: f64   // output gate peephole
+) -> PeepholeLSTMCell {
+    // Forget gate with peephole
+    let f_gate = sigmoid_f64(w_f_i * input_val + w_f_h * h_prev + p_f * c_prev + b_f)
+
+    // Input gate with peephole
+    let i_gate = sigmoid_f64(w_i_i * input_val + w_i_h * h_prev + p_i * c_prev + b_i)
+
+    // Cell candidate (no peephole)
+    let c_candidate = tanh_f64(w_c_i * input_val + w_c_h * h_prev + b_c)
+
+    // New cell state
+    let c_new = f_gate * c_prev + i_gate * c_candidate
+
+    // Output gate with peephole (uses new cell state)
+    let o_gate = sigmoid_f64(w_o_i * input_val + w_o_h * h_prev + p_o * c_new + b_o)
+
+    // New hidden state
+    let h_new = o_gate * tanh_f64(c_new)
+
+    return PeepholeLSTMCell { hidden: h_new, cell: c_new }
+}
+
+// ----------------------------------------------------------------------------
+// GRU (Gated Recurrent Unit) - Cho et al., 2014
+// Simpler than LSTM: no separate cell state, only 2 gates
+// r_t = σ(W_r · [h_{t-1}, x_t])         -- reset gate
+// z_t = σ(W_z · [h_{t-1}, x_t])         -- update gate
+// h̃_t = tanh(W · [r_t * h_{t-1}, x_t]) -- candidate hidden
+// h_t = (1 - z_t) * h_{t-1} + z_t * h̃_t -- new hidden
+// ----------------------------------------------------------------------------
+
+struct GRUCell {
+    hidden: f64,
+    reset_gate: f64,
+    update_gate: f64,
+    candidate: f64
+}
+
+fn gru_cell(
+    input_val: f64,
+    h_prev: f64,
+    // Reset gate weights
+    w_r_i: f64,
+    w_r_h: f64,
+    b_r: f64,
+    // Update gate weights
+    w_z_i: f64,
+    w_z_h: f64,
+    b_z: f64,
+    // Candidate weights
+    w_h_i: f64,
+    w_h_h: f64,
+    b_h: f64
+) -> GRUCell {
+    // Reset gate: controls how much of previous hidden to forget
+    let r_gate = sigmoid_f64(w_r_i * input_val + w_r_h * h_prev + b_r)
+
+    // Update gate: controls interpolation between old and new
+    let z_gate = sigmoid_f64(w_z_i * input_val + w_z_h * h_prev + b_z)
+
+    // Candidate hidden: computed with reset-gated previous hidden
+    let h_candidate = tanh_f64(w_h_i * input_val + w_h_h * (r_gate * h_prev) + b_h)
+
+    // New hidden: interpolate between previous and candidate
+    let h_new = (1.0 - z_gate) * h_prev + z_gate * h_candidate
+
+    return GRUCell {
+        hidden: h_new,
+        reset_gate: r_gate,
+        update_gate: z_gate,
+        candidate: h_candidate
+    }
+}
+
+// GRU with packed weights
+struct GRUWeights {
+    w_r_i: f64, w_r_h: f64, b_r: f64,
+    w_z_i: f64, w_z_h: f64, b_z: f64,
+    w_h_i: f64, w_h_h: f64, b_h: f64
+}
+
+fn gru_cell_packed(
+    input_val: f64,
+    h_prev: f64,
+    w: GRUWeights
+) -> GRUCell {
+    return gru_cell(
+        input_val, h_prev,
+        w.w_r_i, w.w_r_h, w.b_r,
+        w.w_z_i, w.w_z_h, w.b_z,
+        w.w_h_i, w.w_h_h, w.b_h
+    )
+}
+
+// GRU sequence of 3 timesteps
+struct GRUSeq3Result {
+    h1: f64,
+    h2: f64,
+    h3: f64,
+    final_hidden: f64
+}
+
+fn gru_sequence_3(
+    x1: f64, x2: f64, x3: f64,
+    h0: f64,
+    w: GRUWeights
+) -> GRUSeq3Result {
+    let cell1 = gru_cell_packed(x1, h0, w)
+    let cell2 = gru_cell_packed(x2, cell1.hidden, w)
+    let cell3 = gru_cell_packed(x3, cell2.hidden, w)
+
+    return GRUSeq3Result {
+        h1: cell1.hidden,
+        h2: cell2.hidden,
+        h3: cell3.hidden,
+        final_hidden: cell3.hidden
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Minimal GRU (MGU) - Zhou et al., 2016
+// Even simpler: only one gate (forget gate)
+// f_t = σ(W_f · [h_{t-1}, x_t])
+// h̃_t = tanh(W · [f_t * h_{t-1}, x_t])
+// h_t = (1 - f_t) * h_{t-1} + f_t * h̃_t
+// ----------------------------------------------------------------------------
+
+struct MGUCell {
+    hidden: f64,
+    forget_gate: f64
+}
+
+fn mgu_cell(
+    input_val: f64,
+    h_prev: f64,
+    w_f_i: f64,
+    w_f_h: f64,
+    b_f: f64,
+    w_h_i: f64,
+    w_h_h: f64,
+    b_h: f64
+) -> MGUCell {
+    // Single forget gate
+    let f_gate = sigmoid_f64(w_f_i * input_val + w_f_h * h_prev + b_f)
+
+    // Candidate with forget-gated previous hidden
+    let h_candidate = tanh_f64(w_h_i * input_val + w_h_h * (f_gate * h_prev) + b_h)
+
+    // Interpolate
+    let h_new = (1.0 - f_gate) * h_prev + f_gate * h_candidate
+
+    return MGUCell { hidden: h_new, forget_gate: f_gate }
+}
+
+// ----------------------------------------------------------------------------
+// Bidirectional RNN
+// Processes sequence in both forward and backward directions
+// ----------------------------------------------------------------------------
+
+struct BiRNNResult {
+    h_fwd: f64,
+    h_bwd: f64,
+    h_combined: f64
+}
+
+// Bidirectional RNN for single position (needs full sequence context)
+fn birnn_combine(
+    h_forward: f64,
+    h_backward: f64,
+    combine_mode: f64  // 0=concat(sum), 1=mean, 2=max
+) -> BiRNNResult {
+    let combined = if combine_mode < 0.5 {
+        h_forward + h_backward  // concat approximated as sum for 1D
+    } else if combine_mode < 1.5 {
+        (h_forward + h_backward) / 2.0  // mean
+    } else {
+        aggregate_max_2(h_forward, h_backward)  // max
+    }
+
+    return BiRNNResult {
+        h_fwd: h_forward,
+        h_bwd: h_backward,
+        h_combined: combined
+    }
+}
+
+// Bidirectional LSTM for 3-step sequence
+struct BiLSTMSeq3Result {
+    // Forward pass
+    h1_fwd: f64, h2_fwd: f64, h3_fwd: f64,
+    // Backward pass
+    h1_bwd: f64, h2_bwd: f64, h3_bwd: f64,
+    // Combined at each position
+    h1_combined: f64, h2_combined: f64, h3_combined: f64
+}
+
+fn bilstm_sequence_3(
+    x1: f64, x2: f64, x3: f64,
+    h0_fwd: f64, c0_fwd: f64,
+    h0_bwd: f64, c0_bwd: f64,
+    w_fwd: LSTMWeights,
+    w_bwd: LSTMWeights
+) -> BiLSTMSeq3Result {
+    // Forward pass: x1 -> x2 -> x3
+    let fwd = lstm_sequence_3(x1, x2, x3, h0_fwd, c0_fwd, w_fwd)
+
+    // Backward pass: x3 -> x2 -> x1
+    let bwd = lstm_sequence_3(x3, x2, x1, h0_bwd, c0_bwd, w_bwd)
+
+    // Combine at each position
+    // Note: bwd.h1 corresponds to processing x3, bwd.h3 to processing x1
+    return BiLSTMSeq3Result {
+        h1_fwd: fwd.h1, h2_fwd: fwd.h2, h3_fwd: fwd.h3,
+        h1_bwd: bwd.h3, h2_bwd: bwd.h2, h3_bwd: bwd.h1,
+        h1_combined: fwd.h1 + bwd.h3,
+        h2_combined: fwd.h2 + bwd.h2,
+        h3_combined: fwd.h3 + bwd.h1
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Layer Normalization for RNNs
+// Applies layer norm to hidden state for stability
+// ----------------------------------------------------------------------------
+
+fn rnn_layer_norm(hidden: f64, gamma: f64, beta: f64) -> f64 {
+    // For single value, this is just scaling (no mean/var to compute)
+    // In real impl, would normalize across hidden dimensions
+    return gamma * hidden + beta
+}
+
+// LSTM with layer normalization
+fn lstm_cell_ln(
+    input_val: f64,
+    h_prev: f64,
+    c_prev: f64,
+    w_f_i: f64, w_f_h: f64, b_f: f64,
+    w_i_i: f64, w_i_h: f64, b_i: f64,
+    w_c_i: f64, w_c_h: f64, b_c: f64,
+    w_o_i: f64, w_o_h: f64, b_o: f64,
+    gamma_h: f64, beta_h: f64,
+    gamma_c: f64, beta_c: f64
+) -> LSTMCell {
+    // Standard LSTM computation with layer norm on pre-activations
+    let f_pre = w_f_i * input_val + w_f_h * h_prev + b_f
+    let f_gate = sigmoid_f64(rnn_layer_norm(f_pre, gamma_h, beta_h))
+
+    let i_pre = w_i_i * input_val + w_i_h * h_prev + b_i
+    let i_gate = sigmoid_f64(rnn_layer_norm(i_pre, gamma_h, beta_h))
+
+    let c_pre = w_c_i * input_val + w_c_h * h_prev + b_c
+    let c_candidate = tanh_f64(rnn_layer_norm(c_pre, gamma_h, beta_h))
+
+    let c_new = f_gate * c_prev + i_gate * c_candidate
+    let c_normed = rnn_layer_norm(c_new, gamma_c, beta_c)
+
+    let o_pre = w_o_i * input_val + w_o_h * h_prev + b_o
+    let o_gate = sigmoid_f64(rnn_layer_norm(o_pre, gamma_h, beta_h))
+
+    let h_new = o_gate * tanh_f64(c_normed)
+
+    return LSTMCell {
+        hidden: h_new,
+        cell: c_new,
+        forget_gate: f_gate,
+        input_gate: i_gate,
+        output_gate: o_gate,
+        candidate: c_candidate
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Recurrent Dropout
+// Applies same dropout mask across timesteps (for hidden-to-hidden)
+// ----------------------------------------------------------------------------
+
+struct RNNDropoutMask {
+    keep_hidden: f64,  // 0 or 1/p for scaling
+    keep_input: f64
+}
+
+fn make_rnn_dropout_mask(
+    rng_val: f64,
+    dropout_rate: f64
+) -> RNNDropoutMask {
+    let keep_prob = 1.0 - dropout_rate
+    let keep_h = if rng_val < keep_prob { 1.0 / keep_prob } else { 0.0 }
+    let keep_i = if rng_val < keep_prob { 1.0 / keep_prob } else { 0.0 }
+    return RNNDropoutMask { keep_hidden: keep_h, keep_input: keep_i }
+}
+
+fn apply_rnn_dropout(
+    cell_result: RNNCell,
+    mask: RNNDropoutMask
+) -> RNNCell {
+    return RNNCell {
+        hidden: cell_result.hidden * mask.keep_hidden,
+        output: cell_result.output * mask.keep_hidden
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Sequence Utilities
+// ----------------------------------------------------------------------------
+
+// Reverse a 3-element sequence (for bidirectional processing)
+struct Seq3 {
+    x1: f64, x2: f64, x3: f64
+}
+
+fn reverse_seq_3(seq: Seq3) -> Seq3 {
+    return Seq3 { x1: seq.x3, x2: seq.x2, x3: seq.x1 }
+}
+
+// Sequence masking (for variable-length sequences)
+fn mask_sequence_value(value: f64, mask_flag: f64) -> f64 {
+    // mask_flag: 1 = keep, 0 = mask (set to 0)
+    return value * mask_flag
+}
+
+// Sequence pooling
+struct SeqPoolResult {
+    last: f64,
+    first: f64,
+    mean_val: f64,
+    max_val: f64
+}
+
+fn pool_sequence_3(h1: f64, h2: f64, h3: f64) -> SeqPoolResult {
+    return SeqPoolResult {
+        last: h3,
+        first: h1,
+        mean_val: (h1 + h2 + h3) / 3.0,
+        max_val: aggregate_max_3(h1, h2, h3)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Attention for Seq2Seq (Bahdanau attention)
+// score_t = v^T * tanh(W_h * h_enc + W_s * s_dec)
+// ----------------------------------------------------------------------------
+
+struct Seq2SeqAttentionResult {
+    context: f64,
+    attn1: f64,
+    attn2: f64,
+    attn3: f64
+}
+
+fn seq2seq_attention_3(
+    // Encoder hidden states
+    h_enc1: f64,
+    h_enc2: f64,
+    h_enc3: f64,
+    // Current decoder state
+    s_dec: f64,
+    // Attention weights
+    w_h: f64,
+    w_s: f64,
+    v: f64
+) -> Seq2SeqAttentionResult {
+    // Compute attention scores
+    let score1 = v * tanh_f64(w_h * h_enc1 + w_s * s_dec)
+    let score2 = v * tanh_f64(w_h * h_enc2 + w_s * s_dec)
+    let score3 = v * tanh_f64(w_h * h_enc3 + w_s * s_dec)
+
+    // Softmax
+    let max_score = aggregate_max_3(score1, score2, score3)
+    let exp1 = exp_f64(score1 - max_score)
+    let exp2 = exp_f64(score2 - max_score)
+    let exp3 = exp_f64(score3 - max_score)
+    let sum_exp = exp1 + exp2 + exp3
+
+    let a1 = exp1 / sum_exp
+    let a2 = exp2 / sum_exp
+    let a3 = exp3 / sum_exp
+
+    // Context vector
+    let context = a1 * h_enc1 + a2 * h_enc2 + a3 * h_enc3
+
+    return Seq2SeqAttentionResult {
+        context: context,
+        attn1: a1,
+        attn2: a2,
+        attn3: a3
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Teacher Forcing Helper
+// Decides whether to use ground truth or model prediction as next input
+// ----------------------------------------------------------------------------
+
+fn teacher_forcing_input(
+    ground_truth: f64,
+    model_prediction: f64,
+    tf_ratio: f64,
+    rng_val: f64
+) -> f64 {
+    if rng_val < tf_ratio {
+        return ground_truth
+    }
+    return model_prediction
+}
+
+// ----------------------------------------------------------------------------
+// Scheduled Sampling
+// Gradually decreases teacher forcing ratio during training
+// ----------------------------------------------------------------------------
+
+fn scheduled_sampling_ratio(
+    epoch: f64,
+    k: f64,
+    schedule_type: f64  // 0=linear, 1=exp, 2=inverse_sigmoid
+) -> f64 {
+    if schedule_type < 0.5 {
+        // Linear decay: max(0, 1 - epoch/k)
+        let ratio = 1.0 - epoch / k
+        if ratio < 0.0 { return 0.0 }
+        return ratio
+    } else if schedule_type < 1.5 {
+        // Exponential decay: k^epoch
+        return pow_f64(k, epoch)
+    } else {
+        // Inverse sigmoid: k / (k + exp(epoch/k))
+        return k / (k + exp_f64(epoch / k))
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Hidden State Initialization
+// ----------------------------------------------------------------------------
+
+fn init_hidden_zeros() -> f64 {
+    return 0.0
+}
+
+fn init_hidden_learned(learned_param: f64) -> f64 {
+    return learned_param
+}
+
+fn init_hidden_from_encoder(encoder_final: f64, transform_weight: f64) -> f64 {
+    return tanh_f64(encoder_final * transform_weight)
+}
+
+// ----------------------------------------------------------------------------
+// Sequence Classification Head
+// Takes final hidden state and produces class logits
+// ----------------------------------------------------------------------------
+
+struct SeqClassResult {
+    logit: f64,
+    prob: f64
+}
+
+fn sequence_classifier(
+    final_hidden: f64,
+    weight: f64,
+    bias: f64
+) -> SeqClassResult {
+    let logit = final_hidden * weight + bias
+    let prob = sigmoid_f64(logit)
+    return SeqClassResult { logit: logit, prob: prob }
+}
+
+// Multi-class sequence classification (3 classes)
+struct SeqMultiClassResult {
+    logit1: f64,
+    logit2: f64,
+    logit3: f64,
+    prob1: f64,
+    prob2: f64,
+    prob3: f64
+}
+
+fn sequence_classifier_3class(
+    final_hidden: f64,
+    w1: f64, b1: f64,
+    w2: f64, b2: f64,
+    w3: f64, b3: f64
+) -> SeqMultiClassResult {
+    let l1 = final_hidden * w1 + b1
+    let l2 = final_hidden * w2 + b2
+    let l3 = final_hidden * w3 + b3
+
+    // Softmax for probabilities
+    let max_l = aggregate_max_3(l1, l2, l3)
+    let e1 = exp_f64(l1 - max_l)
+    let e2 = exp_f64(l2 - max_l)
+    let e3 = exp_f64(l3 - max_l)
+    let sum_e = e1 + e2 + e3
+
+    return SeqMultiClassResult {
+        logit1: l1, logit2: l2, logit3: l3,
+        prob1: e1 / sum_e,
+        prob2: e2 / sum_e,
+        prob3: e3 / sum_e
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Sequence-to-Sequence Output
+// Produces output at each timestep
+// ----------------------------------------------------------------------------
+
+struct Seq2SeqOutput3 {
+    y1: f64,
+    y2: f64,
+    y3: f64
+}
+
+fn seq2seq_output_3(
+    h1: f64, h2: f64, h3: f64,
+    w_out: f64,
+    b_out: f64
+) -> Seq2SeqOutput3 {
+    return Seq2SeqOutput3 {
+        y1: h1 * w_out + b_out,
+        y2: h2 * w_out + b_out,
+        y3: h3 * w_out + b_out
+    }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -7636,6 +8371,432 @@ fn main() -> i32 {
     // All same degree 4: norm = 1/4
     // output = (1 + 2 + 3 + 4) * (1/4) = 10/4 = 2.5
     if abs_f64(gcn3.output - 2.5) > tol { ok = false; println("  FAIL: GCN 3 neighbors") }
+    println("")
+
+    // ==========================================================================
+    // RECURRENT NEURAL NETWORK TESTS
+    // ==========================================================================
+
+    // Test 121: Simple RNN cell
+    println("Test 121: Simple RNN cell")
+    let rnn_result = rnn_cell(
+        1.0,    // input
+        0.0,    // h_prev (start with zero)
+        1.0,    // w_ih
+        0.5,    // w_hh
+        0.0     // bias
+    )
+
+    println("  RNN cell (x=1, h_prev=0, w_ih=1, w_hh=0.5):")
+    println("    hidden = ")
+    println(rnn_result.hidden)
+
+    // h = tanh(1*1 + 0.5*0 + 0) = tanh(1) ≈ 0.7616
+    let expected_rnn = 0.7615941559557649
+    if abs_f64(rnn_result.hidden - expected_rnn) > tol { ok = false; println("  FAIL: RNN hidden") }
+    println("")
+
+    // Test 122: RNN sequence
+    println("Test 122: RNN sequence (3 steps)")
+    let rnn_seq = rnn_sequence_3(
+        1.0, 0.5, 0.25,  // inputs
+        0.0,             // h0
+        1.0, 0.5, 0.0    // weights
+    )
+
+    println("  RNN sequence [1, 0.5, 0.25]:")
+    println("    h1 = ")
+    println(rnn_seq.h1)
+    println("    h2 = ")
+    println(rnn_seq.h2)
+    println("    h3 = ")
+    println(rnn_seq.h3)
+
+    // Each step depends on previous, so h values should change
+    if abs_f64(rnn_seq.h1 - rnn_seq.h2) < tol { ok = false; println("  FAIL: h1 should differ from h2") }
+    if abs_f64(rnn_seq.h3 - rnn_seq.final_hidden) > tol { ok = false; println("  FAIL: final should equal h3") }
+    println("")
+
+    // Test 123: LSTM cell
+    println("Test 123: LSTM cell")
+    // Use simple weights for predictable behavior
+    let lstm_result = lstm_cell(
+        1.0,    // input
+        0.0,    // h_prev
+        0.0,    // c_prev
+        // Forget gate: w_f_i=0, w_f_h=0, b_f=1 -> sigmoid(1) ≈ 0.73
+        0.0, 0.0, 1.0,
+        // Input gate: w_i_i=1, w_i_h=0, b_i=0 -> sigmoid(1) ≈ 0.73
+        1.0, 0.0, 0.0,
+        // Cell candidate: w_c_i=1, w_c_h=0, b_c=0 -> tanh(1) ≈ 0.76
+        1.0, 0.0, 0.0,
+        // Output gate: w_o_i=1, w_o_h=0, b_o=0 -> sigmoid(1) ≈ 0.73
+        1.0, 0.0, 0.0
+    )
+
+    println("  LSTM cell:")
+    println("    hidden = ")
+    println(lstm_result.hidden)
+    println("    cell = ")
+    println(lstm_result.cell)
+    println("    forget_gate = ")
+    println(lstm_result.forget_gate)
+    println("    input_gate = ")
+    println(lstm_result.input_gate)
+
+    // Gates should be between 0 and 1 (sigmoid outputs)
+    if lstm_result.forget_gate < 0.0 { ok = false; println("  FAIL: forget_gate < 0") }
+    if lstm_result.forget_gate > 1.0 { ok = false; println("  FAIL: forget_gate > 1") }
+    if lstm_result.input_gate < 0.0 { ok = false; println("  FAIL: input_gate < 0") }
+    if lstm_result.input_gate > 1.0 { ok = false; println("  FAIL: input_gate > 1") }
+    // Hidden should be non-zero with these inputs
+    if abs_f64(lstm_result.hidden) < tol { ok = false; println("  FAIL: hidden should be non-zero") }
+    println("")
+
+    // Test 124: LSTM sequence with packed weights
+    println("Test 124: LSTM sequence (3 steps)")
+    let lstm_weights = LSTMWeights {
+        w_f_i: 0.5, w_f_h: 0.5, b_f: 0.0,
+        w_i_i: 0.5, w_i_h: 0.5, b_i: 0.0,
+        w_c_i: 1.0, w_c_h: 0.5, b_c: 0.0,
+        w_o_i: 0.5, w_o_h: 0.5, b_o: 0.0
+    }
+
+    let lstm_seq = lstm_sequence_3(
+        1.0, 0.5, 0.25,  // inputs
+        0.0, 0.0,        // h0, c0
+        lstm_weights
+    )
+
+    println("  LSTM sequence [1, 0.5, 0.25]:")
+    println("    h1 = ")
+    println(lstm_seq.h1)
+    println("    c1 = ")
+    println(lstm_seq.c1)
+    println("    final_hidden = ")
+    println(lstm_seq.final_hidden)
+    println("    final_cell = ")
+    println(lstm_seq.final_cell)
+
+    // Cell state should accumulate information
+    if abs_f64(lstm_seq.final_hidden - lstm_seq.h3) > tol { ok = false; println("  FAIL: final_hidden != h3") }
+    if abs_f64(lstm_seq.final_cell - lstm_seq.c3) > tol { ok = false; println("  FAIL: final_cell != c3") }
+    println("")
+
+    // Test 125: GRU cell
+    println("Test 125: GRU cell")
+    let gru_result = gru_cell(
+        1.0,    // input
+        0.5,    // h_prev (non-zero to test gates)
+        // Reset gate
+        0.5, 0.5, 0.0,
+        // Update gate
+        0.5, 0.5, 0.0,
+        // Candidate
+        1.0, 0.5, 0.0
+    )
+
+    println("  GRU cell (x=1, h_prev=0.5):")
+    println("    hidden = ")
+    println(gru_result.hidden)
+    println("    reset_gate = ")
+    println(gru_result.reset_gate)
+    println("    update_gate = ")
+    println(gru_result.update_gate)
+
+    // Gates should be between 0 and 1
+    if gru_result.reset_gate < 0.0 { ok = false; println("  FAIL: reset_gate < 0") }
+    if gru_result.reset_gate > 1.0 { ok = false; println("  FAIL: reset_gate > 1") }
+    if gru_result.update_gate < 0.0 { ok = false; println("  FAIL: update_gate < 0") }
+    if gru_result.update_gate > 1.0 { ok = false; println("  FAIL: update_gate > 1") }
+    println("")
+
+    // Test 126: GRU sequence
+    println("Test 126: GRU sequence (3 steps)")
+    let gru_weights = GRUWeights {
+        w_r_i: 0.5, w_r_h: 0.5, b_r: 0.0,
+        w_z_i: 0.5, w_z_h: 0.5, b_z: 0.0,
+        w_h_i: 1.0, w_h_h: 0.5, b_h: 0.0
+    }
+
+    let gru_seq = gru_sequence_3(
+        1.0, 0.5, 0.25,  // inputs
+        0.0,             // h0
+        gru_weights
+    )
+
+    println("  GRU sequence [1, 0.5, 0.25]:")
+    println("    h1 = ")
+    println(gru_seq.h1)
+    println("    h2 = ")
+    println(gru_seq.h2)
+    println("    h3 = ")
+    println(gru_seq.h3)
+
+    if abs_f64(gru_seq.final_hidden - gru_seq.h3) > tol { ok = false; println("  FAIL: GRU final != h3") }
+    println("")
+
+    // Test 127: MGU (Minimal GRU) cell
+    println("Test 127: MGU cell (Minimal GRU)")
+    let mgu_result = mgu_cell(
+        1.0, 0.5,       // input, h_prev
+        0.5, 0.5, 0.0,  // forget gate weights
+        1.0, 0.5, 0.0   // candidate weights
+    )
+
+    println("  MGU cell:")
+    println("    hidden = ")
+    println(mgu_result.hidden)
+    println("    forget_gate = ")
+    println(mgu_result.forget_gate)
+
+    // Forget gate should be between 0 and 1
+    if mgu_result.forget_gate < 0.0 { ok = false; println("  FAIL: MGU forget < 0") }
+    if mgu_result.forget_gate > 1.0 { ok = false; println("  FAIL: MGU forget > 1") }
+    println("")
+
+    // Test 128: Bidirectional RNN combine
+    println("Test 128: Bidirectional RNN combine")
+    let bi_concat = birnn_combine(0.5, 0.3, 0.0)  // sum mode
+    let bi_mean = birnn_combine(0.5, 0.3, 1.0)    // mean mode
+    let bi_max = birnn_combine(0.5, 0.3, 2.0)     // max mode
+
+    println("  BiRNN combine (fwd=0.5, bwd=0.3):")
+    println("    concat (sum) = ")
+    println(bi_concat.h_combined)
+    println("    mean = ")
+    println(bi_mean.h_combined)
+    println("    max = ")
+    println(bi_max.h_combined)
+
+    if abs_f64(bi_concat.h_combined - 0.8) > tol { ok = false; println("  FAIL: BiRNN concat") }
+    if abs_f64(bi_mean.h_combined - 0.4) > tol { ok = false; println("  FAIL: BiRNN mean") }
+    if abs_f64(bi_max.h_combined - 0.5) > tol { ok = false; println("  FAIL: BiRNN max") }
+    println("")
+
+    // Test 129: Sequence pooling
+    println("Test 129: Sequence pooling")
+    let seq_pool = pool_sequence_3(0.2, 0.5, 0.8)
+
+    println("  Sequence pool [0.2, 0.5, 0.8]:")
+    println("    first = ")
+    println(seq_pool.first)
+    println("    last = ")
+    println(seq_pool.last)
+    println("    mean = ")
+    println(seq_pool.mean_val)
+    println("    max = ")
+    println(seq_pool.max_val)
+
+    if abs_f64(seq_pool.first - 0.2) > tol { ok = false; println("  FAIL: seq first") }
+    if abs_f64(seq_pool.last - 0.8) > tol { ok = false; println("  FAIL: seq last") }
+    if abs_f64(seq_pool.mean_val - 0.5) > tol { ok = false; println("  FAIL: seq mean") }
+    if abs_f64(seq_pool.max_val - 0.8) > tol { ok = false; println("  FAIL: seq max") }
+    println("")
+
+    // Test 130: Seq2Seq attention
+    println("Test 130: Seq2Seq attention")
+    let s2s_attn = seq2seq_attention_3(
+        0.5, 1.0, 0.2,  // encoder hidden states
+        0.5,            // decoder state
+        1.0, 1.0, 1.0   // attention weights
+    )
+
+    println("  Seq2Seq attention:")
+    println("    context = ")
+    println(s2s_attn.context)
+    println("    attn1 = ")
+    println(s2s_attn.attn1)
+    println("    attn2 = ")
+    println(s2s_attn.attn2)
+    println("    attn3 = ")
+    println(s2s_attn.attn3)
+
+    // Attention should sum to 1
+    let attn_total = s2s_attn.attn1 + s2s_attn.attn2 + s2s_attn.attn3
+    if abs_f64(attn_total - 1.0) > tol { ok = false; println("  FAIL: attention sum != 1") }
+    // Higher encoder state should get more attention
+    if s2s_attn.attn2 < s2s_attn.attn3 { ok = false; println("  FAIL: h_enc2 should have higher attn") }
+    println("")
+
+    // Test 131: Teacher forcing
+    println("Test 131: Teacher forcing")
+    let tf_gt = teacher_forcing_input(1.0, 0.5, 1.0, 0.5)   // 100% teacher forcing
+    let tf_pred = teacher_forcing_input(1.0, 0.5, 0.0, 0.5) // 0% teacher forcing
+
+    println("  Teacher forcing:")
+    println("    100% TF (should use ground truth) = ")
+    println(tf_gt)
+    println("    0% TF (should use prediction) = ")
+    println(tf_pred)
+
+    if abs_f64(tf_gt - 1.0) > tol { ok = false; println("  FAIL: TF should use GT") }
+    if abs_f64(tf_pred - 0.5) > tol { ok = false; println("  FAIL: TF should use pred") }
+    println("")
+
+    // Test 132: Scheduled sampling
+    println("Test 132: Scheduled sampling")
+    let ss_linear_0 = scheduled_sampling_ratio(0.0, 10.0, 0.0)   // epoch 0
+    let ss_linear_5 = scheduled_sampling_ratio(5.0, 10.0, 0.0)   // epoch 5
+    let ss_linear_10 = scheduled_sampling_ratio(10.0, 10.0, 0.0) // epoch 10
+
+    println("  Scheduled sampling (linear, k=10):")
+    println("    epoch 0 = ")
+    println(ss_linear_0)
+    println("    epoch 5 = ")
+    println(ss_linear_5)
+    println("    epoch 10 = ")
+    println(ss_linear_10)
+
+    if abs_f64(ss_linear_0 - 1.0) > tol { ok = false; println("  FAIL: SS epoch 0") }
+    if abs_f64(ss_linear_5 - 0.5) > tol { ok = false; println("  FAIL: SS epoch 5") }
+    if abs_f64(ss_linear_10 - 0.0) > tol { ok = false; println("  FAIL: SS epoch 10") }
+    println("")
+
+    // Test 133: Hidden state initialization
+    println("Test 133: Hidden state initialization")
+    let h_zero = init_hidden_zeros()
+    let h_learned = init_hidden_learned(0.5)
+    let h_enc = init_hidden_from_encoder(1.0, 1.0)  // tanh(1*1) = tanh(1)
+
+    println("  Hidden initialization:")
+    println("    zeros = ")
+    println(h_zero)
+    println("    learned(0.5) = ")
+    println(h_learned)
+    println("    from_encoder(1, 1) = ")
+    println(h_enc)
+
+    if abs_f64(h_zero - 0.0) > tol { ok = false; println("  FAIL: h_zero") }
+    if abs_f64(h_learned - 0.5) > tol { ok = false; println("  FAIL: h_learned") }
+    if abs_f64(h_enc - 0.7615941559557649) > tol { ok = false; println("  FAIL: h_enc") }
+    println("")
+
+    // Test 134: Sequence classifier
+    println("Test 134: Sequence classifier")
+    let seq_cls = sequence_classifier(0.5, 2.0, 0.0)  // logit = 1, prob = sigmoid(1)
+
+    println("  Sequence classifier (h=0.5, w=2, b=0):")
+    println("    logit = ")
+    println(seq_cls.logit)
+    println("    prob = ")
+    println(seq_cls.prob)
+
+    if abs_f64(seq_cls.logit - 1.0) > tol { ok = false; println("  FAIL: cls logit") }
+    // sigmoid(1) ≈ 0.7311
+    if abs_f64(seq_cls.prob - 0.7310585786300049) > tol { ok = false; println("  FAIL: cls prob") }
+    println("")
+
+    // Test 135: Multi-class sequence classifier
+    println("Test 135: Multi-class classifier (3 classes)")
+    let mc_cls = sequence_classifier_3class(
+        1.0,              // hidden
+        1.0, 0.0,         // class 1: logit=1
+        2.0, 0.0,         // class 2: logit=2
+        0.5, 0.0          // class 3: logit=0.5
+    )
+
+    println("  Multi-class classifier:")
+    println("    logit1 = ")
+    println(mc_cls.logit1)
+    println("    logit2 = ")
+    println(mc_cls.logit2)
+    println("    prob1 = ")
+    println(mc_cls.prob1)
+    println("    prob2 = ")
+    println(mc_cls.prob2)
+
+    // Probabilities should sum to 1
+    let prob_sum = mc_cls.prob1 + mc_cls.prob2 + mc_cls.prob3
+    if abs_f64(prob_sum - 1.0) > tol { ok = false; println("  FAIL: prob sum != 1") }
+    // Class 2 should have highest prob (highest logit)
+    if mc_cls.prob2 < mc_cls.prob1 { ok = false; println("  FAIL: prob2 should be highest") }
+    if mc_cls.prob2 < mc_cls.prob3 { ok = false; println("  FAIL: prob2 should be highest") }
+    println("")
+
+    // Test 136: Seq2Seq output
+    println("Test 136: Seq2Seq output")
+    let s2s_out = seq2seq_output_3(0.5, 1.0, 1.5, 2.0, 0.1)
+
+    println("  Seq2Seq output [0.5, 1.0, 1.5] with w=2, b=0.1:")
+    println("    y1 = ")
+    println(s2s_out.y1)
+    println("    y2 = ")
+    println(s2s_out.y2)
+    println("    y3 = ")
+    println(s2s_out.y3)
+
+    // y = h * w + b
+    if abs_f64(s2s_out.y1 - 1.1) > tol { ok = false; println("  FAIL: s2s y1") }
+    if abs_f64(s2s_out.y2 - 2.1) > tol { ok = false; println("  FAIL: s2s y2") }
+    if abs_f64(s2s_out.y3 - 3.1) > tol { ok = false; println("  FAIL: s2s y3") }
+    println("")
+
+    // Test 137: RNN with ReLU activation
+    println("Test 137: RNN cell with ReLU")
+    let rnn_relu = rnn_cell_relu(1.0, 0.5, 1.0, 0.5, 0.0)
+    let rnn_relu_neg = rnn_cell_relu(-2.0, 0.0, 1.0, 0.5, 0.0)
+
+    println("  RNN ReLU (x=1, h_prev=0.5):")
+    println("    hidden = ")
+    println(rnn_relu.hidden)
+    println("  RNN ReLU (x=-2, h_prev=0):")
+    println("    hidden = ")
+    println(rnn_relu_neg.hidden)
+
+    // ReLU(1*1 + 0.5*0.5 + 0) = ReLU(1.25) = 1.25
+    if abs_f64(rnn_relu.hidden - 1.25) > tol { ok = false; println("  FAIL: RNN ReLU pos") }
+    // ReLU(-2) = 0
+    if abs_f64(rnn_relu_neg.hidden - 0.0) > tol { ok = false; println("  FAIL: RNN ReLU neg") }
+    println("")
+
+    // Test 138: Sequence reverse
+    println("Test 138: Sequence reverse")
+    let seq_orig = Seq3 { x1: 1.0, x2: 2.0, x3: 3.0 }
+    let seq_rev = reverse_seq_3(seq_orig)
+
+    println("  Reverse [1, 2, 3]:")
+    println("    x1 = ")
+    println(seq_rev.x1)
+    println("    x2 = ")
+    println(seq_rev.x2)
+    println("    x3 = ")
+    println(seq_rev.x3)
+
+    if abs_f64(seq_rev.x1 - 3.0) > tol { ok = false; println("  FAIL: rev x1") }
+    if abs_f64(seq_rev.x2 - 2.0) > tol { ok = false; println("  FAIL: rev x2") }
+    if abs_f64(seq_rev.x3 - 1.0) > tol { ok = false; println("  FAIL: rev x3") }
+    println("")
+
+    // Test 139: Sequence masking
+    println("Test 139: Sequence masking")
+    let mask_keep = mask_sequence_value(5.0, 1.0)
+    let mask_zero = mask_sequence_value(5.0, 0.0)
+
+    println("  Mask value 5.0:")
+    println("    mask=1 (keep) = ")
+    println(mask_keep)
+    println("    mask=0 (zero) = ")
+    println(mask_zero)
+
+    if abs_f64(mask_keep - 5.0) > tol { ok = false; println("  FAIL: mask keep") }
+    if abs_f64(mask_zero - 0.0) > tol { ok = false; println("  FAIL: mask zero") }
+    println("")
+
+    // Test 140: RNN dropout mask
+    println("Test 140: RNN dropout")
+    let drop_mask_keep = make_rnn_dropout_mask(0.1, 0.5)  // rng < keep_prob, so keep
+    let drop_mask_drop = make_rnn_dropout_mask(0.9, 0.5)  // rng > keep_prob, so drop
+
+    println("  RNN dropout (rate=0.5):")
+    println("    rng=0.1 keep_hidden = ")
+    println(drop_mask_keep.keep_hidden)
+    println("    rng=0.9 keep_hidden = ")
+    println(drop_mask_drop.keep_hidden)
+
+    // keep_prob = 0.5, so scale is 1/0.5 = 2 when keeping
+    if abs_f64(drop_mask_keep.keep_hidden - 2.0) > tol { ok = false; println("  FAIL: dropout keep") }
+    if abs_f64(drop_mask_drop.keep_hidden - 0.0) > tol { ok = false; println("  FAIL: dropout drop") }
     println("")
 
     if ok {
