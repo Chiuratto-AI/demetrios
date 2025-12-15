@@ -464,6 +464,9 @@ impl Resolver {
             TypeExpr::Effected { inner, .. } => {
                 self.resolve_type_expr(inner);
             }
+            TypeExpr::Tile { element_type, .. } => {
+                self.resolve_type_expr(element_type);
+            }
         }
     }
 

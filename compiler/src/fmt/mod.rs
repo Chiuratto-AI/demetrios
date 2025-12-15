@@ -789,6 +789,22 @@ impl Formatter {
                     Doc::Text(format!(" ! {{{}}}", effects_str)),
                 ])
             }
+            TypeExpr::Tile {
+                element_type,
+                tile_m,
+                tile_n,
+                layout,
+            } => {
+                let mut parts = Vec::new();
+                parts.push(Doc::Text("tile<".to_string()));
+                parts.push(self.type_to_doc(element_type));
+                parts.push(Doc::Text(format!(", {}, {}", tile_m, tile_n)));
+                if let Some(l) = layout {
+                    parts.push(Doc::Text(format!(", \"{}\"", l)));
+                }
+                parts.push(Doc::Text(">".to_string()));
+                Doc::Concat(parts)
+            }
         }
     }
 

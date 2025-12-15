@@ -31,6 +31,7 @@ pub mod bio;
 pub mod cooperative;
 pub mod counterfactual;
 pub mod graph;
+pub mod tile;
 pub mod counterfactual_metal;
 pub mod epistemic_ptx;
 pub mod hlir_to_gpu;
@@ -50,7 +51,7 @@ pub use ir::{
     BlockId, CoopReduceOp, CooperativeGroupId, CooperativeScope, CudaArch, CudaFeatures, Fp8Format,
     GpuBlock, GpuConstValue, GpuConstant, GpuFunction, GpuKernel, GpuModule, GpuOp, GpuParam,
     GpuTarget, GpuTerminator, GpuType, MemorySpace, MetalGpuFamily, PartitionType, QuantizeMode,
-    SharedMemDecl, TmaReduceOp, ValueId, WarpReduceOp, WarpVoteOp,
+    SharedMemDecl, TileLayout, TmaReduceOp, ValueId, WarpReduceOp, WarpVoteOp,
 };
 pub use ptx::PtxCodegen;
 pub use runtime::{
@@ -118,4 +119,11 @@ pub use portable::{
     AvailableBackends, BackendCapabilities, Capability, CompileError, CompileResult,
     CompiledKernel, Dimension, PortableGpuOp, PortableMemorySpace, PortableType, UnifiedCompiler,
     UnifiedKernel, UnifiedParam, UnifiedSharedMem, compile_kernel, compile_to_all,
+};
+
+// Tile programming utilities (CUDA 13+)
+pub use tile::{
+    align_to, compute_swizzle_pattern, element_size_bytes, recommended_tile_size,
+    shared_memory_bytes, supports_tiles, supports_tma, supports_wgmma, threads_per_tile,
+    validate_tile_dims, validate_tile_dims_2d,
 };

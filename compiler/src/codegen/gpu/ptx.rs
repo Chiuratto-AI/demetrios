@@ -2669,6 +2669,198 @@ impl PtxCodegen {
                 // pmevent instruction is only meaningful when running under Nsight
                 // Uncomment to enable: writeln!(self.output, "{}pmevent {};", indent, event_id).unwrap();
             }
+
+            // ========================================
+            // Tile Programming Operations (CUDA 13)
+            // ========================================
+
+            GpuOp::TileCreate { tile_m, tile_n, element_type, layout, .. } => {
+                // Allocate shared memory for tile with proper alignment
+                let elem_size = crate::codegen::gpu::tile::element_size_bytes(element_type);
+                let smem_bytes = crate::codegen::gpu::tile::shared_memory_bytes(*tile_m, *tile_n, element_type);
+                let layout_str = match layout {
+                    TileLayout::RowMajor => "row_major",
+                    TileLayout::ColMajor => "col_major",
+                    TileLayout::Swizzled { .. } => "swizzled",
+                };
+                writeln!(self.output, "{}// TileCreate {}x{} {:?} ({})", indent, tile_m, tile_n, element_type, layout_str).unwrap();
+                writeln!(self.output, "{}.shared .align {} .b8 tile_smem[{}];", indent, elem_size.max(16), smem_bytes).unwrap();
+                // Result is pointer to shared memory
+                let reg = self.alloc_register(&GpuType::U64);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U64);
+                writeln!(self.output, "{}mov.u64 {}, tile_smem;", indent, reg).unwrap();
+            }
+
+            GpuOp::TileLoad { tile, src_ptr, stride, barrier } => {
+                let tile_reg = self.get_register(*tile);
+                let src_reg = self.get_register(*src_ptr);
+                let stride_reg = self.get_register(*stride);
+
+                if self.sm_version.0 >= 9 && barrier.is_some() {
+                    // Use TMA on Hopper+ for async bulk load
+                    let barrier_reg = self.get_register(barrier.unwrap());
+                    writeln!(self.output, "{}// TileLoad via TMA (sm_90+)", indent).unwrap();
+                    writeln!(self.output, "{}cp.async.bulk.shared.global [{}, 0], [{}, {}], {};",
+                        indent, tile_reg, src_reg, stride_reg, barrier_reg).unwrap();
+                    writeln!(self.output, "{}cp.async.bulk.commit_group;", indent).unwrap();
+                } else {
+                    // Fallback: cooperative coalesced loads
+                    writeln!(self.output, "{}// TileLoad via coalesced loads", indent).unwrap();
+                    writeln!(self.output, "{}// Each thread loads its element from global to shared", indent).unwrap();
+                    writeln!(self.output, "{}ld.global.b32 %r_tmp, [{} + %tid.x * 4];", indent, src_reg).unwrap();
+                    writeln!(self.output, "{}st.shared.b32 [{} + %tid.x * 4], %r_tmp;", indent, tile_reg).unwrap();
+                    writeln!(self.output, "{}bar.sync 0; // Ensure all loads complete", indent).unwrap();
+                }
+                // No result register for store-like operations
+                self.registers.push(String::new());
+                self.value_types.push(GpuType::Void);
+            }
+
+            GpuOp::TileStore { tile, dst_ptr, stride, barrier } => {
+                let tile_reg = self.get_register(*tile);
+                let dst_reg = self.get_register(*dst_ptr);
+                let stride_reg = self.get_register(*stride);
+
+                if self.sm_version.0 >= 9 && barrier.is_some() {
+                    let barrier_reg = self.get_register(barrier.unwrap());
+                    writeln!(self.output, "{}// TileStore via TMA (sm_90+)", indent).unwrap();
+                    writeln!(self.output, "{}cp.async.bulk.global.shared [{}, {}], [{}, 0], {};",
+                        indent, dst_reg, stride_reg, tile_reg, barrier_reg).unwrap();
+                } else {
+                    writeln!(self.output, "{}// TileStore via coalesced stores", indent).unwrap();
+                    writeln!(self.output, "{}bar.sync 0; // Ensure tile data ready", indent).unwrap();
+                    writeln!(self.output, "{}ld.shared.b32 %r_tmp, [{} + %tid.x * 4];", indent, tile_reg).unwrap();
+                    writeln!(self.output, "{}st.global.b32 [{} + %tid.x * 4], %r_tmp;", indent, dst_reg).unwrap();
+                }
+                self.registers.push(String::new());
+                self.value_types.push(GpuType::Void);
+            }
+
+            GpuOp::TileMma { c, a, b, tile_m, tile_n, tile_k } => {
+                let c_reg = self.get_register(*c);
+                let a_reg = self.get_register(*a);
+                let b_reg = self.get_register(*b);
+
+                writeln!(self.output, "{}// TileMma {}x{}x{}", indent, tile_m, tile_n, tile_k).unwrap();
+                if self.sm_version.0 >= 10 {
+                    // Blackwell: Use WGMMA (warpgroup-scoped)
+                    writeln!(self.output, "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.bf16.bf16 {{{}}}, {{{}}}, {{{}}};",
+                        indent, tile_m, tile_n, tile_k, c_reg, a_reg, b_reg).unwrap();
+                } else if self.sm_version.0 >= 8 {
+                    // Ampere+: Use MMA (warp-scoped)
+                    writeln!(self.output, "{}mma.sync.aligned.m{}n{}k{}.row.col.f32.bf16.bf16.f32 {{{}}}, {{{}}}, {{{}}}, {{{}}};",
+                        indent, tile_m, tile_n, tile_k, c_reg, a_reg, b_reg, c_reg).unwrap();
+                } else {
+                    writeln!(self.output, "{}// TileMma requires sm_80+ (Ampere or newer)", indent).unwrap();
+                }
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg);
+                self.value_types.push(GpuType::F32);
+            }
+
+            GpuOp::TileSync(tile) => {
+                let _ = self.get_register(*tile);
+                writeln!(self.output, "{}bar.sync 0; // Tile synchronization", indent).unwrap();
+                self.registers.push(String::new());
+                self.value_types.push(GpuType::Void);
+            }
+
+            GpuOp::TileGetElement { tile, row, col } => {
+                let tile_reg = self.get_register(*tile);
+                let row_reg = self.get_register(*row);
+                let col_reg = self.get_register(*col);
+
+                writeln!(self.output, "{}// TileGetElement", indent).unwrap();
+                let offset_reg = self.alloc_register(&GpuType::U32);
+                let addr_reg = self.alloc_register(&GpuType::U64);
+                let result_reg = self.alloc_register(&GpuType::F32);
+                writeln!(self.output, "{}mad.lo.u32 {}, {}, %tile_n, {};", indent, offset_reg, row_reg, col_reg).unwrap();
+                writeln!(self.output, "{}mad.wide.u32 {}, {}, 4, {};", indent, addr_reg, offset_reg, tile_reg).unwrap();
+                writeln!(self.output, "{}ld.shared.f32 {}, [{}];", indent, result_reg, addr_reg).unwrap();
+                self.registers.push(result_reg);
+                self.value_types.push(GpuType::F32);
+            }
+
+            GpuOp::TileSetElement { tile, row, col, value } => {
+                let tile_reg = self.get_register(*tile);
+                let row_reg = self.get_register(*row);
+                let col_reg = self.get_register(*col);
+                let val_reg = self.get_register(*value);
+
+                writeln!(self.output, "{}// TileSetElement", indent).unwrap();
+                let offset_reg = self.alloc_register(&GpuType::U32);
+                let addr_reg = self.alloc_register(&GpuType::U64);
+                writeln!(self.output, "{}mad.lo.u32 {}, {}, %tile_n, {};", indent, offset_reg, row_reg, col_reg).unwrap();
+                writeln!(self.output, "{}mad.wide.u32 {}, {}, 4, {};", indent, addr_reg, offset_reg, tile_reg).unwrap();
+                writeln!(self.output, "{}st.shared.f32 [{}], {};", indent, addr_reg, val_reg).unwrap();
+                self.registers.push(String::new());
+                self.value_types.push(GpuType::Void);
+            }
+
+            GpuOp::TileFill { tile, value } => {
+                let tile_reg = self.get_register(*tile);
+                let val_reg = self.get_register(*value);
+
+                writeln!(self.output, "{}// TileFill - broadcast scalar to all elements", indent).unwrap();
+                writeln!(self.output, "{}// Each thread fills its element", indent).unwrap();
+                writeln!(self.output, "{}st.shared.f32 [{} + %tid.x * 4], {};", indent, tile_reg, val_reg).unwrap();
+                writeln!(self.output, "{}bar.sync 0;", indent).unwrap();
+                self.registers.push(String::new());
+                self.value_types.push(GpuType::Void);
+            }
+
+            GpuOp::TileReduce { tile, reduce_op } => {
+                let tile_reg = self.get_register(*tile);
+                let op_name = match reduce_op {
+                    CoopReduceOp::Add => "add",
+                    CoopReduceOp::Mul => "mul",
+                    CoopReduceOp::Min => "min",
+                    CoopReduceOp::Max => "max",
+                    CoopReduceOp::And => "and",
+                    CoopReduceOp::Or => "or",
+                    CoopReduceOp::Xor => "xor",
+                };
+
+                writeln!(self.output, "{}// TileReduce ({})", indent, op_name).unwrap();
+                // Load element, then perform warp reduction
+                let val_reg = self.alloc_register(&GpuType::F32);
+                writeln!(self.output, "{}ld.shared.f32 {}, [{} + %tid.x * 4];", indent, val_reg, tile_reg).unwrap();
+                // Warp shuffle reduction
+                writeln!(self.output, "{}redux.sync.{}.b32 {}, {}, 0xffffffff;", indent, op_name, val_reg, val_reg).unwrap();
+                self.registers.push(val_reg);
+                self.value_types.push(GpuType::F32);
+            }
+
+            GpuOp::TileTranspose(tile) => {
+                let tile_reg = self.get_register(*tile);
+
+                writeln!(self.output, "{}// TileTranspose - requires diagonal copy through shared memory", indent).unwrap();
+                writeln!(self.output, "{}bar.sync 0;", indent).unwrap();
+                writeln!(self.output, "{}// Read from (row,col), write to (col,row)", indent).unwrap();
+                writeln!(self.output, "{}// Actual implementation requires auxiliary shared memory", indent).unwrap();
+                let _ = tile_reg;
+                self.registers.push(String::new());
+                self.value_types.push(GpuType::Void);
+            }
+
+            GpuOp::TileM(_tile) => {
+                // Should be constant-folded; emit placeholder
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}// TileM - should be constant-folded", indent).unwrap();
+                writeln!(self.output, "{}mov.u32 {}, 0; // placeholder", indent, reg).unwrap();
+            }
+
+            GpuOp::TileN(_tile) => {
+                // Should be constant-folded; emit placeholder
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+                writeln!(self.output, "{}// TileN - should be constant-folded", indent).unwrap();
+                writeln!(self.output, "{}mov.u32 {}, 0; // placeholder", indent, reg).unwrap();
+            }
         }
     }
 
@@ -2896,7 +3088,7 @@ mod tests {
         );
         let ptx = codegen.generate(&module);
 
-        assert!(ptx.contains(".version 8.0"));
+        assert!(ptx.contains(".version 6.4"));  // PTX 6.4 for Turing (sm_75)
         assert!(ptx.contains(".target sm_75"));
         assert!(ptx.contains(".address_size 64"));
     }

@@ -919,6 +919,9 @@ impl DeadCodeAnalyzer {
             TypeExpr::Effected { inner, .. } => {
                 self.collect_type_references(inner);
             }
+            TypeExpr::Tile { element_type, .. } => {
+                self.collect_type_references(element_type);
+            }
         }
     }
 

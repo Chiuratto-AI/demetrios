@@ -1526,6 +1526,100 @@ impl MetalCodegen {
             GpuOp::PmEvent(event_id) => {
                 self.emit(&format!("// pmevent {} - use Metal GPU counters via API", event_id));
             }
+
+            // ========================================
+            // Tile Programming Operations (CUDA 13)
+            // Metal does not have native tile support like CUDA's cooperative groups + WMMA.
+            // These emit placeholders directing users to use threadgroup memory manually.
+            // ========================================
+
+            GpuOp::TileCreate { tile_m, tile_n, element_type, layout, .. } => {
+                let layout_str = match layout {
+                    TileLayout::RowMajor => "row_major",
+                    TileLayout::ColMajor => "col_major",
+                    TileLayout::Swizzled { .. } => "swizzled",
+                };
+                self.emit(&format!("// TILE_CREATE: {}x{} {:?} ({})", tile_m, tile_n, element_type, layout_str));
+                self.emit("// Metal: Use threadgroup memory manually instead");
+                self.emit(&format!("threadgroup float tile_smem[{} * {}];", tile_m, tile_n));
+                self.emit(&format!("{} {} = tile_smem;", "threadgroup float*", result_name));
+            }
+
+            GpuOp::TileLoad { tile: _, src_ptr: _, stride: _, barrier: _ } => {
+                self.emit("// TILE_LOAD: Metal does not support TMA-style bulk transfers");
+                self.emit("// Use manual coalesced loads into threadgroup memory");
+                self.emit("// Example: tile_smem[thread_idx] = src_ptr[thread_idx];");
+                self.emit("threadgroup_barrier(mem_flags::mem_threadgroup);");
+            }
+
+            GpuOp::TileStore { tile: _, dst_ptr: _, stride: _, barrier: _ } => {
+                self.emit("// TILE_STORE: Metal does not support TMA-style bulk transfers");
+                self.emit("// Use manual coalesced stores from threadgroup memory");
+                self.emit("// Example: dst_ptr[thread_idx] = tile_smem[thread_idx];");
+                self.emit("threadgroup_barrier(mem_flags::mem_threadgroup);");
+            }
+
+            GpuOp::TileMma { c: _, a: _, b: _, tile_m, tile_n, tile_k } => {
+                self.emit(&format!("// TILE_MMA: {}x{}x{}", tile_m, tile_n, tile_k));
+                #[allow(clippy::collapsible_else_if)]
+                if self.config.gpu_family >= MetalGpuFamily::Apple7 {
+                    self.emit("// Metal M1+: Use simdgroup_matrix for Tensor Core-like operations");
+                    self.emit("// simdgroup_float8x8 a_frag, b_frag, c_frag;");
+                    self.emit("// simdgroup_multiply_accumulate(c_frag, a_frag, b_frag, c_frag);");
+                } else {
+                    self.emit("// Metal pre-M1: simdgroup_matrix not available, use manual SIMD");
+                }
+            }
+
+            GpuOp::TileSync(_tile) => {
+                self.emit("threadgroup_barrier(mem_flags::mem_threadgroup);");
+            }
+
+            GpuOp::TileGetElement { tile: _, row: _, col: _ } => {
+                self.emit("// TILE_GET_ELEMENT: Access threadgroup memory element");
+                self.emit(&format!("auto {} = tile_smem[row * tile_n + col];", result_name));
+            }
+
+            GpuOp::TileSetElement { tile: _, row: _, col: _, value: _ } => {
+                self.emit("// TILE_SET_ELEMENT: Set threadgroup memory element");
+                self.emit("// tile_smem[row * tile_n + col] = value;");
+            }
+
+            GpuOp::TileFill { tile: _, value: _ } => {
+                self.emit("// TILE_FILL: Fill all elements with scalar");
+                self.emit("// for (uint i = thread_idx; i < tile_m * tile_n; i += threads_per_group)");
+                self.emit("//     tile_smem[i] = value;");
+                self.emit("threadgroup_barrier(mem_flags::mem_threadgroup);");
+            }
+
+            GpuOp::TileReduce { tile: _, reduce_op } => {
+                let op_name = match reduce_op {
+                    CoopReduceOp::Add => "add",
+                    CoopReduceOp::Mul => "mul",
+                    CoopReduceOp::Min => "min",
+                    CoopReduceOp::Max => "max",
+                    CoopReduceOp::And => "and",
+                    CoopReduceOp::Or => "or",
+                    CoopReduceOp::Xor => "xor",
+                };
+                self.emit(&format!("// TILE_REDUCE: {} reduction", op_name));
+                self.emit("// Use simd_sum/simd_min/simd_max + tree reduction");
+                self.emit(&format!("float {} = 0.0f; // placeholder for {} reduction", result_name, op_name));
+            }
+
+            GpuOp::TileTranspose(_tile) => {
+                self.emit("// TILE_TRANSPOSE: Transpose tile in-place");
+                self.emit("// Requires diagonal swap through threadgroup memory");
+                self.emit("threadgroup_barrier(mem_flags::mem_threadgroup);");
+            }
+
+            GpuOp::TileM(_tile) => {
+                self.emit(&format!("uint {} = 0; // TILE_M: should be constant-folded", result_name));
+            }
+
+            GpuOp::TileN(_tile) => {
+                self.emit(&format!("uint {} = 0; // TILE_N: should be constant-folded", result_name));
+            }
         }
     }
 

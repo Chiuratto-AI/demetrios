@@ -619,6 +619,7 @@ impl TokenKind {
             TokenKind::Copy => "copy",
             TokenKind::Drop => "drop",
             TokenKind::Kernel => "kernel",
+            TokenKind::Tile => "tile",
             TokenKind::Device => "device",
             TokenKind::Shared => "shared",
             TokenKind::Gpu => "gpu",

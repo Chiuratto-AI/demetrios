@@ -935,6 +935,28 @@ impl DocExtractor {
                 let effects_str = effects.effects.join(", ");
                 format!("{} ! {{{}}}", self.type_expr_to_string(inner), effects_str)
             }
+            TypeExpr::Tile {
+                element_type,
+                tile_m,
+                tile_n,
+                layout,
+            } => {
+                let mut s = format!(
+                    "tile<{}, {}, {}>",
+                    self.type_expr_to_string(element_type),
+                    tile_m,
+                    tile_n
+                );
+                if let Some(l) = layout {
+                    s = format!("tile<{}, {}, {}, \"{}\">",
+                        self.type_expr_to_string(element_type),
+                        tile_m,
+                        tile_n,
+                        l
+                    );
+                }
+                s
+            }
         }
     }
 

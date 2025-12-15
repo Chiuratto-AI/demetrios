@@ -237,7 +237,7 @@ impl CudaFeatures {
 }
 
 /// Apple GPU family for Metal
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MetalGpuFamily {
     /// Apple 7 (M1, A14) - First Apple Silicon
     Apple7,

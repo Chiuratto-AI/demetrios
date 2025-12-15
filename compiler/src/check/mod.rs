@@ -3280,6 +3280,13 @@ impl TypeChecker {
                 // Effected types pass through the inner type
                 self.lower_type_expr(inner)
             }
+            TypeExpr::Tile { element_type, .. } => {
+                // Tile becomes array-like (for type checking purposes)
+                Type::Array {
+                    element: Box::new(self.lower_type_expr(element_type)),
+                    size: None,
+                }
+            }
         }
     }
 
