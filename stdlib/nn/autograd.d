@@ -1477,6 +1477,180 @@ fn lion_step_no_wd(param: f64, g: f64, m: f64, lr: f64) -> LionResult {
 }
 
 // ============================================================================
+// LEARNING RATE SCHEDULERS
+// ============================================================================
+
+// Constant learning rate (baseline)
+fn lr_constant(initial_lr: f64, step: f64) -> f64 {
+    return initial_lr
+}
+
+// Step decay: reduce LR by gamma every step_size steps
+// lr = initial_lr * gamma^(floor(step / step_size))
+fn lr_step_decay(initial_lr: f64, step: f64, step_size: f64, gamma: f64) -> f64 {
+    let num_decays = floor_f64(step / step_size)
+    return initial_lr * pow_f64(gamma, num_decays)
+}
+
+// Floor function for step decay
+fn floor_f64(x: f64) -> f64 {
+    // Simple floor implementation
+    let truncated = x - (x - (x / 1.0))  // This doesn't work, need different approach
+    if x >= 0.0 {
+        // For positive numbers, truncate toward zero
+        let mut result = 0.0
+        let mut i = 0.0
+        while i <= x {
+            result = i
+            i = i + 1.0
+        }
+        return result
+    } else {
+        // For negative, truncate away from zero
+        let mut result = 0.0
+        let mut i = 0.0
+        while i >= x {
+            result = i
+            i = i - 1.0
+        }
+        return result
+    }
+}
+
+// Exponential decay: lr = initial_lr * decay_rate^step
+fn lr_exponential_decay(initial_lr: f64, step: f64, decay_rate: f64) -> f64 {
+    return initial_lr * pow_f64(decay_rate, step)
+}
+
+// Linear decay: lr decreases linearly from initial_lr to end_lr
+// lr = initial_lr + (end_lr - initial_lr) * (step / total_steps)
+fn lr_linear_decay(initial_lr: f64, end_lr: f64, step: f64, total_steps: f64) -> f64 {
+    if step >= total_steps {
+        return end_lr
+    }
+    let progress = step / total_steps
+    return initial_lr + (end_lr - initial_lr) * progress
+}
+
+// Polynomial decay: lr = initial_lr * (1 - step/total_steps)^power
+fn lr_polynomial_decay(initial_lr: f64, step: f64, total_steps: f64, power: f64) -> f64 {
+    if step >= total_steps {
+        return 0.0
+    }
+    let decay_factor = 1.0 - step / total_steps
+    return initial_lr * pow_f64(decay_factor, power)
+}
+
+// Cosine annealing: lr follows cosine curve from initial_lr to min_lr
+// lr = min_lr + 0.5 * (initial_lr - min_lr) * (1 + cos(π * step / total_steps))
+fn lr_cosine_annealing(initial_lr: f64, min_lr: f64, step: f64, total_steps: f64) -> f64 {
+    if step >= total_steps {
+        return min_lr
+    }
+    let pi = 3.14159265358979323846
+    let progress = step / total_steps
+    let cosine_value = cos_f64(pi * progress)
+    return min_lr + 0.5 * (initial_lr - min_lr) * (1.0 + cosine_value)
+}
+
+// Cosine function using Taylor series
+fn cos_f64(x: f64) -> f64 {
+    // Normalize x to [0, 2π]
+    let pi = 3.14159265358979323846
+    let two_pi = 2.0 * pi
+    let mut normalized = x
+    while normalized >= two_pi { normalized = normalized - two_pi }
+    while normalized < 0.0 { normalized = normalized + two_pi }
+
+    // Taylor series: cos(x) = 1 - x²/2! + x⁴/4! - x⁶/6! + ...
+    let x2 = normalized * normalized
+    let x4 = x2 * x2
+    let x6 = x4 * x2
+    let x8 = x4 * x4
+    let x10 = x6 * x4
+
+    return 1.0 - x2/2.0 + x4/24.0 - x6/720.0 + x8/40320.0 - x10/3628800.0
+}
+
+// Linear warmup: gradually increase LR from 0 to initial_lr
+// lr = initial_lr * (step / warmup_steps) for step < warmup_steps
+fn lr_linear_warmup(initial_lr: f64, step: f64, warmup_steps: f64) -> f64 {
+    if step >= warmup_steps {
+        return initial_lr
+    }
+    return initial_lr * (step / warmup_steps)
+}
+
+// Warmup + Cosine decay: linear warmup then cosine annealing
+fn lr_warmup_cosine(initial_lr: f64, min_lr: f64, step: f64, warmup_steps: f64, total_steps: f64) -> f64 {
+    if step < warmup_steps {
+        // Linear warmup phase
+        return initial_lr * (step / warmup_steps)
+    } else {
+        // Cosine annealing phase
+        let decay_steps = total_steps - warmup_steps
+        let decay_step = step - warmup_steps
+        return lr_cosine_annealing(initial_lr, min_lr, decay_step, decay_steps)
+    }
+}
+
+// Warmup + Linear decay
+fn lr_warmup_linear(initial_lr: f64, end_lr: f64, step: f64, warmup_steps: f64, total_steps: f64) -> f64 {
+    if step < warmup_steps {
+        return initial_lr * (step / warmup_steps)
+    } else {
+        let decay_steps = total_steps - warmup_steps
+        let decay_step = step - warmup_steps
+        return lr_linear_decay(initial_lr, end_lr, decay_step, decay_steps)
+    }
+}
+
+// One Cycle policy: LR increases then decreases (Smith, 2018)
+// Popular for fast training with super-convergence
+fn lr_one_cycle(initial_lr: f64, max_lr: f64, step: f64, total_steps: f64, pct_start: f64) -> f64 {
+    let warmup_steps = total_steps * pct_start
+    let pi = 3.14159265358979323846
+
+    if step < warmup_steps {
+        // Increasing phase: initial_lr to max_lr
+        let progress = step / warmup_steps
+        return initial_lr + (max_lr - initial_lr) * progress
+    } else {
+        // Decreasing phase: max_lr to ~0
+        let decay_steps = total_steps - warmup_steps
+        let decay_step = step - warmup_steps
+        let progress = decay_step / decay_steps
+        // Cosine decay from max_lr to near 0
+        let cosine_value = cos_f64(pi * progress)
+        return max_lr * 0.5 * (1.0 + cosine_value)
+    }
+}
+
+// Inverse square root decay (commonly used in Transformers)
+// lr = initial_lr * sqrt(warmup_steps) / sqrt(max(step, warmup_steps))
+fn lr_inverse_sqrt(initial_lr: f64, step: f64, warmup_steps: f64) -> f64 {
+    if step < warmup_steps {
+        // Linear warmup
+        return initial_lr * (step / warmup_steps)
+    } else {
+        // Inverse sqrt decay
+        return initial_lr * sqrt_f64(warmup_steps) / sqrt_f64(step)
+    }
+}
+
+// Cyclic learning rate: oscillates between min and max
+// Useful for escaping local minima
+fn lr_cyclic(min_lr: f64, max_lr: f64, step: f64, cycle_length: f64) -> f64 {
+    let pi = 3.14159265358979323846
+    // Use absolute value of cosine for triangular wave
+    let cycle_pos = step / cycle_length
+    let cosine_value = cos_f64(2.0 * pi * cycle_pos)
+    // Map cos from [-1, 1] to [0, 1]
+    let normalized = (cosine_value + 1.0) / 2.0
+    return min_lr + (max_lr - min_lr) * normalized
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -2889,6 +3063,289 @@ fn main() -> i32 {
     if li1_40 >= li0_40 { ok = false; println("  FAIL: li1 >= li0") }
     if li2_40 >= li1_40 { ok = false; println("  FAIL: li2 >= li1") }
     if li5_40 >= 3.0 { ok = false; println("  FAIL: li5 should be < 3 after 5 steps") }
+    println("")
+
+    // ========================================================================
+    // LEARNING RATE SCHEDULER TESTS
+    // ========================================================================
+
+    // Test 41: Cosine annealing scheduler
+    println("Test 41: Cosine annealing scheduler")
+    let lr_init41 = 0.1
+    let lr_min41 = 0.001
+    let total_steps41 = 100.0
+
+    // At step 0, should be at initial_lr
+    let lr_s0 = lr_cosine_annealing(lr_init41, lr_min41, 0.0, total_steps41)
+    println("  lr at step 0 = ")
+    println(lr_s0)
+
+    // At step 50 (midpoint), should be halfway between
+    let lr_s50 = lr_cosine_annealing(lr_init41, lr_min41, 50.0, total_steps41)
+    println("  lr at step 50 = ")
+    println(lr_s50)
+
+    // At step 100, should be at min_lr
+    let lr_s100 = lr_cosine_annealing(lr_init41, lr_min41, 100.0, total_steps41)
+    println("  lr at step 100 = ")
+    println(lr_s100)
+
+    // Verify: start high, end low, midpoint in between
+    if abs_f64(lr_s0 - lr_init41) > tol { ok = false; println("  FAIL: s0 should be init_lr") }
+    if abs_f64(lr_s100 - lr_min41) > tol { ok = false; println("  FAIL: s100 should be min_lr") }
+    // Midpoint of cosine: min + 0.5 * (init - min) * (1 + cos(π/2)) = min + 0.5*(init-min)
+    let expected_mid = lr_min41 + 0.5 * (lr_init41 - lr_min41)
+    if abs_f64(lr_s50 - expected_mid) > 0.01 { ok = false; println("  FAIL: s50 should be midpoint") }
+    if lr_s0 <= lr_s100 { ok = false; println("  FAIL: start should be > end") }
+    println("")
+
+    // Test 42: Linear warmup scheduler
+    println("Test 42: Linear warmup scheduler")
+    let lr_init42 = 0.01
+    let warmup_steps42 = 10.0
+
+    // At step 0, lr should be 0
+    let lr_w0 = lr_linear_warmup(lr_init42, 0.0, warmup_steps42)
+    println("  lr at step 0 = ")
+    println(lr_w0)
+
+    // At step 5 (halfway), lr should be 0.5 * initial
+    let lr_w5 = lr_linear_warmup(lr_init42, 5.0, warmup_steps42)
+    println("  lr at step 5 = ")
+    println(lr_w5)
+
+    // At step 10 (end of warmup), lr should be initial
+    let lr_w10 = lr_linear_warmup(lr_init42, 10.0, warmup_steps42)
+    println("  lr at step 10 = ")
+    println(lr_w10)
+
+    // After warmup, lr stays constant
+    let lr_w20 = lr_linear_warmup(lr_init42, 20.0, warmup_steps42)
+    println("  lr at step 20 = ")
+    println(lr_w20)
+
+    // Verify warmup behavior
+    if abs_f64(lr_w0 - 0.0) > tol { ok = false; println("  FAIL: w0 should be 0") }
+    if abs_f64(lr_w5 - 0.005) > tol { ok = false; println("  FAIL: w5 should be 0.005") }
+    if abs_f64(lr_w10 - lr_init42) > tol { ok = false; println("  FAIL: w10 should be init") }
+    if abs_f64(lr_w20 - lr_init42) > tol { ok = false; println("  FAIL: w20 should be init") }
+    if lr_w0 >= lr_w5 { ok = false; println("  FAIL: should increase during warmup") }
+    if lr_w5 >= lr_w10 { ok = false; println("  FAIL: should increase during warmup") }
+    println("")
+
+    // Test 43: One cycle policy scheduler
+    println("Test 43: One cycle policy scheduler")
+    let lr_init43 = 0.001
+    let lr_max43 = 0.01
+    let total_steps43 = 100.0
+    let pct_start43 = 0.3  // 30% increasing, 70% decreasing
+
+    // At step 0, should be at initial_lr
+    let lr_oc0 = lr_one_cycle(lr_init43, lr_max43, 0.0, total_steps43, pct_start43)
+    println("  lr at step 0 = ")
+    println(lr_oc0)
+
+    // At step 30 (peak), should be at max_lr
+    let lr_oc30 = lr_one_cycle(lr_init43, lr_max43, 30.0, total_steps43, pct_start43)
+    println("  lr at step 30 (peak) = ")
+    println(lr_oc30)
+
+    // At step 65 (midway through decay), should be decreasing
+    let lr_oc65 = lr_one_cycle(lr_init43, lr_max43, 65.0, total_steps43, pct_start43)
+    println("  lr at step 65 = ")
+    println(lr_oc65)
+
+    // At step 100, should be near 0
+    let lr_oc100 = lr_one_cycle(lr_init43, lr_max43, 100.0, total_steps43, pct_start43)
+    println("  lr at step 100 = ")
+    println(lr_oc100)
+
+    // Verify one cycle: start low -> peak at pct_start -> decay to ~0
+    if abs_f64(lr_oc0 - lr_init43) > tol { ok = false; println("  FAIL: oc0 should be init") }
+    if abs_f64(lr_oc30 - lr_max43) > 0.001 { ok = false; println("  FAIL: oc30 should be max") }
+    if lr_oc30 <= lr_oc0 { ok = false; println("  FAIL: peak should be > start") }
+    if lr_oc65 >= lr_oc30 { ok = false; println("  FAIL: decay phase should decrease from peak") }
+    if lr_oc100 >= lr_oc65 { ok = false; println("  FAIL: should continue decreasing") }
+    println("")
+
+    // Test 44: Step decay scheduler
+    println("Test 44: Step decay scheduler")
+    let lr_init44 = 0.1
+    let step_size44 = 10.0
+    let gamma44 = 0.5
+
+    // At step 0, lr = 0.1
+    let lr_sd0 = lr_step_decay(lr_init44, 0.0, step_size44, gamma44)
+    println("  lr at step 0 = ")
+    println(lr_sd0)
+
+    // At step 5, still lr = 0.1 (no decay yet)
+    let lr_sd5 = lr_step_decay(lr_init44, 5.0, step_size44, gamma44)
+    println("  lr at step 5 = ")
+    println(lr_sd5)
+
+    // At step 10, lr = 0.1 * 0.5 = 0.05
+    let lr_sd10 = lr_step_decay(lr_init44, 10.0, step_size44, gamma44)
+    println("  lr at step 10 = ")
+    println(lr_sd10)
+
+    // At step 20, lr = 0.1 * 0.5^2 = 0.025
+    let lr_sd20 = lr_step_decay(lr_init44, 20.0, step_size44, gamma44)
+    println("  lr at step 20 = ")
+    println(lr_sd20)
+
+    // At step 30, lr = 0.1 * 0.5^3 = 0.0125
+    let lr_sd30 = lr_step_decay(lr_init44, 30.0, step_size44, gamma44)
+    println("  lr at step 30 = ")
+    println(lr_sd30)
+
+    // Verify step decay
+    if abs_f64(lr_sd0 - 0.1) > tol { ok = false; println("  FAIL: sd0 should be 0.1") }
+    if abs_f64(lr_sd5 - 0.1) > tol { ok = false; println("  FAIL: sd5 should be 0.1") }
+    if abs_f64(lr_sd10 - 0.05) > tol { ok = false; println("  FAIL: sd10 should be 0.05") }
+    if abs_f64(lr_sd20 - 0.025) > tol { ok = false; println("  FAIL: sd20 should be 0.025") }
+    if abs_f64(lr_sd30 - 0.0125) > tol { ok = false; println("  FAIL: sd30 should be 0.0125") }
+    println("")
+
+    // Test 45: Exponential decay scheduler
+    println("Test 45: Exponential decay scheduler")
+    let lr_init45 = 0.1
+    let decay_rate45 = 0.95
+
+    // lr = initial * decay^step
+    let lr_exp0 = lr_exponential_decay(lr_init45, 0.0, decay_rate45)
+    let lr_exp10 = lr_exponential_decay(lr_init45, 10.0, decay_rate45)
+    let lr_exp50 = lr_exponential_decay(lr_init45, 50.0, decay_rate45)
+
+    println("  lr at step 0 = ")
+    println(lr_exp0)
+    println("  lr at step 10 = ")
+    println(lr_exp10)
+    println("  lr at step 50 = ")
+    println(lr_exp50)
+
+    // Expected: 0.1 * 0.95^10 ≈ 0.0598, 0.1 * 0.95^50 ≈ 0.00769
+    let expected_exp10 = lr_init45 * pow_f64(decay_rate45, 10.0)
+    let expected_exp50 = lr_init45 * pow_f64(decay_rate45, 50.0)
+
+    if abs_f64(lr_exp0 - 0.1) > tol { ok = false; println("  FAIL: exp0 should be 0.1") }
+    if abs_f64(lr_exp10 - expected_exp10) > tol { ok = false; println("  FAIL: exp10 mismatch") }
+    if abs_f64(lr_exp50 - expected_exp50) > tol { ok = false; println("  FAIL: exp50 mismatch") }
+    if lr_exp0 <= lr_exp10 { ok = false; println("  FAIL: should decrease") }
+    if lr_exp10 <= lr_exp50 { ok = false; println("  FAIL: should decrease") }
+    println("")
+
+    // Test 46: Warmup + Cosine annealing (Transformer-style)
+    println("Test 46: Warmup + Cosine annealing scheduler")
+    let lr_init46 = 0.0001
+    let lr_min46 = 0.00001
+    let warmup_steps46 = 10.0
+    let total_steps46 = 100.0
+
+    // During warmup: linear increase
+    let lr_wc0 = lr_warmup_cosine(lr_init46, lr_min46, 0.0, warmup_steps46, total_steps46)
+    let lr_wc5 = lr_warmup_cosine(lr_init46, lr_min46, 5.0, warmup_steps46, total_steps46)
+    let lr_wc10 = lr_warmup_cosine(lr_init46, lr_min46, 10.0, warmup_steps46, total_steps46)
+
+    // After warmup: cosine annealing
+    let lr_wc50 = lr_warmup_cosine(lr_init46, lr_min46, 50.0, warmup_steps46, total_steps46)
+    let lr_wc100 = lr_warmup_cosine(lr_init46, lr_min46, 100.0, warmup_steps46, total_steps46)
+
+    println("  lr at step 0 (warmup start) = ")
+    println(lr_wc0)
+    println("  lr at step 5 (warmup mid) = ")
+    println(lr_wc5)
+    println("  lr at step 10 (warmup end) = ")
+    println(lr_wc10)
+    println("  lr at step 50 (decay mid) = ")
+    println(lr_wc50)
+    println("  lr at step 100 (decay end) = ")
+    println(lr_wc100)
+
+    // Verify warmup phase
+    if abs_f64(lr_wc0 - 0.0) > tol { ok = false; println("  FAIL: wc0 should be ~0") }
+    if lr_wc0 >= lr_wc5 { ok = false; println("  FAIL: warmup should increase") }
+    if lr_wc5 >= lr_wc10 { ok = false; println("  FAIL: warmup should increase") }
+    // Verify decay phase
+    if lr_wc10 <= lr_wc50 { ok = false; println("  FAIL: should decay after warmup") }
+    if lr_wc50 <= lr_wc100 { ok = false; println("  FAIL: should continue decaying") }
+    // End should be near min_lr
+    if abs_f64(lr_wc100 - lr_min46) > 0.001 { ok = false; println("  FAIL: wc100 should be near min") }
+    println("")
+
+    // Test 47: Cyclic learning rate
+    println("Test 47: Cyclic learning rate scheduler")
+    let lr_min47 = 0.001
+    let lr_max47 = 0.01
+    let cycle_len47 = 20.0
+
+    // At step 0, should be at max (cosine = 1)
+    let lr_cyc0 = lr_cyclic(lr_min47, lr_max47, 0.0, cycle_len47)
+    // At step 5, should be decreasing
+    let lr_cyc5 = lr_cyclic(lr_min47, lr_max47, 5.0, cycle_len47)
+    // At step 10 (half cycle), should be at min
+    let lr_cyc10 = lr_cyclic(lr_min47, lr_max47, 10.0, cycle_len47)
+    // At step 20 (full cycle), should be back at max
+    let lr_cyc20 = lr_cyclic(lr_min47, lr_max47, 20.0, cycle_len47)
+    // At step 30 (1.5 cycles), should be at min again
+    let lr_cyc30 = lr_cyclic(lr_min47, lr_max47, 30.0, cycle_len47)
+
+    println("  lr at step 0 = ")
+    println(lr_cyc0)
+    println("  lr at step 5 = ")
+    println(lr_cyc5)
+    println("  lr at step 10 (min) = ")
+    println(lr_cyc10)
+    println("  lr at step 20 (max) = ")
+    println(lr_cyc20)
+    println("  lr at step 30 (min) = ")
+    println(lr_cyc30)
+
+    // Verify cyclic behavior
+    if abs_f64(lr_cyc0 - lr_max47) > tol { ok = false; println("  FAIL: cyc0 should be max") }
+    if abs_f64(lr_cyc10 - lr_min47) > tol { ok = false; println("  FAIL: cyc10 should be min") }
+    if abs_f64(lr_cyc20 - lr_max47) > tol { ok = false; println("  FAIL: cyc20 should be max") }
+    if abs_f64(lr_cyc30 - lr_min47) > tol { ok = false; println("  FAIL: cyc30 should be min") }
+    if lr_cyc5 >= lr_cyc0 { ok = false; println("  FAIL: should decrease from 0 to 10") }
+    if lr_cyc5 <= lr_cyc10 { ok = false; println("  FAIL: should continue decreasing") }
+    println("")
+
+    // Test 48: Inverse sqrt scheduler (Transformer-style)
+    println("Test 48: Inverse sqrt scheduler")
+    let lr_init48 = 0.001
+    let warmup_steps48 = 100.0
+
+    // During warmup
+    let lr_isq10 = lr_inverse_sqrt(lr_init48, 10.0, warmup_steps48)
+    let lr_isq50 = lr_inverse_sqrt(lr_init48, 50.0, warmup_steps48)
+    let lr_isq100 = lr_inverse_sqrt(lr_init48, 100.0, warmup_steps48)
+
+    // After warmup: inverse sqrt decay
+    let lr_isq200 = lr_inverse_sqrt(lr_init48, 200.0, warmup_steps48)
+    let lr_isq400 = lr_inverse_sqrt(lr_init48, 400.0, warmup_steps48)
+
+    println("  lr at step 10 (warmup) = ")
+    println(lr_isq10)
+    println("  lr at step 50 (warmup) = ")
+    println(lr_isq50)
+    println("  lr at step 100 (peak) = ")
+    println(lr_isq100)
+    println("  lr at step 200 (decay) = ")
+    println(lr_isq200)
+    println("  lr at step 400 (decay) = ")
+    println(lr_isq400)
+
+    // Verify warmup phase: linear increase
+    if lr_isq10 >= lr_isq50 { ok = false; println("  FAIL: warmup should increase") }
+    if lr_isq50 >= lr_isq100 { ok = false; println("  FAIL: warmup should increase") }
+    // At warmup end, should be near initial
+    if abs_f64(lr_isq100 - lr_init48) > tol { ok = false; println("  FAIL: isq100 should be init") }
+    // Verify decay phase: inverse sqrt
+    if lr_isq100 <= lr_isq200 { ok = false; println("  FAIL: should decay after warmup") }
+    if lr_isq200 <= lr_isq400 { ok = false; println("  FAIL: should continue decaying") }
+    // Check inverse sqrt: lr(200) = lr(100) * sqrt(100/200) = 0.001 * sqrt(0.5) ≈ 0.000707
+    let expected_isq200 = lr_init48 * sqrt_f64(warmup_steps48) / sqrt_f64(200.0)
+    if abs_f64(lr_isq200 - expected_isq200) > tol { ok = false; println("  FAIL: isq200 mismatch") }
     println("")
 
     if ok {
