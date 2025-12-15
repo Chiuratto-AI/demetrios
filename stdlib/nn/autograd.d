@@ -732,6 +732,121 @@ fn backward(tape: Tape, out: i64) -> Tape {
 }
 
 // ============================================================================
+// ADAM OPTIMIZER
+// ============================================================================
+
+// Adam hyperparameters
+fn ADAM_BETA1() -> f64 { return 0.9 }
+fn ADAM_BETA2() -> f64 { return 0.999 }
+fn ADAM_EPSILON() -> f64 { return 0.00000001 }
+fn ADAM_LR() -> f64 { return 0.001 }
+
+// Adam state for 6 parameters (matches tape variable slots)
+struct Adam {
+    // First moment (momentum)
+    m0: f64, m1: f64, m2: f64, m3: f64, m4: f64, m5: f64,
+    // Second moment (squared gradient)
+    v0: f64, v1: f64, v2: f64, v3: f64, v4: f64, v5: f64,
+    // Timestep for bias correction
+    t: f64
+}
+
+fn adam_new() -> Adam {
+    return Adam {
+        m0: 0.0, m1: 0.0, m2: 0.0, m3: 0.0, m4: 0.0, m5: 0.0,
+        v0: 0.0, v1: 0.0, v2: 0.0, v3: 0.0, v4: 0.0, v5: 0.0,
+        t: 0.0
+    }
+}
+
+// Get first moment m for parameter i
+fn adam_get_m(a: Adam, i: i64) -> f64 {
+    if i == 0 { return a.m0 }
+    if i == 1 { return a.m1 }
+    if i == 2 { return a.m2 }
+    if i == 3 { return a.m3 }
+    if i == 4 { return a.m4 }
+    return a.m5
+}
+
+// Get second moment v for parameter i
+fn adam_get_v(a: Adam, i: i64) -> f64 {
+    if i == 0 { return a.v0 }
+    if i == 1 { return a.v1 }
+    if i == 2 { return a.v2 }
+    if i == 3 { return a.v3 }
+    if i == 4 { return a.v4 }
+    return a.v5
+}
+
+// Single parameter Adam update
+// Returns (new_param, new_m, new_v)
+fn adam_update_param(param: f64, g: f64, m: f64, v: f64, timestep: f64, lr: f64) -> f64 {
+    let beta1 = ADAM_BETA1()
+    let beta2 = ADAM_BETA2()
+    let eps = ADAM_EPSILON()
+
+    // Update biased first moment: m = β1*m + (1-β1)*g
+    let new_m = beta1 * m + (1.0 - beta1) * g
+
+    // Update biased second moment: v = β2*v + (1-β2)*g²
+    let new_v = beta2 * v + (1.0 - beta2) * g * g
+
+    // Bias correction
+    let m_hat = new_m / (1.0 - pow_f64(beta1, timestep))
+    let v_hat = new_v / (1.0 - pow_f64(beta2, timestep))
+
+    // Parameter update: θ = θ - lr * m_hat / (√v_hat + ε)
+    let new_param = param - lr * m_hat / (sqrt_f64(v_hat) + eps)
+
+    return new_param
+}
+
+// Power function for bias correction
+fn pow_f64(base: f64, exp: f64) -> f64 {
+    // For small integer-like exponents, use multiplication
+    // For Adam, exp is typically small (timesteps)
+    if exp <= 0.0 { return 1.0 }
+    if exp < 1.0 { return base }
+
+    let mut result = 1.0
+    let mut i = 0.0
+    while i < exp {
+        result = result * base
+        i = i + 1.0
+    }
+    return result
+}
+
+// Adam step for single parameter - returns tuple-like struct
+struct AdamResult {
+    param: f64,
+    m: f64,
+    v: f64
+}
+
+fn adam_step_single(param: f64, g: f64, m: f64, v: f64, timestep: f64, lr: f64) -> AdamResult {
+    let beta1 = ADAM_BETA1()
+    let beta2 = ADAM_BETA2()
+    let eps = ADAM_EPSILON()
+
+    // Update biased first moment
+    let new_m = beta1 * m + (1.0 - beta1) * g
+
+    // Update biased second moment
+    let new_v = beta2 * v + (1.0 - beta2) * g * g
+
+    // Bias correction
+    let m_hat = new_m / (1.0 - pow_f64(beta1, timestep))
+    let v_hat = new_v / (1.0 - pow_f64(beta2, timestep))
+
+    // Parameter update
+    let new_param = param - lr * m_hat / (sqrt_f64(v_hat) + eps)
+
+    return AdamResult { param: new_param, m: new_m, v: new_v }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -1175,6 +1290,121 @@ fn main() -> i32 {
     println(expected_g18)
     if abs_f64(v18 - expected_v18) > tol { ok = false; println("  FAIL: v") }
     if abs_f64(g18_pred - expected_g18) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 21: Adam optimizer - single step verification
+    // Due to Demetrios struct-in-loop bug, we test Adam formula correctness
+    // with a single step instead of iterative optimization
+    println("Test 21: Adam single step correctness")
+    let x21 = 5.0
+    let m21 = 0.0
+    let v21 = 0.0
+    let lr21 = 0.1
+    let dx21 = 2.0 * x21  // gradient = 10.0
+
+    // Adam step 1: compute manually
+    let beta1 = ADAM_BETA1()  // 0.9
+    let beta2 = ADAM_BETA2()  // 0.999
+    let eps21 = ADAM_EPSILON()
+
+    // m = 0.9 * 0 + 0.1 * 10 = 1.0
+    let new_m21 = beta1 * m21 + (1.0 - beta1) * dx21
+    // v = 0.999 * 0 + 0.001 * 100 = 0.1
+    let new_v21 = beta2 * v21 + (1.0 - beta2) * dx21 * dx21
+    // m_hat = 1.0 / (1 - 0.9^1) = 1.0 / 0.1 = 10.0
+    let m_hat21 = new_m21 / (1.0 - pow_f64(beta1, 1.0))
+    // v_hat = 0.1 / (1 - 0.999^1) = 0.1 / 0.001 = 100.0
+    let v_hat21 = new_v21 / (1.0 - pow_f64(beta2, 1.0))
+    // x_new = 5 - 0.1 * 10 / (sqrt(100) + eps) = 5 - 1/10 = 4.9
+    let x21_new = x21 - lr21 * m_hat21 / (sqrt_f64(v_hat21) + eps21)
+
+    // Verify with adam_step_single
+    let result21 = adam_step_single(x21, dx21, m21, v21, 1.0, lr21)
+
+    println("  Manual calculation:")
+    println("    new_m = ")
+    println(new_m21)
+    println("    new_v = ")
+    println(new_v21)
+    println("    x_new = ")
+    println(x21_new)
+    println("  adam_step_single result:")
+    println("    result.m = ")
+    println(result21.m)
+    println("    result.v = ")
+    println(result21.v)
+    println("    result.param = ")
+    println(result21.param)
+
+    // Expected: new_m = 1.0, new_v = 0.1, x_new ≈ 4.9
+    if abs_f64(new_m21 - 1.0) > tol { ok = false; println("  FAIL: new_m") }
+    if abs_f64(new_v21 - 0.1) > tol { ok = false; println("  FAIL: new_v") }
+    if abs_f64(x21_new - 4.9) > tol { ok = false; println("  FAIL: x_new") }
+    if abs_f64(result21.m - new_m21) > tol { ok = false; println("  FAIL: result.m mismatch") }
+    if abs_f64(result21.v - new_v21) > tol { ok = false; println("  FAIL: result.v mismatch") }
+    if abs_f64(result21.param - x21_new) > tol { ok = false; println("  FAIL: result.param mismatch") }
+    println("")
+
+    // Test 22: Adam multi-step (unrolled) to verify convergence
+    println("Test 22: Adam 5-step descent (unrolled)")
+    // Start from x=5, minimize x^2
+    // Due to struct-in-loop bug, we unroll 5 steps manually
+    let x0 = 5.0
+    let m0_22 = 0.0
+    let v0_22 = 0.0
+    let lr22 = 0.5  // Higher LR for faster convergence in 5 steps
+
+    // Step 1
+    let g1 = 2.0 * x0
+    let r1 = adam_step_single(x0, g1, m0_22, v0_22, 1.0, lr22)
+    let x1 = r1.param
+    let m1_22 = r1.m
+    let v1_22 = r1.v
+
+    // Step 2
+    let g2_22 = 2.0 * x1
+    let r2 = adam_step_single(x1, g2_22, m1_22, v1_22, 2.0, lr22)
+    let x2 = r2.param
+    let m2_22 = r2.m
+    let v2_22 = r2.v
+
+    // Step 3
+    let g3 = 2.0 * x2
+    let r3 = adam_step_single(x2, g3, m2_22, v2_22, 3.0, lr22)
+    let x3 = r3.param
+    let m3_22 = r3.m
+    let v3_22 = r3.v
+
+    // Step 4
+    let g4 = 2.0 * x3
+    let r4 = adam_step_single(x3, g4, m3_22, v3_22, 4.0, lr22)
+    let x4 = r4.param
+    let m4_22 = r4.m
+    let v4_22 = r4.v
+
+    // Step 5
+    let g5 = 2.0 * x4
+    let r5 = adam_step_single(x4, g5, m4_22, v4_22, 5.0, lr22)
+    let x5 = r5.param
+
+    println("  Descent from x=5:")
+    println("    x0 = 5.0")
+    println("    x1 = ")
+    println(x1)
+    println("    x2 = ")
+    println(x2)
+    println("    x3 = ")
+    println(x3)
+    println("    x4 = ")
+    println(x4)
+    println("    x5 = ")
+    println(x5)
+
+    // x should decrease monotonically toward 0
+    if x1 >= x0 { ok = false; println("  FAIL: x1 >= x0") }
+    if x2 >= x1 { ok = false; println("  FAIL: x2 >= x1") }
+    if x3 >= x2 { ok = false; println("  FAIL: x3 >= x2") }
+    if x5 >= 3.0 { ok = false; println("  FAIL: x5 should be < 3 after 5 steps") }
     println("")
 
     if ok {
