@@ -847,6 +847,46 @@ fn adam_step_single(param: f64, g: f64, m: f64, v: f64, timestep: f64, lr: f64) 
 }
 
 // ============================================================================
+// SGD WITH MOMENTUM
+// ============================================================================
+
+// SGD with momentum hyperparameters
+fn SGD_MOMENTUM() -> f64 { return 0.9 }
+
+// Result struct for SGD with momentum
+struct SGDMomentumResult {
+    param: f64,
+    velocity: f64
+}
+
+// SGD with momentum update for single parameter
+// Formula: v = momentum * v + gradient
+//          param = param - lr * v
+fn sgd_momentum_step(param: f64, g: f64, velocity: f64, lr: f64, momentum: f64) -> SGDMomentumResult {
+    // Update velocity: v = momentum * v + g
+    let new_velocity = momentum * velocity + g
+
+    // Update parameter: θ = θ - lr * v
+    let new_param = param - lr * new_velocity
+
+    return SGDMomentumResult { param: new_param, velocity: new_velocity }
+}
+
+// Nesterov Accelerated Gradient (NAG) - a variant of momentum
+// Formula: v = momentum * v + gradient(param - momentum * v)
+//          param = param - lr * v
+// Note: This simplified version computes gradient at current position
+fn sgd_nesterov_step(param: f64, g: f64, velocity: f64, lr: f64, momentum: f64) -> SGDMomentumResult {
+    // Nesterov update: v = momentum * v + g
+    let new_velocity = momentum * velocity + g
+
+    // Update with momentum correction: θ = θ - lr * (momentum * v + g)
+    let new_param = param - lr * (momentum * new_velocity + g)
+
+    return SGDMomentumResult { param: new_param, velocity: new_velocity }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -1405,6 +1445,94 @@ fn main() -> i32 {
     if x2 >= x1 { ok = false; println("  FAIL: x2 >= x1") }
     if x3 >= x2 { ok = false; println("  FAIL: x3 >= x2") }
     if x5 >= 3.0 { ok = false; println("  FAIL: x5 should be < 3 after 5 steps") }
+    println("")
+
+    // Test 23: SGD with momentum - single step verification
+    println("Test 23: SGD with momentum single step")
+    let x23 = 5.0
+    let vel23 = 0.0
+    let lr23 = 0.1
+    let mom23 = 0.9
+    let g23 = 2.0 * x23  // gradient = 10.0
+
+    // Manual calculation:
+    // new_velocity = 0.9 * 0 + 10 = 10
+    // new_param = 5 - 0.1 * 10 = 4
+    let expected_vel23 = mom23 * vel23 + g23
+    let expected_x23 = x23 - lr23 * expected_vel23
+
+    let result23 = sgd_momentum_step(x23, g23, vel23, lr23, mom23)
+
+    println("  Manual calculation:")
+    println("    new_velocity = ")
+    println(expected_vel23)
+    println("    new_param = ")
+    println(expected_x23)
+    println("  sgd_momentum_step result:")
+    println("    result.velocity = ")
+    println(result23.velocity)
+    println("    result.param = ")
+    println(result23.param)
+
+    if abs_f64(expected_vel23 - 10.0) > tol { ok = false; println("  FAIL: expected_vel") }
+    if abs_f64(expected_x23 - 4.0) > tol { ok = false; println("  FAIL: expected_x") }
+    if abs_f64(result23.velocity - expected_vel23) > tol { ok = false; println("  FAIL: result.velocity") }
+    if abs_f64(result23.param - expected_x23) > tol { ok = false; println("  FAIL: result.param") }
+    println("")
+
+    // Test 24: SGD with momentum 5-step descent (unrolled)
+    println("Test 24: SGD momentum 5-step descent (unrolled)")
+    let y0_24 = 5.0
+    let v0_24 = 0.0
+    let lr24 = 0.1
+    let mom24 = 0.9
+
+    // Step 1
+    let gy1 = 2.0 * y0_24
+    let s1 = sgd_momentum_step(y0_24, gy1, v0_24, lr24, mom24)
+    let y1_24 = s1.param
+    let v1_24 = s1.velocity
+
+    // Step 2
+    let gy2 = 2.0 * y1_24
+    let s2 = sgd_momentum_step(y1_24, gy2, v1_24, lr24, mom24)
+    let y2_24 = s2.param
+    let v2_24 = s2.velocity
+
+    // Step 3
+    let gy3 = 2.0 * y2_24
+    let s3 = sgd_momentum_step(y2_24, gy3, v2_24, lr24, mom24)
+    let y3_24 = s3.param
+    let v3_24 = s3.velocity
+
+    // Step 4
+    let gy4 = 2.0 * y3_24
+    let s4 = sgd_momentum_step(y3_24, gy4, v3_24, lr24, mom24)
+    let y4_24 = s4.param
+    let v4_24 = s4.velocity
+
+    // Step 5
+    let gy5 = 2.0 * y4_24
+    let s5 = sgd_momentum_step(y4_24, gy5, v4_24, lr24, mom24)
+    let y5_24 = s5.param
+
+    println("  Descent from y=5 with momentum=0.9:")
+    println("    y0 = 5.0")
+    println("    y1 = ")
+    println(y1_24)
+    println("    y2 = ")
+    println(y2_24)
+    println("    y3 = ")
+    println(y3_24)
+    println("    y4 = ")
+    println(y4_24)
+    println("    y5 = ")
+    println(y5_24)
+
+    // y should decrease toward 0
+    if y1_24 >= y0_24 { ok = false; println("  FAIL: y1 >= y0") }
+    if y2_24 >= y1_24 { ok = false; println("  FAIL: y2 >= y1") }
+    if y5_24 >= 2.0 { ok = false; println("  FAIL: y5 should be < 2 after 5 steps") }
     println("")
 
     if ok {
