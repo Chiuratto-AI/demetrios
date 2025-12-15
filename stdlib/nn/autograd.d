@@ -73,6 +73,7 @@ fn OP_EXP() -> i64 { return 7 }
 fn OP_SQRT() -> i64 { return 9 }
 fn OP_SIN() -> i64 { return 11 }
 fn OP_SIGMOID() -> i64 { return 15 }
+fn OP_RELU() -> i64 { return 16 }
 
 // ============================================================================
 // TAPE STRUCTURE - 6 slots for simplicity
@@ -338,6 +339,12 @@ fn tsigmoid(t: Tape, a: i64) -> Tape {
     return push(t, OP_SIGMOID(), a, 0 - 1, 1.0 / (1.0 + exp_f64(0.0 - av)))
 }
 
+fn trelu(t: Tape, a: i64) -> Tape {
+    let av = get_v(t, a)
+    let rv = if av > 0.0 { av } else { 0.0 }
+    return push(t, OP_RELU(), a, 0 - 1, rv)
+}
+
 // ============================================================================
 // BACKWARD
 // ============================================================================
@@ -459,6 +466,17 @@ fn backward_step(t: Tape, i: i64) -> Tape {
     if op == OP_SIGMOID() {
         // d(sigmoid(a))/da = sigmoid(a) * (1 - sigmoid(a)) = v * (1-v)
         let ga = dout * v * (1.0 - v)
+        if a1 == 0 { new_g0 = new_g0 + ga }
+        if a1 == 1 { new_g1 = new_g1 + ga }
+        if a1 == 2 { new_g2 = new_g2 + ga }
+        if a1 == 3 { new_g3 = new_g3 + ga }
+        if a1 == 4 { new_g4 = new_g4 + ga }
+        if a1 == 5 { new_g5 = new_g5 + ga }
+    }
+    if op == OP_RELU() {
+        // d(relu(a))/da = 1 if a > 0 else 0
+        // Note: v = relu(input), so v > 0 iff input > 0
+        let ga = if v > 0.0 { dout } else { 0.0 }
         if a1 == 0 { new_g0 = new_g0 + ga }
         if a1 == 1 { new_g1 = new_g1 + ga }
         if a1 == 2 { new_g2 = new_g2 + ga }
@@ -603,6 +621,56 @@ fn main() -> i32 {
     if abs_f64(gx - 2.0) > tol { ok = false; println("  FAIL: gx") }
     if abs_f64(gy - 4.0) > tol { ok = false; println("  FAIL: gy") }
     if abs_f64(gz - 2.0) > tol { ok = false; println("  FAIL: gz") }
+    println("")
+
+    // Test 6: ReLU at x=2 -> f=2, df=1
+    println("Test 6: relu(x) at x=2")
+    let mut t6a = tape_new()
+    t6a = tvar(t6a, 2.0)      // 0
+    t6a = trelu(t6a, 0)       // 1
+    t6a = backward(t6a, 1)
+    let v6a = get_v(t6a, 1)
+    let g6a = get_g(t6a, 0)
+    println("  f = ")
+    println(v6a)
+    println("  df/dx = ")
+    println(g6a)
+    if abs_f64(v6a - 2.0) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g6a - 1.0) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 7: ReLU at x=-3 -> f=0, df=0
+    println("Test 7: relu(x) at x=-3")
+    let mut t6b = tape_new()
+    t6b = tvar(t6b, 0.0 - 3.0)  // 0
+    t6b = trelu(t6b, 0)         // 1
+    t6b = backward(t6b, 1)
+    let v6b = get_v(t6b, 1)
+    let g6b = get_g(t6b, 0)
+    println("  f = ")
+    println(v6b)
+    println("  df/dx = ")
+    println(g6b)
+    if abs_f64(v6b - 0.0) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g6b - 0.0) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 8: Chain rule with ReLU: d(relu(x^2))/dx at x=2 -> f=4, df=4
+    println("Test 8: relu(x^2) at x=2")
+    let mut t7 = tape_new()
+    t7 = tvar(t7, 2.0)        // 0
+    t7 = tmul(t7, 0, 0)       // 1: x^2 = 4
+    t7 = trelu(t7, 1)         // 2: relu(4) = 4
+    t7 = backward(t7, 2)
+    let v7 = get_v(t7, 2)
+    let g7 = get_g(t7, 0)
+    // Chain rule: d(relu(x^2))/dx = d(relu)/d(x^2) * d(x^2)/dx = 1 * 2x = 4
+    println("  f = ")
+    println(v7)
+    println("  df/dx = ")
+    println(g7)
+    if abs_f64(v7 - 4.0) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g7 - 4.0) > tol { ok = false; println("  FAIL: g") }
     println("")
 
     if ok {
