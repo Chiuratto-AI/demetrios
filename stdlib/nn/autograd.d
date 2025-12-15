@@ -75,6 +75,10 @@ fn OP_SIN() -> i64 { return 11 }
 fn OP_SIGMOID() -> i64 { return 15 }
 fn OP_RELU() -> i64 { return 16 }
 fn OP_TANH() -> i64 { return 17 }
+fn OP_LEAKY_RELU() -> i64 { return 18 }
+
+// Leaky ReLU slope for negative inputs (standard value)
+fn LEAKY_ALPHA() -> f64 { return 0.01 }
 
 // ============================================================================
 // TAPE STRUCTURE - 6 slots for simplicity
@@ -355,6 +359,13 @@ fn ttanh(t: Tape, a: i64) -> Tape {
     return push(t, OP_TANH(), a, 0 - 1, tv)
 }
 
+fn tleaky_relu(t: Tape, a: i64) -> Tape {
+    let av = get_v(t, a)
+    let alpha = LEAKY_ALPHA()
+    let rv = if av > 0.0 { av } else { alpha * av }
+    return push(t, OP_LEAKY_RELU(), a, 0 - 1, rv)
+}
+
 // ============================================================================
 // BACKWARD
 // ============================================================================
@@ -497,6 +508,18 @@ fn backward_step(t: Tape, i: i64) -> Tape {
     if op == OP_TANH() {
         // d(tanh(a))/da = 1 - tanh(a)^2 = 1 - v^2
         let ga = dout * (1.0 - v * v)
+        if a1 == 0 { new_g0 = new_g0 + ga }
+        if a1 == 1 { new_g1 = new_g1 + ga }
+        if a1 == 2 { new_g2 = new_g2 + ga }
+        if a1 == 3 { new_g3 = new_g3 + ga }
+        if a1 == 4 { new_g4 = new_g4 + ga }
+        if a1 == 5 { new_g5 = new_g5 + ga }
+    }
+    if op == OP_LEAKY_RELU() {
+        // d(leaky_relu(a))/da = 1 if a > 0 else alpha
+        // Note: v > 0 iff input > 0 (since alpha > 0)
+        let alpha = LEAKY_ALPHA()
+        let ga = if v > 0.0 { dout } else { dout * alpha }
         if a1 == 0 { new_g0 = new_g0 + ga }
         if a1 == 1 { new_g1 = new_g1 + ga }
         if a1 == 2 { new_g2 = new_g2 + ga }
@@ -732,6 +755,44 @@ fn main() -> i32 {
     println(expected_grad1)
     if abs_f64(v9 - expected_tanh1) > tol { ok = false; println("  FAIL: v") }
     if abs_f64(g9 - expected_grad1) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 11: Leaky ReLU at x=2 -> f=2, df=1
+    println("Test 11: leaky_relu(x) at x=2")
+    let mut t10 = tape_new()
+    t10 = tvar(t10, 2.0)          // 0
+    t10 = tleaky_relu(t10, 0)     // 1
+    t10 = backward(t10, 1)
+    let v10 = get_v(t10, 1)
+    let g10 = get_g(t10, 0)
+    println("  f = ")
+    println(v10)
+    println("  df/dx = ")
+    println(g10)
+    if abs_f64(v10 - 2.0) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g10 - 1.0) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 12: Leaky ReLU at x=-3 -> f=-0.03, df=0.01
+    println("Test 12: leaky_relu(x) at x=-3")
+    let mut t11 = tape_new()
+    t11 = tvar(t11, 0.0 - 3.0)    // 0
+    t11 = tleaky_relu(t11, 0)     // 1
+    t11 = backward(t11, 1)
+    let v11 = get_v(t11, 1)
+    let g11 = get_g(t11, 0)
+    let expected_v11 = 0.0 - 0.03  // -3 * 0.01 = -0.03
+    let expected_g11 = 0.01        // alpha
+    println("  f = ")
+    println(v11)
+    println("  expected = ")
+    println(expected_v11)
+    println("  df/dx = ")
+    println(g11)
+    println("  expected = ")
+    println(expected_g11)
+    if abs_f64(v11 - expected_v11) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g11 - expected_g11) > tol { ok = false; println("  FAIL: g") }
     println("")
 
     if ok {
