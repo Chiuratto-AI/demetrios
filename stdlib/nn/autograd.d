@@ -2852,6 +2852,688 @@ fn compute_rms_4(x1: f64, x2: f64, x3: f64, x4: f64) -> f64 {
 }
 
 // ============================================================================
+// ATTENTION MECHANISMS
+// ============================================================================
+// Core building blocks for transformer architectures
+//
+// Scaled Dot-Product Attention:
+//   Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) * V
+//
+// Multi-Head Attention:
+//   MultiHead(Q, K, V) = Concat(head_1, ..., head_h) * W_O
+//   where head_i = Attention(Q*W_Q_i, K*W_K_i, V*W_V_i)
+
+// ----------------------------------------------------------------------------
+// SOFTMAX (for attention weights)
+// ----------------------------------------------------------------------------
+
+// Softmax for 2 values: softmax([x1, x2])
+struct Softmax2Result {
+    p1: f64,
+    p2: f64
+}
+
+fn softmax_2(x1: f64, x2: f64) -> Softmax2Result {
+    // Subtract max for numerical stability
+    let max_val = if x1 > x2 { x1 } else { x2 }
+    let e1 = exp_f64(x1 - max_val)
+    let e2 = exp_f64(x2 - max_val)
+    let sum = e1 + e2
+    return Softmax2Result { p1: e1 / sum, p2: e2 / sum }
+}
+
+// Softmax for 3 values
+struct Softmax3Result {
+    p1: f64,
+    p2: f64,
+    p3: f64
+}
+
+fn softmax_3(x1: f64, x2: f64, x3: f64) -> Softmax3Result {
+    let max_val = if x1 > x2 { if x1 > x3 { x1 } else { x3 } } else { if x2 > x3 { x2 } else { x3 } }
+    let e1 = exp_f64(x1 - max_val)
+    let e2 = exp_f64(x2 - max_val)
+    let e3 = exp_f64(x3 - max_val)
+    let sum = e1 + e2 + e3
+    return Softmax3Result { p1: e1 / sum, p2: e2 / sum, p3: e3 / sum }
+}
+
+// Softmax for 4 values
+struct Softmax4Result {
+    p1: f64,
+    p2: f64,
+    p3: f64,
+    p4: f64
+}
+
+fn softmax_4(x1: f64, x2: f64, x3: f64, x4: f64) -> Softmax4Result {
+    let m1 = if x1 > x2 { x1 } else { x2 }
+    let m2 = if x3 > x4 { x3 } else { x4 }
+    let max_val = if m1 > m2 { m1 } else { m2 }
+    let e1 = exp_f64(x1 - max_val)
+    let e2 = exp_f64(x2 - max_val)
+    let e3 = exp_f64(x3 - max_val)
+    let e4 = exp_f64(x4 - max_val)
+    let sum = e1 + e2 + e3 + e4
+    return Softmax4Result { p1: e1 / sum, p2: e2 / sum, p3: e3 / sum, p4: e4 / sum }
+}
+
+// ----------------------------------------------------------------------------
+// SCALED DOT-PRODUCT ATTENTION (single query)
+// ----------------------------------------------------------------------------
+// For a single query attending to multiple key-value pairs
+// score_i = Q · K_i / sqrt(d_k)
+// attention_weights = softmax(scores)
+// output = sum(attention_weight_i * V_i)
+
+// Attention to 2 key-value pairs
+struct Attention2Result {
+    output: f64,
+    weight1: f64,  // Attention weight for position 1
+    weight2: f64   // Attention weight for position 2
+}
+
+fn scaled_dot_attention_2(
+    q: f64,
+    key1: f64, key2: f64,
+    value1: f64, value2: f64,
+    d_k: f64
+) -> Attention2Result {
+    // Compute scaled dot products (for scalars, just multiply)
+    let scale = sqrt_f64(d_k)
+    let score1 = q * key1 / scale
+    let score2 = q * key2 / scale
+
+    // Softmax to get attention weights
+    let weights = softmax_2(score1, score2)
+
+    // Weighted sum of values
+    let output = weights.p1 * value1 + weights.p2 * value2
+
+    return Attention2Result {
+        output: output,
+        weight1: weights.p1,
+        weight2: weights.p2
+    }
+}
+
+// Attention to 3 key-value pairs
+struct Attention3Result {
+    output: f64,
+    weight1: f64,
+    weight2: f64,
+    weight3: f64
+}
+
+fn scaled_dot_attention_3(
+    q: f64,
+    key1: f64, key2: f64, key3: f64,
+    value1: f64, value2: f64, value3: f64,
+    d_k: f64
+) -> Attention3Result {
+    let scale = sqrt_f64(d_k)
+    let score1 = q * key1 / scale
+    let score2 = q * key2 / scale
+    let score3 = q * key3 / scale
+
+    let weights = softmax_3(score1, score2, score3)
+
+    let output = weights.p1 * value1 + weights.p2 * value2 + weights.p3 * value3
+
+    return Attention3Result {
+        output: output,
+        weight1: weights.p1,
+        weight2: weights.p2,
+        weight3: weights.p3
+    }
+}
+
+// Attention to 4 key-value pairs
+struct Attention4Result {
+    output: f64,
+    weight1: f64,
+    weight2: f64,
+    weight3: f64,
+    weight4: f64
+}
+
+fn scaled_dot_attention_4(
+    q: f64,
+    key1: f64, key2: f64, key3: f64, key4: f64,
+    value1: f64, value2: f64, value3: f64, value4: f64,
+    d_k: f64
+) -> Attention4Result {
+    let scale = sqrt_f64(d_k)
+    let score1 = q * key1 / scale
+    let score2 = q * key2 / scale
+    let score3 = q * key3 / scale
+    let score4 = q * key4 / scale
+
+    let weights = softmax_4(score1, score2, score3, score4)
+
+    let output = weights.p1 * value1 + weights.p2 * value2 +
+                 weights.p3 * value3 + weights.p4 * value4
+
+    return Attention4Result {
+        output: output,
+        weight1: weights.p1,
+        weight2: weights.p2,
+        weight3: weights.p3,
+        weight4: weights.p4
+    }
+}
+
+// ----------------------------------------------------------------------------
+// CAUSAL (MASKED) ATTENTION
+// ----------------------------------------------------------------------------
+// For autoregressive models - position i can only attend to positions <= i
+// Uses -inf mask for future positions (implemented as large negative number)
+
+fn MASK_VALUE() -> f64 { return 0.0 - 1000000.0 }  // Approximates -inf
+
+// Causal attention for position 1 (can only see itself)
+fn causal_attention_pos1(q: f64, key1: f64, value1: f64, d_k: f64) -> f64 {
+    // Position 1 can only attend to position 1
+    return value1  // Attention weight is 1.0 for the only visible position
+}
+
+// Causal attention for position 2 (can see positions 1-2)
+fn causal_attention_pos2(
+    q: f64,
+    key1: f64, key2: f64,
+    value1: f64, value2: f64,
+    d_k: f64
+) -> Attention2Result {
+    return scaled_dot_attention_2(q, key1, key2, value1, value2, d_k)
+}
+
+// Causal attention for position 3 (can see positions 1-3)
+fn causal_attention_pos3(
+    q: f64,
+    key1: f64, key2: f64, key3: f64,
+    value1: f64, value2: f64, value3: f64,
+    d_k: f64
+) -> Attention3Result {
+    return scaled_dot_attention_3(q, key1, key2, key3, value1, value2, value3, d_k)
+}
+
+// Causal attention for position 4 with masking for position 4 query
+// Can only attend to positions 1-4
+fn causal_attention_pos4(
+    q: f64,
+    key1: f64, key2: f64, key3: f64, key4: f64,
+    value1: f64, value2: f64, value3: f64, value4: f64,
+    d_k: f64
+) -> Attention4Result {
+    return scaled_dot_attention_4(q, key1, key2, key3, key4,
+                                   value1, value2, value3, value4, d_k)
+}
+
+// Generic masked attention - apply mask before softmax
+fn masked_attention_2(
+    q: f64,
+    key1: f64, key2: f64,
+    value1: f64, value2: f64,
+    mask1: f64, mask2: f64,  // 0.0 = attend, -inf = mask out
+    d_k: f64
+) -> Attention2Result {
+    let scale = sqrt_f64(d_k)
+    let score1 = q * key1 / scale + mask1
+    let score2 = q * key2 / scale + mask2
+
+    let weights = softmax_2(score1, score2)
+    let output = weights.p1 * value1 + weights.p2 * value2
+
+    return Attention2Result {
+        output: output,
+        weight1: weights.p1,
+        weight2: weights.p2
+    }
+}
+
+// ----------------------------------------------------------------------------
+// MULTI-HEAD ATTENTION (simplified scalar version)
+// ----------------------------------------------------------------------------
+// Each head has its own Q, K, V projections
+// Outputs are concatenated and projected
+
+struct MultiHeadAttention2Result {
+    output: f64,
+    head1_out: f64,
+    head2_out: f64,
+    head1_weight1: f64,
+    head1_weight2: f64,
+    head2_weight1: f64,
+    head2_weight2: f64
+}
+
+// 2-head attention over 2 positions
+fn multihead_attention_2x2(
+    qin: f64,
+    key1: f64, key2: f64,
+    value1: f64, value2: f64,
+    // Head 1 projections (simplified as scalars)
+    wq1: f64, wk1: f64, wv1: f64,
+    // Head 2 projections
+    wq2: f64, wk2: f64, wv2: f64,
+    // Output projection
+    wo1: f64, wo2: f64,
+    d_k: f64
+) -> MultiHeadAttention2Result {
+    // Head 1
+    let q1 = qin * wq1
+    let k1_1 = key1 * wk1
+    let k1_2 = key2 * wk1
+    let v1_1 = value1 * wv1
+    let v1_2 = value2 * wv1
+    let head1 = scaled_dot_attention_2(q1, k1_1, k1_2, v1_1, v1_2, d_k)
+
+    // Head 2
+    let q2 = qin * wq2
+    let k2_1 = key1 * wk2
+    let k2_2 = key2 * wk2
+    let v2_1 = value1 * wv2
+    let v2_2 = value2 * wv2
+    let head2 = scaled_dot_attention_2(q2, k2_1, k2_2, v2_1, v2_2, d_k)
+
+    // Concatenate (sum weighted by output projection)
+    let h1_out = head1.output * wo1
+    let h2_out = head2.output * wo2
+    let output = h1_out + h2_out
+
+    return MultiHeadAttention2Result {
+        output: output,
+        head1_out: h1_out,
+        head2_out: h2_out,
+        head1_weight1: head1.weight1,
+        head1_weight2: head1.weight2,
+        head2_weight1: head2.weight1,
+        head2_weight2: head2.weight2
+    }
+}
+
+// ----------------------------------------------------------------------------
+// SELF-ATTENTION
+// ----------------------------------------------------------------------------
+// Q, K, V all come from the same input
+
+struct SelfAttention2Result {
+    out1: f64,  // Output for position 1
+    out2: f64   // Output for position 2
+}
+
+fn self_attention_2(
+    x1: f64, x2: f64,  // Input at each position
+    wq: f64, wk: f64, wv: f64,  // Projection weights
+    d_k: f64
+) -> SelfAttention2Result {
+    // Project to Q, K, V
+    let q1 = x1 * wq
+    let q2 = x2 * wq
+    let k1 = x1 * wk
+    let k2 = x2 * wk
+    let v1 = x1 * wv
+    let v2 = x2 * wv
+
+    // Attention for position 1
+    let att1 = scaled_dot_attention_2(q1, k1, k2, v1, v2, d_k)
+    // Attention for position 2
+    let att2 = scaled_dot_attention_2(q2, k1, k2, v1, v2, d_k)
+
+    return SelfAttention2Result { out1: att1.output, out2: att2.output }
+}
+
+fn self_attention_3(
+    x1: f64, x2: f64, x3: f64,
+    wq: f64, wk: f64, wv: f64,
+    d_k: f64
+) -> Softmax3Result {  // Reuse for 3 outputs
+    let q1 = x1 * wq
+    let q2 = x2 * wq
+    let q3 = x3 * wq
+    let k1 = x1 * wk
+    let k2 = x2 * wk
+    let k3 = x3 * wk
+    let v1 = x1 * wv
+    let v2 = x2 * wv
+    let v3 = x3 * wv
+
+    let att1 = scaled_dot_attention_3(q1, k1, k2, k3, v1, v2, v3, d_k)
+    let att2 = scaled_dot_attention_3(q2, k1, k2, k3, v1, v2, v3, d_k)
+    let att3 = scaled_dot_attention_3(q3, k1, k2, k3, v1, v2, v3, d_k)
+
+    return Softmax3Result { p1: att1.output, p2: att2.output, p3: att3.output }
+}
+
+// ----------------------------------------------------------------------------
+// CROSS-ATTENTION
+// ----------------------------------------------------------------------------
+// Q from one sequence, K/V from another (e.g., decoder attending to encoder)
+
+fn cross_attention_2x2(
+    q1: f64, q2: f64,              // Queries (e.g., from decoder)
+    key1: f64, key2: f64,          // Keys (e.g., from encoder)
+    value1: f64, value2: f64,      // Values (e.g., from encoder)
+    d_k: f64
+) -> SelfAttention2Result {
+    let att1 = scaled_dot_attention_2(q1, key1, key2, value1, value2, d_k)
+    let att2 = scaled_dot_attention_2(q2, key1, key2, value1, value2, d_k)
+    return SelfAttention2Result { out1: att1.output, out2: att2.output }
+}
+
+// ----------------------------------------------------------------------------
+// RELATIVE POSITION ATTENTION
+// ----------------------------------------------------------------------------
+// Adds relative position bias to attention scores
+
+fn relative_attention_2(
+    q: f64,
+    key1: f64, key2: f64,
+    value1: f64, value2: f64,
+    rel_pos_bias_0: f64,   // Bias for same position (distance 0)
+    rel_pos_bias_1: f64,   // Bias for distance 1
+    d_k: f64
+) -> Attention2Result {
+    let scale = sqrt_f64(d_k)
+    // Add relative position biases to scores
+    let score1 = q * key1 / scale + rel_pos_bias_0  // Position 1 to 1: distance 0
+    let score2 = q * key2 / scale + rel_pos_bias_1  // Position 1 to 2: distance 1
+
+    let weights = softmax_2(score1, score2)
+    let output = weights.p1 * value1 + weights.p2 * value2
+
+    return Attention2Result {
+        output: output,
+        weight1: weights.p1,
+        weight2: weights.p2
+    }
+}
+
+// ============================================================================
+// EMBEDDINGS
+// ============================================================================
+// Convert discrete tokens or positions to continuous representations
+
+// ----------------------------------------------------------------------------
+// TOKEN EMBEDDINGS (lookup table)
+// ----------------------------------------------------------------------------
+// Maps token IDs to embedding vectors
+// For simplicity, we implement small embedding tables
+
+// 4-token vocabulary, returns embedding for token_id (0-3)
+fn token_embedding_4(
+    token_id: f64,
+    emb0: f64, emb1: f64, emb2: f64, emb3: f64
+) -> f64 {
+    if token_id < 0.5 { return emb0 }
+    if token_id < 1.5 { return emb1 }
+    if token_id < 2.5 { return emb2 }
+    return emb3
+}
+
+// 8-token vocabulary
+fn token_embedding_8(
+    token_id: f64,
+    emb0: f64, emb1: f64, emb2: f64, emb3: f64,
+    emb4: f64, emb5: f64, emb6: f64, emb7: f64
+) -> f64 {
+    if token_id < 0.5 { return emb0 }
+    if token_id < 1.5 { return emb1 }
+    if token_id < 2.5 { return emb2 }
+    if token_id < 3.5 { return emb3 }
+    if token_id < 4.5 { return emb4 }
+    if token_id < 5.5 { return emb5 }
+    if token_id < 6.5 { return emb6 }
+    return emb7
+}
+
+// ----------------------------------------------------------------------------
+// SINUSOIDAL POSITIONAL EMBEDDINGS
+// ----------------------------------------------------------------------------
+// From "Attention Is All You Need" paper
+// PE(pos, 2i) = sin(pos / 10000^(2i/d_model))
+// PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
+
+fn sinusoidal_pos_embedding(pos: f64, dim_idx: f64, d_model: f64) -> f64 {
+    // Compute the angle
+    let div_term = pow_f64(10000.0, 2.0 * floor_f64(dim_idx / 2.0) / d_model)
+    let angle = pos / div_term
+
+    // Even dimensions use sin, odd use cos
+    let is_even = floor_f64(dim_idx / 2.0) * 2.0
+    if abs_f64(dim_idx - is_even) < 0.5 {
+        return sin_f64(angle)
+    } else {
+        return cos_f64(angle)
+    }
+}
+
+// Get positional embedding for position pos, dimension 0
+fn pos_embedding_dim0(pos: f64, d_model: f64) -> f64 {
+    return sinusoidal_pos_embedding(pos, 0.0, d_model)
+}
+
+// Get positional embedding for position pos, dimension 1
+fn pos_embedding_dim1(pos: f64, d_model: f64) -> f64 {
+    return sinusoidal_pos_embedding(pos, 1.0, d_model)
+}
+
+// Combined positional embedding for small d_model
+struct PosEmbedding4 {
+    dim0: f64,
+    dim1: f64,
+    dim2: f64,
+    dim3: f64
+}
+
+fn positional_embedding_4d(pos: f64, d_model: f64) -> PosEmbedding4 {
+    return PosEmbedding4 {
+        dim0: sinusoidal_pos_embedding(pos, 0.0, d_model),
+        dim1: sinusoidal_pos_embedding(pos, 1.0, d_model),
+        dim2: sinusoidal_pos_embedding(pos, 2.0, d_model),
+        dim3: sinusoidal_pos_embedding(pos, 3.0, d_model)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// LEARNED POSITIONAL EMBEDDINGS
+// ----------------------------------------------------------------------------
+// Simple lookup table for positions (like token embeddings)
+
+fn learned_pos_embedding_4(
+    pos: f64,
+    pos_emb0: f64, pos_emb1: f64, pos_emb2: f64, pos_emb3: f64
+) -> f64 {
+    if pos < 0.5 { return pos_emb0 }
+    if pos < 1.5 { return pos_emb1 }
+    if pos < 2.5 { return pos_emb2 }
+    return pos_emb3
+}
+
+fn learned_pos_embedding_8(
+    pos: f64,
+    p0: f64, p1: f64, p2: f64, p3: f64,
+    p4: f64, p5: f64, p6: f64, p7: f64
+) -> f64 {
+    if pos < 0.5 { return p0 }
+    if pos < 1.5 { return p1 }
+    if pos < 2.5 { return p2 }
+    if pos < 3.5 { return p3 }
+    if pos < 4.5 { return p4 }
+    if pos < 5.5 { return p5 }
+    if pos < 6.5 { return p6 }
+    return p7
+}
+
+// ----------------------------------------------------------------------------
+// ROTARY POSITION EMBEDDINGS (RoPE)
+// ----------------------------------------------------------------------------
+// From RoFormer paper - applies rotation matrix based on position
+// Used in LLaMA, GPT-NeoX, etc.
+// rotate_half([x0, x1]) = [-x1, x0]
+// apply_rotary: x * cos(pos*theta) + rotate_half(x) * sin(pos*theta)
+
+struct RoPEResult {
+    x_rotated: f64,
+    y_rotated: f64
+}
+
+fn apply_rope(in_x: f64, in_y: f64, pos_val: f64, theta_val: f64) -> RoPEResult {
+    let ang = pos_val * theta_val
+    let c_ang = cos_f64(ang)
+    let s_ang = sin_f64(ang)
+
+    // [x', y'] = [x*cos - y*sin, x*sin + y*cos]
+    let x_rot = in_x * c_ang - in_y * s_ang
+    let y_rot = in_x * s_ang + in_y * c_ang
+
+    return RoPEResult { x_rotated: x_rot, y_rotated: y_rot }
+}
+
+// Base theta for RoPE (typically 10000)
+fn ROPE_BASE() -> f64 { return 10000.0 }
+
+// Compute theta for dimension i
+fn rope_theta(dim_idx: f64, d_model: f64) -> f64 {
+    return 1.0 / pow_f64(ROPE_BASE(), 2.0 * dim_idx / d_model)
+}
+
+// Apply RoPE to a pair of query/key dimensions
+fn apply_rope_qk(
+    q_even: f64, q_odd: f64,
+    k_even: f64, k_odd: f64,
+    pos_q: f64, pos_k: f64,
+    theta: f64
+) -> Softmax4Result {  // Reuse: p1=q_even_rot, p2=q_odd_rot, p3=k_even_rot, p4=k_odd_rot
+    let q_rot = apply_rope(q_even, q_odd, pos_q, theta)
+    let k_rot = apply_rope(k_even, k_odd, pos_k, theta)
+
+    return Softmax4Result {
+        p1: q_rot.x_rotated,
+        p2: q_rot.y_rotated,
+        p3: k_rot.x_rotated,
+        p4: k_rot.y_rotated
+    }
+}
+
+// ----------------------------------------------------------------------------
+// ALIBI (Attention with Linear Biases)
+// ----------------------------------------------------------------------------
+// From BLOOM/ALiBi paper - adds linear bias based on distance
+// No learned positional embeddings needed
+
+fn alibi_bias(qry_pos: f64, key_pos: f64, slope: f64) -> f64 {
+    // Bias = -slope * |qry_pos - key_pos|
+    let dist = qry_pos - key_pos
+    let abs_dist = if dist < 0.0 { 0.0 - dist } else { dist }
+    return 0.0 - slope * abs_dist
+}
+
+// Typical ALiBi slopes for different heads
+fn alibi_slope_head(head_idx: f64, num_heads: f64) -> f64 {
+    // slope = 2^(-8/n * (h+1)) where n = num_heads, h = head_idx
+    return pow_f64(2.0, 0.0 - 8.0 / num_heads * (head_idx + 1.0))
+}
+
+// Attention with ALiBi bias
+fn alibi_attention_2(
+    q: f64,
+    key1: f64, key2: f64,
+    value1: f64, value2: f64,
+    q_pos: f64,
+    slope: f64,
+    d_k: f64
+) -> Attention2Result {
+    let scale = sqrt_f64(d_k)
+    let score1 = q * key1 / scale + alibi_bias(q_pos, 0.0, slope)
+    let score2 = q * key2 / scale + alibi_bias(q_pos, 1.0, slope)
+
+    let weights = softmax_2(score1, score2)
+    let output = weights.p1 * value1 + weights.p2 * value2
+
+    return Attention2Result {
+        output: output,
+        weight1: weights.p1,
+        weight2: weights.p2
+    }
+}
+
+// ----------------------------------------------------------------------------
+// SEGMENT EMBEDDINGS
+// ----------------------------------------------------------------------------
+// For distinguishing different segments (e.g., [CLS] sentence_A [SEP] sentence_B)
+// Used in BERT-style models
+
+fn segment_embedding(segment_id: f64, seg0_emb: f64, seg1_emb: f64) -> f64 {
+    if segment_id < 0.5 {
+        return seg0_emb
+    }
+    return seg1_emb
+}
+
+// ----------------------------------------------------------------------------
+// COMBINED EMBEDDING (Token + Position + Segment)
+// ----------------------------------------------------------------------------
+// Full input embedding: token_emb + pos_emb + segment_emb
+
+fn combined_embedding(
+    token_emb: f64,
+    pos_emb: f64,
+    segment_emb: f64
+) -> f64 {
+    return token_emb + pos_emb + segment_emb
+}
+
+fn combined_embedding_no_segment(token_emb: f64, pos_emb: f64) -> f64 {
+    return token_emb + pos_emb
+}
+
+// ----------------------------------------------------------------------------
+// EMBEDDING LAYER WITH SCALING
+// ----------------------------------------------------------------------------
+// Some models scale embeddings by sqrt(d_model)
+
+fn scaled_embedding(emb: f64, d_model: f64) -> f64 {
+    return emb * sqrt_f64(d_model)
+}
+
+// Full scaled input embedding
+fn full_embedding_scaled(
+    token_emb: f64,
+    pos_emb: f64,
+    d_model: f64
+) -> f64 {
+    return scaled_embedding(token_emb, d_model) + pos_emb
+}
+
+// ----------------------------------------------------------------------------
+// ATTENTION SCORE UTILITIES
+// ----------------------------------------------------------------------------
+
+// Compute attention entropy (measure of how focused attention is)
+fn attention_entropy_2(w1: f64, w2: f64) -> f64 {
+    // H = -sum(p * log(p))
+    let eps = 0.0000001
+    let h1 = if w1 > eps { 0.0 - w1 * ln_f64(w1) } else { 0.0 }
+    let h2 = if w2 > eps { 0.0 - w2 * ln_f64(w2) } else { 0.0 }
+    return h1 + h2
+}
+
+fn attention_entropy_3(w1: f64, w2: f64, w3: f64) -> f64 {
+    let eps = 0.0000001
+    let h1 = if w1 > eps { 0.0 - w1 * ln_f64(w1) } else { 0.0 }
+    let h2 = if w2 > eps { 0.0 - w2 * ln_f64(w2) } else { 0.0 }
+    let h3 = if w3 > eps { 0.0 - w3 * ln_f64(w3) } else { 0.0 }
+    return h1 + h2 + h3
+}
+
+// Check if attention is peaked (low entropy = high confidence)
+fn is_attention_peaked(entropy: f64, thresh: f64) -> f64 {
+    if entropy < thresh { return 1.0 }
+    return 0.0
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -5249,6 +5931,461 @@ fn main() -> i32 {
     if dc1.output != 0.0 {
         if abs_f64(dc1.output - 12.0) > tol { ok = false; println("  FAIL: dc1 scale wrong") }
     }
+    println("")
+
+    // ==========================================
+    // ATTENTION MECHANISM TESTS (Tests 77-86)
+    // ==========================================
+
+    // Test 77: Softmax basic properties
+    println("Test 77: Softmax basic properties")
+    let sm2 = softmax_2(0.0, 0.0)
+    println("  softmax_2(0, 0):")
+    println("    p1 = ")
+    println(sm2.p1)
+    println("    p2 = ")
+    println(sm2.p2)
+    println("    sum = ")
+    println(sm2.p1 + sm2.p2)
+
+    // Equal inputs should give equal probabilities
+    if abs_f64(sm2.p1 - 0.5) > tol { ok = false; println("  FAIL: sm2.p1 not 0.5") }
+    if abs_f64(sm2.p2 - 0.5) > tol { ok = false; println("  FAIL: sm2.p2 not 0.5") }
+    // Should sum to 1
+    if abs_f64(sm2.p1 + sm2.p2 - 1.0) > tol { ok = false; println("  FAIL: softmax sum != 1") }
+
+    // Test with different values
+    let sm2b = softmax_2(2.0, 0.0)
+    println("  softmax_2(2, 0):")
+    println("    p1 = ")
+    println(sm2b.p1)
+    println("    p2 = ")
+    println(sm2b.p2)
+
+    // Larger input should have higher probability
+    if sm2b.p1 <= sm2b.p2 { ok = false; println("  FAIL: larger input should have higher prob") }
+    // Should still sum to 1
+    if abs_f64(sm2b.p1 + sm2b.p2 - 1.0) > tol { ok = false; println("  FAIL: softmax sum != 1") }
+    println("")
+
+    // Test 78: Softmax 3-way
+    println("Test 78: Softmax 3-way")
+    let sm3 = softmax_3(0.0, 0.0, 0.0)
+    let sm3_sum = sm3.p1 + sm3.p2 + sm3.p3
+
+    println("  softmax_3(0, 0, 0):")
+    println("    p1 = ")
+    println(sm3.p1)
+    println("    sum = ")
+    println(sm3_sum)
+
+    // Equal inputs should give 1/3 each
+    if abs_f64(sm3.p1 - 0.333333333) > 0.001 { ok = false; println("  FAIL: sm3.p1 not 1/3") }
+    if abs_f64(sm3_sum - 1.0) > tol { ok = false; println("  FAIL: softmax3 sum != 1") }
+    println("")
+
+    // Test 79: Softmax 4-way
+    println("Test 79: Softmax 4-way")
+    let sm4 = softmax_4(1.0, 2.0, 3.0, 4.0)
+    let sm4_sum = sm4.p1 + sm4.p2 + sm4.p3 + sm4.p4
+
+    println("  softmax_4(1, 2, 3, 4):")
+    println("    p1 = ")
+    println(sm4.p1)
+    println("    p4 = ")
+    println(sm4.p4)
+    println("    sum = ")
+    println(sm4_sum)
+
+    // Largest input (4) should have highest prob
+    if sm4.p4 <= sm4.p3 { ok = false; println("  FAIL: p4 should be > p3") }
+    if sm4.p4 <= sm4.p2 { ok = false; println("  FAIL: p4 should be > p2") }
+    if sm4.p4 <= sm4.p1 { ok = false; println("  FAIL: p4 should be > p1") }
+    // Should sum to 1
+    if abs_f64(sm4_sum - 1.0) > tol { ok = false; println("  FAIL: softmax4 sum != 1") }
+    println("")
+
+    // Test 80: Scaled dot-product attention (2 key-value pairs)
+    println("Test 80: Scaled dot-product attention (2 KV)")
+    // Query=1.0, K1=1.0, K2=0.0, V1=10.0, V2=20.0, d_k=1.0
+    let attn2 = scaled_dot_attention_2(1.0, 1.0, 0.0, 10.0, 20.0, 1.0)
+
+    println("  Q=1, K=[1,0], V=[10,20], d_k=1:")
+    println("    w1 = ")
+    println(attn2.weight1)
+    println("    w2 = ")
+    println(attn2.weight2)
+    println("    output = ")
+    println(attn2.output)
+
+    // Weights should sum to 1
+    if abs_f64(attn2.weight1 + attn2.weight2 - 1.0) > tol { ok = false; println("  FAIL: attention weights != 1") }
+    // w1 should be higher (Q*K1=1 > Q*K2=0)
+    if attn2.weight1 <= attn2.weight2 { ok = false; println("  FAIL: w1 should be > w2") }
+    // Output should be weighted average of values
+    let expected_attn_out = attn2.weight1 * 10.0 + attn2.weight2 * 20.0
+    if abs_f64(attn2.output - expected_attn_out) > tol { ok = false; println("  FAIL: attention output") }
+    println("")
+
+    // Test 81: Scaled dot-product attention with temperature
+    println("Test 81: Attention with larger d_k (temperature)")
+    // Larger d_k = softer attention
+    let attn2_soft = scaled_dot_attention_2(1.0, 1.0, 0.0, 10.0, 20.0, 4.0)
+
+    println("  Same with d_k=4 (softer):")
+    println("    w1 = ")
+    println(attn2_soft.weight1)
+    println("    w2 = ")
+    println(attn2_soft.weight2)
+
+    // Larger d_k should make distribution more uniform
+    let w1_diff_hard = attn2.weight1 - attn2.weight2
+    let w1_diff_soft = attn2_soft.weight1 - attn2_soft.weight2
+    if w1_diff_soft >= w1_diff_hard { ok = false; println("  FAIL: larger d_k should soften attention") }
+    println("")
+
+    // Test 82: Self-attention
+    println("Test 82: Self-attention (2 positions)")
+    // Two positions with simple values
+    let self_attn = self_attention_2(1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
+
+    println("  x=[1,2], Wq=Wk=Wv=1, d_k=1:")
+    println("    out1 = ")
+    println(self_attn.out1)
+    println("    out2 = ")
+    println(self_attn.out2)
+
+    // Both outputs should be valid (NaN check)
+    if self_attn.out1 != self_attn.out1 { ok = false; println("  FAIL: out1 is NaN") }
+    if self_attn.out2 != self_attn.out2 { ok = false; println("  FAIL: out2 is NaN") }
+    println("")
+
+    // Test 83: Causal (masked) attention
+    println("Test 83: Causal (masked) attention")
+    // Position 2 can attend to positions 1 and 2
+    let causal_attn = causal_attention_pos2(1.0, 1.0, 2.0, 10.0, 20.0, 1.0)
+
+    println("  Causal pos2: Q=1, K=[1,2], V=[10,20]:")
+    println("    w1 = ")
+    println(causal_attn.weight1)
+    println("    w2 = ")
+    println(causal_attn.weight2)
+    println("    output = ")
+    println(causal_attn.output)
+
+    // Verify weights sum to 1
+    if abs_f64(causal_attn.weight1 + causal_attn.weight2 - 1.0) > tol { ok = false; println("  FAIL: causal weights != 1") }
+    println("")
+
+    // Test 84: Token embeddings
+    println("Test 84: Token embeddings")
+    let emb0 = 0.1
+    let emb1 = 0.2
+    let emb2 = 0.3
+    let emb3 = 0.4
+
+    let tok0 = token_embedding_4(0.0, emb0, emb1, emb2, emb3)
+    let tok1 = token_embedding_4(1.0, emb0, emb1, emb2, emb3)
+    let tok2 = token_embedding_4(2.0, emb0, emb1, emb2, emb3)
+    let tok3 = token_embedding_4(3.0, emb0, emb1, emb2, emb3)
+
+    println("  Token embeddings (vocab_size=4):")
+    println("    token 0 -> ")
+    println(tok0)
+    println("    token 1 -> ")
+    println(tok1)
+    println("    token 2 -> ")
+    println(tok2)
+    println("    token 3 -> ")
+    println(tok3)
+
+    // Each token should map to its embedding
+    if abs_f64(tok0 - emb0) > tol { ok = false; println("  FAIL: tok0") }
+    if abs_f64(tok1 - emb1) > tol { ok = false; println("  FAIL: tok1") }
+    if abs_f64(tok2 - emb2) > tol { ok = false; println("  FAIL: tok2") }
+    if abs_f64(tok3 - emb3) > tol { ok = false; println("  FAIL: tok3") }
+    println("")
+
+    // Test 85: Sinusoidal positional embeddings
+    println("Test 85: Sinusoidal positional embeddings")
+    // PE(pos, 2i) = sin(pos / 10000^(2i/d_model))
+    // PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
+    let d_model = 64.0
+
+    let pe_pos0_dim0 = sinusoidal_pos_embedding(0.0, 0.0, d_model)
+    let pe_pos0_dim1 = sinusoidal_pos_embedding(0.0, 1.0, d_model)
+    let pe_pos1_dim0 = sinusoidal_pos_embedding(1.0, 0.0, d_model)
+    let pe_pos10_dim0 = sinusoidal_pos_embedding(10.0, 0.0, d_model)
+
+    println("  Sinusoidal PE (d_model=64):")
+    println("    PE(0, 0) = ")
+    println(pe_pos0_dim0)
+    println("    PE(0, 1) = ")
+    println(pe_pos0_dim1)
+    println("    PE(1, 0) = ")
+    println(pe_pos1_dim0)
+    println("    PE(10, 0) = ")
+    println(pe_pos10_dim0)
+
+    // At position 0: sin(0)=0 for even dims, cos(0)=1 for odd dims
+    if abs_f64(pe_pos0_dim0 - 0.0) > tol { ok = false; println("  FAIL: PE(0,0) should be sin(0)=0") }
+    if abs_f64(pe_pos0_dim1 - 1.0) > tol { ok = false; println("  FAIL: PE(0,1) should be cos(0)=1") }
+    // Different positions should have different embeddings
+    if abs_f64(pe_pos1_dim0 - pe_pos0_dim0) < tol { ok = false; println("  FAIL: PE should vary by position") }
+    println("")
+
+    // Test 86: RoPE (Rotary Position Embeddings)
+    println("Test 86: RoPE (Rotary Position Embeddings)")
+    // RoPE rotates pairs of dimensions
+    // Using small theta (0.1) for meaningful small rotation at pos=1
+    let rope_result = apply_rope(1.0, 0.0, 0.0, 0.1)
+
+    println("  RoPE(x=1, y=0, pos=0, theta=0.1):")
+    println("    x' = ")
+    println(rope_result.x_rotated)
+    println("    y' = ")
+    println(rope_result.y_rotated)
+
+    // At position 0, rotation angle = 0, so output = input
+    if abs_f64(rope_result.x_rotated - 1.0) > tol { ok = false; println("  FAIL: RoPE pos0 x") }
+    if abs_f64(rope_result.y_rotated - 0.0) > tol { ok = false; println("  FAIL: RoPE pos0 y") }
+
+    // At position 1, rotate by 0.1 radians
+    let rope_pos1 = apply_rope(1.0, 0.0, 1.0, 0.1)
+    println("  RoPE(x=1, y=0, pos=1, theta=0.1):")
+    println("    x' = ")
+    println(rope_pos1.x_rotated)
+    println("    y' = ")
+    println(rope_pos1.y_rotated)
+
+    // cos(0.1) ≈ 0.995, sin(0.1) ≈ 0.0998
+    // x_rot = 1*0.995 - 0*0.0998 ≈ 0.995
+    // y_rot = 1*0.0998 + 0*0.995 ≈ 0.0998
+
+    // Should have rotated slightly (norm preserved)
+    let norm_before = 1.0  // sqrt(1^2 + 0^2)
+    let norm_after = sqrt_f64(rope_pos1.x_rotated * rope_pos1.x_rotated + rope_pos1.y_rotated * rope_pos1.y_rotated)
+    if abs_f64(norm_after - norm_before) > tol { ok = false; println("  FAIL: RoPE should preserve norm") }
+    println("")
+
+    // Test 87: Learned positional embeddings
+    println("Test 87: Learned positional embeddings")
+    let pos_emb0 = 0.5
+    let pos_emb1 = 1.5
+    let pos_emb2 = 2.5
+    let pos_emb3 = 3.5
+
+    let lpe0 = learned_pos_embedding_4(0.0, pos_emb0, pos_emb1, pos_emb2, pos_emb3)
+    let lpe1 = learned_pos_embedding_4(1.0, pos_emb0, pos_emb1, pos_emb2, pos_emb3)
+    let lpe2 = learned_pos_embedding_4(2.0, pos_emb0, pos_emb1, pos_emb2, pos_emb3)
+
+    println("  Learned positional embeddings:")
+    println("    pos 0 -> ")
+    println(lpe0)
+    println("    pos 1 -> ")
+    println(lpe1)
+    println("    pos 2 -> ")
+    println(lpe2)
+
+    if abs_f64(lpe0 - pos_emb0) > tol { ok = false; println("  FAIL: lpe0") }
+    if abs_f64(lpe1 - pos_emb1) > tol { ok = false; println("  FAIL: lpe1") }
+    if abs_f64(lpe2 - pos_emb2) > tol { ok = false; println("  FAIL: lpe2") }
+    println("")
+
+    // Test 88: ALiBi (Attention with Linear Biases)
+    println("Test 88: ALiBi (Attention with Linear Biases)")
+    let slope = 0.5
+
+    let alibi_0_0 = alibi_bias(0.0, 0.0, slope)  // query_pos=0, key_pos=0
+    let alibi_1_0 = alibi_bias(1.0, 0.0, slope)  // query_pos=1, key_pos=0
+    let alibi_2_0 = alibi_bias(2.0, 0.0, slope)  // query_pos=2, key_pos=0
+
+    println("  ALiBi biases (slope=0.5):")
+    println("    bias(q=0, k=0) = ")
+    println(alibi_0_0)
+    println("    bias(q=1, k=0) = ")
+    println(alibi_1_0)
+    println("    bias(q=2, k=0) = ")
+    println(alibi_2_0)
+
+    // ALiBi: bias = -slope * |query_pos - key_pos|
+    // (0,0): bias = -0.5 * 0 = 0
+    // (1,0): bias = -0.5 * 1 = -0.5
+    // (2,0): bias = -0.5 * 2 = -1.0
+    if abs_f64(alibi_0_0 - 0.0) > tol { ok = false; println("  FAIL: alibi_0_0") }
+    if abs_f64(alibi_1_0 - (-0.5)) > tol { ok = false; println("  FAIL: alibi_1_0") }
+    if abs_f64(alibi_2_0 - (-1.0)) > tol { ok = false; println("  FAIL: alibi_2_0") }
+    println("")
+
+    // Test 89: Segment embeddings
+    println("Test 89: Segment embeddings")
+    let seg0_emb = 0.1
+    let seg1_emb = 0.9
+
+    let seg_0 = segment_embedding(0.0, seg0_emb, seg1_emb)
+    let seg_1 = segment_embedding(1.0, seg0_emb, seg1_emb)
+
+    println("  Segment embeddings:")
+    println("    segment 0 -> ")
+    println(seg_0)
+    println("    segment 1 -> ")
+    println(seg_1)
+
+    if abs_f64(seg_0 - seg0_emb) > tol { ok = false; println("  FAIL: seg_0") }
+    if abs_f64(seg_1 - seg1_emb) > tol { ok = false; println("  FAIL: seg_1") }
+    println("")
+
+    // Test 90: Combined embeddings
+    println("Test 90: Combined embeddings")
+    let token_emb = 0.3
+    let pos_emb = 0.2
+    let segment_emb = 0.1
+
+    let combined = combined_embedding(token_emb, pos_emb, segment_emb)
+    let expected_combined = token_emb + pos_emb + segment_emb
+
+    println("  Combined (token=0.3, pos=0.2, seg=0.1):")
+    println("    combined = ")
+    println(combined)
+    println("    expected = ")
+    println(expected_combined)
+
+    if abs_f64(combined - expected_combined) > tol { ok = false; println("  FAIL: combined embedding") }
+    println("")
+
+    // Test 91: Attention entropy
+    println("Test 91: Attention entropy")
+    // Uniform attention (max entropy)
+    let entropy_uniform = attention_entropy_2(0.5, 0.5)
+    // Peaked attention (low entropy)
+    let entropy_peaked = attention_entropy_2(0.99, 0.01)
+    // One-hot attention (zero entropy, but need to handle log(0))
+    let entropy_onehot = attention_entropy_2(1.0, 0.0)
+
+    println("  Attention entropy:")
+    println("    uniform [0.5, 0.5] = ")
+    println(entropy_uniform)
+    println("    peaked [0.99, 0.01] = ")
+    println(entropy_peaked)
+    println("    one-hot [1.0, 0.0] = ")
+    println(entropy_onehot)
+
+    // Uniform should have max entropy = log(2) ≈ 0.693
+    let max_entropy_2 = log_f64(2.0)
+    if abs_f64(entropy_uniform - max_entropy_2) > tol { ok = false; println("  FAIL: uniform entropy") }
+    // Peaked should have lower entropy
+    if entropy_peaked >= entropy_uniform { ok = false; println("  FAIL: peaked should have lower entropy") }
+    // One-hot should have 0 entropy
+    if abs_f64(entropy_onehot - 0.0) > tol { ok = false; println("  FAIL: one-hot entropy should be 0") }
+    println("")
+
+    // Test 92: Multi-head attention (2 heads, 2 positions)
+    println("Test 92: Multi-head attention (2 heads, 2 positions)")
+    // Simple case: all weights = 1, d_k = 1
+    let mha_result = multihead_attention_2x2(
+        1.0,        // query
+        1.0, 0.5,   // key1, key2
+        10.0, 20.0, // value1, value2
+        1.0, 1.0, 1.0, 1.0,  // Wq1, Wk1, Wv1, Wo1 (head 1)
+        1.0, 1.0, 1.0, 1.0,  // Wq2, Wk2, Wv2, Wo2 (head 2)
+        1.0         // d_k
+    )
+
+    println("  Multi-head attention:")
+    println("    head1 output = ")
+    println(mha_result.head1_out)
+    println("    head2 output = ")
+    println(mha_result.head2_out)
+    println("    combined output = ")
+    println(mha_result.output)
+
+    // Outputs should be valid
+    if mha_result.output != mha_result.output { ok = false; println("  FAIL: MHA output is NaN") }
+    // Combined should be sum of projected heads
+    let expected_mha = mha_result.head1_out + mha_result.head2_out
+    if abs_f64(mha_result.output - expected_mha) > tol { ok = false; println("  FAIL: MHA combine") }
+    println("")
+
+    // Test 93: Cross-attention
+    println("Test 93: Cross-attention")
+    // Query from one sequence, key-value from another
+    let cross_attn = cross_attention_2x2(
+        1.0, 2.0,   // queries (q1, q2)
+        0.5, 1.5,   // keys (k1, k2)
+        10.0, 30.0, // values (v1, v2)
+        1.0         // d_k
+    )
+
+    println("  Cross-attention (Q=[1,2], K=[0.5,1.5], V=[10,30]):")
+    println("    out1 = ")
+    println(cross_attn.out1)
+    println("    out2 = ")
+    println(cross_attn.out2)
+
+    // Outputs should be valid weighted averages of values
+    if cross_attn.out1 != cross_attn.out1 { ok = false; println("  FAIL: cross_attn out1 NaN") }
+    if cross_attn.out2 != cross_attn.out2 { ok = false; println("  FAIL: cross_attn out2 NaN") }
+    // Outputs should be between min and max values
+    if cross_attn.out1 < 10.0 { ok = false; println("  FAIL: out1 < min value") }
+    if cross_attn.out1 > 30.0 { ok = false; println("  FAIL: out1 > max value") }
+    println("")
+
+    // Test 94: Relative position attention
+    println("Test 94: Relative position attention")
+    let rel_attn = relative_attention_2(
+        1.0,        // query
+        1.0, 0.5,   // key1, key2
+        10.0, 20.0, // value1, value2
+        0.1, 0.2,   // rel_bias_0, rel_bias_1 (relative position biases)
+        1.0         // d_k
+    )
+
+    println("  Relative position attention:")
+    println("    w1 = ")
+    println(rel_attn.weight1)
+    println("    w2 = ")
+    println(rel_attn.weight2)
+    println("    output = ")
+    println(rel_attn.output)
+
+    // Weights should sum to 1
+    if abs_f64(rel_attn.weight1 + rel_attn.weight2 - 1.0) > tol { ok = false; println("  FAIL: rel_attn weights != 1") }
+    println("")
+
+    // Test 95: Positional embedding 4D
+    println("Test 95: Positional embedding 4D")
+    let pe4 = positional_embedding_4d(5.0, 64.0)
+
+    println("  Positional embedding 4D (pos=5, d_model=64):")
+    println("    dim0 = ")
+    println(pe4.dim0)
+    println("    dim1 = ")
+    println(pe4.dim1)
+    println("    dim2 = ")
+    println(pe4.dim2)
+    println("    dim3 = ")
+    println(pe4.dim3)
+
+    // All should be valid (between -1 and 1 for sin/cos)
+    if pe4.dim0 < -1.0 { ok = false; println("  FAIL: dim0 < -1") }
+    if pe4.dim0 > 1.0 { ok = false; println("  FAIL: dim0 > 1") }
+    if pe4.dim1 < -1.0 { ok = false; println("  FAIL: dim1 < -1") }
+    if pe4.dim1 > 1.0 { ok = false; println("  FAIL: dim1 > 1") }
+    println("")
+
+    // Test 96: Token embedding 8-vocab
+    println("Test 96: Token embedding 8-vocab")
+    let te8_3 = token_embedding_8(3.0, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+    let te8_7 = token_embedding_8(7.0, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+
+    println("  Token embedding (vocab_size=8):")
+    println("    token 3 -> ")
+    println(te8_3)
+    println("    token 7 -> ")
+    println(te8_7)
+
+    if abs_f64(te8_3 - 0.3) > tol { ok = false; println("  FAIL: te8_3") }
+    if abs_f64(te8_7 - 0.7) > tol { ok = false; println("  FAIL: te8_7") }
     println("")
 
     if ok {
