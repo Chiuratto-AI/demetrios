@@ -1285,6 +1285,123 @@ fn radam_step_fast(param: f64, g: f64, m: f64, v: f64, timestep: f64, beta1_t: f
 }
 
 // ============================================================================
+// LAMB OPTIMIZER (LARGE BATCH TRAINING)
+// ============================================================================
+
+// LAMB hyperparameters (You et al., 2019)
+fn LAMB_BETA1() -> f64 { return 0.9 }
+fn LAMB_BETA2() -> f64 { return 0.999 }
+fn LAMB_EPS() -> f64 { return 0.000001 }  // Larger eps for stability
+fn LAMB_WEIGHT_DECAY() -> f64 { return 0.01 }
+
+// Result struct for LAMB
+struct LAMBResult {
+    param: f64,
+    m: f64,
+    v: f64
+}
+
+// LAMB update for single parameter
+// Designed for large batch training (batch sizes up to 32K+)
+//
+// Key innovation: Layer-wise adaptive learning rate via "trust ratio"
+// The trust ratio scales updates based on ||param|| / ||update||,
+// preventing updates from being too large relative to parameter magnitude.
+//
+// Formula:
+//   m = β1*m + (1-β1)*g
+//   v = β2*v + (1-β2)*g²
+//   m_hat = m / (1-β1^t)
+//   v_hat = v / (1-β2^t)
+//   adam_update = m_hat / (√v_hat + ε) + λ*param   (with weight decay)
+//
+//   trust_ratio = ||param|| / ||adam_update||
+//   (clamped to [0, 10] for stability, defaults to 1 if either norm is 0)
+//
+//   param = param - lr * trust_ratio * adam_update
+//
+// For single parameters, ||param|| = |param| and ||update|| = |update|
+fn lamb_step(param: f64, g: f64, m: f64, v: f64, timestep: f64, lr: f64, weight_decay: f64) -> LAMBResult {
+    let beta1 = LAMB_BETA1()
+    let beta2 = LAMB_BETA2()
+    let eps = LAMB_EPS()
+
+    // Update biased first moment estimate
+    let new_m = beta1 * m + (1.0 - beta1) * g
+
+    // Update biased second raw moment estimate
+    let new_v = beta2 * v + (1.0 - beta2) * g * g
+
+    // Compute bias-corrected estimates
+    let beta1_t = pow_f64(beta1, timestep)
+    let beta2_t = pow_f64(beta2, timestep)
+    let m_hat = new_m / (1.0 - beta1_t)
+    let v_hat = new_v / (1.0 - beta2_t)
+
+    // Compute Adam update with weight decay (AdamW style)
+    let adam_update = m_hat / (sqrt_f64(v_hat) + eps) + weight_decay * param
+
+    // Compute norms for trust ratio (for single param, norm = absolute value)
+    let param_norm = abs_f64(param)
+    let update_norm = abs_f64(adam_update)
+
+    // Compute trust ratio with safety checks
+    let trust_ratio = if param_norm > 0.0 {
+        if update_norm > 0.0 {
+            // Clamp trust ratio to [0, 10] for stability
+            let ratio = param_norm / update_norm
+            if ratio > 10.0 { 10.0 } else { ratio }
+        } else {
+            1.0  // Default if update is zero
+        }
+    } else {
+        1.0  // Default if param is zero
+    }
+
+    // Apply update with trust ratio scaling
+    let new_param = param - lr * trust_ratio * adam_update
+
+    return LAMBResult { param: new_param, m: new_m, v: new_v }
+}
+
+// LAMB with running powers (more efficient for training loops)
+fn lamb_step_fast(param: f64, g: f64, m: f64, v: f64, beta1_t: f64, beta2_t: f64, lr: f64, weight_decay: f64) -> LAMBResult {
+    let beta1 = LAMB_BETA1()
+    let beta2 = LAMB_BETA2()
+    let eps = LAMB_EPS()
+
+    // Update moments
+    let new_m = beta1 * m + (1.0 - beta1) * g
+    let new_v = beta2 * v + (1.0 - beta2) * g * g
+
+    // Bias-corrected estimates
+    let m_hat = new_m / (1.0 - beta1_t)
+    let v_hat = new_v / (1.0 - beta2_t)
+
+    // Adam update with weight decay
+    let adam_update = m_hat / (sqrt_f64(v_hat) + eps) + weight_decay * param
+
+    // Trust ratio computation
+    let param_norm = abs_f64(param)
+    let update_norm = abs_f64(adam_update)
+
+    let trust_ratio = if param_norm > 0.0 {
+        if update_norm > 0.0 {
+            let ratio = param_norm / update_norm
+            if ratio > 10.0 { 10.0 } else { ratio }
+        } else {
+            1.0
+        }
+    } else {
+        1.0
+    }
+
+    let new_param = param - lr * trust_ratio * adam_update
+
+    return LAMBResult { param: new_param, m: new_m, v: new_v }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -2498,6 +2615,115 @@ fn main() -> i32 {
     if r1_36 >= r0_36 { ok = false; println("  FAIL: r1 >= r0") }
     if r2_36 >= r1_36 { ok = false; println("  FAIL: r2 >= r1") }
     if r5_36 >= 4.5 { ok = false; println("  FAIL: r5 should be < 4.5 after 5 steps") }
+    println("")
+
+    // Test 37: LAMB - verify trust ratio behavior
+    println("Test 37: LAMB trust ratio computation")
+    let x37 = 5.0
+    let m37 = 0.0
+    let v37 = 0.0
+    let lr37 = 0.1
+    let wd37 = 0.01
+    let g37 = 2.0 * x37  // gradient = 10.0
+
+    // Compare AdamW vs LAMB at timestep 1
+    let adamw_result37 = adamw_step(x37, g37, m37, v37, 1.0, lr37, wd37)
+    let lamb_result37 = lamb_step(x37, g37, m37, v37, 1.0, lr37, wd37)
+
+    // Compute expected trust ratio manually
+    // adam_update = m_hat / (sqrt(v_hat) + eps) + wd * param
+    let beta1 = 0.9
+    let beta2 = 0.999
+    let eps37 = 0.000001
+    let m_hat37 = (beta1 * m37 + (1.0 - beta1) * g37) / (1.0 - beta1)  // = g37
+    let v_hat37 = (beta2 * v37 + (1.0 - beta2) * g37 * g37) / (1.0 - beta2)  // = g37^2
+    let adam_update37 = m_hat37 / (sqrt_f64(v_hat37) + eps37) + wd37 * x37
+    let param_norm37 = abs_f64(x37)
+    let update_norm37 = abs_f64(adam_update37)
+    let trust_ratio37 = param_norm37 / update_norm37
+
+    println("  AdamW result:")
+    println("    param = ")
+    println(adamw_result37.param)
+    println("  LAMB result (with trust ratio):")
+    println("    param = ")
+    println(lamb_result37.param)
+    println("  Trust ratio = ||param|| / ||update|| = ")
+    println(trust_ratio37)
+    println("  param_norm = ")
+    println(param_norm37)
+    println("  update_norm = ")
+    println(update_norm37)
+
+    // Both should decrease from initial
+    if lamb_result37.param >= x37 { ok = false; println("  FAIL: LAMB should decrease") }
+    if adamw_result37.param >= x37 { ok = false; println("  FAIL: AdamW should decrease") }
+    // Trust ratio should be positive and reasonable
+    if trust_ratio37 <= 0.0 { ok = false; println("  FAIL: trust ratio should be > 0") }
+    if trust_ratio37 > 10.0 { ok = false; println("  FAIL: trust ratio should be clamped to 10") }
+    // Moments should be the same
+    if abs_f64(lamb_result37.m - adamw_result37.m) > tol { ok = false; println("  FAIL: m should match") }
+    if abs_f64(lamb_result37.v - adamw_result37.v) > tol { ok = false; println("  FAIL: v should match") }
+    println("")
+
+    // Test 38: LAMB 5-step descent (unrolled)
+    println("Test 38: LAMB 5-step descent (unrolled)")
+    let l0_38 = 5.0
+    let ml0_38 = 0.0
+    let vl0_38 = 0.0
+    let lr38 = 0.1
+    let wd38 = 0.01
+
+    // Step 1
+    let gl1 = 2.0 * l0_38
+    let lb1 = lamb_step(l0_38, gl1, ml0_38, vl0_38, 1.0, lr38, wd38)
+    let l1_38 = lb1.param
+    let ml1_38 = lb1.m
+    let vl1_38 = lb1.v
+
+    // Step 2
+    let gl2 = 2.0 * l1_38
+    let lb2 = lamb_step(l1_38, gl2, ml1_38, vl1_38, 2.0, lr38, wd38)
+    let l2_38 = lb2.param
+    let ml2_38 = lb2.m
+    let vl2_38 = lb2.v
+
+    // Step 3
+    let gl3 = 2.0 * l2_38
+    let lb3 = lamb_step(l2_38, gl3, ml2_38, vl2_38, 3.0, lr38, wd38)
+    let l3_38 = lb3.param
+    let ml3_38 = lb3.m
+    let vl3_38 = lb3.v
+
+    // Step 4
+    let gl4 = 2.0 * l3_38
+    let lb4 = lamb_step(l3_38, gl4, ml3_38, vl3_38, 4.0, lr38, wd38)
+    let l4_38 = lb4.param
+    let ml4_38 = lb4.m
+    let vl4_38 = lb4.v
+
+    // Step 5
+    let gl5 = 2.0 * l4_38
+    let lb5 = lamb_step(l4_38, gl5, ml4_38, vl4_38, 5.0, lr38, wd38)
+    let l5_38 = lb5.param
+
+    println("  Descent from l=5 with LAMB (large batch optimizer):")
+    println("    l0 = 5.0")
+    println("    l1 = ")
+    println(l1_38)
+    println("    l2 = ")
+    println(l2_38)
+    println("    l3 = ")
+    println(l3_38)
+    println("    l4 = ")
+    println(l4_38)
+    println("    l5 = ")
+    println(l5_38)
+
+    // l should decrease toward 0
+    if l1_38 >= l0_38 { ok = false; println("  FAIL: l1 >= l0") }
+    if l2_38 >= l1_38 { ok = false; println("  FAIL: l2 >= l1") }
+    if l5_38 >= 4.5 { ok = false; println("  FAIL: l5 should be < 4.5 after 5 steps") }
     println("")
 
     if ok {
