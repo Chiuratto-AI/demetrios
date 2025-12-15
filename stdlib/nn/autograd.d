@@ -1402,6 +1402,81 @@ fn lamb_step_fast(param: f64, g: f64, m: f64, v: f64, beta1_t: f64, beta2_t: f64
 }
 
 // ============================================================================
+// LION OPTIMIZER (EVOLVED SIGN MOMENTUM)
+// ============================================================================
+
+// Lion hyperparameters (Chen et al., Google 2023)
+// Note: Lion uses different betas than Adam!
+fn LION_BETA1() -> f64 { return 0.9 }   // For update interpolation
+fn LION_BETA2() -> f64 { return 0.99 }  // For momentum update (not 0.999!)
+fn LION_WEIGHT_DECAY() -> f64 { return 0.01 }
+
+// Result struct for Lion (only needs momentum, no second moment!)
+struct LionResult {
+    param: f64,
+    m: f64
+}
+
+// Sign function: returns -1, 0, or 1
+fn sign_f64(x: f64) -> f64 {
+    if x > 0.0 { return 1.0 }
+    if x < 0.0 { return 0.0 - 1.0 }
+    return 0.0
+}
+
+// Lion update for single parameter
+// Discovered through program search, simpler and often better than Adam
+//
+// Key innovations:
+// 1. Uses sign() of interpolated momentum (uniform magnitude updates)
+// 2. Momentum updated AFTER parameter update (different from Adam)
+// 3. No second moment tracking (memory efficient - only stores m, not v)
+// 4. Typically needs 3-10x smaller learning rate than Adam
+//
+// Formula:
+//   update = sign(β1 * m + (1 - β1) * g)        <- sign of interpolation
+//   param = param - lr * (update + λ * param)   <- with weight decay
+//   m = β2 * m + (1 - β2) * g                   <- momentum update AFTER
+//
+// Note: The order matters! Momentum is updated after using it for the update.
+fn lion_step(param: f64, g: f64, m: f64, lr: f64, weight_decay: f64) -> LionResult {
+    let beta1 = LION_BETA1()
+    let beta2 = LION_BETA2()
+
+    // Compute interpolation for update direction
+    let interpolated = beta1 * m + (1.0 - beta1) * g
+
+    // Take sign of interpolation (this is the key innovation!)
+    let update = sign_f64(interpolated)
+
+    // Apply update with decoupled weight decay
+    let new_param = param - lr * update - lr * weight_decay * param
+
+    // Update momentum AFTER using it (different from Adam!)
+    let new_m = beta2 * m + (1.0 - beta2) * g
+
+    return LionResult { param: new_param, m: new_m }
+}
+
+// Lion without weight decay
+fn lion_step_no_wd(param: f64, g: f64, m: f64, lr: f64) -> LionResult {
+    let beta1 = LION_BETA1()
+    let beta2 = LION_BETA2()
+
+    // Compute update direction
+    let interpolated = beta1 * m + (1.0 - beta1) * g
+    let update = sign_f64(interpolated)
+
+    // Apply update (no weight decay)
+    let new_param = param - lr * update
+
+    // Update momentum after
+    let new_m = beta2 * m + (1.0 - beta2) * g
+
+    return LionResult { param: new_param, m: new_m }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -2724,6 +2799,96 @@ fn main() -> i32 {
     if l1_38 >= l0_38 { ok = false; println("  FAIL: l1 >= l0") }
     if l2_38 >= l1_38 { ok = false; println("  FAIL: l2 >= l1") }
     if l5_38 >= 4.5 { ok = false; println("  FAIL: l5 should be < 4.5 after 5 steps") }
+    println("")
+
+    // Test 39: Lion - verify sign-based update
+    println("Test 39: Lion sign-based update")
+    let x39 = 5.0
+    let m39 = 0.0
+    let lr39 = 0.1
+    let wd39 = 0.01
+    let g39 = 2.0 * x39  // gradient = 10.0
+
+    // Lion uses sign of interpolated momentum
+    // interpolated = β1 * m + (1 - β1) * g = 0.9 * 0 + 0.1 * 10 = 1.0
+    // sign(1.0) = 1.0
+    // update = 1.0, so param moves by -lr * 1 = -0.1
+    let lion_result39 = lion_step(x39, g39, m39, lr39, wd39)
+
+    // Expected: param = 5 - 0.1 * 1 - 0.1 * 0.01 * 5 = 5 - 0.1 - 0.005 = 4.895
+    let expected_param39 = x39 - lr39 * 1.0 - lr39 * wd39 * x39
+
+    println("  Lion result:")
+    println("    param = ")
+    println(lion_result39.param)
+    println("    m = ")
+    println(lion_result39.m)
+    println("  Expected param = ")
+    println(expected_param39)
+    println("  Sign of interpolated momentum = 1.0 (positive gradient)")
+
+    // Verify sign-based update
+    if abs_f64(lion_result39.param - expected_param39) > tol { ok = false; println("  FAIL: param mismatch") }
+    // Momentum should be updated
+    let expected_m39 = 0.99 * m39 + 0.01 * g39  // β2 * m + (1-β2) * g
+    if abs_f64(lion_result39.m - expected_m39) > tol { ok = false; println("  FAIL: m mismatch") }
+    // Should decrease from initial
+    if lion_result39.param >= x39 { ok = false; println("  FAIL: Lion should decrease") }
+    println("")
+
+    // Test 40: Lion 5-step descent (unrolled)
+    println("Test 40: Lion 5-step descent (unrolled)")
+    let li0_40 = 5.0
+    let mli0_40 = 0.0
+    let lr40 = 0.5  // Lion often uses larger lr since updates are ±1
+    let wd40 = 0.0  // No weight decay for cleaner test
+
+    // Step 1
+    let gli1 = 2.0 * li0_40
+    let lio1 = lion_step_no_wd(li0_40, gli1, mli0_40, lr40)
+    let li1_40 = lio1.param
+    let mli1_40 = lio1.m
+
+    // Step 2
+    let gli2 = 2.0 * li1_40
+    let lio2 = lion_step_no_wd(li1_40, gli2, mli1_40, lr40)
+    let li2_40 = lio2.param
+    let mli2_40 = lio2.m
+
+    // Step 3
+    let gli3 = 2.0 * li2_40
+    let lio3 = lion_step_no_wd(li2_40, gli3, mli2_40, lr40)
+    let li3_40 = lio3.param
+    let mli3_40 = lio3.m
+
+    // Step 4
+    let gli4 = 2.0 * li3_40
+    let lio4 = lion_step_no_wd(li3_40, gli4, mli3_40, lr40)
+    let li4_40 = lio4.param
+    let mli4_40 = lio4.m
+
+    // Step 5
+    let gli5 = 2.0 * li4_40
+    let lio5 = lion_step_no_wd(li4_40, gli5, mli4_40, lr40)
+    let li5_40 = lio5.param
+
+    println("  Descent from li=5 with Lion (sign momentum, lr=0.5):")
+    println("    li0 = 5.0")
+    println("    li1 = ")
+    println(li1_40)
+    println("    li2 = ")
+    println(li2_40)
+    println("    li3 = ")
+    println(li3_40)
+    println("    li4 = ")
+    println(li4_40)
+    println("    li5 = ")
+    println(li5_40)
+
+    // li should decrease toward 0 (uniform steps of ±lr due to sign)
+    if li1_40 >= li0_40 { ok = false; println("  FAIL: li1 >= li0") }
+    if li2_40 >= li1_40 { ok = false; println("  FAIL: li2 >= li1") }
+    if li5_40 >= 3.0 { ok = false; println("  FAIL: li5 should be < 3 after 5 steps") }
     println("")
 
     if ok {
