@@ -1,7 +1,8 @@
-// mlp_xor.d - Multi-Layer Perceptron for XOR Gate
+// mlp_xor.d - Multi-Layer Perceptron for XOR Gate with Adam Optimizer
 //
 // Implements a 2-2-1 MLP (2 inputs, 2 hidden neurons, 1 output)
 // to solve the XOR problem which is not linearly separable.
+// Uses Adam optimizer for efficient training.
 //
 // Architecture:
 //   x1 ----w1h1----> h1 ----wo1---->
@@ -41,6 +42,23 @@ fn exp_f64(x: f64) -> f64 {
 fn sigmoid(x: f64) -> f64 {
     return 1.0 / (1.0 + exp_f64(0.0 - x))
 }
+
+fn sqrt_f64(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 }
+    let mut guess = x / 2.0
+    if guess < 1.0 { guess = 1.0 }
+    let mut i = 0
+    while i < 20 {
+        guess = (guess + x / guess) / 2.0
+        i = i + 1
+    }
+    return guess
+}
+
+// Adam hyperparameters
+fn ADAM_BETA1() -> f64 { return 0.9 }
+fn ADAM_BETA2() -> f64 { return 0.999 }
+fn ADAM_EPS() -> f64 { return 0.00000001 }
 
 // ============================================================================
 // OPERATION CODES
@@ -403,8 +421,8 @@ fn main() -> i64 {
     println(y_11)
     println("")
 
-    // Test 2: Train XOR from scratch
-    println("Test 2: Train XOR gate from random weights")
+    // Test 2: Train XOR from scratch with Adam optimizer
+    println("Test 2: Train XOR gate with Adam optimizer")
     println("  XOR: (0,0)->0, (0,1)->1, (1,0)->1, (1,1)->0")
 
     // Use individual variables due to Demetrios struct-in-loop bug
@@ -418,10 +436,41 @@ fn main() -> i64 {
     let mut wo1 = 1.0
     let mut wo2 = -1.0
     let mut bo = -0.5
-    let lr = 5.0
+
+    // Adam momentum (first moment) for each parameter
+    let mut m_w1h1 = 0.0
+    let mut m_w2h1 = 0.0
+    let mut m_bh1 = 0.0
+    let mut m_w1h2 = 0.0
+    let mut m_w2h2 = 0.0
+    let mut m_bh2 = 0.0
+    let mut m_wo1 = 0.0
+    let mut m_wo2 = 0.0
+    let mut m_bo = 0.0
+
+    // Adam velocity (second moment) for each parameter
+    let mut s_w1h1 = 0.0
+    let mut s_w2h1 = 0.0
+    let mut s_bh1 = 0.0
+    let mut s_w1h2 = 0.0
+    let mut s_w2h2 = 0.0
+    let mut s_bh2 = 0.0
+    let mut s_wo1 = 0.0
+    let mut s_wo2 = 0.0
+    let mut s_bo = 0.0
+
+    // Adam hyperparameters
+    let lr = 0.5
+    let beta1 = ADAM_BETA1()
+    let beta2 = ADAM_BETA2()
+    let eps = ADAM_EPS()
+
+    // Running powers for bias correction
+    let mut beta1_t = 1.0
+    let mut beta2_t = 1.0
 
     let mut epoch = 0
-    while epoch < 500 {
+    while epoch < 300 {
         // Create network from current weights
         let net = MLP {
             w1h1: w1h1, w2h1: w2h1, bh1: bh1,
@@ -452,16 +501,56 @@ fn main() -> i64 {
         let avg_dwo2 = (g_00.dwo2 + g_01.dwo2 + g_10.dwo2 + g_11.dwo2) * 0.25
         let avg_dbo = (g_00.dbo + g_01.dbo + g_10.dbo + g_11.dbo) * 0.25
 
-        // Update weights (primitive variable assignment works in loops)
-        w1h1 = w1h1 - lr * avg_dw1h1
-        w2h1 = w2h1 - lr * avg_dw2h1
-        bh1 = bh1 - lr * avg_dbh1
-        w1h2 = w1h2 - lr * avg_dw1h2
-        w2h2 = w2h2 - lr * avg_dw2h2
-        bh2 = bh2 - lr * avg_dbh2
-        wo1 = wo1 - lr * avg_dwo1
-        wo2 = wo2 - lr * avg_dwo2
-        bo = bo - lr * avg_dbo
+        // Update running powers for bias correction
+        beta1_t = beta1_t * beta1
+        beta2_t = beta2_t * beta2
+        let bc1 = 1.0 - beta1_t
+        let bc2 = 1.0 - beta2_t
+
+        // Adam update for w1h1
+        m_w1h1 = beta1 * m_w1h1 + (1.0 - beta1) * avg_dw1h1
+        s_w1h1 = beta2 * s_w1h1 + (1.0 - beta2) * avg_dw1h1 * avg_dw1h1
+        w1h1 = w1h1 - lr * (m_w1h1 / bc1) / (sqrt_f64(s_w1h1 / bc2) + eps)
+
+        // Adam update for w2h1
+        m_w2h1 = beta1 * m_w2h1 + (1.0 - beta1) * avg_dw2h1
+        s_w2h1 = beta2 * s_w2h1 + (1.0 - beta2) * avg_dw2h1 * avg_dw2h1
+        w2h1 = w2h1 - lr * (m_w2h1 / bc1) / (sqrt_f64(s_w2h1 / bc2) + eps)
+
+        // Adam update for bh1
+        m_bh1 = beta1 * m_bh1 + (1.0 - beta1) * avg_dbh1
+        s_bh1 = beta2 * s_bh1 + (1.0 - beta2) * avg_dbh1 * avg_dbh1
+        bh1 = bh1 - lr * (m_bh1 / bc1) / (sqrt_f64(s_bh1 / bc2) + eps)
+
+        // Adam update for w1h2
+        m_w1h2 = beta1 * m_w1h2 + (1.0 - beta1) * avg_dw1h2
+        s_w1h2 = beta2 * s_w1h2 + (1.0 - beta2) * avg_dw1h2 * avg_dw1h2
+        w1h2 = w1h2 - lr * (m_w1h2 / bc1) / (sqrt_f64(s_w1h2 / bc2) + eps)
+
+        // Adam update for w2h2
+        m_w2h2 = beta1 * m_w2h2 + (1.0 - beta1) * avg_dw2h2
+        s_w2h2 = beta2 * s_w2h2 + (1.0 - beta2) * avg_dw2h2 * avg_dw2h2
+        w2h2 = w2h2 - lr * (m_w2h2 / bc1) / (sqrt_f64(s_w2h2 / bc2) + eps)
+
+        // Adam update for bh2
+        m_bh2 = beta1 * m_bh2 + (1.0 - beta1) * avg_dbh2
+        s_bh2 = beta2 * s_bh2 + (1.0 - beta2) * avg_dbh2 * avg_dbh2
+        bh2 = bh2 - lr * (m_bh2 / bc1) / (sqrt_f64(s_bh2 / bc2) + eps)
+
+        // Adam update for wo1
+        m_wo1 = beta1 * m_wo1 + (1.0 - beta1) * avg_dwo1
+        s_wo1 = beta2 * s_wo1 + (1.0 - beta2) * avg_dwo1 * avg_dwo1
+        wo1 = wo1 - lr * (m_wo1 / bc1) / (sqrt_f64(s_wo1 / bc2) + eps)
+
+        // Adam update for wo2
+        m_wo2 = beta1 * m_wo2 + (1.0 - beta1) * avg_dwo2
+        s_wo2 = beta2 * s_wo2 + (1.0 - beta2) * avg_dwo2 * avg_dwo2
+        wo2 = wo2 - lr * (m_wo2 / bc1) / (sqrt_f64(s_wo2 / bc2) + eps)
+
+        // Adam update for bo
+        m_bo = beta1 * m_bo + (1.0 - beta1) * avg_dbo
+        s_bo = beta2 * s_bo + (1.0 - beta2) * avg_dbo * avg_dbo
+        bo = bo - lr * (m_bo / bc1) / (sqrt_f64(s_bo / bc2) + eps)
 
         epoch = epoch + 1
     }
@@ -473,7 +562,7 @@ fn main() -> i64 {
         wo1: wo1, wo2: wo2, bo: bo
     }
 
-    println("  After 500 epochs:")
+    println("  After 300 epochs with Adam:")
 
     // Final predictions
     let pred_00 = mlp_forward_simple(net, 0.0, 0.0)
