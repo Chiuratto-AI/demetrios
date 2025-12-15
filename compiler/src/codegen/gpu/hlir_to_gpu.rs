@@ -40,7 +40,12 @@
 //! ```
 
 use rustc_hash::FxHashMap;
+use std::collections::HashMap;
 
+use super::async_pipeline::{create_pipeline_from_tile, schedule_pipeline, AsyncPipeline, PipelineSchedule};
+use super::autotune::{AutoTuneConfig, AutoTuner, TileConfig, TunedConfig};
+use super::fusion::{analyze_and_fuse_kernels, FusionConfig, FusionError};
+use super::graph::{build_graph_from_module, GpuGraph};
 use super::ir::*;
 use crate::hlir::{
     BinaryOp, BlockId as HlirBlockId, HlirBlock, HlirConstant, HlirFunction, HlirInstr, HlirModule,
@@ -64,6 +69,18 @@ pub struct LoweringConfig {
     pub fast_math: bool,
     /// Debug info generation
     pub debug_info: bool,
+
+    // === Optimization Passes (Phase 6) ===
+    /// Enable auto-tuning for kernel launch configuration
+    pub auto_tune: bool,
+    /// Auto-tuning configuration (uses default if None)
+    pub tune_config: Option<AutoTuneConfig>,
+    /// Enable kernel fusion optimization
+    pub enable_fusion: bool,
+    /// Fusion configuration (uses default if None)
+    pub fusion_config: Option<FusionConfig>,
+    /// Enable async memory pipelining
+    pub enable_pipelining: bool,
 }
 
 impl Default for LoweringConfig {
@@ -78,6 +95,12 @@ impl Default for LoweringConfig {
             shared_memory_hint: 48 * 1024, // 48KB default
             fast_math: true,
             debug_info: false,
+            // Optimization passes disabled by default for backward compatibility
+            auto_tune: false,
+            tune_config: None,
+            enable_fusion: false,
+            fusion_config: None,
+            enable_pipelining: false,
         }
     }
 }
@@ -95,6 +118,147 @@ pub fn lower(hlir: &HlirModule, target: GpuTarget) -> GpuModule {
 pub fn lower_with_config(hlir: &HlirModule, config: &LoweringConfig) -> GpuModule {
     let mut lowering = HlirToGpuLowering::new(config.clone());
     lowering.lower_module(hlir)
+}
+
+// ============================================================================
+// Optimized Lowering (Phase 6 Integration)
+// ============================================================================
+
+/// Result of optimized GPU lowering with metadata
+#[derive(Debug, Clone)]
+pub struct OptimizedGpuModule {
+    /// The lowered and optimized GPU module
+    pub module: GpuModule,
+    /// Tuned configurations per kernel (kernel name -> TunedConfig)
+    pub tuned_configs: HashMap<String, TunedConfig>,
+    /// Pipeline schedules per kernel (kernel name -> (pipeline, schedule))
+    pub pipelines: HashMap<String, (AsyncPipeline, PipelineSchedule)>,
+    /// Whether fusion was applied
+    pub fusion_applied: bool,
+    /// Number of kernels before fusion
+    pub original_kernel_count: usize,
+}
+
+/// Lower HLIR to GPU with all optimizations applied
+///
+/// This is the recommended entry point for production compilation.
+/// It chains: lowering → auto-tuning → fusion → pipelining
+pub fn lower_and_optimize(hlir: &HlirModule, config: &LoweringConfig) -> OptimizedGpuModule {
+    // Step 1: Basic lowering
+    let mut module = lower_with_config(hlir, config);
+    let original_kernel_count = module.kernels.len();
+
+    // Step 2: Auto-tuning (per-kernel)
+    let tuned_configs = if config.auto_tune {
+        apply_auto_tuning(&mut module, config)
+    } else {
+        HashMap::new()
+    };
+
+    // Step 3: Kernel fusion (module-wide)
+    let fusion_applied = if config.enable_fusion {
+        match apply_fusion(&module, config) {
+            Ok(fused_module) => {
+                module = fused_module;
+                true
+            }
+            Err(_) => false, // Fusion failed, continue with unfused module
+        }
+    } else {
+        false
+    };
+
+    // Step 4: Async pipelining (per-kernel with tile config)
+    let pipelines = if config.enable_pipelining {
+        apply_pipelining(&mut module, &tuned_configs, config)
+    } else {
+        HashMap::new()
+    };
+
+    OptimizedGpuModule {
+        module,
+        tuned_configs,
+        pipelines,
+        fusion_applied,
+        original_kernel_count,
+    }
+}
+
+/// Apply auto-tuning to all kernels in the module
+fn apply_auto_tuning(
+    module: &mut GpuModule,
+    config: &LoweringConfig,
+) -> HashMap<String, TunedConfig> {
+    let tune_config = config.tune_config.clone().unwrap_or_else(|| AutoTuneConfig {
+        target: config.target,
+        ..Default::default()
+    });
+
+    let tuner = AutoTuner::new(tune_config);
+    let mut results = HashMap::new();
+
+    for (name, kernel) in &mut module.kernels {
+        let tuned = tuner.tune_kernel(kernel);
+
+        // Apply tuned config to kernel
+        kernel.max_threads = Some(tuned.block_shape.total_threads());
+
+        // Update shared memory if tuner recommends more
+        if tuned.shared_mem_bytes > kernel.shared_mem_size {
+            kernel.shared_mem_size = tuned.shared_mem_bytes;
+        }
+
+        results.insert(name.clone(), tuned);
+    }
+
+    results
+}
+
+/// Apply kernel fusion optimization to the module
+fn apply_fusion(module: &GpuModule, config: &LoweringConfig) -> Result<GpuModule, FusionError> {
+    // Build dependency graph from module
+    let graph = build_graph_from_module(module);
+
+    // Apply fusion with config
+    let fusion_config = config.fusion_config.clone();
+    analyze_and_fuse_kernels(module, &graph, fusion_config)
+}
+
+/// Apply async pipelining to kernels with tile configurations
+fn apply_pipelining(
+    module: &mut GpuModule,
+    tuned_configs: &HashMap<String, TunedConfig>,
+    config: &LoweringConfig,
+) -> HashMap<String, (AsyncPipeline, PipelineSchedule)> {
+    let arch = match config.target {
+        GpuTarget::Cuda { compute_capability } => {
+            CudaArch::from_compute_capability(compute_capability).unwrap_or(CudaArch::Ampere)
+        }
+        _ => CudaArch::Ampere, // Default for non-CUDA targets
+    };
+
+    let mut pipelines = HashMap::new();
+
+    for (name, kernel) in &mut module.kernels {
+        // Check if kernel has tile config with pipelining
+        let tile_config = tuned_configs
+            .get(name)
+            .and_then(|t| t.tile_config.as_ref());
+
+        if let Some(tile) = tile_config {
+            if tile.pipeline_stages > 1 {
+                let pipeline = create_pipeline_from_tile(tile, arch);
+                let schedule = schedule_pipeline(&pipeline);
+
+                // Update kernel shared memory for pipeline buffers
+                kernel.shared_mem_size += pipeline.total_shared_memory();
+
+                pipelines.insert(name.clone(), (pipeline, schedule));
+            }
+        }
+    }
+
+    pipelines
 }
 
 /// HLIR to GPU lowering context

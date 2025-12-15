@@ -69,7 +69,8 @@ pub use tensor_epistemic::{
 
 // HLIR to GPU lowering - the critical bridge
 pub use hlir_to_gpu::{
-    LoweringConfig, compile_to_ptx, compile_to_ptx_epistemic, lower, lower_with_config,
+    LoweringConfig, OptimizedGpuModule, compile_to_ptx, compile_to_ptx_epistemic,
+    lower, lower_with_config, lower_and_optimize,
 };
 
 // Epistemic PTX emission - shadow registers for uncertainty tracking
@@ -114,7 +115,7 @@ pub use cooperative::{
 pub use graph::{
     BufferId, BufferInfo, BufferLocation, ConditionType, ConditionalNode, GraphExecConfig,
     GraphKernelArg, GraphNode, GraphNodeId, GraphNodeType, GpuGraph, KernelNode, LoopNode,
-    MemcpyNode, MemsetNode, StreamId,
+    MemcpyNode, MemsetNode, StreamId, build_graph_from_module,
 };
 
 // Cross-platform portable GPU IR (write-once, compile-anywhere)

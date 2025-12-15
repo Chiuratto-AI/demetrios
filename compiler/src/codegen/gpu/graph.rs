@@ -19,7 +19,7 @@
 //! executable.launch(stream);
 //! ```
 
-use super::ir::{GpuKernel, GpuType, ValueId};
+use super::ir::{GpuKernel, GpuModule, GpuType, ValueId};
 use rustc_hash::FxHashMap;
 
 /// Unique identifier for a graph node
@@ -543,6 +543,61 @@ impl GpuGraph {
     pub fn is_acyclic(&self) -> bool {
         self.topological_sort().len() == self.nodes.len()
     }
+}
+
+// ============================================================================
+// Module to Graph Conversion (Phase 6 Integration)
+// ============================================================================
+
+/// Build a dependency graph from a GPU module
+///
+/// Analyzes kernels in the module and creates a graph representing
+/// potential execution dependencies. This is used for kernel fusion
+/// analysis.
+///
+/// Note: Without runtime information, this creates a simple sequential
+/// graph. For more accurate dependency analysis, use runtime profiling
+/// or explicit dependency annotations.
+pub fn build_graph_from_module(module: &GpuModule) -> GpuGraph {
+    let mut graph = GpuGraph::new(&module.name);
+
+    // Create a node for each kernel
+    let mut kernel_nodes: FxHashMap<String, GraphNodeId> = FxHashMap::default();
+
+    for (name, _kernel) in &module.kernels {
+        let node_id = graph.alloc_node_id();
+        let node = GraphNode {
+            id: node_id,
+            name: name.clone(),
+            node_type: GraphNodeType::Kernel(KernelNode {
+                kernel_name: name.clone(),
+                grid: (1, 1, 1),   // Placeholder
+                block: (256, 1, 1), // Default block size
+                shared_mem: 0,
+                args: Vec::new(),
+            }),
+            dependencies: Vec::new(),
+        };
+        graph.nodes.push(node);
+        kernel_nodes.insert(name.clone(), node_id);
+    }
+
+    // Without explicit dependency information, assume kernels can be
+    // executed independently (no edges). The fusion analysis will
+    // determine actual fusion opportunities based on kernel properties.
+    //
+    // Future: Add heuristic dependency analysis based on:
+    // - Shared memory buffer names
+    // - Parameter types and sizes
+    // - Kernel naming conventions
+
+    // Mark all nodes as entry nodes (no dependencies)
+    graph.entry_nodes = kernel_nodes.values().copied().collect();
+
+    // Mark all nodes as exit nodes (no dependents)
+    graph.exit_nodes = kernel_nodes.values().copied().collect();
+
+    graph
 }
 
 /// Graph execution configuration
