@@ -76,6 +76,7 @@ fn OP_SIGMOID() -> i64 { return 15 }
 fn OP_RELU() -> i64 { return 16 }
 fn OP_TANH() -> i64 { return 17 }
 fn OP_LEAKY_RELU() -> i64 { return 18 }
+fn OP_SOFTMAX2() -> i64 { return 19 }
 
 // Leaky ReLU slope for negative inputs (standard value)
 fn LEAKY_ALPHA() -> f64 { return 0.01 }
@@ -366,6 +367,21 @@ fn tleaky_relu(t: Tape, a: i64) -> Tape {
     return push(t, OP_LEAKY_RELU(), a, 0 - 1, rv)
 }
 
+// 2-class softmax: softmax_0(a, b) = exp(a) / (exp(a) + exp(b))
+// Returns the probability for class 0 (first input)
+// Note: softmax_1 = 1 - softmax_0 for 2-class case
+fn tsoftmax2(t: Tape, a: i64, b: i64) -> Tape {
+    let av = get_v(t, a)
+    let bv = get_v(t, b)
+    // For numerical stability, subtract max before exp
+    let m = if av > bv { av } else { bv }
+    let ea = exp_f64(av - m)
+    let eb = exp_f64(bv - m)
+    let sum = ea + eb
+    let y0 = ea / sum
+    return push(t, OP_SOFTMAX2(), a, b, y0)
+}
+
 // ============================================================================
 // BACKWARD
 // ============================================================================
@@ -526,6 +542,28 @@ fn backward_step(t: Tape, i: i64) -> Tape {
         if a1 == 3 { new_g3 = new_g3 + ga }
         if a1 == 4 { new_g4 = new_g4 + ga }
         if a1 == 5 { new_g5 = new_g5 + ga }
+    }
+    if op == OP_SOFTMAX2() {
+        // 2-class softmax: y0 = softmax_0(x0, x1)
+        // y1 = 1 - y0 (for 2-class)
+        // ∂y0/∂x0 = y0 * (1 - y0) = y0 * y1
+        // ∂y0/∂x1 = -y0 * y1
+        let y0 = v
+        let y1 = 1.0 - y0
+        let ga = dout * y0 * y1         // gradient to first input (a1)
+        let gb = 0.0 - dout * y0 * y1   // gradient to second input (a2)
+        if a1 == 0 { new_g0 = new_g0 + ga }
+        if a1 == 1 { new_g1 = new_g1 + ga }
+        if a1 == 2 { new_g2 = new_g2 + ga }
+        if a1 == 3 { new_g3 = new_g3 + ga }
+        if a1 == 4 { new_g4 = new_g4 + ga }
+        if a1 == 5 { new_g5 = new_g5 + ga }
+        if a2 == 0 { new_g0 = new_g0 + gb }
+        if a2 == 1 { new_g1 = new_g1 + gb }
+        if a2 == 2 { new_g2 = new_g2 + gb }
+        if a2 == 3 { new_g3 = new_g3 + gb }
+        if a2 == 4 { new_g4 = new_g4 + gb }
+        if a2 == 5 { new_g5 = new_g5 + gb }
     }
 
     // Create new tape with updated gradients
@@ -793,6 +831,64 @@ fn main() -> i32 {
     println(expected_g11)
     if abs_f64(v11 - expected_v11) > tol { ok = false; println("  FAIL: v") }
     if abs_f64(g11 - expected_g11) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 13: softmax2(0, 0) -> f=0.5 (equal inputs = equal probabilities)
+    println("Test 13: softmax2(0, 0)")
+    let mut t12 = tape_new()
+    t12 = tvar(t12, 0.0)          // 0: x0
+    t12 = tvar(t12, 0.0)          // 1: x1
+    t12 = tsoftmax2(t12, 0, 1)    // 2: softmax_0
+    t12 = backward(t12, 2)
+    let v12 = get_v(t12, 2)
+    let g12_x0 = get_g(t12, 0)
+    let g12_x1 = get_g(t12, 1)
+    // softmax(0, 0) = 0.5
+    // d(softmax_0)/dx0 = y0 * (1 - y0) = 0.5 * 0.5 = 0.25
+    // d(softmax_0)/dx1 = -y0 * y1 = -0.5 * 0.5 = -0.25
+    println("  f = ")
+    println(v12)
+    println("  df/dx0 = ")
+    println(g12_x0)
+    println("  df/dx1 = ")
+    println(g12_x1)
+    if abs_f64(v12 - 0.5) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g12_x0 - 0.25) > tol { ok = false; println("  FAIL: g_x0") }
+    if abs_f64(g12_x1 - (0.0 - 0.25)) > tol { ok = false; println("  FAIL: g_x1") }
+    println("")
+
+    // Test 14: softmax2(2, 0) -> higher prob for first class
+    println("Test 14: softmax2(2, 0)")
+    let mut t13 = tape_new()
+    t13 = tvar(t13, 2.0)          // 0: x0
+    t13 = tvar(t13, 0.0)          // 1: x1
+    t13 = tsoftmax2(t13, 0, 1)    // 2: softmax_0
+    t13 = backward(t13, 2)
+    let v13 = get_v(t13, 2)
+    let g13_x0 = get_g(t13, 0)
+    let g13_x1 = get_g(t13, 1)
+    // softmax_0(2, 0) = exp(2) / (exp(2) + exp(0)) = e^2 / (e^2 + 1)
+    let e2 = exp_f64(2.0)
+    let expected_v13 = e2 / (e2 + 1.0)
+    let y0_13 = expected_v13
+    let y1_13 = 1.0 - y0_13
+    let expected_g13_x0 = y0_13 * y1_13
+    let expected_g13_x1 = 0.0 - y0_13 * y1_13
+    println("  f = ")
+    println(v13)
+    println("  expected = ")
+    println(expected_v13)
+    println("  df/dx0 = ")
+    println(g13_x0)
+    println("  expected = ")
+    println(expected_g13_x0)
+    println("  df/dx1 = ")
+    println(g13_x1)
+    println("  expected = ")
+    println(expected_g13_x1)
+    if abs_f64(v13 - expected_v13) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g13_x0 - expected_g13_x0) > tol { ok = false; println("  FAIL: g_x0") }
+    if abs_f64(g13_x1 - expected_g13_x1) > tol { ok = false; println("  FAIL: g_x1") }
     println("")
 
     if ok {
