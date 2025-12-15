@@ -1089,6 +1089,91 @@ fn adamw_step_fast(param: f64, g: f64, m: f64, v: f64, beta1_t: f64, beta2_t: f6
 }
 
 // ============================================================================
+// NADAM OPTIMIZER (NESTEROV-ACCELERATED ADAM)
+// ============================================================================
+
+// NAdam hyperparameters (Dozat, 2016)
+fn NADAM_BETA1() -> f64 { return 0.9 }
+fn NADAM_BETA2() -> f64 { return 0.999 }
+fn NADAM_EPS() -> f64 { return 0.00000001 }
+
+// Result struct for NAdam (same as Adam)
+struct NAdamResult {
+    param: f64,
+    m: f64,
+    v: f64
+}
+
+// NAdam update for single parameter
+// Combines Adam with Nesterov momentum for faster convergence
+//
+// Key insight: Instead of using m_hat directly, NAdam uses a "look-ahead":
+//   nesterov_m = β1 * m_hat + (1 - β1) * g / (1 - β1^t)
+//
+// This applies Nesterov momentum to the bias-corrected first moment,
+// giving the optimizer a "peek" at where the gradient is heading.
+//
+// Formula: m = β1*m + (1-β1)*g
+//          v = β2*v + (1-β2)*g²
+//          m_hat = m / (1-β1^t)
+//          g_hat = g / (1-β1^t)
+//          nesterov_m = β1*m_hat + (1-β1)*g_hat
+//          v_hat = v / (1-β2^t)
+//          param = param - lr * nesterov_m / (√v_hat + ε)
+fn nadam_step(param: f64, g: f64, m: f64, v: f64, timestep: f64, lr: f64) -> NAdamResult {
+    let beta1 = NADAM_BETA1()
+    let beta2 = NADAM_BETA2()
+    let eps = NADAM_EPS()
+
+    // Update biased first moment estimate
+    let new_m = beta1 * m + (1.0 - beta1) * g
+
+    // Update biased second raw moment estimate
+    let new_v = beta2 * v + (1.0 - beta2) * g * g
+
+    // Compute bias correction terms
+    let beta1_t = pow_f64(beta1, timestep)
+    let beta2_t = pow_f64(beta2, timestep)
+
+    // Bias-corrected estimates
+    let m_hat = new_m / (1.0 - beta1_t)
+    let g_hat = g / (1.0 - beta1_t)
+    let v_hat = new_v / (1.0 - beta2_t)
+
+    // Nesterov momentum: look-ahead on the first moment
+    let nesterov_m = beta1 * m_hat + (1.0 - beta1) * g_hat
+
+    // Parameter update
+    let new_param = param - lr * nesterov_m / (sqrt_f64(v_hat) + eps)
+
+    return NAdamResult { param: new_param, m: new_m, v: new_v }
+}
+
+// NAdam with running powers (more efficient for training loops)
+fn nadam_step_fast(param: f64, g: f64, m: f64, v: f64, beta1_t: f64, beta2_t: f64, lr: f64) -> NAdamResult {
+    let beta1 = NADAM_BETA1()
+    let beta2 = NADAM_BETA2()
+    let eps = NADAM_EPS()
+
+    // Update moments
+    let new_m = beta1 * m + (1.0 - beta1) * g
+    let new_v = beta2 * v + (1.0 - beta2) * g * g
+
+    // Bias-corrected estimates
+    let m_hat = new_m / (1.0 - beta1_t)
+    let g_hat = g / (1.0 - beta1_t)
+    let v_hat = new_v / (1.0 - beta2_t)
+
+    // Nesterov momentum
+    let nesterov_m = beta1 * m_hat + (1.0 - beta1) * g_hat
+
+    // Parameter update
+    let new_param = param - lr * nesterov_m / (sqrt_f64(v_hat) + eps)
+
+    return NAdamResult { param: new_param, m: new_m, v: new_v }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -2110,6 +2195,98 @@ fn main() -> i32 {
     if q1_32 >= q0_32 { ok = false; println("  FAIL: q1 >= q0") }
     if q2_32 >= q1_32 { ok = false; println("  FAIL: q2 >= q1") }
     if q5_32 >= 4.5 { ok = false; println("  FAIL: q5 should be < 4.5 after 5 steps") }
+    println("")
+
+    // Test 33: NAdam single step - verify Nesterov acceleration
+    println("Test 33: NAdam single step with Nesterov momentum")
+    let x33 = 5.0
+    let m33 = 0.0
+    let v33 = 0.0
+    let lr33 = 0.1
+    let g33 = 2.0 * x33  // gradient = 10.0
+
+    // Compare Adam vs NAdam at timestep 1
+    // NAdam should converge faster due to Nesterov look-ahead
+    let adam_result33 = adam_step_single(x33, g33, m33, v33, 1.0, lr33)
+    let nadam_result33 = nadam_step(x33, g33, m33, v33, 1.0, lr33)
+
+    println("  Adam result:")
+    println("    param = ")
+    println(adam_result33.param)
+    println("  NAdam result (with Nesterov):")
+    println("    param = ")
+    println(nadam_result33.param)
+    println("  NAdam converges faster (smaller param):")
+    println("    difference = ")
+    println(adam_result33.param - nadam_result33.param)
+
+    // NAdam should produce smaller param (faster convergence toward 0)
+    if nadam_result33.param >= adam_result33.param { ok = false; println("  FAIL: NAdam should be < Adam") }
+    // Both should decrease from initial
+    if nadam_result33.param >= x33 { ok = false; println("  FAIL: NAdam param should decrease") }
+    if adam_result33.param >= x33 { ok = false; println("  FAIL: Adam param should decrease") }
+    // Moments should be the same (Nesterov only affects the update, not moment storage)
+    if abs_f64(nadam_result33.m - adam_result33.m) > tol { ok = false; println("  FAIL: m should match") }
+    if abs_f64(nadam_result33.v - adam_result33.v) > tol { ok = false; println("  FAIL: v should match") }
+    println("")
+
+    // Test 34: NAdam 5-step descent (unrolled)
+    println("Test 34: NAdam 5-step descent (unrolled)")
+    let n0_34 = 5.0
+    let mn0_34 = 0.0
+    let vn0_34 = 0.0
+    let lr34 = 0.1
+
+    // Step 1
+    let gn1 = 2.0 * n0_34
+    let nd1 = nadam_step(n0_34, gn1, mn0_34, vn0_34, 1.0, lr34)
+    let n1_34 = nd1.param
+    let mn1_34 = nd1.m
+    let vn1_34 = nd1.v
+
+    // Step 2
+    let gn2 = 2.0 * n1_34
+    let nd2 = nadam_step(n1_34, gn2, mn1_34, vn1_34, 2.0, lr34)
+    let n2_34 = nd2.param
+    let mn2_34 = nd2.m
+    let vn2_34 = nd2.v
+
+    // Step 3
+    let gn3 = 2.0 * n2_34
+    let nd3 = nadam_step(n2_34, gn3, mn2_34, vn2_34, 3.0, lr34)
+    let n3_34 = nd3.param
+    let mn3_34 = nd3.m
+    let vn3_34 = nd3.v
+
+    // Step 4
+    let gn4 = 2.0 * n3_34
+    let nd4 = nadam_step(n3_34, gn4, mn3_34, vn3_34, 4.0, lr34)
+    let n4_34 = nd4.param
+    let mn4_34 = nd4.m
+    let vn4_34 = nd4.v
+
+    // Step 5
+    let gn5 = 2.0 * n4_34
+    let nd5 = nadam_step(n4_34, gn5, mn4_34, vn4_34, 5.0, lr34)
+    let n5_34 = nd5.param
+
+    println("  Descent from n=5 with NAdam (Nesterov-accelerated):")
+    println("    n0 = 5.0")
+    println("    n1 = ")
+    println(n1_34)
+    println("    n2 = ")
+    println(n2_34)
+    println("    n3 = ")
+    println(n3_34)
+    println("    n4 = ")
+    println(n4_34)
+    println("    n5 = ")
+    println(n5_34)
+
+    // n should decrease toward 0 (faster than Adam due to Nesterov)
+    if n1_34 >= n0_34 { ok = false; println("  FAIL: n1 >= n0") }
+    if n2_34 >= n1_34 { ok = false; println("  FAIL: n2 >= n1") }
+    if n5_34 >= 4.5 { ok = false; println("  FAIL: n5 should be < 4.5 after 5 steps") }
     println("")
 
     if ok {
