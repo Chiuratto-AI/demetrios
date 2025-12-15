@@ -5,6 +5,7 @@
 [![Version](https://img.shields.io/badge/version-0.43.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green.svg)](LICENSE-MIT)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17849626.svg)](https://doi.org/10.5281/zenodo.17849626)
 
 ---
 
