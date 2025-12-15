@@ -1,8 +1,9 @@
-// mlp_classifier.d - MLP Classifier with Softmax and Cross-Entropy Loss
+// mlp_classifier.d - MLP Classifier with Softmax, Cross-Entropy, and Adam
 //
 // Demonstrates binary classification using:
 // - 2-class softmax output layer
 // - Cross-entropy loss function
+// - Adam optimizer (momentum + adaptive learning rates)
 // - Backpropagation through softmax
 //
 // Architecture: 2-2-2 (2 inputs, 2 hidden sigmoid neurons, 2 output logits)
@@ -59,10 +60,32 @@ fn log_f64(x: f64) -> f64 {
     return sum
 }
 
+// Power function for Adam bias correction
+fn pow_f64(base: f64, exp: f64) -> f64 {
+    if exp <= 0.0 { return 1.0 }
+    if exp < 1.0 { return base }
+    let mut result = 1.0
+    let mut i = 0.0
+    while i < exp {
+        result = result * base
+        i = i + 1.0
+    }
+    return result
+}
+
 // Sigmoid activation
 fn sigmoid(x: f64) -> f64 {
     return 1.0 / (1.0 + exp_f64(0.0 - x))
 }
+
+// ============================================================================
+// ADAM OPTIMIZER - Inline functions
+// ============================================================================
+
+// Adam hyperparameters
+fn ADAM_BETA1() -> f64 { return 0.9 }
+fn ADAM_BETA2() -> f64 { return 0.999 }
+fn ADAM_EPS() -> f64 { return 0.00000001 }
 
 // Softmax for 2 classes (numerically stable)
 fn softmax2_0(a: f64, b: f64) -> f64 {
@@ -122,7 +145,7 @@ fn predict(
 // ============================================================================
 
 fn main() -> i64 {
-    println("=== MLP Classifier with Softmax + Cross-Entropy ===")
+    println("=== MLP Classifier with Softmax + Cross-Entropy + Adam ===")
     println("")
     println("Task: XOR Classification")
     println("  Class 0: (0,0), (1,1)")
@@ -145,12 +168,50 @@ fn main() -> i64 {
     let mut v12 = 2.0
     let mut c1 = 0.0
 
-    let lr = 3.0
+    // Adam momentum (first moment) for each parameter
+    let mut m_w11 = 0.0
+    let mut m_w12 = 0.0
+    let mut m_b1 = 0.0
+    let mut m_w21 = 0.0
+    let mut m_w22 = 0.0
+    let mut m_b2 = 0.0
+    let mut m_v01 = 0.0
+    let mut m_v02 = 0.0
+    let mut m_c0 = 0.0
+    let mut m_v11 = 0.0
+    let mut m_v12 = 0.0
+    let mut m_c1 = 0.0
 
-    println("Training for 500 epochs...")
+    // Adam velocity (second moment) for each parameter
+    let mut s_w11 = 0.0
+    let mut s_w12 = 0.0
+    let mut s_b1 = 0.0
+    let mut s_w21 = 0.0
+    let mut s_w22 = 0.0
+    let mut s_b2 = 0.0
+    let mut s_v01 = 0.0
+    let mut s_v02 = 0.0
+    let mut s_c0 = 0.0
+    let mut s_v11 = 0.0
+    let mut s_v12 = 0.0
+    let mut s_c1 = 0.0
+
+    // Adam learning rate (typical value)
+    let lr = 0.1
+
+    // Adam hyperparameters
+    let beta1 = ADAM_BETA1()
+    let beta2 = ADAM_BETA2()
+    let eps = ADAM_EPS()
+
+    // Running powers for bias correction (avoids slow pow_f64 each iteration)
+    let mut beta1_t = 1.0  // Will be beta1^t
+    let mut beta2_t = 1.0  // Will be beta2^t
+
+    println("Training for 300 epochs with Adam optimizer...")
 
     let mut epoch = 0
-    while epoch < 500 {
+    while epoch < 300 {
         // Forward pass for all 4 samples
         let h1_00 = sigmoid(w11 * 0.0 + w12 * 0.0 + b1)
         let h2_00 = sigmoid(w21 * 0.0 + w22 * 0.0 + b2)
@@ -233,19 +294,73 @@ fn main() -> i64 {
         let dw22 = (d_z2_00 * 0.0 + d_z2_01 * 1.0 + d_z2_10 * 0.0 + d_z2_11 * 1.0) * 0.25
         let db2 = (d_z2_00 + d_z2_01 + d_z2_10 + d_z2_11) * 0.25
 
-        // Update weights
-        w11 = w11 - lr * dw11
-        w12 = w12 - lr * dw12
-        b1 = b1 - lr * db1
-        w21 = w21 - lr * dw21
-        w22 = w22 - lr * dw22
-        b2 = b2 - lr * db2
-        v01 = v01 - lr * dv01
-        v02 = v02 - lr * dv02
-        c0 = c0 - lr * dc0
-        v11 = v11 - lr * dv11
-        v12 = v12 - lr * dv12
-        c1 = c1 - lr * dc1
+        // Update running powers for bias correction (O(1) instead of O(t))
+        beta1_t = beta1_t * beta1
+        beta2_t = beta2_t * beta2
+
+        // Bias correction denominators
+        let bc1 = 1.0 - beta1_t
+        let bc2 = 1.0 - beta2_t
+
+        // Adam update for w11
+        m_w11 = beta1 * m_w11 + (1.0 - beta1) * dw11
+        s_w11 = beta2 * s_w11 + (1.0 - beta2) * dw11 * dw11
+        w11 = w11 - lr * (m_w11 / bc1) / (sqrt_f64(s_w11 / bc2) + eps)
+
+        // Adam update for w12
+        m_w12 = beta1 * m_w12 + (1.0 - beta1) * dw12
+        s_w12 = beta2 * s_w12 + (1.0 - beta2) * dw12 * dw12
+        w12 = w12 - lr * (m_w12 / bc1) / (sqrt_f64(s_w12 / bc2) + eps)
+
+        // Adam update for b1
+        m_b1 = beta1 * m_b1 + (1.0 - beta1) * db1
+        s_b1 = beta2 * s_b1 + (1.0 - beta2) * db1 * db1
+        b1 = b1 - lr * (m_b1 / bc1) / (sqrt_f64(s_b1 / bc2) + eps)
+
+        // Adam update for w21
+        m_w21 = beta1 * m_w21 + (1.0 - beta1) * dw21
+        s_w21 = beta2 * s_w21 + (1.0 - beta2) * dw21 * dw21
+        w21 = w21 - lr * (m_w21 / bc1) / (sqrt_f64(s_w21 / bc2) + eps)
+
+        // Adam update for w22
+        m_w22 = beta1 * m_w22 + (1.0 - beta1) * dw22
+        s_w22 = beta2 * s_w22 + (1.0 - beta2) * dw22 * dw22
+        w22 = w22 - lr * (m_w22 / bc1) / (sqrt_f64(s_w22 / bc2) + eps)
+
+        // Adam update for b2
+        m_b2 = beta1 * m_b2 + (1.0 - beta1) * db2
+        s_b2 = beta2 * s_b2 + (1.0 - beta2) * db2 * db2
+        b2 = b2 - lr * (m_b2 / bc1) / (sqrt_f64(s_b2 / bc2) + eps)
+
+        // Adam update for v01
+        m_v01 = beta1 * m_v01 + (1.0 - beta1) * dv01
+        s_v01 = beta2 * s_v01 + (1.0 - beta2) * dv01 * dv01
+        v01 = v01 - lr * (m_v01 / bc1) / (sqrt_f64(s_v01 / bc2) + eps)
+
+        // Adam update for v02
+        m_v02 = beta1 * m_v02 + (1.0 - beta1) * dv02
+        s_v02 = beta2 * s_v02 + (1.0 - beta2) * dv02 * dv02
+        v02 = v02 - lr * (m_v02 / bc1) / (sqrt_f64(s_v02 / bc2) + eps)
+
+        // Adam update for c0
+        m_c0 = beta1 * m_c0 + (1.0 - beta1) * dc0
+        s_c0 = beta2 * s_c0 + (1.0 - beta2) * dc0 * dc0
+        c0 = c0 - lr * (m_c0 / bc1) / (sqrt_f64(s_c0 / bc2) + eps)
+
+        // Adam update for v11
+        m_v11 = beta1 * m_v11 + (1.0 - beta1) * dv11
+        s_v11 = beta2 * s_v11 + (1.0 - beta2) * dv11 * dv11
+        v11 = v11 - lr * (m_v11 / bc1) / (sqrt_f64(s_v11 / bc2) + eps)
+
+        // Adam update for v12
+        m_v12 = beta1 * m_v12 + (1.0 - beta1) * dv12
+        s_v12 = beta2 * s_v12 + (1.0 - beta2) * dv12 * dv12
+        v12 = v12 - lr * (m_v12 / bc1) / (sqrt_f64(s_v12 / bc2) + eps)
+
+        // Adam update for c1
+        m_c1 = beta1 * m_c1 + (1.0 - beta1) * dc1
+        s_c1 = beta2 * s_c1 + (1.0 - beta2) * dc1 * dc1
+        c1 = c1 - lr * (m_c1 / bc1) / (sqrt_f64(s_c1 / bc2) + eps)
 
         // Print loss at key epochs
         if epoch == 0 {
@@ -254,16 +369,16 @@ fn main() -> i64 {
             println("  Epoch 0, Loss = ")
             println(loss)
         }
-        if epoch == 100 {
+        if epoch == 50 {
             let loss = (cross_entropy_2class(p0_00, 0) + cross_entropy_2class(p0_11, 0) +
                         cross_entropy_2class(p0_01, 1) + cross_entropy_2class(p0_10, 1)) * 0.25
-            println("  Epoch 100, Loss = ")
+            println("  Epoch 50, Loss = ")
             println(loss)
         }
-        if epoch == 300 {
+        if epoch == 150 {
             let loss = (cross_entropy_2class(p0_00, 0) + cross_entropy_2class(p0_11, 0) +
                         cross_entropy_2class(p0_01, 1) + cross_entropy_2class(p0_10, 1)) * 0.25
-            println("  Epoch 300, Loss = ")
+            println("  Epoch 150, Loss = ")
             println(loss)
         }
 
@@ -278,7 +393,7 @@ fn main() -> i64 {
 
     let final_loss = (cross_entropy_2class(p00, 0) + cross_entropy_2class(p11, 0) +
                       cross_entropy_2class(p01, 1) + cross_entropy_2class(p10, 1)) * 0.25
-    println("  Epoch 500, Loss = ")
+    println("  Epoch 300, Loss = ")
     println(final_loss)
     println("")
 
