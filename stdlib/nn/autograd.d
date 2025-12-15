@@ -74,6 +74,7 @@ fn OP_SQRT() -> i64 { return 9 }
 fn OP_SIN() -> i64 { return 11 }
 fn OP_SIGMOID() -> i64 { return 15 }
 fn OP_RELU() -> i64 { return 16 }
+fn OP_TANH() -> i64 { return 17 }
 
 // ============================================================================
 // TAPE STRUCTURE - 6 slots for simplicity
@@ -345,6 +346,15 @@ fn trelu(t: Tape, a: i64) -> Tape {
     return push(t, OP_RELU(), a, 0 - 1, rv)
 }
 
+fn ttanh(t: Tape, a: i64) -> Tape {
+    let av = get_v(t, a)
+    // tanh(x) = (e^x - e^-x) / (e^x + e^-x)
+    let ep = exp_f64(av)
+    let en = exp_f64(0.0 - av)
+    let tv = (ep - en) / (ep + en)
+    return push(t, OP_TANH(), a, 0 - 1, tv)
+}
+
 // ============================================================================
 // BACKWARD
 // ============================================================================
@@ -477,6 +487,16 @@ fn backward_step(t: Tape, i: i64) -> Tape {
         // d(relu(a))/da = 1 if a > 0 else 0
         // Note: v = relu(input), so v > 0 iff input > 0
         let ga = if v > 0.0 { dout } else { 0.0 }
+        if a1 == 0 { new_g0 = new_g0 + ga }
+        if a1 == 1 { new_g1 = new_g1 + ga }
+        if a1 == 2 { new_g2 = new_g2 + ga }
+        if a1 == 3 { new_g3 = new_g3 + ga }
+        if a1 == 4 { new_g4 = new_g4 + ga }
+        if a1 == 5 { new_g5 = new_g5 + ga }
+    }
+    if op == OP_TANH() {
+        // d(tanh(a))/da = 1 - tanh(a)^2 = 1 - v^2
+        let ga = dout * (1.0 - v * v)
         if a1 == 0 { new_g0 = new_g0 + ga }
         if a1 == 1 { new_g1 = new_g1 + ga }
         if a1 == 2 { new_g2 = new_g2 + ga }
@@ -671,6 +691,47 @@ fn main() -> i32 {
     println(g7)
     if abs_f64(v7 - 4.0) > tol { ok = false; println("  FAIL: v") }
     if abs_f64(g7 - 4.0) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 9: tanh at x=0 -> f=0, df=1
+    println("Test 9: tanh(x) at x=0")
+    let mut t8 = tape_new()
+    t8 = tvar(t8, 0.0)        // 0
+    t8 = ttanh(t8, 0)         // 1
+    t8 = backward(t8, 1)
+    let v8 = get_v(t8, 1)
+    let g8 = get_g(t8, 0)
+    println("  f = ")
+    println(v8)
+    println("  df/dx = ")
+    println(g8)
+    // tanh(0) = 0, d(tanh)/dx at 0 = 1 - 0^2 = 1
+    if abs_f64(v8 - 0.0) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g8 - 1.0) > tol { ok = false; println("  FAIL: g") }
+    println("")
+
+    // Test 10: tanh at x=1 -> f≈0.7616, df≈0.4200
+    println("Test 10: tanh(x) at x=1")
+    let mut t9 = tape_new()
+    t9 = tvar(t9, 1.0)        // 0
+    t9 = ttanh(t9, 0)         // 1
+    t9 = backward(t9, 1)
+    let v9 = get_v(t9, 1)
+    let g9 = get_g(t9, 0)
+    // tanh(1) = (e - 1/e) / (e + 1/e) ≈ 0.7616
+    // d(tanh)/dx = 1 - tanh^2 ≈ 1 - 0.5800 ≈ 0.4200
+    let expected_tanh1 = 0.7615941559557649
+    let expected_grad1 = 1.0 - expected_tanh1 * expected_tanh1
+    println("  f = ")
+    println(v9)
+    println("  expected = ")
+    println(expected_tanh1)
+    println("  df/dx = ")
+    println(g9)
+    println("  expected = ")
+    println(expected_grad1)
+    if abs_f64(v9 - expected_tanh1) > tol { ok = false; println("  FAIL: v") }
+    if abs_f64(g9 - expected_grad1) > tol { ok = false; println("  FAIL: g") }
     println("")
 
     if ok {
