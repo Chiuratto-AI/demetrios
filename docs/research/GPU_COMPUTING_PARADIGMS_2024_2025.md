@@ -1206,7 +1206,6 @@ impl HybridQuantumClassical {
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** December 6, 2025  
-**Primary Researcher:** Claude (Anthropic)  
+**Document Version:** 1.0
+**Last Updated:** December 6, 2025
 **Prepared for:** Demetrios Language Compiler Project

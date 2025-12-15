@@ -174,4 +174,4 @@ The compiler supports optional features:
 
 ## Contributing
 
-See the main [CLAUDE.md](../CLAUDE.md) for coding standards and contribution guidelines.
+See the main [DEVELOPER.md](../DEVELOPER.md) for coding standards and contribution guidelines.

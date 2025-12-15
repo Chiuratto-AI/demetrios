@@ -9,7 +9,7 @@
 //  10: bone    11: spleen  12: pancreas 13: other
 //
 // Reference: Darwin PBPK Platform - Julia Implementation (Nov 2025)
-// Author: Demetrios Agourakis + AI Assistant
+// Author: Demetrios Chiuratto Agourakis
 
 // ============================================================================
 // BUTCHER TABLEAU COEFFICIENTS (Tsitouras 5(4))
