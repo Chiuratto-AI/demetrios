@@ -5785,6 +5785,984 @@ fn avgpool_backward(grad_output: f64, pool_size: f64) -> f64 {
 }
 
 // ============================================================================
+// TRANSFORMER ENCODER/DECODER LAYERS
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Scaled Dot-Product Attention
+// Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) * V
+// ----------------------------------------------------------------------------
+
+struct ScaledAttentionResult {
+    output: f64,
+    attention_weight: f64
+}
+
+// Single query-key-value attention (simplified for scalar demonstration)
+fn scaled_dot_product_attention(
+    query_val: f64,
+    key_val: f64,
+    value_val: f64,
+    d_k: f64,        // dimension of keys for scaling
+    mask_val: f64    // 0.0 = attend, -inf (large negative) = mask out
+) -> ScaledAttentionResult {
+    // score = Q * K / sqrt(d_k)
+    let scale = 1.0 / sqrt_f64(d_k)
+    let score = query_val * key_val * scale + mask_val
+
+    // attention weight (softmax over single element = 1.0 if unmasked)
+    // For single element, sigmoid approximates softmax behavior
+    let attn_weight = if mask_val < -1000.0 { 0.0 } else { sigmoid_f64(score) }
+
+    // output = attention_weight * value
+    let output_val = attn_weight * value_val
+
+    return ScaledAttentionResult {
+        output: output_val,
+        attention_weight: attn_weight
+    }
+}
+
+// Attention over 3 positions (sequence length = 3)
+struct Attention3Result {
+    output: f64,
+    attn1: f64,
+    attn2: f64,
+    attn3: f64
+}
+
+fn attention_3pos(
+    query_val: f64,
+    k1: f64, k2: f64, k3: f64,
+    v1: f64, v2: f64, v3: f64,
+    d_k: f64,
+    m1: f64, m2: f64, m3: f64  // masks
+) -> Attention3Result {
+    let scale = 1.0 / sqrt_f64(d_k)
+
+    // Compute scores
+    let s1 = query_val * k1 * scale + m1
+    let s2 = query_val * k2 * scale + m2
+    let s3 = query_val * k3 * scale + m3
+
+    // Softmax over scores
+    let max_s = max_f64(max_f64(s1, s2), s3)
+    let e1 = exp_f64(s1 - max_s)
+    let e2 = exp_f64(s2 - max_s)
+    let e3 = exp_f64(s3 - max_s)
+    let sum_e = e1 + e2 + e3
+
+    let a1 = e1 / sum_e
+    let a2 = e2 / sum_e
+    let a3 = e3 / sum_e
+
+    // Weighted sum of values
+    let output_val = a1 * v1 + a2 * v2 + a3 * v3
+
+    return Attention3Result {
+        output: output_val,
+        attn1: a1,
+        attn2: a2,
+        attn3: a3
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Multi-Head Attention
+// MultiHead(Q, K, V) = Concat(head_1, ..., head_h) * W_O
+// ----------------------------------------------------------------------------
+
+struct MultiHeadResult2 {
+    output: f64,
+    head1_attn: f64,
+    head2_attn: f64
+}
+
+// 2-head attention (simplified)
+fn multi_head_attention_2h(
+    query_val: f64,
+    key_val: f64,
+    value_val: f64,
+    // Head 1 projections
+    w_q1: f64, w_k1: f64, w_v1: f64,
+    // Head 2 projections
+    w_q2: f64, w_k2: f64, w_v2: f64,
+    // Output projection
+    w_o1: f64, w_o2: f64,
+    d_k: f64
+) -> MultiHeadResult2 {
+    // Project to each head
+    let q1 = query_val * w_q1
+    let k1 = key_val * w_k1
+    let v1 = value_val * w_v1
+
+    let q2 = query_val * w_q2
+    let k2 = key_val * w_k2
+    let v2 = value_val * w_v2
+
+    // Attention per head
+    let scale = 1.0 / sqrt_f64(d_k)
+    let score1 = q1 * k1 * scale
+    let score2 = q2 * k2 * scale
+
+    let attn1 = sigmoid_f64(score1)
+    let attn2 = sigmoid_f64(score2)
+
+    let head1_out = attn1 * v1
+    let head2_out = attn2 * v2
+
+    // Concat and project
+    let output_val = head1_out * w_o1 + head2_out * w_o2
+
+    return MultiHeadResult2 {
+        output: output_val,
+        head1_attn: attn1,
+        head2_attn: attn2
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Position-wise Feed-Forward Network
+// FFN(x) = max(0, xW_1 + b_1)W_2 + b_2
+// Typically expands dim by 4x then contracts back
+// ----------------------------------------------------------------------------
+
+struct FFNResult {
+    output: f64,
+    hidden: f64  // intermediate activation
+}
+
+fn feed_forward_network(
+    input_val: f64,
+    // First layer (expand)
+    w1: f64, b1: f64,
+    // Second layer (contract)
+    w2: f64, b2: f64
+) -> FFNResult {
+    // First linear + ReLU
+    let hidden = relu_f64(input_val * w1 + b1)
+    // Second linear
+    let output_val = hidden * w2 + b2
+
+    return FFNResult {
+        output: output_val,
+        hidden: hidden
+    }
+}
+
+// FFN with GELU activation (used in BERT, GPT)
+fn feed_forward_gelu(
+    input_val: f64,
+    w1: f64, b1: f64,
+    w2: f64, b2: f64
+) -> FFNResult {
+    let hidden = gelu_approx(input_val * w1 + b1)
+    let output_val = hidden * w2 + b2
+
+    return FFNResult {
+        output: output_val,
+        hidden: hidden
+    }
+}
+
+// Gated Linear Unit (GLU) variant
+fn feed_forward_glu(
+    input_val: f64,
+    w1: f64, b1: f64,   // main path
+    w_gate: f64, b_gate: f64,  // gate path
+    w2: f64, b2: f64
+) -> FFNResult {
+    let lin_out = input_val * w1 + b1
+    let gate = sigmoid_f64(input_val * w_gate + b_gate)
+    let hidden = lin_out * gate
+    let output_val = hidden * w2 + b2
+
+    return FFNResult {
+        output: output_val,
+        hidden: hidden
+    }
+}
+
+// SwiGLU (used in PaLM, other models)
+fn feed_forward_swiglu(
+    input_val: f64,
+    w1: f64, b1: f64,
+    w_gate: f64, b_gate: f64,
+    w2: f64, b2: f64
+) -> FFNResult {
+    let lin_out = input_val * w1 + b1
+    let gate = swish(input_val * w_gate + b_gate)
+    let hidden = lin_out * gate
+    let output_val = hidden * w2 + b2
+
+    return FFNResult {
+        output: output_val,
+        hidden: hidden
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Layer Normalization for Transformers
+// ----------------------------------------------------------------------------
+
+struct TransformerLNResult {
+    normalized: f64,
+    mean_val: f64,
+    var_val: f64
+}
+
+// Pre-LN: normalize before attention/FFN (used in GPT-2+)
+fn pre_layer_norm(
+    input_val: f64,
+    gamma: f64,
+    beta: f64,
+    eps: f64
+) -> TransformerLNResult {
+    // For single value, variance is 0, so we just scale
+    // In practice this would compute mean/var across hidden dim
+    let mean_val = input_val  // simplified: mean of single value
+    let var_val = 0.0001  // small variance to avoid div by zero
+    let normalized = gamma * (input_val - mean_val) / sqrt_f64(var_val + eps) + beta
+
+    return TransformerLNResult {
+        normalized: normalized,
+        mean_val: mean_val,
+        var_val: var_val
+    }
+}
+
+// RMSNorm (used in LLaMA): simpler, no mean subtraction
+fn rms_norm(
+    input_val: f64,
+    gamma: f64,
+    eps: f64
+) -> f64 {
+    // RMS = sqrt(mean(x^2))
+    let rms = sqrt_f64(input_val * input_val + eps)
+    return gamma * input_val / rms
+}
+
+// RMSNorm for 3 values
+struct RMSNorm3Result {
+    y1: f64,
+    y2: f64,
+    y3: f64,
+    rms: f64
+}
+
+fn rms_norm_3(
+    x1: f64, x2: f64, x3: f64,
+    g1: f64, g2: f64, g3: f64,
+    eps: f64
+) -> RMSNorm3Result {
+    let mean_sq = (x1 * x1 + x2 * x2 + x3 * x3) / 3.0
+    let rms = sqrt_f64(mean_sq + eps)
+
+    return RMSNorm3Result {
+        y1: g1 * x1 / rms,
+        y2: g2 * x2 / rms,
+        y3: g3 * x3 / rms,
+        rms: rms
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Transformer Encoder Layer
+// EncoderLayer = LayerNorm(x + MultiHeadAttention(x, x, x))
+//              + LayerNorm(x + FFN(x))
+// ----------------------------------------------------------------------------
+
+struct EncoderLayerResult {
+    output: f64,
+    attn_output: f64,
+    ffn_output: f64
+}
+
+// Pre-LN encoder layer (GPT-style)
+fn transformer_encoder_layer_preln(
+    input_val: f64,
+    // Attention params
+    w_q: f64, w_k: f64, w_v: f64, w_o: f64,
+    // FFN params
+    w_ff1: f64, b_ff1: f64, w_ff2: f64, b_ff2: f64,
+    // LayerNorm params
+    ln1_gamma: f64, ln1_beta: f64,
+    ln2_gamma: f64, ln2_beta: f64,
+    d_k: f64
+) -> EncoderLayerResult {
+    // Pre-LN before attention
+    let ln1 = pre_layer_norm(input_val, ln1_gamma, ln1_beta, 0.00001)
+
+    // Self-attention (Q=K=V from same input)
+    let query_val = ln1.normalized * w_q
+    let key_val = ln1.normalized * w_k
+    let value_val = ln1.normalized * w_v
+
+    let scale = 1.0 / sqrt_f64(d_k)
+    let score = query_val * key_val * scale
+    let attn = sigmoid_f64(score)
+    let attn_out = attn * value_val * w_o
+
+    // Residual connection
+    let after_attn = input_val + attn_out
+
+    // Pre-LN before FFN
+    let ln2 = pre_layer_norm(after_attn, ln2_gamma, ln2_beta, 0.00001)
+
+    // Feed-forward
+    let ffn = feed_forward_network(ln2.normalized, w_ff1, b_ff1, w_ff2, b_ff2)
+
+    // Residual connection
+    let output_val = after_attn + ffn.output
+
+    return EncoderLayerResult {
+        output: output_val,
+        attn_output: attn_out,
+        ffn_output: ffn.output
+    }
+}
+
+// Post-LN encoder layer (original Transformer)
+fn transformer_encoder_layer_postln(
+    input_val: f64,
+    w_q: f64, w_k: f64, w_v: f64, w_o: f64,
+    w_ff1: f64, b_ff1: f64, w_ff2: f64, b_ff2: f64,
+    ln1_gamma: f64, ln1_beta: f64,
+    ln2_gamma: f64, ln2_beta: f64,
+    d_k: f64
+) -> EncoderLayerResult {
+    // Self-attention
+    let query_val = input_val * w_q
+    let key_val = input_val * w_k
+    let value_val = input_val * w_v
+
+    let scale = 1.0 / sqrt_f64(d_k)
+    let score = query_val * key_val * scale
+    let attn = sigmoid_f64(score)
+    let attn_out = attn * value_val * w_o
+
+    // Add & Norm
+    let after_attn_raw = input_val + attn_out
+    let ln1 = pre_layer_norm(after_attn_raw, ln1_gamma, ln1_beta, 0.00001)
+    let after_attn = ln1.normalized
+
+    // Feed-forward
+    let ffn = feed_forward_network(after_attn, w_ff1, b_ff1, w_ff2, b_ff2)
+
+    // Add & Norm
+    let after_ffn_raw = after_attn + ffn.output
+    let ln2 = pre_layer_norm(after_ffn_raw, ln2_gamma, ln2_beta, 0.00001)
+
+    return EncoderLayerResult {
+        output: ln2.normalized,
+        attn_output: attn_out,
+        ffn_output: ffn.output
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Transformer Decoder Layer
+// DecoderLayer = LayerNorm(x + MaskedMultiHeadAttention(x, x, x))
+//              + LayerNorm(x + CrossAttention(x, enc_out, enc_out))
+//              + LayerNorm(x + FFN(x))
+// ----------------------------------------------------------------------------
+
+struct DecoderLayerResult {
+    output: f64,
+    self_attn_output: f64,
+    cross_attn_output: f64,
+    ffn_output: f64
+}
+
+fn transformer_decoder_layer(
+    input_val: f64,
+    encoder_output: f64,
+    // Self-attention params
+    w_q_self: f64, w_k_self: f64, w_v_self: f64, w_o_self: f64,
+    // Cross-attention params
+    w_q_cross: f64, w_k_cross: f64, w_v_cross: f64, w_o_cross: f64,
+    // FFN params
+    w_ff1: f64, b_ff1: f64, w_ff2: f64, b_ff2: f64,
+    // LayerNorm params
+    ln1_gamma: f64, ln1_beta: f64,
+    ln2_gamma: f64, ln2_beta: f64,
+    ln3_gamma: f64, ln3_beta: f64,
+    d_k: f64,
+    causal_mask: f64  // 0 for attend, large negative for mask
+) -> DecoderLayerResult {
+    let scale = 1.0 / sqrt_f64(d_k)
+
+    // 1. Masked Self-Attention (causal)
+    let ln1 = pre_layer_norm(input_val, ln1_gamma, ln1_beta, 0.00001)
+    let q_self = ln1.normalized * w_q_self
+    let k_self = ln1.normalized * w_k_self
+    let v_self = ln1.normalized * w_v_self
+
+    let self_score = q_self * k_self * scale + causal_mask
+    let self_attn = if causal_mask < -1000.0 { 0.0 } else { sigmoid_f64(self_score) }
+    let self_attn_out = self_attn * v_self * w_o_self
+    let after_self_attn = input_val + self_attn_out
+
+    // 2. Cross-Attention (attend to encoder output)
+    let ln2 = pre_layer_norm(after_self_attn, ln2_gamma, ln2_beta, 0.00001)
+    let q_cross = ln2.normalized * w_q_cross
+    let k_cross = encoder_output * w_k_cross
+    let v_cross = encoder_output * w_v_cross
+
+    let cross_score = q_cross * k_cross * scale
+    let cross_attn = sigmoid_f64(cross_score)
+    let cross_attn_out = cross_attn * v_cross * w_o_cross
+    let after_cross_attn = after_self_attn + cross_attn_out
+
+    // 3. Feed-Forward
+    let ln3 = pre_layer_norm(after_cross_attn, ln3_gamma, ln3_beta, 0.00001)
+    let ffn = feed_forward_network(ln3.normalized, w_ff1, b_ff1, w_ff2, b_ff2)
+    let output_val = after_cross_attn + ffn.output
+
+    return DecoderLayerResult {
+        output: output_val,
+        self_attn_output: self_attn_out,
+        cross_attn_output: cross_attn_out,
+        ffn_output: ffn.output
+    }
+}
+
+// Decoder-only layer (GPT-style, no cross-attention)
+fn decoder_only_layer(
+    input_val: f64,
+    w_q: f64, w_k: f64, w_v: f64, w_o: f64,
+    w_ff1: f64, b_ff1: f64, w_ff2: f64, b_ff2: f64,
+    ln1_gamma: f64, ln1_beta: f64,
+    ln2_gamma: f64, ln2_beta: f64,
+    d_k: f64,
+    causal_mask: f64
+) -> EncoderLayerResult {
+    let scale = 1.0 / sqrt_f64(d_k)
+
+    // Masked Self-Attention
+    let ln1 = pre_layer_norm(input_val, ln1_gamma, ln1_beta, 0.00001)
+    let query_val = ln1.normalized * w_q
+    let key_val = ln1.normalized * w_k
+    let value_val = ln1.normalized * w_v
+
+    let score = query_val * key_val * scale + causal_mask
+    let attn = if causal_mask < -1000.0 { 0.0 } else { sigmoid_f64(score) }
+    let attn_out = attn * value_val * w_o
+    let after_attn = input_val + attn_out
+
+    // Feed-Forward
+    let ln2 = pre_layer_norm(after_attn, ln2_gamma, ln2_beta, 0.00001)
+    let ffn = feed_forward_network(ln2.normalized, w_ff1, b_ff1, w_ff2, b_ff2)
+    let output_val = after_attn + ffn.output
+
+    return EncoderLayerResult {
+        output: output_val,
+        attn_output: attn_out,
+        ffn_output: ffn.output
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Autoregressive Mask Generation (Causal Masking)
+// Creates lower-triangular mask for autoregressive decoding
+// ----------------------------------------------------------------------------
+
+struct AutoregMask3x3 {
+    m11: f64, m12: f64, m13: f64,
+    m21: f64, m22: f64, m23: f64,
+    m31: f64, m32: f64, m33: f64
+}
+
+fn create_autoreg_mask_3x3() -> AutoregMask3x3 {
+    let neg_inf = -10000.0  // Large negative for softmax masking
+
+    // Lower triangular: can attend to self and previous positions
+    // Position i can attend to positions 0..i
+    return AutoregMask3x3 {
+        m11: 0.0,     m12: neg_inf, m13: neg_inf,  // pos 0: only self
+        m21: 0.0,     m22: 0.0,     m23: neg_inf,  // pos 1: 0 and self
+        m31: 0.0,     m32: 0.0,     m33: 0.0       // pos 2: all previous
+    }
+}
+
+// Check if position i can attend to position j (autoregressive/causal masking)
+fn autoreg_mask_value(pos_i: f64, pos_j: f64) -> f64 {
+    if pos_j <= pos_i {
+        return 0.0  // Can attend
+    }
+    return -10000.0  // Cannot attend (future position)
+}
+
+// ----------------------------------------------------------------------------
+// Padding Mask
+// Masks out padding tokens in sequences
+// ----------------------------------------------------------------------------
+
+fn padding_mask_value(is_padding: f64) -> f64 {
+    if is_padding > 0.5 {
+        return -10000.0  // Mask out padding
+    }
+    return 0.0  // Real token
+}
+
+// Combined autoregressive + padding mask
+fn combined_mask(pos_i: f64, pos_j: f64, is_padding_j: f64) -> f64 {
+    let autoreg = autoreg_mask_value(pos_i, pos_j)
+    let padding = padding_mask_value(is_padding_j)
+    // Both must allow attention
+    return min_f64(autoreg, padding)
+}
+
+// ----------------------------------------------------------------------------
+// Positional Encoding (Sinusoidal)
+// Already have this in attention section, adding specific transformer version
+// ----------------------------------------------------------------------------
+
+struct TransformerPosEnc {
+    pe_sin: f64,
+    pe_cos: f64
+}
+
+fn transformer_pos_encoding(position: f64, dim_idx: f64, d_model: f64) -> TransformerPosEnc {
+    // PE(pos, 2i) = sin(pos / 10000^(2i/d_model))
+    // PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
+    let angle = position / pow_f64(10000.0, 2.0 * dim_idx / d_model)
+
+    return TransformerPosEnc {
+        pe_sin: sin_f64(angle),
+        pe_cos: cos_f64(angle)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Learned Positional Embeddings
+// ----------------------------------------------------------------------------
+
+struct LearnedPosEmb3 {
+    emb1: f64,
+    emb2: f64,
+    emb3: f64
+}
+
+fn learned_pos_embedding_3(
+    pos: f64,
+    emb_pos0: f64, emb_pos1: f64, emb_pos2: f64
+) -> f64 {
+    // Select embedding based on position
+    if pos < 0.5 { return emb_pos0 }
+    if pos < 1.5 { return emb_pos1 }
+    return emb_pos2
+}
+
+// ----------------------------------------------------------------------------
+// Token Embedding + Positional Embedding
+// ----------------------------------------------------------------------------
+
+fn token_plus_position(
+    token_emb: f64,
+    pos_emb: f64,
+    scale: f64  // sqrt(d_model) scaling
+) -> f64 {
+    return token_emb * scale + pos_emb
+}
+
+// ----------------------------------------------------------------------------
+// Transformer Encoder Stack
+// Multiple encoder layers in sequence
+// ----------------------------------------------------------------------------
+
+struct EncoderStack2Result {
+    output: f64,
+    layer1_out: f64,
+    layer2_out: f64
+}
+
+fn encoder_stack_2_layers(
+    input_val: f64,
+    // Layer 1 params
+    w_q1: f64, w_k1: f64, w_v1: f64, w_o1: f64,
+    w_ff1_1: f64, b_ff1_1: f64, w_ff2_1: f64, b_ff2_1: f64,
+    // Layer 2 params
+    w_q2: f64, w_k2: f64, w_v2: f64, w_o2: f64,
+    w_ff1_2: f64, b_ff1_2: f64, w_ff2_2: f64, b_ff2_2: f64,
+    d_k: f64
+) -> EncoderStack2Result {
+    // Layer 1
+    let l1 = transformer_encoder_layer_preln(
+        input_val,
+        w_q1, w_k1, w_v1, w_o1,
+        w_ff1_1, b_ff1_1, w_ff2_1, b_ff2_1,
+        1.0, 0.0, 1.0, 0.0,  // LN params
+        d_k
+    )
+
+    // Layer 2
+    let l2 = transformer_encoder_layer_preln(
+        l1.output,
+        w_q2, w_k2, w_v2, w_o2,
+        w_ff1_2, b_ff1_2, w_ff2_2, b_ff2_2,
+        1.0, 0.0, 1.0, 0.0,
+        d_k
+    )
+
+    return EncoderStack2Result {
+        output: l2.output,
+        layer1_out: l1.output,
+        layer2_out: l2.output
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Transformer Decoder Stack
+// ----------------------------------------------------------------------------
+
+struct DecoderStack2Result {
+    output: f64,
+    layer1_out: f64,
+    layer2_out: f64
+}
+
+fn decoder_stack_2_layers(
+    input_val: f64,
+    encoder_output: f64,
+    // Layer 1 params (simplified - same structure)
+    w_q1: f64, w_k1: f64, w_v1: f64, w_o1: f64,
+    w_ff1: f64, b_ff1: f64, w_ff2: f64, b_ff2: f64,
+    // Layer 2 params
+    w_q2: f64, w_k2: f64, w_v2: f64, w_o2: f64,
+    w_ff1_2: f64, b_ff1_2: f64, w_ff2_2: f64, b_ff2_2: f64,
+    d_k: f64,
+    causal_mask: f64
+) -> DecoderStack2Result {
+    // Layer 1
+    let l1 = transformer_decoder_layer(
+        input_val, encoder_output,
+        w_q1, w_k1, w_v1, w_o1,  // self-attn
+        w_q1, w_k1, w_v1, w_o1,  // cross-attn (reusing for simplicity)
+        w_ff1, b_ff1, w_ff2, b_ff2,
+        1.0, 0.0, 1.0, 0.0, 1.0, 0.0,
+        d_k, causal_mask
+    )
+
+    // Layer 2
+    let l2 = transformer_decoder_layer(
+        l1.output, encoder_output,
+        w_q2, w_k2, w_v2, w_o2,
+        w_q2, w_k2, w_v2, w_o2,
+        w_ff1_2, b_ff1_2, w_ff2_2, b_ff2_2,
+        1.0, 0.0, 1.0, 0.0, 1.0, 0.0,
+        d_k, causal_mask
+    )
+
+    return DecoderStack2Result {
+        output: l2.output,
+        layer1_out: l1.output,
+        layer2_out: l2.output
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Output Projection / Language Model Head
+// Projects hidden state to vocabulary logits
+// ----------------------------------------------------------------------------
+
+struct LMHeadResult3 {
+    logit1: f64,
+    logit2: f64,
+    logit3: f64,
+    prob1: f64,
+    prob2: f64,
+    prob3: f64
+}
+
+fn lm_head_3vocab(
+    hidden: f64,
+    w1: f64, w2: f64, w3: f64,
+    b1: f64, b2: f64, b3: f64
+) -> LMHeadResult3 {
+    // Project to vocabulary logits
+    let l1 = hidden * w1 + b1
+    let l2 = hidden * w2 + b2
+    let l3 = hidden * w3 + b3
+
+    // Softmax to get probabilities
+    let max_l = max_f64(max_f64(l1, l2), l3)
+    let e1 = exp_f64(l1 - max_l)
+    let e2 = exp_f64(l2 - max_l)
+    let e3 = exp_f64(l3 - max_l)
+    let sum_e = e1 + e2 + e3
+
+    return LMHeadResult3 {
+        logit1: l1,
+        logit2: l2,
+        logit3: l3,
+        prob1: e1 / sum_e,
+        prob2: e2 / sum_e,
+        prob3: e3 / sum_e
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Temperature Scaling for Generation
+// ----------------------------------------------------------------------------
+
+fn apply_temperature(logit: f64, temperature: f64) -> f64 {
+    return logit / temperature
+}
+
+struct TempScaled3 {
+    l1: f64,
+    l2: f64,
+    l3: f64
+}
+
+fn temperature_scale_3(l1: f64, l2: f64, l3: f64, temp: f64) -> TempScaled3 {
+    return TempScaled3 {
+        l1: l1 / temp,
+        l2: l2 / temp,
+        l3: l3 / temp
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Top-K / Top-P (Nucleus) Sampling Helpers
+// ----------------------------------------------------------------------------
+
+// Check if value is in top-k (simplified for 3 values)
+fn is_in_top_k(val: f64, v1: f64, v2: f64, v3: f64, k: f64) -> f64 {
+    // Count how many values are >= this value
+    let count = (if v1 >= val { 1.0 } else { 0.0 }) +
+                (if v2 >= val { 1.0 } else { 0.0 }) +
+                (if v3 >= val { 1.0 } else { 0.0 })
+    // In top-k if rank <= k
+    if count <= k { return 1.0 }
+    return 0.0
+}
+
+// Top-p cumulative probability threshold
+fn top_p_mask(prob: f64, cumsum: f64, p_threshold: f64) -> f64 {
+    if cumsum <= p_threshold {
+        return 1.0  // Include in nucleus
+    }
+    return 0.0  // Exclude
+}
+
+// ----------------------------------------------------------------------------
+// Beam Search State
+// ----------------------------------------------------------------------------
+
+struct BeamState {
+    token_id: f64,
+    score: f64,
+    is_finished: f64
+}
+
+fn beam_search_step(
+    current_score: f64,
+    new_log_prob: f64,
+    is_eos: f64
+) -> BeamState {
+    let new_score = current_score + new_log_prob
+    return BeamState {
+        token_id: 0.0,  // Would be set by caller
+        score: new_score,
+        is_finished: is_eos
+    }
+}
+
+// Length penalty for beam search
+fn length_penalty(seq_len: f64, alpha: f64) -> f64 {
+    // ((5 + len) / 6)^alpha
+    return pow_f64((5.0 + seq_len) / 6.0, alpha)
+}
+
+fn score_with_length_penalty(score: f64, seq_len: f64, alpha: f64) -> f64 {
+    return score / length_penalty(seq_len, alpha)
+}
+
+// ----------------------------------------------------------------------------
+// Attention Dropout
+// ----------------------------------------------------------------------------
+
+fn attention_dropout(attn_weight: f64, keep_prob: f64, rng_val: f64) -> f64 {
+    if rng_val < keep_prob {
+        return attn_weight / keep_prob  // Scale up kept values
+    }
+    return 0.0  // Dropped
+}
+
+// ----------------------------------------------------------------------------
+// KV Cache for Efficient Generation
+// Stores key-value pairs to avoid recomputation
+// ----------------------------------------------------------------------------
+
+struct KVCacheEntry {
+    key_val: f64,
+    value_val: f64
+}
+
+fn kv_cache_append(
+    existing_k: f64,
+    existing_v: f64,
+    new_k: f64,
+    new_v: f64,
+    position: f64
+) -> KVCacheEntry {
+    // In practice, this concatenates. Simplified here.
+    if position < 0.5 {
+        return KVCacheEntry { key_val: new_k, value_val: new_v }
+    }
+    // Return most recent (in practice would be full sequence)
+    return KVCacheEntry { key_val: new_k, value_val: new_v }
+}
+
+// Use cached K, V for efficient attention
+fn attention_with_kv_cache(
+    query_val: f64,
+    cached_k: f64,
+    cached_v: f64,
+    new_k: f64,
+    new_v: f64,
+    d_k: f64
+) -> f64 {
+    let scale = 1.0 / sqrt_f64(d_k)
+
+    // Attend to cached + new
+    let score_cached = query_val * cached_k * scale
+    let score_new = query_val * new_k * scale
+
+    // Softmax over 2 positions
+    let max_s = max_f64(score_cached, score_new)
+    let e_cached = exp_f64(score_cached - max_s)
+    let e_new = exp_f64(score_new - max_s)
+    let sum_e = e_cached + e_new
+
+    let attn_cached = e_cached / sum_e
+    let attn_new = e_new / sum_e
+
+    return attn_cached * cached_v + attn_new * new_v
+}
+
+// ----------------------------------------------------------------------------
+// Rotary Position Embedding (RoPE) Integration
+// (Building on existing RoPE functions)
+// ----------------------------------------------------------------------------
+
+struct RoPEAttentionResult {
+    output: f64,
+    attn_weight: f64
+}
+
+fn rope_attention(
+    q_real: f64, q_imag: f64,
+    k_real: f64, k_imag: f64,
+    value_val: f64,
+    position: f64,
+    theta: f64,
+    d_k: f64
+) -> RoPEAttentionResult {
+    // Apply RoPE rotation
+    let angle = position * theta
+    let cos_val = cos_f64(angle)
+    let sin_val = sin_f64(angle)
+
+    // Rotate Q
+    let q_rot_real = q_real * cos_val - q_imag * sin_val
+    let q_rot_imag = q_real * sin_val + q_imag * cos_val
+
+    // Rotate K
+    let k_rot_real = k_real * cos_val - k_imag * sin_val
+    let k_rot_imag = k_real * sin_val + k_imag * cos_val
+
+    // Dot product (real part only for attention score)
+    let scale = 1.0 / sqrt_f64(d_k)
+    let score = (q_rot_real * k_rot_real + q_rot_imag * k_rot_imag) * scale
+    let attn = sigmoid_f64(score)
+
+    return RoPEAttentionResult {
+        output: attn * value_val,
+        attn_weight: attn
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Flash Attention Helper
+// (Conceptual - actual implementation requires tiling)
+// ----------------------------------------------------------------------------
+
+struct FlashAttnBlockResult {
+    output: f64,
+    log_sum_exp: f64
+}
+
+fn flash_attention_block(
+    query_val: f64,
+    key_block: f64,
+    value_block: f64,
+    prev_max: f64,
+    prev_sum: f64,
+    d_k: f64
+) -> FlashAttnBlockResult {
+    // Compute local attention
+    let scale = 1.0 / sqrt_f64(d_k)
+    let score = query_val * key_block * scale
+
+    // Online softmax update
+    let new_max = max_f64(prev_max, score)
+    let correction = exp_f64(prev_max - new_max)
+    let new_sum = correction * prev_sum + exp_f64(score - new_max)
+
+    // Weighted output
+    let attn = exp_f64(score - new_max) / new_sum
+    let output_val = attn * value_block
+
+    return FlashAttnBlockResult {
+        output: output_val,
+        log_sum_exp: new_max + log_f64(new_sum)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Alibi (Attention with Linear Biases) - Alternative to Positional Encodings
+// ----------------------------------------------------------------------------
+
+fn alibi_bias_with_head(head_idx: f64, num_heads: f64, query_pos: f64, key_pos: f64) -> f64 {
+    // Slope for this head: 2^(-8 * (head_idx + 1) / num_heads)
+    let slope = pow_f64(2.0, -8.0 * (head_idx + 1.0) / num_heads)
+    // Bias is -slope * |query_pos - key_pos|
+    let dist = if query_pos > key_pos { query_pos - key_pos } else { key_pos - query_pos }
+    return 0.0 - slope * dist
+}
+
+// ----------------------------------------------------------------------------
+// Gradient Checkpointing Marker
+// (Conceptual - marks where to checkpoint during backprop)
+// ----------------------------------------------------------------------------
+
+struct CheckpointState {
+    input_val: f64,
+    layer_idx: f64,
+    should_checkpoint: f64
+}
+
+fn checkpoint_layer(
+    input_val: f64,
+    layer_idx: f64,
+    checkpoint_every: f64
+) -> CheckpointState {
+    let should_cp = if layer_idx - checkpoint_every * (layer_idx / checkpoint_every) < 0.5 {
+        1.0
+    } else {
+        0.0
+    }
+    return CheckpointState {
+        input_val: input_val,
+        layer_idx: layer_idx,
+        should_checkpoint: should_cp
+    }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -9938,6 +10916,360 @@ fn main() -> i32 {
     // grad_input1 = 2 * 0.5 = 1
     if abs_f64(conv_grad.grad_kernel1 - 2.0) > tol { ok = false; println("  FAIL: conv grad kernel") }
     if abs_f64(conv_grad.grad_input1 - 1.0) > tol { ok = false; println("  FAIL: conv grad input") }
+    println("")
+
+    // ================================================================
+    // TRANSFORMER TESTS (161-180)
+    // ================================================================
+
+    println("=== Transformer Layer Tests ===")
+    println("")
+
+    // Test 161: Scaled dot-product attention
+    println("Test 161: Scaled dot-product attention")
+    let sdp_result = scaled_dot_product_attention(1.0, 1.0, 2.0, 1.0, 0.0)  // mask_val=0 (no masking)
+    println("  Q=1, K=1, V=2, d_k=1:")
+    println("    score = Q*K/sqrt(d_k) = ")
+    println(sdp_result.attention_weight)
+    println("    output = attention * V = ")
+    println(sdp_result.output)
+    // For single query-key pair with sigmoid, attention = sigmoid(1) ≈ 0.731
+    // output = attention * 2.0
+    let expected_attn = sigmoid_f64(1.0)
+    let expected_output = expected_attn * 2.0
+    if abs_f64(sdp_result.attention_weight - expected_attn) > tol { ok = false; println("  FAIL: attention") }
+    if abs_f64(sdp_result.output - expected_output) > tol { ok = false; println("  FAIL: output") }
+    println("")
+
+    // Test 162: Attention over 3 positions
+    println("Test 162: Attention over 3 positions")
+    let attn3 = attention_3pos(
+        1.0,                    // q
+        1.0, 0.5, 0.0,          // k1, k2, k3
+        1.0, 2.0, 3.0,          // v1, v2, v3
+        1.0,                    // d_k
+        0.0, 0.0, 0.0           // m1, m2, m3 (no masking)
+    )
+    println("  Q=1, K=[1,0.5,0], V=[1,2,3]:")
+    println("    scores = [1, 0.5, 0]")
+    println("    attention weights (softmax):")
+    println("      attn1 = ")
+    println(attn3.attn1)
+    println("      attn2 = ")
+    println(attn3.attn2)
+    println("      attn3 = ")
+    println(attn3.attn3)
+    println("    output = ")
+    println(attn3.output)
+    // Check attention sums to 1
+    let attn_sum = attn3.attn1 + attn3.attn2 + attn3.attn3
+    if abs_f64(attn_sum - 1.0) > tol { ok = false; println("  FAIL: attention doesn't sum to 1") }
+    // attn1 > attn2 > attn3 (since scores are 1 > 0.5 > 0)
+    if attn3.attn1 <= attn3.attn2 { ok = false; println("  FAIL: attn1 should be > attn2") }
+    if attn3.attn2 <= attn3.attn3 { ok = false; println("  FAIL: attn2 should be > attn3") }
+    println("")
+
+    // Test 163: Multi-head attention (2 heads)
+    println("Test 163: Multi-head attention (2 heads)")
+    let mha = multi_head_attention_2h(
+        1.0, 1.0, 2.0,          // query, key, value
+        0.5, 0.5, 0.5,          // head1: W_q, W_k, W_v
+        0.3, 0.3, 0.7,          // head2: W_q, W_k, W_v
+        1.0, 1.0,               // output projection: W_o1, W_o2
+        1.0                     // d_k
+    )
+    println("  MHA with 2 heads:")
+    println("    head1_attn = ")
+    println(mha.head1_attn)
+    println("    head2_attn = ")
+    println(mha.head2_attn)
+    println("    output = ")
+    println(mha.output)
+    // Output should be non-zero
+    if abs_f64(mha.output) < 0.001 { ok = false; println("  FAIL: output should be non-zero") }
+    println("")
+
+    // Test 164: FFN with ReLU
+    println("Test 164: FFN with ReLU")
+    let ffn_relu = feed_forward_network(1.0, 2.0, 0.5, 1.0, 0.0)
+    println("  input=1, W1=2, b1=0.5, W2=1, b2=0:")
+    println("    hidden = ReLU(1*2 + 0.5) = ReLU(2.5) = ")
+    println(ffn_relu.hidden)
+    println("    output = 2.5*1 + 0 = ")
+    println(ffn_relu.output)
+    if abs_f64(ffn_relu.hidden - 2.5) > tol { ok = false; println("  FAIL: hidden") }
+    if abs_f64(ffn_relu.output - 2.5) > tol { ok = false; println("  FAIL: output") }
+    println("")
+
+    // Test 165: FFN with GELU
+    println("Test 165: FFN with GELU")
+    let ffn_gelu_res = feed_forward_gelu(1.0, 1.0, 0.0, 1.0, 0.0)
+    println("  input=1, W1=1, b1=0, W2=1, b2=0:")
+    println("    hidden = GELU(1) = ")
+    println(ffn_gelu_res.hidden)
+    println("    output = ")
+    println(ffn_gelu_res.output)
+    // GELU(1) ≈ 0.841
+    let gelu_1 = gelu_approx(1.0)
+    if abs_f64(ffn_gelu_res.hidden - gelu_1) > tol { ok = false; println("  FAIL: GELU hidden") }
+    println("")
+
+    // Test 166: FFN with GLU
+    println("Test 166: FFN with GLU")
+    let ffn_glu_res = feed_forward_glu(1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0)
+    println("  GLU: hidden = x * sigmoid(gate)")
+    println("    output = ")
+    println(ffn_glu_res.output)
+    // GLU(1,1) = 1 * sigmoid(1) ≈ 0.731
+    let sig_1 = sigmoid_f64(1.0)
+    if abs_f64(ffn_glu_res.hidden - sig_1) > tol { ok = false; println("  FAIL: GLU hidden") }
+    println("")
+
+    // Test 167: FFN with SwiGLU
+    println("Test 167: FFN with SwiGLU")
+    let ffn_swiglu_res = feed_forward_swiglu(1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0)
+    println("  SwiGLU: hidden = SiLU(x) * gate")
+    println("    output = ")
+    println(ffn_swiglu_res.output)
+    // SwiGLU with x=gate=1: SiLU(1) * 1 ≈ 0.731
+    let silu_1 = swish(1.0)
+    if abs_f64(ffn_swiglu_res.hidden - silu_1) > tol { ok = false; println("  FAIL: SwiGLU hidden") }
+    println("")
+
+    // Test 168: RMS Norm
+    println("Test 168: RMS Norm")
+    let rms = rms_norm(2.0, 1.0, 0.0, 0.00001)
+    println("  input=2, gamma=1, beta=0:")
+    println("    RMS = sqrt(x^2) = |x| = 2")
+    println("    normalized = x/RMS = 1")
+    println("    result = ")
+    println(rms)
+    // RMSNorm(2) with gamma=1, beta=0 should be 1.0 (normalized)
+    if abs_f64(rms - 1.0) > tol { ok = false; println("  FAIL: RMS norm") }
+    println("")
+
+    // Test 169: RMS Norm with multiple values
+    println("Test 169: RMS Norm with 3 values")
+    let rms3 = rms_norm_3(1.0, 2.0, 2.0, 1.0, 0.0, 0.00001)
+    println("  input=[1,2,2], gamma=1, beta=0:")
+    println("    RMS = sqrt((1+4+4)/3) = sqrt(3) = ")
+    let rms_val = sqrt_f64(3.0)
+    println(rms_val)
+    println("    normalized[0] = 1/sqrt(3) = ")
+    println(rms3.y1)
+    let expected_rms3 = 1.0 / rms_val
+    if abs_f64(rms3.y1 - expected_rms3) > tol { ok = false; println("  FAIL: RMS norm 3") }
+    println("")
+
+    // Test 170: Transformer encoder layer (Pre-LN)
+    println("Test 170: Transformer encoder layer (Pre-LN)")
+    let enc_preln = transformer_encoder_layer_preln(
+        1.0,                    // input
+        0.5, 0.5, 0.5, 1.0,    // W_q, W_k, W_v, W_o
+        1.0, 0.0, 1.0, 0.0,    // W_ff1, b_ff1, W_ff2, b_ff2
+        1.0, 0.0,              // ln1 gamma, beta
+        1.0, 0.0,              // ln2 gamma, beta
+        1.0                     // d_k
+    )
+    println("  Pre-LN encoder layer:")
+    println("    attn_output = ")
+    println(enc_preln.attn_output)
+    println("    ffn_output = ")
+    println(enc_preln.ffn_output)
+    println("    final output = ")
+    println(enc_preln.output)
+    // Output should be close to input with residuals
+    // Pre-LN: output = input + FFN(LN(input + Attn(LN(input))))
+    println("")
+
+    // Test 171: Transformer encoder layer (Post-LN)
+    println("Test 171: Transformer encoder layer (Post-LN)")
+    let enc_postln = transformer_encoder_layer_postln(
+        1.0,                    // input
+        0.5, 0.5, 0.5, 1.0,    // W_q, W_k, W_v, W_o
+        1.0, 0.0, 1.0, 0.0,    // W_ff1, b_ff1, W_ff2, b_ff2
+        1.0, 0.0,              // ln1 gamma, beta
+        1.0, 0.0,              // ln2 gamma, beta
+        1.0                     // d_k
+    )
+    println("  Post-LN encoder layer:")
+    println("    attn_output = ")
+    println(enc_postln.attn_output)
+    println("    ffn_output = ")
+    println(enc_postln.ffn_output)
+    println("    final output = ")
+    println(enc_postln.output)
+    // Post-LN: output = LN(input + FFN(LN(input + Attn(input))))
+    println("")
+
+    // Test 172: Transformer decoder layer
+    println("Test 172: Transformer decoder layer")
+    let dec = transformer_decoder_layer(
+        1.0,                        // input
+        2.0,                        // encoder_output
+        0.5, 0.5, 0.5, 1.0,        // self-attn: W_q, W_k, W_v, W_o
+        0.5, 0.5, 0.5, 1.0,        // cross-attn: W_q, W_k, W_v, W_o
+        1.0, 0.0, 1.0, 0.0,        // W_ff1, b_ff1, W_ff2, b_ff2
+        1.0, 0.0,                  // ln1 gamma, beta
+        1.0, 0.0,                  // ln2 gamma, beta
+        1.0, 0.0,                  // ln3 gamma, beta
+        1.0,                        // d_k
+        1.0                         // causal_mask (1 = not masked)
+    )
+    println("  Decoder layer with encoder_output=2:")
+    println("    self_attn_output = ")
+    println(dec.self_attn_output)
+    println("    cross_attn_output = ")
+    println(dec.cross_attn_output)
+    println("    ffn_output = ")
+    println(dec.ffn_output)
+    println("    final output = ")
+    println(dec.output)
+    // Cross attention should attend to encoder output
+    println("")
+
+    // Test 173: Decoder-only layer (GPT-style)
+    println("Test 173: Decoder-only layer (GPT-style)")
+    let gpt = decoder_only_layer(
+        1.0,                    // input
+        0.5, 0.5, 0.5, 1.0,    // W_q, W_k, W_v, W_o
+        1.0, 0.0, 1.0, 0.0,    // W_ff1, b_ff1, W_ff2, b_ff2
+        1.0, 0.0,              // ln1 gamma, beta
+        1.0, 0.0,              // ln2 gamma, beta
+        1.0,                    // d_k
+        1.0                     // causal_mask (1.0 = not masked)
+    )
+    println("  GPT-style decoder-only:")
+    println("    attn_output = ")
+    println(gpt.attn_output)
+    println("    ffn_output = ")
+    println(gpt.ffn_output)
+    println("    final output = ")
+    println(gpt.output)
+    println("")
+
+    // Test 174: Causal mask (additive mask for softmax)
+    println("Test 174: Causal mask generation")
+    let mask_00 = autoreg_mask_value(0.0, 0.0)  // i=0, j=0: can attend
+    let mask_01 = autoreg_mask_value(0.0, 1.0)  // i=0, j=1: cannot attend (future)
+    let mask_10 = autoreg_mask_value(1.0, 0.0)  // i=1, j=0: can attend (past)
+    let mask_11 = autoreg_mask_value(1.0, 1.0)  // i=1, j=1: can attend (self)
+    println("  Causal mask (0=attend, -10000=mask):")
+    println("    mask[0,0] = ")
+    println(mask_00)
+    println("    mask[0,1] = ")
+    println(mask_01)
+    println("    mask[1,0] = ")
+    println(mask_10)
+    println("    mask[1,1] = ")
+    println(mask_11)
+    // 0.0 means can attend, -10000.0 means cannot attend (additive masking)
+    if abs_f64(mask_00 - 0.0) > tol { ok = false; println("  FAIL: mask[0,0]") }
+    if mask_01 > -1000.0 { ok = false; println("  FAIL: mask[0,1] should be large negative") }
+    if abs_f64(mask_10 - 0.0) > tol { ok = false; println("  FAIL: mask[1,0]") }
+    if abs_f64(mask_11 - 0.0) > tol { ok = false; println("  FAIL: mask[1,1]") }
+    println("")
+
+    // Test 175: Padding mask (additive mask for softmax)
+    println("Test 175: Padding mask")
+    let pad_mask_0 = padding_mask_value(0.0)  // not padding
+    let pad_mask_1 = padding_mask_value(1.0)  // is padding
+    println("  Padding mask (0=attend, -10000=mask):")
+    println("    is_padding=0: ")
+    println(pad_mask_0)
+    println("    is_padding=1: ")
+    println(pad_mask_1)
+    // 0.0 means can attend, -10000.0 means cannot attend
+    if abs_f64(pad_mask_0 - 0.0) > tol { ok = false; println("  FAIL: pad non-padding") }
+    if pad_mask_1 > -1000.0 { ok = false; println("  FAIL: pad padding should be large negative") }
+    println("")
+
+    // Test 176: Sinusoidal positional encoding
+    println("Test 176: Sinusoidal positional encoding")
+    let pe_0_0 = sinusoidal_pos_embedding(0.0, 0.0, 512.0)
+    let pe_0_1 = sinusoidal_pos_embedding(0.0, 1.0, 512.0)
+    let pe_1_0 = sinusoidal_pos_embedding(1.0, 0.0, 512.0)
+    println("  d_model=512:")
+    println("    PE[pos=0, dim=0] = sin(0) = ")
+    println(pe_0_0)
+    println("    PE[pos=0, dim=1] = cos(0) = ")
+    println(pe_0_1)
+    println("    PE[pos=1, dim=0] = sin(1/10000^0) = ")
+    println(pe_1_0)
+    // PE[0,0] = sin(0) = 0
+    // PE[0,1] = cos(0) = 1
+    if abs_f64(pe_0_0 - 0.0) > tol { ok = false; println("  FAIL: PE[0,0]") }
+    if abs_f64(pe_0_1 - 1.0) > tol { ok = false; println("  FAIL: PE[0,1]") }
+    println("")
+
+    // Test 177: LM head logits
+    println("Test 177: LM head (3 vocab)")
+    let lm = lm_head_3vocab(1.0, 1.0, 0.5, 0.3)
+    println("  hidden=1, W=[1, 0.5, 0.3]:")
+    println("    logit1 = ")
+    println(lm.logit1)
+    println("    logit2 = ")
+    println(lm.logit2)
+    println("    logit3 = ")
+    println(lm.logit3)
+    if abs_f64(lm.logit1 - 1.0) > tol { ok = false; println("  FAIL: logit1") }
+    if abs_f64(lm.logit2 - 0.5) > tol { ok = false; println("  FAIL: logit2") }
+    if abs_f64(lm.logit3 - 0.3) > tol { ok = false; println("  FAIL: logit3") }
+    println("")
+
+    // Test 178: Temperature scaling
+    println("Test 178: Temperature scaling")
+    let temp_scaled = temperature_scale_3(1.0, 0.5, 0.3, 2.0)
+    println("  logits=[1, 0.5, 0.3], temp=2:")
+    println("    scaled1 = 1/2 = ")
+    println(temp_scaled.l1)
+    println("    scaled2 = 0.5/2 = ")
+    println(temp_scaled.l2)
+    println("    scaled3 = 0.3/2 = ")
+    println(temp_scaled.l3)
+    if abs_f64(temp_scaled.l1 - 0.5) > tol { ok = false; println("  FAIL: temp scaled 1") }
+    if abs_f64(temp_scaled.l2 - 0.25) > tol { ok = false; println("  FAIL: temp scaled 2") }
+    if abs_f64(temp_scaled.l3 - 0.15) > tol { ok = false; println("  FAIL: temp scaled 3") }
+    println("")
+
+    // Test 179: KV cache append
+    println("Test 179: KV cache append")
+    let kv = kv_cache_append(1.0, 2.0, 5.0, 6.0, 1.0)  // existing_k, existing_v, new_k, new_v, position
+    println("  Existing: K=1, V=2")
+    println("  New: K=5, V=6")
+    println("  Position=1 (append)")
+    println("    key_val = ")
+    println(kv.key_val)
+    println("    value_val = ")
+    println(kv.value_val)
+    // At position > 0, returns the new k,v
+    if abs_f64(kv.key_val - 5.0) > tol { ok = false; println("  FAIL: key_val") }
+    if abs_f64(kv.value_val - 6.0) > tol { ok = false; println("  FAIL: value_val") }
+    println("")
+
+    // Test 180: RoPE (Rotary Position Embedding)
+    println("Test 180: RoPE attention")
+    let rope = rope_attention(
+        1.0, 0.0,   // q (as complex: 1+0i)
+        1.0, 0.0,   // k (as complex: 1+0i)
+        2.0,        // v
+        0.0,        // position
+        1.0,        // theta (base frequency)
+        1.0         // d_k
+    )
+    println("  Q=1, K=1, V=2, pos=0, theta=1:")
+    println("    With RoPE at pos=0, rotation angle=0")
+    println("    attn_weight = ")
+    println(rope.attn_weight)
+    println("    output = ")
+    println(rope.output)
+    // At pos=0, angle=0*1=0, so no rotation
+    // score = (1*1 + 0*0) / sqrt(1) = 1, attn = sigmoid(1) ≈ 0.731
+    // output = attn * 2 ≈ 1.462
+    let expected_rope_attn = sigmoid_f64(1.0)
+    let expected_rope_out = expected_rope_attn * 2.0
+    if abs_f64(rope.attn_weight - expected_rope_attn) > tol { ok = false; println("  FAIL: RoPE attn_weight") }
+    if abs_f64(rope.output - expected_rope_out) > tol { ok = false; println("  FAIL: RoPE output") }
     println("")
 
     if ok {
