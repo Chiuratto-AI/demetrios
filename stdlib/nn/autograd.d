@@ -35,6 +35,29 @@ fn log_f64(x: f64) -> f64 {
     return ln_f64(x)
 }
 
+// ReLU activation: max(0, x)
+fn relu_f64(x: f64) -> f64 {
+    if x > 0.0 { return x }
+    return 0.0
+}
+
+// Sigmoid activation: 1 / (1 + exp(-x))
+fn sigmoid_f64(x: f64) -> f64 {
+    return 1.0 / (1.0 + exp_f64(0.0 - x))
+}
+
+// ELU activation: x if x > 0, else alpha * (exp(x) - 1)
+fn elu_f64(x: f64, alpha: f64) -> f64 {
+    if x > 0.0 { return x }
+    return alpha * (exp_f64(x) - 1.0)
+}
+
+// Leaky ReLU activation: x if x > 0, else alpha * x
+fn leaky_relu_f64(x: f64, alpha: f64) -> f64 {
+    if x > 0.0 { return x }
+    return alpha * x
+}
+
 // ============================================================================
 // OPERATION CODES
 // ============================================================================
@@ -3534,6 +3557,689 @@ fn is_attention_peaked(entropy: f64, thresh: f64) -> f64 {
 }
 
 // ============================================================================
+// GRAPH NEURAL NETWORK LAYERS
+// ============================================================================
+
+// Graph representation for small graphs (3-4 nodes)
+// Edge list representation: (src, dst) pairs with weights
+
+// Aggregation functions for message passing
+
+// Sum aggregation: aggregate neighbor messages by sum
+fn aggregate_sum_2(msg1: f64, msg2: f64) -> f64 {
+    return msg1 + msg2
+}
+
+fn aggregate_sum_3(msg1: f64, msg2: f64, msg3: f64) -> f64 {
+    return msg1 + msg2 + msg3
+}
+
+fn aggregate_sum_4(msg1: f64, msg2: f64, msg3: f64, msg4: f64) -> f64 {
+    return msg1 + msg2 + msg3 + msg4
+}
+
+// Mean aggregation: aggregate neighbor messages by mean
+fn aggregate_mean_2(msg1: f64, msg2: f64) -> f64 {
+    return (msg1 + msg2) / 2.0
+}
+
+fn aggregate_mean_3(msg1: f64, msg2: f64, msg3: f64) -> f64 {
+    return (msg1 + msg2 + msg3) / 3.0
+}
+
+fn aggregate_mean_4(msg1: f64, msg2: f64, msg3: f64, msg4: f64) -> f64 {
+    return (msg1 + msg2 + msg3 + msg4) / 4.0
+}
+
+// Max aggregation: aggregate neighbor messages by max
+fn aggregate_max_2(msg1: f64, msg2: f64) -> f64 {
+    if msg1 > msg2 { return msg1 }
+    return msg2
+}
+
+fn aggregate_max_3(msg1: f64, msg2: f64, msg3: f64) -> f64 {
+    let m12 = aggregate_max_2(msg1, msg2)
+    return aggregate_max_2(m12, msg3)
+}
+
+fn aggregate_max_4(msg1: f64, msg2: f64, msg3: f64, msg4: f64) -> f64 {
+    let m12 = aggregate_max_2(msg1, msg2)
+    let m34 = aggregate_max_2(msg3, msg4)
+    return aggregate_max_2(m12, m34)
+}
+
+// Min aggregation
+fn aggregate_min_2(msg1: f64, msg2: f64) -> f64 {
+    if msg1 < msg2 { return msg1 }
+    return msg2
+}
+
+fn aggregate_min_3(msg1: f64, msg2: f64, msg3: f64) -> f64 {
+    let m12 = aggregate_min_2(msg1, msg2)
+    return aggregate_min_2(m12, msg3)
+}
+
+// ----------------------------------------------------------------------------
+// GCN: Graph Convolutional Network (Kipf & Welling, 2017)
+// h_i' = σ(Σ_j (1/√(d_i * d_j)) * W * h_j)
+// Simplified: uses normalized adjacency with self-loops
+// ----------------------------------------------------------------------------
+
+// GCN message: transform neighbor feature
+fn gcn_message(neighbor_feat: f64, weight: f64) -> f64 {
+    return neighbor_feat * weight
+}
+
+// GCN normalization coefficient: 1/sqrt(deg_i * deg_j)
+fn gcn_norm_coeff(deg_i: f64, deg_j: f64) -> f64 {
+    let prod = deg_i * deg_j
+    if prod <= 0.0 { return 0.0 }
+    return 1.0 / sqrt_f64(prod)
+}
+
+// GCN layer for node with 2 neighbors (including self-loop)
+// node_feat: current node feature
+// neighbor1, neighbor2: neighbor features
+// deg_self, deg1, deg2: node degrees (including self-loop, so +1)
+// weight: shared weight matrix (single value for 1D case)
+struct GCNResult {
+    output: f64,
+    pre_activation: f64
+}
+
+fn gcn_layer_2neighbors(
+    node_feat: f64,
+    neighbor1: f64,
+    neighbor2: f64,
+    deg_self: f64,
+    deg1: f64,
+    deg2: f64,
+    weight: f64,
+    use_relu: f64
+) -> GCNResult {
+    // Self-loop contribution
+    let norm_self = gcn_norm_coeff(deg_self, deg_self)
+    let msg_self = gcn_message(node_feat, weight) * norm_self
+
+    // Neighbor contributions
+    let norm1 = gcn_norm_coeff(deg_self, deg1)
+    let msg1 = gcn_message(neighbor1, weight) * norm1
+
+    let norm2 = gcn_norm_coeff(deg_self, deg2)
+    let msg2 = gcn_message(neighbor2, weight) * norm2
+
+    // Aggregate
+    let pre_act = msg_self + msg1 + msg2
+
+    // Apply activation
+    let output = if use_relu > 0.5 {
+        relu_f64(pre_act)
+    } else {
+        pre_act
+    }
+
+    return GCNResult { output: output, pre_activation: pre_act }
+}
+
+// GCN layer for node with 3 neighbors
+fn gcn_layer_3neighbors(
+    node_feat: f64,
+    n1: f64,
+    n2: f64,
+    n3: f64,
+    deg_self: f64,
+    d1: f64,
+    d2: f64,
+    d3: f64,
+    weight: f64,
+    use_relu: f64
+) -> GCNResult {
+    let norm_self = gcn_norm_coeff(deg_self, deg_self)
+    let msg_self = gcn_message(node_feat, weight) * norm_self
+
+    let norm1 = gcn_norm_coeff(deg_self, d1)
+    let msg1 = gcn_message(n1, weight) * norm1
+
+    let norm2 = gcn_norm_coeff(deg_self, d2)
+    let msg2 = gcn_message(n2, weight) * norm2
+
+    let norm3 = gcn_norm_coeff(deg_self, d3)
+    let msg3 = gcn_message(n3, weight) * norm3
+
+    let pre_act = msg_self + msg1 + msg2 + msg3
+
+    let output = if use_relu > 0.5 {
+        relu_f64(pre_act)
+    } else {
+        pre_act
+    }
+
+    return GCNResult { output: output, pre_activation: pre_act }
+}
+
+// ----------------------------------------------------------------------------
+// GAT: Graph Attention Network (Veličković et al., 2018)
+// α_ij = softmax_j(LeakyReLU(a^T [Wh_i || Wh_j]))
+// h_i' = σ(Σ_j α_ij * W * h_j)
+// ----------------------------------------------------------------------------
+
+// GAT attention coefficient (unnormalized)
+// Computes LeakyReLU(a_l * Wh_i + a_r * Wh_j)
+fn gat_attention_raw(
+    wh_i: f64,
+    wh_j: f64,
+    attn_left: f64,
+    attn_right: f64,
+    negative_slope: f64
+) -> f64 {
+    let e = attn_left * wh_i + attn_right * wh_j
+    // LeakyReLU
+    if e >= 0.0 { return e }
+    return negative_slope * e
+}
+
+// GAT layer result
+struct GATResult {
+    output: f64,
+    alpha1: f64,
+    alpha2: f64
+}
+
+// GAT layer for node with 2 neighbors (including self)
+fn gat_layer_2neighbors(
+    node_feat: f64,
+    neighbor1: f64,
+    neighbor2: f64,
+    weight: f64,
+    attn_left: f64,
+    attn_right: f64,
+    negative_slope: f64,
+    use_elu: f64
+) -> GATResult {
+    // Transform features
+    let wh_self = node_feat * weight
+    let wh_n1 = neighbor1 * weight
+    let wh_n2 = neighbor2 * weight
+
+    // Compute attention scores (self + 2 neighbors)
+    let e_self = gat_attention_raw(wh_self, wh_self, attn_left, attn_right, negative_slope)
+    let e_n1 = gat_attention_raw(wh_self, wh_n1, attn_left, attn_right, negative_slope)
+    let e_n2 = gat_attention_raw(wh_self, wh_n2, attn_left, attn_right, negative_slope)
+
+    // Softmax over attention scores
+    let max_e = aggregate_max_3(e_self, e_n1, e_n2)
+    let exp_self = exp_f64(e_self - max_e)
+    let exp_n1 = exp_f64(e_n1 - max_e)
+    let exp_n2 = exp_f64(e_n2 - max_e)
+    let sum_exp = exp_self + exp_n1 + exp_n2
+
+    let alpha_self = exp_self / sum_exp
+    let alpha_n1 = exp_n1 / sum_exp
+    let alpha_n2 = exp_n2 / sum_exp
+
+    // Weighted aggregation
+    let agg = alpha_self * wh_self + alpha_n1 * wh_n1 + alpha_n2 * wh_n2
+
+    // Apply activation (ELU for GAT)
+    let output = if use_elu > 0.5 {
+        elu_f64(agg, 1.0)
+    } else {
+        agg
+    }
+
+    return GATResult { output: output, alpha1: alpha_n1, alpha2: alpha_n2 }
+}
+
+// Multi-head GAT result
+struct MultiHeadGATResult {
+    output: f64,
+    head1_out: f64,
+    head2_out: f64
+}
+
+// Multi-head GAT (2 heads, concatenated)
+fn gat_multihead_2(
+    node_feat: f64,
+    neighbor1: f64,
+    neighbor2: f64,
+    w1: f64,
+    attn_l1: f64,
+    attn_r1: f64,
+    w2: f64,
+    attn_l2: f64,
+    attn_r2: f64,
+    negative_slope: f64
+) -> MultiHeadGATResult {
+    // Head 1
+    let h1 = gat_layer_2neighbors(node_feat, neighbor1, neighbor2, w1, attn_l1, attn_r1, negative_slope, 0.0)
+    // Head 2
+    let h2 = gat_layer_2neighbors(node_feat, neighbor1, neighbor2, w2, attn_l2, attn_r2, negative_slope, 0.0)
+
+    // Concatenate (sum for scalar case)
+    let combined = h1.output + h2.output
+
+    return MultiHeadGATResult { output: combined, head1_out: h1.output, head2_out: h2.output }
+}
+
+// ----------------------------------------------------------------------------
+// GraphSAGE (Hamilton et al., 2017)
+// h_i' = σ(W · CONCAT(h_i, AGG({h_j : j ∈ N(i)})))
+// AGG can be mean, max, LSTM, etc.
+// ----------------------------------------------------------------------------
+
+struct GraphSAGEResult {
+    output: f64,
+    aggregated: f64
+}
+
+// GraphSAGE with mean aggregation
+fn graphsage_mean_2neighbors(
+    node_feat: f64,
+    neighbor1: f64,
+    neighbor2: f64,
+    weight_self: f64,
+    weight_neigh: f64,
+    use_relu: f64
+) -> GraphSAGEResult {
+    // Aggregate neighbors (mean)
+    let agg_neighbors = aggregate_mean_2(neighbor1, neighbor2)
+
+    // Combine self and aggregated neighbor features
+    // CONCAT is approximated as weighted sum for 1D
+    let combined = weight_self * node_feat + weight_neigh * agg_neighbors
+
+    // Apply activation
+    let output = if use_relu > 0.5 {
+        relu_f64(combined)
+    } else {
+        combined
+    }
+
+    return GraphSAGEResult { output: output, aggregated: agg_neighbors }
+}
+
+// GraphSAGE with max-pool aggregation
+fn graphsage_maxpool_2neighbors(
+    node_feat: f64,
+    neighbor1: f64,
+    neighbor2: f64,
+    weight_self: f64,
+    weight_neigh: f64,
+    pool_weight: f64,
+    use_relu: f64
+) -> GraphSAGEResult {
+    // Transform neighbors before pooling
+    let t1 = relu_f64(neighbor1 * pool_weight)
+    let t2 = relu_f64(neighbor2 * pool_weight)
+
+    // Max pool
+    let agg_neighbors = aggregate_max_2(t1, t2)
+
+    // Combine
+    let combined = weight_self * node_feat + weight_neigh * agg_neighbors
+
+    let output = if use_relu > 0.5 {
+        relu_f64(combined)
+    } else {
+        combined
+    }
+
+    return GraphSAGEResult { output: output, aggregated: agg_neighbors }
+}
+
+// GraphSAGE with 3 neighbors
+fn graphsage_mean_3neighbors(
+    node_feat: f64,
+    n1: f64,
+    n2: f64,
+    n3: f64,
+    weight_self: f64,
+    weight_neigh: f64,
+    use_relu: f64
+) -> GraphSAGEResult {
+    let agg_neighbors = aggregate_mean_3(n1, n2, n3)
+    let combined = weight_self * node_feat + weight_neigh * agg_neighbors
+
+    let output = if use_relu > 0.5 {
+        relu_f64(combined)
+    } else {
+        combined
+    }
+
+    return GraphSAGEResult { output: output, aggregated: agg_neighbors }
+}
+
+// ----------------------------------------------------------------------------
+// GIN: Graph Isomorphism Network (Xu et al., 2019)
+// h_i' = MLP((1 + ε) · h_i + Σ_j h_j)
+// ----------------------------------------------------------------------------
+
+struct GINResult {
+    output: f64,
+    pre_mlp: f64
+}
+
+// GIN layer with 2 neighbors
+fn gin_layer_2neighbors(
+    node_feat: f64,
+    neighbor1: f64,
+    neighbor2: f64,
+    epsilon: f64,
+    mlp_w1: f64,
+    mlp_w2: f64,
+    mlp_bias: f64
+) -> GINResult {
+    // Sum aggregation
+    let agg = neighbor1 + neighbor2
+
+    // (1 + ε) * h_i + sum(h_j)
+    let pre_mlp = (1.0 + epsilon) * node_feat + agg
+
+    // Simple 2-layer MLP: ReLU(w1 * x) * w2 + bias
+    let hidden = relu_f64(pre_mlp * mlp_w1)
+    let output = hidden * mlp_w2 + mlp_bias
+
+    return GINResult { output: output, pre_mlp: pre_mlp }
+}
+
+// GIN layer with 3 neighbors
+fn gin_layer_3neighbors(
+    node_feat: f64,
+    n1: f64,
+    n2: f64,
+    n3: f64,
+    epsilon: f64,
+    mlp_w1: f64,
+    mlp_w2: f64,
+    mlp_bias: f64
+) -> GINResult {
+    let agg = n1 + n2 + n3
+    let pre_mlp = (1.0 + epsilon) * node_feat + agg
+    let hidden = relu_f64(pre_mlp * mlp_w1)
+    let output = hidden * mlp_w2 + mlp_bias
+
+    return GINResult { output: output, pre_mlp: pre_mlp }
+}
+
+// ----------------------------------------------------------------------------
+// Edge-Conditioned Convolution
+// h_i' = Σ_j f(e_ij) * h_j where f is an edge network
+// ----------------------------------------------------------------------------
+
+struct EdgeConvResult {
+    output: f64,
+    edge_weight1: f64,
+    edge_weight2: f64
+}
+
+// Edge convolution with learned edge weights
+fn edge_conv_2neighbors(
+    node_feat: f64,
+    neighbor1: f64,
+    neighbor2: f64,
+    edge_feat1: f64,
+    edge_feat2: f64,
+    edge_weight: f64,
+    edge_bias: f64
+) -> EdgeConvResult {
+    // Edge network: simple linear transform of edge features
+    let e1 = sigmoid_f64(edge_feat1 * edge_weight + edge_bias)
+    let e2 = sigmoid_f64(edge_feat2 * edge_weight + edge_bias)
+
+    // Weight messages by edge values
+    let msg1 = neighbor1 * e1
+    let msg2 = neighbor2 * e2
+
+    // Self-loop with weight 1
+    let output = node_feat + msg1 + msg2
+
+    return EdgeConvResult { output: output, edge_weight1: e1, edge_weight2: e2 }
+}
+
+// ----------------------------------------------------------------------------
+// Message Passing Neural Network (MPNN) Framework (Gilmer et al., 2017)
+// m_i = Σ_j M(h_i, h_j, e_ij)  -- message function
+// h_i' = U(h_i, m_i)           -- update function
+// ----------------------------------------------------------------------------
+
+struct MPNNResult {
+    output: f64,
+    message_sum: f64
+}
+
+// Simple MPNN with edge features
+fn mpnn_layer_2neighbors(
+    node_feat: f64,
+    neighbor1: f64,
+    neighbor2: f64,
+    edge1: f64,
+    edge2: f64,
+    msg_weight: f64,
+    update_weight: f64
+) -> MPNNResult {
+    // Message function: M(h_j, e_ij) = h_j * e_ij * w
+    let m1 = neighbor1 * edge1 * msg_weight
+    let m2 = neighbor2 * edge2 * msg_weight
+
+    // Aggregate messages
+    let msg_sum = m1 + m2
+
+    // Update function: U(h_i, m_i) = ReLU(h_i + m_i * w_u)
+    let output = relu_f64(node_feat + msg_sum * update_weight)
+
+    return MPNNResult { output: output, message_sum: msg_sum }
+}
+
+// ----------------------------------------------------------------------------
+// Graph Pooling Operations
+// Global pooling to get graph-level representations
+// ----------------------------------------------------------------------------
+
+struct GraphPoolResult {
+    sum_pool: f64,
+    mean_pool: f64,
+    max_pool: f64
+}
+
+// Global pooling for 3-node graph
+fn graph_pool_3nodes(h1: f64, h2: f64, h3: f64) -> GraphPoolResult {
+    let sum_p = h1 + h2 + h3
+    let mean_p = sum_p / 3.0
+    let max_p = aggregate_max_3(h1, h2, h3)
+
+    return GraphPoolResult { sum_pool: sum_p, mean_pool: mean_p, max_pool: max_p }
+}
+
+// Global pooling for 4-node graph
+fn graph_pool_4nodes(h1: f64, h2: f64, h3: f64, h4: f64) -> GraphPoolResult {
+    let sum_p = h1 + h2 + h3 + h4
+    let mean_p = sum_p / 4.0
+    let max_p = aggregate_max_4(h1, h2, h3, h4)
+
+    return GraphPoolResult { sum_pool: sum_p, mean_pool: mean_p, max_pool: max_p }
+}
+
+// ----------------------------------------------------------------------------
+// Set2Set Pooling (order-invariant, more expressive than mean/sum)
+// Uses attention over all nodes
+// ----------------------------------------------------------------------------
+
+struct Set2SetResult {
+    output: f64,
+    attn1: f64,
+    attn2: f64,
+    attn3: f64
+}
+
+// Simplified Set2Set for 3 nodes (single step)
+fn set2set_3nodes(
+    h1: f64,
+    h2: f64,
+    h3: f64,
+    qt: f64
+) -> Set2SetResult {
+    // Attention scores
+    let e1 = h1 * qt
+    let e2 = h2 * qt
+    let e3 = h3 * qt
+
+    // Softmax
+    let max_e = aggregate_max_3(e1, e2, e3)
+    let exp1 = exp_f64(e1 - max_e)
+    let exp2 = exp_f64(e2 - max_e)
+    let exp3 = exp_f64(e3 - max_e)
+    let sum_exp = exp1 + exp2 + exp3
+
+    let a1 = exp1 / sum_exp
+    let a2 = exp2 / sum_exp
+    let a3 = exp3 / sum_exp
+
+    // Readout
+    let readout = a1 * h1 + a2 * h2 + a3 * h3
+
+    return Set2SetResult { output: readout, attn1: a1, attn2: a2, attn3: a3 }
+}
+
+// ----------------------------------------------------------------------------
+// Graph Normalization
+// ----------------------------------------------------------------------------
+
+// GraphNorm: normalize across nodes in a graph
+struct GraphNormResult {
+    h1_norm: f64,
+    h2_norm: f64,
+    h3_norm: f64
+}
+
+fn graph_norm_3nodes(
+    h1: f64,
+    h2: f64,
+    h3: f64,
+    gamma: f64,
+    beta: f64,
+    eps: f64
+) -> GraphNormResult {
+    // Compute mean
+    let mean_val = (h1 + h2 + h3) / 3.0
+
+    // Compute variance
+    let d1 = h1 - mean_val
+    let d2 = h2 - mean_val
+    let d3 = h3 - mean_val
+    let var_val = (d1 * d1 + d2 * d2 + d3 * d3) / 3.0
+
+    // Normalize
+    let std_val = sqrt_f64(var_val + eps)
+    let n1 = gamma * (d1 / std_val) + beta
+    let n2 = gamma * (d2 / std_val) + beta
+    let n3 = gamma * (d3 / std_val) + beta
+
+    return GraphNormResult { h1_norm: n1, h2_norm: n2, h3_norm: n3 }
+}
+
+// ----------------------------------------------------------------------------
+// Virtual Node (for global graph info aggregation)
+// Adds a virtual node connected to all nodes
+// ----------------------------------------------------------------------------
+
+struct VirtualNodeResult {
+    h1_new: f64,
+    h2_new: f64,
+    h3_new: f64,
+    vn_new: f64
+}
+
+fn virtual_node_update_3(
+    h1: f64,
+    h2: f64,
+    h3: f64,
+    vn: f64,
+    weight: f64
+) -> VirtualNodeResult {
+    // Update virtual node: aggregate all node features
+    let vn_agg = (h1 + h2 + h3) / 3.0
+    let vn_new = vn + vn_agg * weight
+
+    // Update node features: add virtual node info
+    let h1_new = h1 + vn * weight
+    let h2_new = h2 + vn * weight
+    let h3_new = h3 + vn * weight
+
+    return VirtualNodeResult { h1_new: h1_new, h2_new: h2_new, h3_new: h3_new, vn_new: vn_new }
+}
+
+// ----------------------------------------------------------------------------
+// Skip Connections for GNNs
+// ----------------------------------------------------------------------------
+
+// Residual connection for GNN layer
+fn gnn_residual(input_feat: f64, layer_output: f64, alpha: f64) -> f64 {
+    // alpha controls residual strength (0 = all layer, 1 = all input)
+    return alpha * input_feat + (1.0 - alpha) * layer_output
+}
+
+// Dense connection: concatenate all previous layers
+fn gnn_dense_concat_3layers(h0: f64, h1: f64, h2: f64, w0: f64, w1: f64, w2: f64) -> f64 {
+    return h0 * w0 + h1 * w1 + h2 * w2
+}
+
+// JK (Jumping Knowledge) aggregation
+struct JKResult {
+    concat_out: f64,
+    max_out: f64,
+    last_out: f64
+}
+
+fn jk_aggregate_3layers(h1: f64, h2: f64, h3: f64) -> JKResult {
+    return JKResult {
+        concat_out: h1 + h2 + h3,
+        max_out: aggregate_max_3(h1, h2, h3),
+        last_out: h3
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Molecular GNN Utilities
+// For PBPK drug property prediction
+// ----------------------------------------------------------------------------
+
+// Atom feature embedding (simplified)
+// Maps atomic number to embedding
+fn atom_embedding(atomic_num: f64, embed_dim: f64) -> f64 {
+    // Simple hash-like embedding
+    let idx = atomic_num / 100.0
+    return sin_f64(idx * embed_dim * 0.1)
+}
+
+// Bond type embedding
+// bond_type: 1=single, 2=double, 3=triple, 4=aromatic
+fn bond_embedding(bond_type: f64, embed_weight: f64) -> f64 {
+    return bond_type * embed_weight
+}
+
+// Readout for molecular property prediction
+struct MoleculeReadout {
+    global_feat: f64,
+    prediction: f64
+}
+
+fn molecule_readout_3atoms(
+    h1: f64,
+    h2: f64,
+    h3: f64,
+    readout_weight: f64,
+    readout_bias: f64
+) -> MoleculeReadout {
+    // Mean pooling for global feature
+    let global_f = (h1 + h2 + h3) / 3.0
+
+    // Linear layer for prediction
+    let pred = global_f * readout_weight + readout_bias
+
+    return MoleculeReadout { global_feat: global_f, prediction: pred }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -6386,6 +7092,550 @@ fn main() -> i32 {
 
     if abs_f64(te8_3 - 0.3) > tol { ok = false; println("  FAIL: te8_3") }
     if abs_f64(te8_7 - 0.7) > tol { ok = false; println("  FAIL: te8_7") }
+    println("")
+
+    // ==========================================================================
+    // GRAPH NEURAL NETWORK TESTS
+    // ==========================================================================
+
+    // Test 97: Aggregation functions
+    println("Test 97: Aggregation functions")
+    let agg_sum2 = aggregate_sum_2(3.0, 5.0)
+    let agg_sum3 = aggregate_sum_3(1.0, 2.0, 3.0)
+    let agg_mean2 = aggregate_mean_2(4.0, 6.0)
+    let agg_mean3 = aggregate_mean_3(3.0, 6.0, 9.0)
+    let agg_max2 = aggregate_max_2(7.0, 3.0)
+    let agg_max3 = aggregate_max_3(2.0, 8.0, 5.0)
+    let agg_min2 = aggregate_min_2(7.0, 3.0)
+    let agg_min3 = aggregate_min_3(2.0, 8.0, 5.0)
+
+    println("  sum_2(3, 5) = ")
+    println(agg_sum2)
+    println("  sum_3(1, 2, 3) = ")
+    println(agg_sum3)
+    println("  mean_2(4, 6) = ")
+    println(agg_mean2)
+    println("  mean_3(3, 6, 9) = ")
+    println(agg_mean3)
+    println("  max_2(7, 3) = ")
+    println(agg_max2)
+    println("  max_3(2, 8, 5) = ")
+    println(agg_max3)
+    println("  min_2(7, 3) = ")
+    println(agg_min2)
+    println("  min_3(2, 8, 5) = ")
+    println(agg_min3)
+
+    if abs_f64(agg_sum2 - 8.0) > tol { ok = false; println("  FAIL: sum_2") }
+    if abs_f64(agg_sum3 - 6.0) > tol { ok = false; println("  FAIL: sum_3") }
+    if abs_f64(agg_mean2 - 5.0) > tol { ok = false; println("  FAIL: mean_2") }
+    if abs_f64(agg_mean3 - 6.0) > tol { ok = false; println("  FAIL: mean_3") }
+    if abs_f64(agg_max2 - 7.0) > tol { ok = false; println("  FAIL: max_2") }
+    if abs_f64(agg_max3 - 8.0) > tol { ok = false; println("  FAIL: max_3") }
+    if abs_f64(agg_min2 - 3.0) > tol { ok = false; println("  FAIL: min_2") }
+    if abs_f64(agg_min3 - 2.0) > tol { ok = false; println("  FAIL: min_3") }
+    println("")
+
+    // Test 98: GCN normalization coefficient
+    println("Test 98: GCN normalization coefficient")
+    // For degrees 4 and 4: 1/sqrt(16) = 0.25
+    let gcn_norm_44 = gcn_norm_coeff(4.0, 4.0)
+    // For degrees 2 and 8: 1/sqrt(16) = 0.25
+    let gcn_norm_28 = gcn_norm_coeff(2.0, 8.0)
+    // For degrees 3 and 3: 1/sqrt(9) = 0.333...
+    let gcn_norm_33 = gcn_norm_coeff(3.0, 3.0)
+
+    println("  norm(4, 4) = ")
+    println(gcn_norm_44)
+    println("  expected = 0.25")
+    println("  norm(2, 8) = ")
+    println(gcn_norm_28)
+    println("  expected = 0.25")
+    println("  norm(3, 3) = ")
+    println(gcn_norm_33)
+    println("  expected = 0.333...")
+
+    if abs_f64(gcn_norm_44 - 0.25) > tol { ok = false; println("  FAIL: norm(4,4)") }
+    if abs_f64(gcn_norm_28 - 0.25) > tol { ok = false; println("  FAIL: norm(2,8)") }
+    if abs_f64(gcn_norm_33 - 0.3333333) > tol { ok = false; println("  FAIL: norm(3,3)") }
+    println("")
+
+    // Test 99: GCN layer with 2 neighbors
+    println("Test 99: GCN layer (2 neighbors)")
+    // Simple triangle graph: node 0 connected to nodes 1, 2
+    // All nodes have degree 3 (including self-loop)
+    // Features: h0=1, h1=2, h2=3, weight=1
+    let gcn_result = gcn_layer_2neighbors(
+        1.0,    // node_feat
+        2.0,    // neighbor1
+        3.0,    // neighbor2
+        3.0,    // deg_self (2 neighbors + self-loop)
+        3.0,    // deg1
+        3.0,    // deg2
+        1.0,    // weight
+        0.0     // no relu
+    )
+
+    println("  GCN output = ")
+    println(gcn_result.output)
+    println("  pre_activation = ")
+    println(gcn_result.pre_activation)
+
+    // norm = 1/sqrt(3*3) = 1/3 for all
+    // output = (1 + 2 + 3) * (1/3) * 1 = 2
+    let expected_gcn = 2.0
+    if abs_f64(gcn_result.output - expected_gcn) > tol { ok = false; println("  FAIL: GCN output") }
+    println("")
+
+    // Test 100: GCN with ReLU activation
+    println("Test 100: GCN with ReLU")
+    let gcn_relu = gcn_layer_2neighbors(
+        -1.0, 2.0, 3.0, 3.0, 3.0, 3.0, 1.0, 1.0  // use_relu=1
+    )
+
+    println("  GCN with negative input:")
+    println("    pre_activation = ")
+    println(gcn_relu.pre_activation)
+    println("    output (after ReLU) = ")
+    println(gcn_relu.output)
+
+    // pre_act = (-1 + 2 + 3) / 3 = 4/3 ≈ 1.333
+    // ReLU(1.333) = 1.333
+    if gcn_relu.output < 0.0 { ok = false; println("  FAIL: ReLU should be non-negative") }
+    println("")
+
+    // Test 101: GAT attention coefficients
+    println("Test 101: GAT attention")
+    // Node with 2 neighbors, all features = 1.0
+    let gat_result = gat_layer_2neighbors(
+        1.0,    // node_feat
+        1.0,    // neighbor1
+        1.0,    // neighbor2
+        1.0,    // weight
+        1.0,    // attn_left
+        1.0,    // attn_right
+        0.2,    // negative_slope (LeakyReLU)
+        0.0     // no ELU
+    )
+
+    println("  GAT output = ")
+    println(gat_result.output)
+    println("  alpha1 = ")
+    println(gat_result.alpha1)
+    println("  alpha2 = ")
+    println(gat_result.alpha2)
+
+    // When all features are equal, attention should be uniform (1/3 each)
+    let expected_alpha = 0.3333333
+    if abs_f64(gat_result.alpha1 - expected_alpha) > tol { ok = false; println("  FAIL: GAT alpha1") }
+    if abs_f64(gat_result.alpha2 - expected_alpha) > tol { ok = false; println("  FAIL: GAT alpha2") }
+    println("")
+
+    // Test 102: GAT with different features
+    println("Test 102: GAT with varying features")
+    let gat_varied = gat_layer_2neighbors(
+        1.0,    // node_feat
+        0.5,    // neighbor1 (smaller)
+        2.0,    // neighbor2 (larger)
+        1.0,    // weight
+        0.5,    // attn_left
+        0.5,    // attn_right
+        0.2,    // negative_slope
+        0.0     // no ELU
+    )
+
+    println("  GAT with varied neighbors:")
+    println("    output = ")
+    println(gat_varied.output)
+    println("    alpha1 (small neighbor) = ")
+    println(gat_varied.alpha1)
+    println("    alpha2 (large neighbor) = ")
+    println(gat_varied.alpha2)
+
+    // Larger neighbor should get more attention
+    if gat_varied.alpha2 < gat_varied.alpha1 { ok = false; println("  FAIL: larger neighbor should have higher attention") }
+    println("")
+
+    // Test 103: Multi-head GAT
+    println("Test 103: Multi-head GAT (2 heads)")
+    let mh_gat = gat_multihead_2(
+        1.0, 2.0, 3.0,  // node and neighbors
+        1.0, 0.5, 0.5,  // head1: weight, attn_l, attn_r
+        0.5, 0.3, 0.7,  // head2: weight, attn_l, attn_r
+        0.2             // negative_slope
+    )
+
+    println("  Multi-head GAT:")
+    println("    head1 output = ")
+    println(mh_gat.head1_out)
+    println("    head2 output = ")
+    println(mh_gat.head2_out)
+    println("    combined = ")
+    println(mh_gat.output)
+
+    // Combined should be sum of heads
+    if abs_f64(mh_gat.output - (mh_gat.head1_out + mh_gat.head2_out)) > tol {
+        ok = false
+        println("  FAIL: combined != head1 + head2")
+    }
+    println("")
+
+    // Test 104: GraphSAGE mean aggregation
+    println("Test 104: GraphSAGE mean aggregation")
+    let sage_mean = graphsage_mean_2neighbors(
+        2.0,    // node_feat
+        4.0,    // neighbor1
+        6.0,    // neighbor2
+        0.5,    // weight_self
+        0.5,    // weight_neigh
+        0.0     // no relu
+    )
+
+    println("  GraphSAGE mean:")
+    println("    aggregated neighbors = ")
+    println(sage_mean.aggregated)
+    println("    output = ")
+    println(sage_mean.output)
+
+    // aggregated = mean(4, 6) = 5
+    // output = 0.5 * 2 + 0.5 * 5 = 1 + 2.5 = 3.5
+    if abs_f64(sage_mean.aggregated - 5.0) > tol { ok = false; println("  FAIL: SAGE aggregated") }
+    if abs_f64(sage_mean.output - 3.5) > tol { ok = false; println("  FAIL: SAGE output") }
+    println("")
+
+    // Test 105: GraphSAGE max-pool aggregation
+    println("Test 105: GraphSAGE max-pool")
+    let sage_max = graphsage_maxpool_2neighbors(
+        2.0,    // node_feat
+        4.0,    // neighbor1
+        6.0,    // neighbor2
+        0.5,    // weight_self
+        0.5,    // weight_neigh
+        1.0,    // pool_weight
+        0.0     // no relu
+    )
+
+    println("  GraphSAGE max-pool:")
+    println("    aggregated = ")
+    println(sage_max.aggregated)
+    println("    output = ")
+    println(sage_max.output)
+
+    // After ReLU transform: t1=4, t2=6, max=6
+    // output = 0.5 * 2 + 0.5 * 6 = 1 + 3 = 4
+    if abs_f64(sage_max.aggregated - 6.0) > tol { ok = false; println("  FAIL: SAGE max aggregated") }
+    if abs_f64(sage_max.output - 4.0) > tol { ok = false; println("  FAIL: SAGE max output") }
+    println("")
+
+    // Test 106: GIN layer
+    println("Test 106: GIN layer (Graph Isomorphism Network)")
+    let gin_result = gin_layer_2neighbors(
+        1.0,    // node_feat
+        2.0,    // neighbor1
+        3.0,    // neighbor2
+        0.0,    // epsilon (no scaling)
+        1.0,    // mlp_w1
+        1.0,    // mlp_w2
+        0.0     // mlp_bias
+    )
+
+    println("  GIN layer:")
+    println("    pre_mlp = ")
+    println(gin_result.pre_mlp)
+    println("    output = ")
+    println(gin_result.output)
+
+    // pre_mlp = (1 + 0) * 1 + (2 + 3) = 1 + 5 = 6
+    // hidden = ReLU(6 * 1) = 6
+    // output = 6 * 1 + 0 = 6
+    if abs_f64(gin_result.pre_mlp - 6.0) > tol { ok = false; println("  FAIL: GIN pre_mlp") }
+    if abs_f64(gin_result.output - 6.0) > tol { ok = false; println("  FAIL: GIN output") }
+    println("")
+
+    // Test 107: GIN with epsilon
+    println("Test 107: GIN with epsilon")
+    let gin_eps = gin_layer_2neighbors(
+        2.0,    // node_feat
+        1.0,    // neighbor1
+        1.0,    // neighbor2
+        0.5,    // epsilon
+        1.0,    // mlp_w1
+        1.0,    // mlp_w2
+        0.0     // mlp_bias
+    )
+
+    println("  GIN with epsilon=0.5:")
+    println("    pre_mlp = ")
+    println(gin_eps.pre_mlp)
+
+    // pre_mlp = (1 + 0.5) * 2 + (1 + 1) = 3 + 2 = 5
+    if abs_f64(gin_eps.pre_mlp - 5.0) > tol { ok = false; println("  FAIL: GIN epsilon pre_mlp") }
+    println("")
+
+    // Test 108: Edge-conditioned convolution
+    println("Test 108: Edge convolution")
+    let edge_result = edge_conv_2neighbors(
+        1.0,    // node_feat
+        2.0,    // neighbor1
+        3.0,    // neighbor2
+        0.0,    // edge_feat1 (sigmoid(0) = 0.5)
+        0.0,    // edge_feat2 (sigmoid(0) = 0.5)
+        1.0,    // edge_weight
+        0.0     // edge_bias
+    )
+
+    println("  Edge convolution:")
+    println("    edge_weight1 = ")
+    println(edge_result.edge_weight1)
+    println("    edge_weight2 = ")
+    println(edge_result.edge_weight2)
+    println("    output = ")
+    println(edge_result.output)
+
+    // sigmoid(0) = 0.5 for both edges
+    // output = 1 + 2*0.5 + 3*0.5 = 1 + 1 + 1.5 = 3.5
+    if abs_f64(edge_result.edge_weight1 - 0.5) > tol { ok = false; println("  FAIL: edge_weight1") }
+    if abs_f64(edge_result.edge_weight2 - 0.5) > tol { ok = false; println("  FAIL: edge_weight2") }
+    if abs_f64(edge_result.output - 3.5) > tol { ok = false; println("  FAIL: edge conv output") }
+    println("")
+
+    // Test 109: MPNN layer
+    println("Test 109: MPNN (Message Passing Neural Network)")
+    let mpnn_result = mpnn_layer_2neighbors(
+        1.0,    // node_feat
+        2.0,    // neighbor1
+        3.0,    // neighbor2
+        1.0,    // edge1
+        1.0,    // edge2
+        1.0,    // msg_weight
+        1.0     // update_weight
+    )
+
+    println("  MPNN layer:")
+    println("    message_sum = ")
+    println(mpnn_result.message_sum)
+    println("    output = ")
+    println(mpnn_result.output)
+
+    // m1 = 2 * 1 * 1 = 2, m2 = 3 * 1 * 1 = 3
+    // msg_sum = 5
+    // output = ReLU(1 + 5 * 1) = 6
+    if abs_f64(mpnn_result.message_sum - 5.0) > tol { ok = false; println("  FAIL: MPNN msg_sum") }
+    if abs_f64(mpnn_result.output - 6.0) > tol { ok = false; println("  FAIL: MPNN output") }
+    println("")
+
+    // Test 110: Graph pooling
+    println("Test 110: Graph pooling (3 nodes)")
+    let pool_result = graph_pool_3nodes(1.0, 2.0, 6.0)
+
+    println("  Graph pooling [1, 2, 6]:")
+    println("    sum = ")
+    println(pool_result.sum_pool)
+    println("    mean = ")
+    println(pool_result.mean_pool)
+    println("    max = ")
+    println(pool_result.max_pool)
+
+    if abs_f64(pool_result.sum_pool - 9.0) > tol { ok = false; println("  FAIL: sum_pool") }
+    if abs_f64(pool_result.mean_pool - 3.0) > tol { ok = false; println("  FAIL: mean_pool") }
+    if abs_f64(pool_result.max_pool - 6.0) > tol { ok = false; println("  FAIL: max_pool") }
+    println("")
+
+    // Test 111: Graph pooling (4 nodes)
+    println("Test 111: Graph pooling (4 nodes)")
+    let pool4 = graph_pool_4nodes(2.0, 4.0, 6.0, 8.0)
+
+    println("  Graph pooling [2, 4, 6, 8]:")
+    println("    sum = ")
+    println(pool4.sum_pool)
+    println("    mean = ")
+    println(pool4.mean_pool)
+    println("    max = ")
+    println(pool4.max_pool)
+
+    if abs_f64(pool4.sum_pool - 20.0) > tol { ok = false; println("  FAIL: sum_pool 4") }
+    if abs_f64(pool4.mean_pool - 5.0) > tol { ok = false; println("  FAIL: mean_pool 4") }
+    if abs_f64(pool4.max_pool - 8.0) > tol { ok = false; println("  FAIL: max_pool 4") }
+    println("")
+
+    // Test 112: Set2Set pooling
+    println("Test 112: Set2Set pooling")
+    let s2s = set2set_3nodes(1.0, 2.0, 3.0, 1.0)
+
+    println("  Set2Set [1, 2, 3] with query=1:")
+    println("    output = ")
+    println(s2s.output)
+    println("    attn1 = ")
+    println(s2s.attn1)
+    println("    attn2 = ")
+    println(s2s.attn2)
+    println("    attn3 = ")
+    println(s2s.attn3)
+
+    // Attention should sum to 1
+    let attn_sum = s2s.attn1 + s2s.attn2 + s2s.attn3
+    if abs_f64(attn_sum - 1.0) > tol { ok = false; println("  FAIL: Set2Set attn sum") }
+    // Larger features get more attention
+    if s2s.attn3 < s2s.attn1 { ok = false; println("  FAIL: Set2Set attention order") }
+    println("")
+
+    // Test 113: Graph normalization
+    println("Test 113: Graph normalization")
+    let gnorm = graph_norm_3nodes(1.0, 4.0, 7.0, 1.0, 0.0, 0.00001)
+
+    println("  GraphNorm [1, 4, 7] (gamma=1, beta=0):")
+    println("    h1_norm = ")
+    println(gnorm.h1_norm)
+    println("    h2_norm = ")
+    println(gnorm.h2_norm)
+    println("    h3_norm = ")
+    println(gnorm.h3_norm)
+
+    // Mean = 4, Var = ((1-4)^2 + 0 + (7-4)^2)/3 = (9 + 0 + 9)/3 = 6
+    // std = sqrt(6) ≈ 2.449
+    // h1_norm = (1-4)/2.449 ≈ -1.22
+    // h2_norm = (4-4)/2.449 = 0
+    // h3_norm = (7-4)/2.449 ≈ 1.22
+    if abs_f64(gnorm.h2_norm - 0.0) > tol { ok = false; println("  FAIL: h2_norm should be 0") }
+    if gnorm.h1_norm > 0.0 { ok = false; println("  FAIL: h1_norm should be negative") }
+    if gnorm.h3_norm < 0.0 { ok = false; println("  FAIL: h3_norm should be positive") }
+    println("")
+
+    // Test 114: Virtual node update
+    println("Test 114: Virtual node")
+    let vn_result = virtual_node_update_3(
+        1.0, 2.0, 3.0,  // node features
+        0.0,            // initial virtual node
+        0.5             // weight
+    )
+
+    println("  Virtual node update:")
+    println("    vn_new = ")
+    println(vn_result.vn_new)
+    println("    h1_new = ")
+    println(vn_result.h1_new)
+
+    // vn_new = 0 + mean(1,2,3) * 0.5 = 2 * 0.5 = 1
+    // h1_new = 1 + 0 * 0.5 = 1 (vn was 0 initially)
+    if abs_f64(vn_result.vn_new - 1.0) > tol { ok = false; println("  FAIL: vn_new") }
+    if abs_f64(vn_result.h1_new - 1.0) > tol { ok = false; println("  FAIL: h1_new") }
+    println("")
+
+    // Test 115: GNN residual connection
+    println("Test 115: GNN residual connection")
+    let res_05 = gnn_residual(10.0, 2.0, 0.5)
+    let res_00 = gnn_residual(10.0, 2.0, 0.0)
+    let res_10 = gnn_residual(10.0, 2.0, 1.0)
+
+    println("  Residual (input=10, layer=2):")
+    println("    alpha=0.5: ")
+    println(res_05)
+    println("    alpha=0.0 (all layer): ")
+    println(res_00)
+    println("    alpha=1.0 (all input): ")
+    println(res_10)
+
+    // alpha=0.5: 0.5*10 + 0.5*2 = 6
+    // alpha=0.0: 0*10 + 1*2 = 2
+    // alpha=1.0: 1*10 + 0*2 = 10
+    if abs_f64(res_05 - 6.0) > tol { ok = false; println("  FAIL: residual 0.5") }
+    if abs_f64(res_00 - 2.0) > tol { ok = false; println("  FAIL: residual 0.0") }
+    if abs_f64(res_10 - 10.0) > tol { ok = false; println("  FAIL: residual 1.0") }
+    println("")
+
+    // Test 116: Dense/JK connections
+    println("Test 116: JK (Jumping Knowledge) aggregation")
+    let jk_result = jk_aggregate_3layers(1.0, 3.0, 5.0)
+
+    println("  JK aggregate [1, 3, 5]:")
+    println("    concat = ")
+    println(jk_result.concat_out)
+    println("    max = ")
+    println(jk_result.max_out)
+    println("    last = ")
+    println(jk_result.last_out)
+
+    if abs_f64(jk_result.concat_out - 9.0) > tol { ok = false; println("  FAIL: JK concat") }
+    if abs_f64(jk_result.max_out - 5.0) > tol { ok = false; println("  FAIL: JK max") }
+    if abs_f64(jk_result.last_out - 5.0) > tol { ok = false; println("  FAIL: JK last") }
+    println("")
+
+    // Test 117: Atom embedding
+    println("Test 117: Atom embedding")
+    let atom_c = atom_embedding(6.0, 64.0)   // Carbon
+    let atom_n = atom_embedding(7.0, 64.0)   // Nitrogen
+    let atom_o = atom_embedding(8.0, 64.0)   // Oxygen
+
+    println("  Atom embeddings (dim=64):")
+    println("    Carbon (6) = ")
+    println(atom_c)
+    println("    Nitrogen (7) = ")
+    println(atom_n)
+    println("    Oxygen (8) = ")
+    println(atom_o)
+
+    // Different atoms should have different embeddings
+    if abs_f64(atom_c - atom_n) < tol { ok = false; println("  FAIL: C and N should differ") }
+    if abs_f64(atom_n - atom_o) < tol { ok = false; println("  FAIL: N and O should differ") }
+    println("")
+
+    // Test 118: Bond embedding
+    println("Test 118: Bond embedding")
+    let bond_single = bond_embedding(1.0, 0.5)
+    let bond_double = bond_embedding(2.0, 0.5)
+    let bond_aromatic = bond_embedding(4.0, 0.5)
+
+    println("  Bond embeddings (weight=0.5):")
+    println("    single = ")
+    println(bond_single)
+    println("    double = ")
+    println(bond_double)
+    println("    aromatic = ")
+    println(bond_aromatic)
+
+    if abs_f64(bond_single - 0.5) > tol { ok = false; println("  FAIL: single bond") }
+    if abs_f64(bond_double - 1.0) > tol { ok = false; println("  FAIL: double bond") }
+    if abs_f64(bond_aromatic - 2.0) > tol { ok = false; println("  FAIL: aromatic bond") }
+    println("")
+
+    // Test 119: Molecular readout
+    println("Test 119: Molecular readout")
+    let mol_read = molecule_readout_3atoms(
+        1.0, 2.0, 3.0,  // 3 atom features
+        2.0,            // readout weight
+        0.5             // bias
+    )
+
+    println("  Molecular readout [1, 2, 3]:")
+    println("    global_feat = ")
+    println(mol_read.global_feat)
+    println("    prediction = ")
+    println(mol_read.prediction)
+
+    // global = mean(1,2,3) = 2
+    // pred = 2 * 2 + 0.5 = 4.5
+    if abs_f64(mol_read.global_feat - 2.0) > tol { ok = false; println("  FAIL: global_feat") }
+    if abs_f64(mol_read.prediction - 4.5) > tol { ok = false; println("  FAIL: mol prediction") }
+    println("")
+
+    // Test 120: GCN with 3 neighbors
+    println("Test 120: GCN layer (3 neighbors)")
+    let gcn3 = gcn_layer_3neighbors(
+        1.0,        // node_feat
+        2.0, 3.0, 4.0,  // neighbors
+        4.0,        // deg_self (3 neighbors + self)
+        4.0, 4.0, 4.0,  // neighbor degrees
+        1.0,        // weight
+        0.0         // no relu
+    )
+
+    println("  GCN 3 neighbors:")
+    println("    output = ")
+    println(gcn3.output)
+
+    // All same degree 4: norm = 1/4
+    // output = (1 + 2 + 3 + 4) * (1/4) = 10/4 = 2.5
+    if abs_f64(gcn3.output - 2.5) > tol { ok = false; println("  FAIL: GCN 3 neighbors") }
     println("")
 
     if ok {
