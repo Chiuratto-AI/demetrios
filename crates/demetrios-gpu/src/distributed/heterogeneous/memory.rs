@@ -9,6 +9,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
+#[cfg(feature = "cuda")]
+use cudarc::driver::{CudaDevice, CudaSlice, DevicePtr};
+
 /// Errors during memory operations
 #[derive(Debug, Error)]
 pub enum MemoryError {
@@ -64,28 +67,68 @@ impl TransferPath {
 }
 
 /// Device memory buffer
-#[derive(Debug)]
 pub struct DeviceBuffer {
     /// Device that owns this buffer
     pub device: DeviceId,
     /// Buffer size in bytes
     pub size: usize,
-    /// Device pointer (simulated)
+    /// Device pointer (simulated or real)
     ptr: u64,
     /// Is buffer valid?
     valid: bool,
+    /// Real CUDA slice (when cuda feature enabled)
+    #[cfg(feature = "cuda")]
+    cuda_slice: Option<CudaSlice<u8>>,
+}
+
+impl std::fmt::Debug for DeviceBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceBuffer")
+            .field("device", &self.device)
+            .field("size", &self.size)
+            .field("ptr", &self.ptr)
+            .field("valid", &self.valid)
+            .finish()
+    }
 }
 
 impl DeviceBuffer {
     /// Create a new device buffer (simulated)
-    fn new(device: DeviceId, size: usize) -> Self {
-        // In real implementation, this would call cuMemAlloc
+    fn new_simulated(device: DeviceId, size: usize) -> Self {
         Self {
             device,
             size,
             ptr: (device.0 as u64 * 0x1000_0000_0000) + (size as u64 & 0xFFFF_FFFF_FFFF),
             valid: true,
+            #[cfg(feature = "cuda")]
+            cuda_slice: None,
         }
+    }
+
+    /// Create a new device buffer with real CUDA allocation
+    #[cfg(feature = "cuda")]
+    fn new_cuda(device: DeviceId, size: usize, cuda_device: &Arc<CudaDevice>) -> Result<Self, MemoryError> {
+        let slice: CudaSlice<u8> = cuda_device.alloc_zeros(size)
+            .map_err(|e| MemoryError::AllocationFailed {
+                device,
+                message: e.to_string(),
+            })?;
+
+        let ptr = *slice.device_ptr() as u64;
+
+        Ok(Self {
+            device,
+            size,
+            ptr,
+            valid: true,
+            cuda_slice: Some(slice),
+        })
+    }
+
+    /// Check if this buffer has a real CUDA allocation
+    #[cfg(feature = "cuda")]
+    pub fn has_cuda_slice(&self) -> bool {
+        self.cuda_slice.is_some()
     }
 
     /// Get device pointer
@@ -194,6 +237,9 @@ pub struct HeterogeneousMemoryManager {
     p2p_enabled: RwLock<HashMap<(DeviceId, DeviceId), bool>>,
     /// Total unified memory allocated
     unified_allocated: RwLock<usize>,
+    /// CUDA device handles (when cuda feature enabled)
+    #[cfg(feature = "cuda")]
+    cuda_devices: HashMap<DeviceId, Arc<CudaDevice>>,
 }
 
 impl HeterogeneousMemoryManager {
@@ -214,11 +260,25 @@ impl HeterogeneousMemoryManager {
             }
         }
 
+        // Initialize CUDA devices when feature enabled
+        #[cfg(feature = "cuda")]
+        let cuda_devices = {
+            let mut devices = HashMap::new();
+            for device in pool.devices() {
+                if let Ok(cuda_dev) = CudaDevice::new(device.id.0 as usize) {
+                    devices.insert(device.id, cuda_dev);
+                }
+            }
+            devices
+        };
+
         Self {
             pool,
             allocators: RwLock::new(allocators),
             p2p_enabled: RwLock::new(p2p_enabled),
             unified_allocated: RwLock::new(0),
+            #[cfg(feature = "cuda")]
+            cuda_devices,
         }
     }
 
@@ -230,7 +290,17 @@ impl HeterogeneousMemoryManager {
             .ok_or(MemoryError::DeviceNotFound(device))?;
 
         alloc.alloc(size);
-        Ok(DeviceBuffer::new(device, size))
+
+        // Use real CUDA allocation when available
+        #[cfg(feature = "cuda")]
+        {
+            if let Some(cuda_dev) = self.cuda_devices.get(&device) {
+                return DeviceBuffer::new_cuda(device, size, cuda_dev);
+            }
+        }
+
+        // Fallback to simulated allocation
+        Ok(DeviceBuffer::new_simulated(device, size))
     }
 
     /// Allocate typed buffer on a specific device

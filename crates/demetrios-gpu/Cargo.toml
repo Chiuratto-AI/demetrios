@@ -13,13 +13,13 @@ rustc-hash = "2.0"
 indexmap = "2.2"
 
 # Optional CUDA/GPU dependencies (feature-gated)
-# cudarc = { version = "0.10", optional = true }
+cudarc = { version = "0.12", optional = true, features = ["driver", "cuda-version-from-build-system"] }
 
 [dev-dependencies]
 # Test utilities
 
 [features]
 default = []
-# cuda = ["cudarc"]
+cuda = ["cudarc"]
 # vulkan = []
 # metal = []
