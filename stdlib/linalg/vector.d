@@ -479,14 +479,14 @@ fn main() -> i32 {
 
     // Test Vec14 for PBPK
     println("Testing Vec14 (PBPK compartments):")
-    let state = vec14_new(100.0, 50.0, 25.0, 12.5, 6.25, 3.125, 1.5625, 0.78125,
-                          0.39, 0.195, 0.0975, 0.04875, 0.024375, 0.0121875)
-    let total = vec14_sum(state)
+    let pbpk_state = vec14_new(100.0, 50.0, 25.0, 12.5, 6.25, 3.125, 1.5625, 0.78125,
+                               0.39, 0.195, 0.0975, 0.04875, 0.024375, 0.0121875)
+    let total = vec14_sum(pbpk_state)
     println("  Total drug mass = ")
     println(total)
 
-    let norm14 = vec14_norm(state)
-    println("  |state| = ")
+    let norm14 = vec14_norm(pbpk_state)
+    println("  |pbpk_state| = ")
     println(norm14)
 
     // Test RMS error norm

@@ -402,6 +402,317 @@ fn mat4_trace(m: Mat4) -> f64 {
     return m.m00 + m.m11 + m.m22 + m.m33
 }
 
+// 4x4 determinant using cofactor expansion
+fn mat4_det(m: Mat4) -> f64 {
+    // Expand along first row using 3x3 minors
+    let m00 = m.m11*(m.m22*m.m33 - m.m23*m.m32) - m.m12*(m.m21*m.m33 - m.m23*m.m31) + m.m13*(m.m21*m.m32 - m.m22*m.m31)
+    let m01 = m.m10*(m.m22*m.m33 - m.m23*m.m32) - m.m12*(m.m20*m.m33 - m.m23*m.m30) + m.m13*(m.m20*m.m32 - m.m22*m.m30)
+    let m02 = m.m10*(m.m21*m.m33 - m.m23*m.m31) - m.m11*(m.m20*m.m33 - m.m23*m.m30) + m.m13*(m.m20*m.m31 - m.m21*m.m30)
+    let m03 = m.m10*(m.m21*m.m32 - m.m22*m.m31) - m.m11*(m.m20*m.m32 - m.m22*m.m30) + m.m12*(m.m20*m.m31 - m.m21*m.m30)
+    return m.m00*m00 - m.m01*m01 + m.m02*m02 - m.m03*m03
+}
+
+// 4x4 inverse using cofactor matrix
+fn mat4_inverse(m: Mat4) -> Mat4 {
+    let d = mat4_det(m)
+    if abs_val(d) < 0.0000000001 {
+        return mat4_identity()
+    }
+    let inv_d = 1.0 / d
+
+    // Compute 3x3 minors for cofactor matrix (with alternating signs)
+    // C[i,j] = (-1)^(i+j) * M[j,i] where M is the minor
+
+    // Row 0 of cofactors (for column 0 of inverse)
+    let c00 = m.m11*(m.m22*m.m33 - m.m23*m.m32) - m.m12*(m.m21*m.m33 - m.m23*m.m31) + m.m13*(m.m21*m.m32 - m.m22*m.m31)
+    let c01 = 0.0 - (m.m10*(m.m22*m.m33 - m.m23*m.m32) - m.m12*(m.m20*m.m33 - m.m23*m.m30) + m.m13*(m.m20*m.m32 - m.m22*m.m30))
+    let c02 = m.m10*(m.m21*m.m33 - m.m23*m.m31) - m.m11*(m.m20*m.m33 - m.m23*m.m30) + m.m13*(m.m20*m.m31 - m.m21*m.m30)
+    let c03 = 0.0 - (m.m10*(m.m21*m.m32 - m.m22*m.m31) - m.m11*(m.m20*m.m32 - m.m22*m.m30) + m.m12*(m.m20*m.m31 - m.m21*m.m30))
+
+    // Row 1 of cofactors
+    let c10 = 0.0 - (m.m01*(m.m22*m.m33 - m.m23*m.m32) - m.m02*(m.m21*m.m33 - m.m23*m.m31) + m.m03*(m.m21*m.m32 - m.m22*m.m31))
+    let c11 = m.m00*(m.m22*m.m33 - m.m23*m.m32) - m.m02*(m.m20*m.m33 - m.m23*m.m30) + m.m03*(m.m20*m.m32 - m.m22*m.m30)
+    let c12 = 0.0 - (m.m00*(m.m21*m.m33 - m.m23*m.m31) - m.m01*(m.m20*m.m33 - m.m23*m.m30) + m.m03*(m.m20*m.m31 - m.m21*m.m30))
+    let c13 = m.m00*(m.m21*m.m32 - m.m22*m.m31) - m.m01*(m.m20*m.m32 - m.m22*m.m30) + m.m02*(m.m20*m.m31 - m.m21*m.m30)
+
+    // Row 2 of cofactors
+    let c20 = m.m01*(m.m12*m.m33 - m.m13*m.m32) - m.m02*(m.m11*m.m33 - m.m13*m.m31) + m.m03*(m.m11*m.m32 - m.m12*m.m31)
+    let c21 = 0.0 - (m.m00*(m.m12*m.m33 - m.m13*m.m32) - m.m02*(m.m10*m.m33 - m.m13*m.m30) + m.m03*(m.m10*m.m32 - m.m12*m.m30))
+    let c22 = m.m00*(m.m11*m.m33 - m.m13*m.m31) - m.m01*(m.m10*m.m33 - m.m13*m.m30) + m.m03*(m.m10*m.m31 - m.m11*m.m30)
+    let c23 = 0.0 - (m.m00*(m.m11*m.m32 - m.m12*m.m31) - m.m01*(m.m10*m.m32 - m.m12*m.m30) + m.m02*(m.m10*m.m31 - m.m11*m.m30))
+
+    // Row 3 of cofactors
+    let c30 = 0.0 - (m.m01*(m.m12*m.m23 - m.m13*m.m22) - m.m02*(m.m11*m.m23 - m.m13*m.m21) + m.m03*(m.m11*m.m22 - m.m12*m.m21))
+    let c31 = m.m00*(m.m12*m.m23 - m.m13*m.m22) - m.m02*(m.m10*m.m23 - m.m13*m.m20) + m.m03*(m.m10*m.m22 - m.m12*m.m20)
+    let c32 = 0.0 - (m.m00*(m.m11*m.m23 - m.m13*m.m21) - m.m01*(m.m10*m.m23 - m.m13*m.m20) + m.m03*(m.m10*m.m21 - m.m11*m.m20))
+    let c33 = m.m00*(m.m11*m.m22 - m.m12*m.m21) - m.m01*(m.m10*m.m22 - m.m12*m.m20) + m.m02*(m.m10*m.m21 - m.m11*m.m20)
+
+    // Transpose the cofactor matrix and scale by 1/det
+    return Mat4 {
+        m00: c00*inv_d, m01: c10*inv_d, m02: c20*inv_d, m03: c30*inv_d,
+        m10: c01*inv_d, m11: c11*inv_d, m12: c21*inv_d, m13: c31*inv_d,
+        m20: c02*inv_d, m21: c12*inv_d, m22: c22*inv_d, m23: c32*inv_d,
+        m30: c03*inv_d, m31: c13*inv_d, m32: c23*inv_d, m33: c33*inv_d
+    }
+}
+
+// ============================================================================
+// LINEAR SOLVERS
+// ============================================================================
+// Solve Ax = b for small matrices (using precomputed inverse)
+
+// Solve 3x3 linear system: Ax = b
+fn mat3_solve(a: Mat3, b: Vec3) -> Vec3 {
+    let a_inv = mat3_inverse(a)
+    return mat3_vec_mul(a_inv, b)
+}
+
+// Solve 4x4 linear system: Ax = b
+fn mat4_solve(a: Mat4, b: Vec4) -> Vec4 {
+    let a_inv = mat4_inverse(a)
+    return mat4_vec_mul(a_inv, b)
+}
+
+// ============================================================================
+// MAT14 - 14x14 MATRIX (FOR PBPK JACOBIANS)
+// ============================================================================
+// Used for: Jacobian matrices in implicit ODE solvers, flow matrices, sensitivity
+// Row-major storage, elements named r{row}c{col}
+
+// Vec14 type for PBPK compartment states
+struct Vec14 {
+    c0: f64, c1: f64, c2: f64, c3: f64, c4: f64,
+    c5: f64, c6: f64, c7: f64, c8: f64, c9: f64,
+    c10: f64, c11: f64, c12: f64, c13: f64
+}
+
+// Sparse representation: store only the 14 diagonal elements and
+// up to 4 off-diagonal bands (for typical PBPK flow structures)
+// Full 14x14 would need 196 elements - we use a banded approach
+
+// PBPK matrices are typically sparse with structure:
+// - Diagonal: elimination from each compartment
+// - Off-diagonal: flows between connected compartments
+// Most compartments connect to blood (compartment 0) only
+
+// Diagonal matrix for PBPK (stores just the diagonal)
+struct Mat14Diag {
+    d0: f64, d1: f64, d2: f64, d3: f64, d4: f64,
+    d5: f64, d6: f64, d7: f64, d8: f64, d9: f64,
+    d10: f64, d11: f64, d12: f64, d13: f64
+}
+
+fn mat14_diag_new(
+    d0: f64, d1: f64, d2: f64, d3: f64, d4: f64,
+    d5: f64, d6: f64, d7: f64, d8: f64, d9: f64,
+    d10: f64, d11: f64, d12: f64, d13: f64
+) -> Mat14Diag {
+    return Mat14Diag {
+        d0: d0, d1: d1, d2: d2, d3: d3, d4: d4,
+        d5: d5, d6: d6, d7: d7, d8: d8, d9: d9,
+        d10: d10, d11: d11, d12: d12, d13: d13
+    }
+}
+
+fn mat14_diag_identity() -> Mat14Diag {
+    return Mat14Diag {
+        d0: 1.0, d1: 1.0, d2: 1.0, d3: 1.0, d4: 1.0,
+        d5: 1.0, d6: 1.0, d7: 1.0, d8: 1.0, d9: 1.0,
+        d10: 1.0, d11: 1.0, d12: 1.0, d13: 1.0
+    }
+}
+
+fn mat14_diag_scale(m: Mat14Diag, s: f64) -> Mat14Diag {
+    return Mat14Diag {
+        d0: m.d0 * s, d1: m.d1 * s, d2: m.d2 * s, d3: m.d3 * s, d4: m.d4 * s,
+        d5: m.d5 * s, d6: m.d6 * s, d7: m.d7 * s, d8: m.d8 * s, d9: m.d9 * s,
+        d10: m.d10 * s, d11: m.d11 * s, d12: m.d12 * s, d13: m.d13 * s
+    }
+}
+
+fn mat14_diag_add(a: Mat14Diag, b: Mat14Diag) -> Mat14Diag {
+    return Mat14Diag {
+        d0: a.d0 + b.d0, d1: a.d1 + b.d1, d2: a.d2 + b.d2, d3: a.d3 + b.d3, d4: a.d4 + b.d4,
+        d5: a.d5 + b.d5, d6: a.d6 + b.d6, d7: a.d7 + b.d7, d8: a.d8 + b.d8, d9: a.d9 + b.d9,
+        d10: a.d10 + b.d10, d11: a.d11 + b.d11, d12: a.d12 + b.d12, d13: a.d13 + b.d13
+    }
+}
+
+// Diagonal matrix * vector: O(n) instead of O(n^2)
+fn mat14_diag_vec_mul(m: Mat14Diag, v: Vec14) -> Vec14 {
+    return Vec14 {
+        c0: m.d0 * v.c0, c1: m.d1 * v.c1, c2: m.d2 * v.c2, c3: m.d3 * v.c3, c4: m.d4 * v.c4,
+        c5: m.d5 * v.c5, c6: m.d6 * v.c6, c7: m.d7 * v.c7, c8: m.d8 * v.c8, c9: m.d9 * v.c9,
+        c10: m.d10 * v.c10, c11: m.d11 * v.c11, c12: m.d12 * v.c12, c13: m.d13 * v.c13
+    }
+}
+
+// Diagonal inverse: 1/d_i for each element
+fn mat14_diag_inverse(m: Mat14Diag) -> Mat14Diag {
+    return Mat14Diag {
+        d0: 1.0 / m.d0, d1: 1.0 / m.d1, d2: 1.0 / m.d2, d3: 1.0 / m.d3, d4: 1.0 / m.d4,
+        d5: 1.0 / m.d5, d6: 1.0 / m.d6, d7: 1.0 / m.d7, d8: 1.0 / m.d8, d9: 1.0 / m.d9,
+        d10: 1.0 / m.d10, d11: 1.0 / m.d11, d12: 1.0 / m.d12, d13: 1.0 / m.d13
+    }
+}
+
+fn mat14_diag_trace(m: Mat14Diag) -> f64 {
+    return m.d0 + m.d1 + m.d2 + m.d3 + m.d4 + m.d5 + m.d6
+         + m.d7 + m.d8 + m.d9 + m.d10 + m.d11 + m.d12 + m.d13
+}
+
+// Solve diagonal system: Dx = b => x = D^{-1}b
+fn mat14_diag_solve(m: Mat14Diag, b: Vec14) -> Vec14 {
+    return Vec14 {
+        c0: b.c0 / m.d0, c1: b.c1 / m.d1, c2: b.c2 / m.d2, c3: b.c3 / m.d3, c4: b.c4 / m.d4,
+        c5: b.c5 / m.d5, c6: b.c6 / m.d6, c7: b.c7 / m.d7, c8: b.c8 / m.d8, c9: b.c9 / m.d9,
+        c10: b.c10 / m.d10, c11: b.c11 / m.d11, c12: b.c12 / m.d12, c13: b.c13 / m.d13
+    }
+}
+
+// Tridiagonal matrix for 1D diffusion chains (common in PBPK)
+// Stores: lower diagonal (l), main diagonal (d), upper diagonal (u)
+struct Mat14Tridiag {
+    // Lower diagonal: l[1..13] (l[0] unused)
+    l1: f64, l2: f64, l3: f64, l4: f64, l5: f64, l6: f64,
+    l7: f64, l8: f64, l9: f64, l10: f64, l11: f64, l12: f64, l13: f64,
+    // Main diagonal: d[0..13]
+    d0: f64, d1: f64, d2: f64, d3: f64, d4: f64, d5: f64, d6: f64,
+    d7: f64, d8: f64, d9: f64, d10: f64, d11: f64, d12: f64, d13: f64,
+    // Upper diagonal: u[0..12] (u[13] unused)
+    u0: f64, u1: f64, u2: f64, u3: f64, u4: f64, u5: f64,
+    u6: f64, u7: f64, u8: f64, u9: f64, u10: f64, u11: f64, u12: f64
+}
+
+fn mat14_tridiag_identity() -> Mat14Tridiag {
+    return Mat14Tridiag {
+        l1: 0.0, l2: 0.0, l3: 0.0, l4: 0.0, l5: 0.0, l6: 0.0,
+        l7: 0.0, l8: 0.0, l9: 0.0, l10: 0.0, l11: 0.0, l12: 0.0, l13: 0.0,
+        d0: 1.0, d1: 1.0, d2: 1.0, d3: 1.0, d4: 1.0, d5: 1.0, d6: 1.0,
+        d7: 1.0, d8: 1.0, d9: 1.0, d10: 1.0, d11: 1.0, d12: 1.0, d13: 1.0,
+        u0: 0.0, u1: 0.0, u2: 0.0, u3: 0.0, u4: 0.0, u5: 0.0,
+        u6: 0.0, u7: 0.0, u8: 0.0, u9: 0.0, u10: 0.0, u11: 0.0, u12: 0.0
+    }
+}
+
+// Tridiagonal matrix * vector: O(n)
+fn mat14_tridiag_vec_mul(m: Mat14Tridiag, v: Vec14) -> Vec14 {
+    return Vec14 {
+        c0: m.d0 * v.c0 + m.u0 * v.c1,
+        c1: m.l1 * v.c0 + m.d1 * v.c1 + m.u1 * v.c2,
+        c2: m.l2 * v.c1 + m.d2 * v.c2 + m.u2 * v.c3,
+        c3: m.l3 * v.c2 + m.d3 * v.c3 + m.u3 * v.c4,
+        c4: m.l4 * v.c3 + m.d4 * v.c4 + m.u4 * v.c5,
+        c5: m.l5 * v.c4 + m.d5 * v.c5 + m.u5 * v.c6,
+        c6: m.l6 * v.c5 + m.d6 * v.c6 + m.u6 * v.c7,
+        c7: m.l7 * v.c6 + m.d7 * v.c7 + m.u7 * v.c8,
+        c8: m.l8 * v.c7 + m.d8 * v.c8 + m.u8 * v.c9,
+        c9: m.l9 * v.c8 + m.d9 * v.c9 + m.u9 * v.c10,
+        c10: m.l10 * v.c9 + m.d10 * v.c10 + m.u10 * v.c11,
+        c11: m.l11 * v.c10 + m.d11 * v.c11 + m.u11 * v.c12,
+        c12: m.l12 * v.c11 + m.d12 * v.c12 + m.u12 * v.c13,
+        c13: m.l13 * v.c12 + m.d13 * v.c13
+    }
+}
+
+// Thomas algorithm for tridiagonal system solve: O(n)
+// Solves: Ax = b where A is tridiagonal
+// Returns solution x
+fn mat14_tridiag_solve(m: Mat14Tridiag, b: Vec14) -> Vec14 {
+    // Forward elimination (modify diagonal and RHS)
+    // c'[i] = u[i] / (d[i] - l[i] * c'[i-1])
+    // d'[i] = (b[i] - l[i] * d'[i-1]) / (d[i] - l[i] * c'[i-1])
+
+    // Step 0: c'[0] = u[0]/d[0], d'[0] = b[0]/d[0]
+    let cp0 = m.u0 / m.d0
+    let dp0 = b.c0 / m.d0
+
+    // Step 1
+    let w1 = m.d1 - m.l1 * cp0
+    let cp1 = m.u1 / w1
+    let dp1 = (b.c1 - m.l1 * dp0) / w1
+
+    // Step 2
+    let w2 = m.d2 - m.l2 * cp1
+    let cp2 = m.u2 / w2
+    let dp2 = (b.c2 - m.l2 * dp1) / w2
+
+    // Step 3
+    let w3 = m.d3 - m.l3 * cp2
+    let cp3 = m.u3 / w3
+    let dp3 = (b.c3 - m.l3 * dp2) / w3
+
+    // Step 4
+    let w4 = m.d4 - m.l4 * cp3
+    let cp4 = m.u4 / w4
+    let dp4 = (b.c4 - m.l4 * dp3) / w4
+
+    // Step 5
+    let w5 = m.d5 - m.l5 * cp4
+    let cp5 = m.u5 / w5
+    let dp5 = (b.c5 - m.l5 * dp4) / w5
+
+    // Step 6
+    let w6 = m.d6 - m.l6 * cp5
+    let cp6 = m.u6 / w6
+    let dp6 = (b.c6 - m.l6 * dp5) / w6
+
+    // Step 7
+    let w7 = m.d7 - m.l7 * cp6
+    let cp7 = m.u7 / w7
+    let dp7 = (b.c7 - m.l7 * dp6) / w7
+
+    // Step 8
+    let w8 = m.d8 - m.l8 * cp7
+    let cp8 = m.u8 / w8
+    let dp8 = (b.c8 - m.l8 * dp7) / w8
+
+    // Step 9
+    let w9 = m.d9 - m.l9 * cp8
+    let cp9 = m.u9 / w9
+    let dp9 = (b.c9 - m.l9 * dp8) / w9
+
+    // Step 10
+    let w10 = m.d10 - m.l10 * cp9
+    let cp10 = m.u10 / w10
+    let dp10 = (b.c10 - m.l10 * dp9) / w10
+
+    // Step 11
+    let w11 = m.d11 - m.l11 * cp10
+    let cp11 = m.u11 / w11
+    let dp11 = (b.c11 - m.l11 * dp10) / w11
+
+    // Step 12
+    let w12 = m.d12 - m.l12 * cp11
+    let cp12 = m.u12 / w12
+    let dp12 = (b.c12 - m.l12 * dp11) / w12
+
+    // Step 13
+    let w13 = m.d13 - m.l13 * cp12
+    let dp13 = (b.c13 - m.l13 * dp12) / w13
+
+    // Back substitution: x[i] = d'[i] - c'[i] * x[i+1]
+    let x13 = dp13
+    let x12 = dp12 - cp12 * x13
+    let x11 = dp11 - cp11 * x12
+    let x10 = dp10 - cp10 * x11
+    let x9 = dp9 - cp9 * x10
+    let x8 = dp8 - cp8 * x9
+    let x7 = dp7 - cp7 * x8
+    let x6 = dp6 - cp6 * x7
+    let x5 = dp5 - cp5 * x6
+    let x4 = dp4 - cp4 * x5
+    let x3 = dp3 - cp3 * x4
+    let x2 = dp2 - cp2 * x3
+    let x1 = dp1 - cp1 * x2
+    let x0 = dp0 - cp0 * x1
+
+    return Vec14 {
+        c0: x0, c1: x1, c2: x2, c3: x3, c4: x4, c5: x5, c6: x6,
+        c7: x7, c8: x8, c9: x9, c10: x10, c11: x11, c12: x12, c13: x13
+    }
+}
+
 // ============================================================================
 // TESTS
 // ============================================================================
@@ -465,6 +776,132 @@ fn main() -> i32 {
     println(mat4_trace(m4_scaled))
     println("")
 
+    // Test Mat14Diag
+    println("Testing Mat14Diag (PBPK diagonal):")
+    let d14 = mat14_diag_new(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0,
+                              8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0)
+    let v14 = Vec14 {
+        c0: 1.0, c1: 1.0, c2: 1.0, c3: 1.0, c4: 1.0, c5: 1.0, c6: 1.0,
+        c7: 1.0, c8: 1.0, c9: 1.0, c10: 1.0, c11: 1.0, c12: 1.0, c13: 1.0
+    }
+    let dv14 = mat14_diag_vec_mul(d14, v14)
+    println("  D*v (first 3 elements) = ")
+    println(dv14.c0)
+    println(dv14.c1)
+    println(dv14.c2)
+    let d14_trace = mat14_diag_trace(d14)
+    println("  trace(D) = ")
+    println(d14_trace)
+    // trace should be 1+2+...+14 = 14*15/2 = 105
+    println("")
+
+    // Test Mat14Diag solve
+    println("Testing Mat14Diag solve:")
+    let b14 = Vec14 {
+        c0: 2.0, c1: 4.0, c2: 6.0, c3: 8.0, c4: 10.0, c5: 12.0, c6: 14.0,
+        c7: 16.0, c8: 18.0, c9: 20.0, c10: 22.0, c11: 24.0, c12: 26.0, c13: 28.0
+    }
+    let x14 = mat14_diag_solve(d14, b14)
+    println("  Dx = b => x (should all be 2.0):")
+    println("    x[0] = ")
+    println(x14.c0)
+    println("    x[5] = ")
+    println(x14.c5)
+    println("    x[13] = ")
+    println(x14.c13)
+    println("")
+
+    // Test Mat14Tridiag solve (Thomas algorithm)
+    println("Testing Mat14Tridiag solve (Thomas algorithm):")
+    // Create a simple tridiagonal: -1 on sub/super diagonal, 2 on main
+    // This is the classic 1D Laplacian discretization
+    let tri14 = Mat14Tridiag {
+        l1: -1.0, l2: -1.0, l3: -1.0, l4: -1.0, l5: -1.0, l6: -1.0,
+        l7: -1.0, l8: -1.0, l9: -1.0, l10: -1.0, l11: -1.0, l12: -1.0, l13: -1.0,
+        d0: 2.0, d1: 2.0, d2: 2.0, d3: 2.0, d4: 2.0, d5: 2.0, d6: 2.0,
+        d7: 2.0, d8: 2.0, d9: 2.0, d10: 2.0, d11: 2.0, d12: 2.0, d13: 2.0,
+        u0: -1.0, u1: -1.0, u2: -1.0, u3: -1.0, u4: -1.0, u5: -1.0,
+        u6: -1.0, u7: -1.0, u8: -1.0, u9: -1.0, u10: -1.0, u11: -1.0, u12: -1.0
+    }
+    // RHS: all ones
+    let b_tri = Vec14 {
+        c0: 1.0, c1: 1.0, c2: 1.0, c3: 1.0, c4: 1.0, c5: 1.0, c6: 1.0,
+        c7: 1.0, c8: 1.0, c9: 1.0, c10: 1.0, c11: 1.0, c12: 1.0, c13: 1.0
+    }
+    let x_tri = mat14_tridiag_solve(tri14, b_tri)
+    println("  Tridiag(-1,2,-1) * x = 1:")
+    println("    x[0] = ")
+    println(x_tri.c0)
+    println("    x[7] = ")
+    println(x_tri.c7)
+    println("    x[13] = ")
+    println(x_tri.c13)
+
+    // Verify by computing Ax - should be close to b
+    let ax_tri = mat14_tridiag_vec_mul(tri14, x_tri)
+    println("  Verification A*x (should be ~1.0):")
+    println("    (Ax)[0] = ")
+    println(ax_tri.c0)
+    println("    (Ax)[7] = ")
+    println(ax_tri.c7)
+    println("")
+
+    // Test Mat4 inverse and determinant
+    println("Testing Mat4 det/inverse:")
+    let m4_test = Mat4 {
+        m00: 1.0, m01: 0.0, m02: 2.0, m03: -1.0,
+        m10: 3.0, m11: 0.0, m12: 0.0, m13: 5.0,
+        m20: 2.0, m21: 1.0, m22: 4.0, m23: -3.0,
+        m30: 1.0, m31: 0.0, m32: 5.0, m33: 0.0
+    }
+    let det4 = mat4_det(m4_test)
+    println("  det(M4) = ")
+    println(det4)  // Should be 30
+
+    let m4_inv = mat4_inverse(m4_test)
+    let m4_prod = mat4_mul(m4_test, m4_inv)
+    println("  M4 * M4^-1 trace = ")
+    println(mat4_trace(m4_prod))  // Should be 4.0
+    println("")
+
+    // Test mat3_solve
+    println("Testing mat3_solve:")
+    // Solve: [1 2 3] [x]   [14]
+    //        [0 1 4] [y] = [14]
+    //        [5 6 0] [z]   [17]
+    // From earlier test, we know M3 * [1,2,3] = [14, 14, 17]
+    let rhs3 = Vec3 { x: 14.0, y: 14.0, z: 17.0 }
+    let x3 = mat3_solve(m3, rhs3)
+    println("  Solution x = ")
+    println(x3.x)
+    println(x3.y)
+    println(x3.z)
+    // Should be [1, 2, 3]
+    println("")
+
+    // Test mat4_solve
+    println("Testing mat4_solve:")
+    // Create a 4x4 system with known solution [1, 2, 3, 4]
+    let a4 = Mat4 {
+        m00: 2.0, m01: 1.0, m02: 0.0, m03: 0.0,
+        m10: 1.0, m11: 2.0, m12: 1.0, m13: 0.0,
+        m20: 0.0, m21: 1.0, m22: 2.0, m23: 1.0,
+        m30: 0.0, m31: 0.0, m32: 1.0, m33: 2.0
+    }
+    let x_true = Vec4 { x: 1.0, y: 2.0, z: 3.0, w: 4.0 }
+    let b4 = mat4_vec_mul(a4, x_true)  // Compute b = A * x_true
+    let x4 = mat4_solve(a4, b4)        // Solve A * x = b
+    println("  Solution (should be 1,2,3,4):")
+    println("    x[0] = ")
+    println(x4.x)
+    println("    x[1] = ")
+    println(x4.y)
+    println("    x[2] = ")
+    println(x4.z)
+    println("    x[3] = ")
+    println(x4.w)
+    println("")
+
     // Verify results
     // det(M2) = 1*4 - 2*3 = -2
     let det2_expected = 0.0 - 2.0
@@ -481,7 +918,24 @@ fn main() -> i32 {
     // Mat-vec multiplication
     let mv_err = abs_val(result.x - expected_x) + abs_val(result.y - expected_y) + abs_val(result.z - expected_z)
 
-    if det2_err < 0.0001 && det3_err < 0.0001 && m2_diag_err < 0.0001 && mv_err < 0.0001 {
+    // Mat4 determinant (verified with WolframAlpha: det = 30)
+    let det4_expected = 30.0
+    let det4_err = abs_val(det4 - det4_expected)
+
+    // Mat4 * Mat4^-1 should have trace = 4.0
+    let m4_trace_err = abs_val(mat4_trace(m4_prod) - 4.0)
+
+    // mat3_solve: solution should be [1, 2, 3]
+    let x3_err = abs_val(x3.x - 1.0) + abs_val(x3.y - 2.0) + abs_val(x3.z - 3.0)
+
+    // mat4_solve: solution should be [1, 2, 3, 4]
+    let x4_err = abs_val(x4.x - 1.0) + abs_val(x4.y - 2.0) + abs_val(x4.z - 3.0) + abs_val(x4.w - 4.0)
+
+    let all_pass = det2_err < 0.0001 && det3_err < 0.0001 && m2_diag_err < 0.0001
+                && mv_err < 0.0001 && det4_err < 0.0001 && m4_trace_err < 0.0001
+                && x3_err < 0.0001 && x4_err < 0.0001
+
+    if all_pass {
         println("TEST PASSED: All matrix operations correct")
         return 0
     } else {
@@ -494,6 +948,14 @@ fn main() -> i32 {
         println(m2_diag_err)
         println("  mv_err = ")
         println(mv_err)
+        println("  det4_err = ")
+        println(det4_err)
+        println("  m4_trace_err = ")
+        println(m4_trace_err)
+        println("  x3_err = ")
+        println(x3_err)
+        println("  x4_err = ")
+        println(x4_err)
         return 1
     }
 }
