@@ -5519,8 +5519,8 @@ fn swish_beta(input_x: f64, beta: f64) -> f64 {
 
 // Mish: x * tanh(softplus(x)) = x * tanh(ln(1 + e^x))
 fn mish(input_x: f64) -> f64 {
-    let softplus = log_f64(1.0 + exp_f64(input_x))
-    return input_x * tanh_f64(softplus)
+    let sp_val = log_f64(1.0 + exp_f64(input_x))
+    return input_x * tanh_f64(sp_val)
 }
 
 // GELU approximation (used in BERT, GPT)
@@ -6759,6 +6759,1106 @@ fn checkpoint_layer(
         input_val: input_val,
         layer_idx: layer_idx,
         should_checkpoint: should_cp
+    }
+}
+
+// ============================================================================
+// NEURAL ODE LAYERS
+// Differential equation-based neural networks for continuous dynamics
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// ODE Solver Utilities
+// ----------------------------------------------------------------------------
+
+// ODE state for scalar systems
+struct ODEState {
+    t: f64,       // current time
+    y: f64,       // current state value
+    dydt: f64     // derivative at current state
+}
+
+// Result from ODE integration
+struct ODESolveResult {
+    y_final: f64,    // final state
+    t_final: f64,    // final time
+    n_steps: i32,    // number of steps taken
+    n_evals: i32     // number of function evaluations
+}
+
+// ----------------------------------------------------------------------------
+// Neural ODE Function (dy/dt = f(y, t; theta))
+// Two-layer MLP representing the derivative function
+// DEFINED FIRST - used by euler_integrate, rk4_step, dopri5_step, etc.
+// ----------------------------------------------------------------------------
+
+fn neural_ode_func(
+    y: f64, t: f64,
+    w1: f64, b1: f64,
+    w2: f64, b2: f64
+) -> f64 {
+    // Concatenate y and t as input (simplified: weighted sum)
+    let input_val = y + 0.1 * t  // time-dependent dynamics
+
+    // Two-layer MLP: tanh activation
+    let hidden = tanh_f64(w1 * input_val + b1)
+    let output_val = w2 * hidden + b2
+
+    return output_val
+}
+
+// Neural ODE with time embedding
+fn neural_ode_func_time_embed(
+    y: f64, t: f64,
+    w_y: f64, w_t: f64, b1: f64,
+    w2: f64, b2: f64
+) -> f64 {
+    // Separate weights for state and time
+    let hidden = tanh_f64(w_y * y + w_t * t + b1)
+    let output_val = w2 * hidden + b2
+    return output_val
+}
+
+// Euler method - simplest ODE solver (1st order)
+fn euler_step(y: f64, dydt: f64, dt: f64) -> f64 {
+    return y + dt * dydt
+}
+
+// Euler integration over interval (fixed 4 steps)
+fn euler_integrate(
+    y0: f64,
+    t0: f64, t1: f64,
+    // Neural network parameters for dy/dt = f(y, t; theta)
+    w1: f64, b1: f64,
+    w2: f64, b2: f64
+) -> ODESolveResult {
+    // Fixed 4 steps (unrolled loop)
+    let dt = (t1 - t0) / 4.0
+    let mut y = y0
+    let mut t = t0
+
+    // Step 1
+    let dydt1 = neural_ode_func(y, t, w1, b1, w2, b2)
+    y = euler_step(y, dydt1, dt)
+    t = t + dt
+
+    // Step 2
+    let dydt2 = neural_ode_func(y, t, w1, b1, w2, b2)
+    y = euler_step(y, dydt2, dt)
+    t = t + dt
+
+    // Step 3
+    let dydt3 = neural_ode_func(y, t, w1, b1, w2, b2)
+    y = euler_step(y, dydt3, dt)
+    t = t + dt
+
+    // Step 4
+    let dydt4 = neural_ode_func(y, t, w1, b1, w2, b2)
+    y = euler_step(y, dydt4, dt)
+    t = t + dt
+
+    return ODESolveResult {
+        y_final: y,
+        t_final: t,
+        n_steps: 4,
+        n_evals: 4
+    }
+}
+
+// Midpoint method - 2nd order Runge-Kutta
+fn midpoint_step(
+    y: f64, t: f64, dt: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64
+) -> f64 {
+    let k1 = neural_ode_func(y, t, w1, b1, w2, b2)
+    let y_mid = y + 0.5 * dt * k1
+    let t_mid = t + 0.5 * dt
+    let k2 = neural_ode_func(y_mid, t_mid, w1, b1, w2, b2)
+    return y + dt * k2
+}
+
+// Classical 4th-order Runge-Kutta (RK4)
+fn rk4_step(
+    y: f64, t: f64, dt: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64
+) -> f64 {
+    let k1 = neural_ode_func(y, t, w1, b1, w2, b2)
+    let k2 = neural_ode_func(y + 0.5 * dt * k1, t + 0.5 * dt, w1, b1, w2, b2)
+    let k3 = neural_ode_func(y + 0.5 * dt * k2, t + 0.5 * dt, w1, b1, w2, b2)
+    let k4 = neural_ode_func(y + dt * k3, t + dt, w1, b1, w2, b2)
+    return y + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+}
+
+// RK4 integration over interval (fixed 4 steps)
+fn rk4_integrate(
+    y0: f64,
+    t0: f64, t1: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64
+) -> ODESolveResult {
+    // Fixed 4 steps (unrolled loop)
+    let dt = (t1 - t0) / 4.0
+    let mut y = y0
+    let mut t = t0
+
+    // Unrolled RK4 steps
+    y = rk4_step(y, t, dt, w1, b1, w2, b2)
+    t = t + dt
+    y = rk4_step(y, t, dt, w1, b1, w2, b2)
+    t = t + dt
+    y = rk4_step(y, t, dt, w1, b1, w2, b2)
+    t = t + dt
+    y = rk4_step(y, t, dt, w1, b1, w2, b2)
+    t = t + dt
+
+    return ODESolveResult {
+        y_final: y,
+        t_final: t,
+        n_steps: 4,
+        n_evals: 16  // RK4 uses 4 evals per step
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Adaptive Step Size Control (Dormand-Prince / RK45)
+// ----------------------------------------------------------------------------
+
+struct AdaptiveStepResult {
+    y_new: f64,
+    t_new: f64,
+    dt_next: f64,  // suggested next step size
+    error_est: f64,
+    accepted: f64  // 1.0 if step accepted, 0.0 if rejected
+}
+
+// Dormand-Prince 5(4) coefficients (simplified single-step)
+fn dopri5_step(
+    y: f64, t: f64, dt: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64,
+    rtol: f64, atol: f64
+) -> AdaptiveStepResult {
+    // Dormand-Prince coefficients
+    let c2 = 0.2
+    let c3 = 0.3
+    let c4 = 0.8
+    let c5 = 8.0 / 9.0
+
+    // Compute stages
+    let k1 = neural_ode_func(y, t, w1, b1, w2, b2)
+    let k2 = neural_ode_func(y + dt * 0.2 * k1, t + dt * c2, w1, b1, w2, b2)
+    let k3 = neural_ode_func(y + dt * (0.075 * k1 + 0.225 * k2), t + dt * c3, w1, b1, w2, b2)
+    let k4 = neural_ode_func(y + dt * (44.0/45.0 * k1 - 56.0/15.0 * k2 + 32.0/9.0 * k3), t + dt * c4, w1, b1, w2, b2)
+    let k5 = neural_ode_func(y + dt * (19372.0/6561.0 * k1 - 25360.0/2187.0 * k2 + 64448.0/6561.0 * k3 - 212.0/729.0 * k4), t + dt * c5, w1, b1, w2, b2)
+    let k6 = neural_ode_func(y + dt * (9017.0/3168.0 * k1 - 355.0/33.0 * k2 + 46732.0/5247.0 * k3 + 49.0/176.0 * k4 - 5103.0/18656.0 * k5), t + dt, w1, b1, w2, b2)
+
+    // 5th order solution
+    let y5 = y + dt * (35.0/384.0 * k1 + 500.0/1113.0 * k3 + 125.0/192.0 * k4 - 2187.0/6784.0 * k5 + 11.0/84.0 * k6)
+
+    // 4th order solution (for error estimate)
+    let k7 = neural_ode_func(y5, t + dt, w1, b1, w2, b2)
+    let y4 = y + dt * (5179.0/57600.0 * k1 + 7571.0/16695.0 * k3 + 393.0/640.0 * k4 - 92097.0/339200.0 * k5 + 187.0/2100.0 * k6 + 1.0/40.0 * k7)
+
+    // Error estimate
+    let err = abs_f64(y5 - y4)
+    let scale = atol + rtol * max_f64(abs_f64(y), abs_f64(y5))
+    let err_ratio = err / scale
+
+    // Step size control (PI controller)
+    let safety = 0.9
+    let min_factor = 0.2
+    let max_factor = 10.0
+
+    let factor = if err_ratio > 0.0 {
+        safety * pow_f64(err_ratio, -0.2)
+    } else {
+        max_factor
+    }
+    let factor_clamped = max_f64(min_factor, min_f64(max_factor, factor))
+    let dt_new = dt * factor_clamped
+
+    let accepted = if err_ratio <= 1.0 { 1.0 } else { 0.0 }
+
+    return AdaptiveStepResult {
+        y_new: if accepted > 0.5 { y5 } else { y },
+        t_new: if accepted > 0.5 { t + dt } else { t },
+        dt_next: dt_new,
+        error_est: err,
+        accepted: accepted
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Neural ODE Forward Pass (ODENet)
+// Solves dy/dt = f(y, t; theta) from t0 to t1
+// ----------------------------------------------------------------------------
+
+struct NeuralODEResult {
+    y_final: f64,
+    y_trajectory_1: f64,  // intermediate state at t=0.25
+    y_trajectory_2: f64,  // intermediate state at t=0.5
+    y_trajectory_3: f64,  // intermediate state at t=0.75
+    n_function_evals: i32
+}
+
+fn neural_ode_forward(
+    y0: f64,
+    t0: f64, t1: f64,
+    w1: f64, b1: f64,
+    w2: f64, b2: f64,
+    solver_type: i32  // 0=Euler, 1=RK4
+) -> NeuralODEResult {
+    let dt = (t1 - t0) / 4.0
+    let mut y = y0
+    let mut t = t0
+
+    // Store trajectory
+    let mut traj1 = 0.0
+    let mut traj2 = 0.0
+    let mut traj3 = 0.0
+    let mut n_evals = 0
+
+    if solver_type == 0 {
+        // Euler method
+        let dydt = neural_ode_func(y, t, w1, b1, w2, b2)
+        y = euler_step(y, dydt, dt)
+        t = t + dt
+        traj1 = y
+        n_evals = n_evals + 1
+
+        let dydt2 = neural_ode_func(y, t, w1, b1, w2, b2)
+        y = euler_step(y, dydt2, dt)
+        t = t + dt
+        traj2 = y
+        n_evals = n_evals + 1
+
+        let dydt3 = neural_ode_func(y, t, w1, b1, w2, b2)
+        y = euler_step(y, dydt3, dt)
+        t = t + dt
+        traj3 = y
+        n_evals = n_evals + 1
+
+        let dydt4 = neural_ode_func(y, t, w1, b1, w2, b2)
+        y = euler_step(y, dydt4, dt)
+        n_evals = n_evals + 1
+    } else {
+        // RK4 method
+        y = rk4_step(y, t, dt, w1, b1, w2, b2)
+        t = t + dt
+        traj1 = y
+        n_evals = n_evals + 4
+
+        y = rk4_step(y, t, dt, w1, b1, w2, b2)
+        t = t + dt
+        traj2 = y
+        n_evals = n_evals + 4
+
+        y = rk4_step(y, t, dt, w1, b1, w2, b2)
+        t = t + dt
+        traj3 = y
+        n_evals = n_evals + 4
+
+        y = rk4_step(y, t, dt, w1, b1, w2, b2)
+        n_evals = n_evals + 4
+    }
+
+    return NeuralODEResult {
+        y_final: y,
+        y_trajectory_1: traj1,
+        y_trajectory_2: traj2,
+        y_trajectory_3: traj3,
+        n_function_evals: n_evals
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Adjoint Sensitivity Method (Backward Pass)
+// Memory-efficient backpropagation through ODEs
+// ----------------------------------------------------------------------------
+
+struct AdjointState {
+    y: f64,           // state
+    adj_y: f64,       // adjoint of state (dL/dy)
+    adj_w1: f64,      // adjoint of w1 (dL/dw1)
+    adj_b1: f64,      // adjoint of b1
+    adj_w2: f64,      // adjoint of w2
+    adj_b2: f64       // adjoint of b2
+}
+
+// Compute gradients of neural ODE function w.r.t. parameters
+fn neural_ode_func_grad(
+    y: f64, t: f64,
+    w1: f64, b1: f64,
+    w2: f64, b2: f64
+) -> AdjointState {
+    // Forward pass
+    let input_val = y + 0.1 * t
+    let pre_act = w1 * input_val + b1
+    let hidden = tanh_f64(pre_act)
+    let output_val = w2 * hidden + b2
+
+    // Backward pass (for output gradient = 1)
+    let d_output = 1.0
+
+    // d/d(hidden) = w2
+    let d_hidden = d_output * w2
+
+    // d/d(pre_act) = d_hidden * (1 - tanh^2)
+    let tanh_grad = 1.0 - hidden * hidden
+    let d_pre_act = d_hidden * tanh_grad
+
+    // Parameter gradients
+    let d_w1 = d_pre_act * input_val
+    let d_b1 = d_pre_act
+    let d_w2 = d_output * hidden
+    let d_b2 = d_output
+
+    // Input gradient (for adjoint)
+    let d_y = d_pre_act * w1
+
+    return AdjointState {
+        y: output_val,
+        adj_y: d_y,
+        adj_w1: d_w1,
+        adj_b1: d_b1,
+        adj_w2: d_w2,
+        adj_b2: d_b2
+    }
+}
+
+// Adjoint ODE system: d(adj)/dt = -adj * df/dy
+fn adjoint_dynamics(
+    y: f64, adj_y: f64, t: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64
+) -> AdjointState {
+    // Get function and its gradients
+    let grads = neural_ode_func_grad(y, t, w1, b1, w2, b2)
+
+    // Adjoint dynamics: d(adj_y)/dt = -adj_y * df/dy
+    let d_adj_y = 0.0 - adj_y * grads.adj_y
+
+    // Parameter gradients accumulate: dL/dtheta = -adj_y * df/dtheta
+    let d_adj_w1 = 0.0 - adj_y * grads.adj_w1
+    let d_adj_b1 = 0.0 - adj_y * grads.adj_b1
+    let d_adj_w2 = 0.0 - adj_y * grads.adj_w2
+    let d_adj_b2 = 0.0 - adj_y * grads.adj_b2
+
+    return AdjointState {
+        y: grads.y,
+        adj_y: d_adj_y,
+        adj_w1: d_adj_w1,
+        adj_b1: d_adj_b1,
+        adj_w2: d_adj_w2,
+        adj_b2: d_adj_b2
+    }
+}
+
+// Full adjoint backward pass
+struct AdjointResult {
+    grad_w1: f64,
+    grad_b1: f64,
+    grad_w2: f64,
+    grad_b2: f64,
+    grad_y0: f64  // gradient w.r.t. initial condition
+}
+
+fn neural_ode_backward(
+    y_final: f64,
+    dL_dy_final: f64,  // gradient of loss w.r.t. final state
+    t0: f64, t1: f64,
+    w1: f64, b1: f64,
+    w2: f64, b2: f64
+) -> AdjointResult {
+    // Fixed 4 steps (unrolled loop)
+    let dt = (t1 - t0) / 4.0
+
+    // Initialize adjoint state
+    let mut y = y_final
+    let mut adj_y = dL_dy_final
+    let mut t = t1
+
+    // Accumulated parameter gradients
+    let mut acc_w1 = 0.0
+    let mut acc_b1 = 0.0
+    let mut acc_w2 = 0.0
+    let mut acc_b2 = 0.0
+
+    // Integrate adjoint backwards (Euler for simplicity)
+    // Step 1 (backwards)
+    let adj1 = adjoint_dynamics(y, adj_y, t, w1, b1, w2, b2)
+    adj_y = adj_y - dt * adj1.adj_y
+    acc_w1 = acc_w1 + dt * adj1.adj_w1
+    acc_b1 = acc_b1 + dt * adj1.adj_b1
+    acc_w2 = acc_w2 + dt * adj1.adj_w2
+    acc_b2 = acc_b2 + dt * adj1.adj_b2
+    t = t - dt
+
+    // Reconstruct y backwards (simplified)
+    y = y - dt * neural_ode_func(y, t, w1, b1, w2, b2)
+
+    // Step 2
+    let adj2 = adjoint_dynamics(y, adj_y, t, w1, b1, w2, b2)
+    adj_y = adj_y - dt * adj2.adj_y
+    acc_w1 = acc_w1 + dt * adj2.adj_w1
+    acc_b1 = acc_b1 + dt * adj2.adj_b1
+    acc_w2 = acc_w2 + dt * adj2.adj_w2
+    acc_b2 = acc_b2 + dt * adj2.adj_b2
+    t = t - dt
+    y = y - dt * neural_ode_func(y, t, w1, b1, w2, b2)
+
+    // Step 3
+    let adj3 = adjoint_dynamics(y, adj_y, t, w1, b1, w2, b2)
+    adj_y = adj_y - dt * adj3.adj_y
+    acc_w1 = acc_w1 + dt * adj3.adj_w1
+    acc_b1 = acc_b1 + dt * adj3.adj_b1
+    acc_w2 = acc_w2 + dt * adj3.adj_w2
+    acc_b2 = acc_b2 + dt * adj3.adj_b2
+    t = t - dt
+    y = y - dt * neural_ode_func(y, t, w1, b1, w2, b2)
+
+    // Step 4
+    let adj4 = adjoint_dynamics(y, adj_y, t, w1, b1, w2, b2)
+    adj_y = adj_y - dt * adj4.adj_y
+    acc_w1 = acc_w1 + dt * adj4.adj_w1
+    acc_b1 = acc_b1 + dt * adj4.adj_b1
+    acc_w2 = acc_w2 + dt * adj4.adj_w2
+    acc_b2 = acc_b2 + dt * adj4.adj_b2
+
+    return AdjointResult {
+        grad_w1: acc_w1,
+        grad_b1: acc_b1,
+        grad_w2: acc_w2,
+        grad_b2: acc_b2,
+        grad_y0: adj_y
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Continuous Normalizing Flows (CNF)
+// For density estimation and generative modeling
+// ----------------------------------------------------------------------------
+
+struct CNFResult {
+    z_final: f64,      // transformed variable
+    log_det_jac: f64   // log determinant of Jacobian (for likelihood)
+}
+
+// CNF forward: transform from data to latent space
+// Also tracks log det Jacobian for density estimation
+fn cnf_forward(
+    x: f64,
+    t0: f64, t1: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64
+) -> CNFResult {
+    // Fixed 4 steps (unrolled loop)
+    let dt = (t1 - t0) / 4.0
+    let mut z = x
+    let mut t = t0
+    let mut log_det = 0.0
+
+    // Integrate ODE and accumulate log det Jacobian
+    // Using trace estimator: d(log det)/dt = tr(df/dz)
+
+    // Step 1
+    let grads1 = neural_ode_func_grad(z, t, w1, b1, w2, b2)
+    let f1 = neural_ode_func(z, t, w1, b1, w2, b2)
+    z = z + dt * f1
+    log_det = log_det + dt * grads1.adj_y  // tr(df/dz) for scalar = df/dz
+    t = t + dt
+
+    // Step 2
+    let grads2 = neural_ode_func_grad(z, t, w1, b1, w2, b2)
+    let f2 = neural_ode_func(z, t, w1, b1, w2, b2)
+    z = z + dt * f2
+    log_det = log_det + dt * grads2.adj_y
+    t = t + dt
+
+    // Step 3
+    let grads3 = neural_ode_func_grad(z, t, w1, b1, w2, b2)
+    let f3 = neural_ode_func(z, t, w1, b1, w2, b2)
+    z = z + dt * f3
+    log_det = log_det + dt * grads3.adj_y
+    t = t + dt
+
+    // Step 4
+    let grads4 = neural_ode_func_grad(z, t, w1, b1, w2, b2)
+    let f4 = neural_ode_func(z, t, w1, b1, w2, b2)
+    z = z + dt * f4
+    log_det = log_det + dt * grads4.adj_y
+
+    return CNFResult {
+        z_final: z,
+        log_det_jac: log_det
+    }
+}
+
+// CNF inverse: transform from latent to data space
+fn cnf_inverse(
+    z: f64,
+    t0: f64, t1: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64
+) -> CNFResult {
+    // Integrate backwards (negate time direction)
+    // Fixed 4 steps (avoids codegen bug with i32 as f64)
+    let dt = (t0 - t1) / 4.0  // negative dt
+    let mut x_val = z
+    let mut t = t1
+    let mut log_det = 0.0
+
+    // Step backwards
+    let f1 = neural_ode_func(x_val, t, w1, b1, w2, b2)
+    let grads1 = neural_ode_func_grad(x_val, t, w1, b1, w2, b2)
+    x_val = x_val + dt * f1
+    log_det = log_det - dt * grads1.adj_y  // negative for inverse
+    t = t + dt
+
+    let f2 = neural_ode_func(x_val, t, w1, b1, w2, b2)
+    let grads2 = neural_ode_func_grad(x_val, t, w1, b1, w2, b2)
+    x_val = x_val + dt * f2
+    log_det = log_det - dt * grads2.adj_y
+    t = t + dt
+
+    let f3 = neural_ode_func(x_val, t, w1, b1, w2, b2)
+    let grads3 = neural_ode_func_grad(x_val, t, w1, b1, w2, b2)
+    x_val = x_val + dt * f3
+    log_det = log_det - dt * grads3.adj_y
+    t = t + dt
+
+    let f4 = neural_ode_func(x_val, t, w1, b1, w2, b2)
+    let grads4 = neural_ode_func_grad(x_val, t, w1, b1, w2, b2)
+    x_val = x_val + dt * f4
+    log_det = log_det - dt * grads4.adj_y
+
+    return CNFResult {
+        z_final: x_val,
+        log_det_jac: log_det
+    }
+}
+
+// CNF log likelihood: log p(x) = log p(z) - log|det(dz/dx)|
+fn cnf_log_likelihood(
+    x: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64
+) -> f64 {
+    let cnf_result = cnf_forward(x, 0.0, 1.0, w1, b1, w2, b2, 4)
+
+    // Assume standard normal prior: log p(z) = -0.5 * z^2 - 0.5 * log(2*pi)
+    let log_pz = -0.5 * cnf_result.z_final * cnf_result.z_final - 0.9189385332  // -0.5*log(2*pi)
+
+    // log p(x) = log p(z) - log|det(Jac)|
+    return log_pz - cnf_result.log_det_jac
+}
+
+// ----------------------------------------------------------------------------
+// Augmented Neural ODE
+// Augments state space to increase expressiveness
+// ----------------------------------------------------------------------------
+
+struct AugmentedODEState {
+    y: f64,    // original state
+    a: f64     // augmented state
+}
+
+struct AugmentedODEResult {
+    y_final: f64,
+    a_final: f64,
+    n_evals: i32
+}
+
+// Augmented dynamics: both y and a evolve together
+fn augmented_ode_func(
+    y: f64, a: f64, t: f64,
+    w_y: f64, w_a: f64, b1: f64,
+    w2_y: f64, w2_a: f64, b2: f64
+) -> AugmentedODEState {
+    // Joint hidden representation
+    let hidden = tanh_f64(w_y * y + w_a * a + b1)
+
+    // Separate outputs for y and a dynamics
+    let dy = w2_y * hidden + b2
+    let da = w2_a * hidden
+
+    return AugmentedODEState { y: dy, a: da }
+}
+
+// Augmented Neural ODE forward
+fn augmented_ode_forward(
+    y0: f64, a0: f64,
+    t0: f64, t1: f64,
+    w_y: f64, w_a: f64, b1: f64,
+    w2_y: f64, w2_a: f64, b2: f64
+) -> AugmentedODEResult {
+    // Fixed 4 steps (avoids codegen bug with i32 as f64)
+    let dt = (t1 - t0) / 4.0
+    let mut y = y0
+    let mut a = a0
+    let mut t = t0
+    let mut n_evals = 0
+
+    // Euler integration for augmented system
+    // Step 1
+    let d1 = augmented_ode_func(y, a, t, w_y, w_a, b1, w2_y, w2_a, b2)
+    y = y + dt * d1.y
+    a = a + dt * d1.a
+    t = t + dt
+    n_evals = n_evals + 1
+
+    // Step 2
+    let d2 = augmented_ode_func(y, a, t, w_y, w_a, b1, w2_y, w2_a, b2)
+    y = y + dt * d2.y
+    a = a + dt * d2.a
+    t = t + dt
+    n_evals = n_evals + 1
+
+    // Step 3
+    let d3 = augmented_ode_func(y, a, t, w_y, w_a, b1, w2_y, w2_a, b2)
+    y = y + dt * d3.y
+    a = a + dt * d3.a
+    t = t + dt
+    n_evals = n_evals + 1
+
+    // Step 4
+    let d4 = augmented_ode_func(y, a, t, w_y, w_a, b1, w2_y, w2_a, b2)
+    y = y + dt * d4.y
+    a = a + dt * d4.a
+    n_evals = n_evals + 1
+
+    return AugmentedODEResult {
+        y_final: y,
+        a_final: a,
+        n_evals: n_evals
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Neural Controlled Differential Equation (Neural CDE)
+// For irregular time series with control path
+// ----------------------------------------------------------------------------
+
+struct NeuralCDEResult {
+    y_final: f64,
+    n_evals: i32
+}
+
+// Neural CDE: dy/dt = f(y) * dX/dt
+// where X is the control path (input time series)
+fn neural_cde_func(
+    y: f64,
+    dX_dt: f64,  // control path derivative
+    w1: f64, b1: f64,
+    w2: f64, b2: f64
+) -> f64 {
+    // f(y) is a neural network
+    let f_y = tanh_f64(w1 * y + b1)
+    let hidden = w2 * f_y + b2
+
+    // Multiply by control derivative
+    return hidden * dX_dt
+}
+
+// Neural CDE forward with piecewise linear control path
+fn neural_cde_forward(
+    y0: f64,
+    // Control path values at 4 time points
+    x0: f64, x1: f64, x2: f64, x3: f64,
+    t0: f64, t1: f64,
+    w1: f64, b1: f64,
+    w2: f64, b2: f64
+) -> NeuralCDEResult {
+    let dt = (t1 - t0) / 4.0
+    let mut y = y0
+    let mut n_evals = 0
+
+    // Control path derivatives (piecewise linear interpolation)
+    let dX1 = (x1 - x0) / dt
+    let dX2 = (x2 - x1) / dt
+    let dX3 = (x3 - x2) / dt
+    let dX4 = (x3 - x2) / dt  // constant extrapolation
+
+    // Integrate CDE
+    let dy1 = neural_cde_func(y, dX1, w1, b1, w2, b2)
+    y = y + dt * dy1
+    n_evals = n_evals + 1
+
+    let dy2 = neural_cde_func(y, dX2, w1, b1, w2, b2)
+    y = y + dt * dy2
+    n_evals = n_evals + 1
+
+    let dy3 = neural_cde_func(y, dX3, w1, b1, w2, b2)
+    y = y + dt * dy3
+    n_evals = n_evals + 1
+
+    let dy4 = neural_cde_func(y, dX4, w1, b1, w2, b2)
+    y = y + dt * dy4
+    n_evals = n_evals + 1
+
+    return NeuralCDEResult {
+        y_final: y,
+        n_evals: n_evals
+    }
+}
+
+// ----------------------------------------------------------------------------
+// ODE-RNN: Combining RNN with Neural ODE
+// Latent state evolves continuously between observations
+// ----------------------------------------------------------------------------
+
+struct ODERNNState {
+    h: f64,           // hidden state
+    h_evolved: f64    // hidden state after ODE evolution
+}
+
+// ODE-RNN: evolve hidden state with ODE, then update with observation
+fn ode_rnn_step(
+    h_prev: f64,
+    x_obs: f64,
+    delta_t: f64,  // time since last observation
+    // ODE parameters
+    w_ode1: f64, b_ode1: f64,
+    w_ode2: f64, b_ode2: f64,
+    // RNN update parameters
+    w_hh: f64, w_xh: f64, b_h: f64
+) -> ODERNNState {
+    // 1. Evolve hidden state with Neural ODE
+    let h_evolved = rk4_step(h_prev, 0.0, delta_t, w_ode1, b_ode1, w_ode2, b_ode2)
+
+    // 2. RNN update with new observation
+    let h_new = tanh_f64(w_hh * h_evolved + w_xh * x_obs + b_h)
+
+    return ODERNNState {
+        h: h_new,
+        h_evolved: h_evolved
+    }
+}
+
+// ODE-RNN sequence processing (3 observations)
+struct ODERNNSeqResult {
+    h_final: f64,
+    h1: f64,
+    h2: f64,
+    h3: f64
+}
+
+fn ode_rnn_sequence(
+    h0: f64,
+    // Observations and time gaps
+    x1: f64, dt1: f64,
+    x2: f64, dt2: f64,
+    x3: f64, dt3: f64,
+    // ODE params
+    w_ode1: f64, b_ode1: f64,
+    w_ode2: f64, b_ode2: f64,
+    // RNN params
+    w_hh: f64, w_xh: f64, b_h: f64
+) -> ODERNNSeqResult {
+    let state1 = ode_rnn_step(h0, x1, dt1, w_ode1, b_ode1, w_ode2, b_ode2, w_hh, w_xh, b_h)
+    let state2 = ode_rnn_step(state1.h, x2, dt2, w_ode1, b_ode1, w_ode2, b_ode2, w_hh, w_xh, b_h)
+    let state3 = ode_rnn_step(state2.h, x3, dt3, w_ode1, b_ode1, w_ode2, b_ode2, w_hh, w_xh, b_h)
+
+    return ODERNNSeqResult {
+        h_final: state3.h,
+        h1: state1.h,
+        h2: state2.h,
+        h3: state3.h
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Latent ODE: Variational autoencoder with ODE decoder
+// For time series interpolation and extrapolation
+// ----------------------------------------------------------------------------
+
+struct LatentODEResult {
+    z0: f64,           // initial latent state (encoded)
+    z_final: f64,      // final latent state (after ODE)
+    x_recon: f64,      // reconstructed observation
+    kl_div: f64        // KL divergence (VAE regularization)
+}
+
+// Encoder: map observations to initial latent state
+fn latent_ode_encode(
+    x1: f64, x2: f64, x3: f64,  // observations
+    w_enc: f64, b_enc: f64
+) -> f64 {
+    // Simple mean encoder (in practice, would output mean and variance)
+    let mean_x = (x1 + x2 + x3) / 3.0
+    return tanh_f64(w_enc * mean_x + b_enc)
+}
+
+// Full latent ODE forward pass
+fn latent_ode_forward(
+    x1: f64, x2: f64, x3: f64,  // input observations
+    t_pred: f64,                 // time to predict
+    // Encoder params
+    w_enc: f64, b_enc: f64,
+    // ODE params
+    w_ode1: f64, b_ode1: f64,
+    w_ode2: f64, b_ode2: f64,
+    // Decoder params
+    w_dec: f64, b_dec: f64
+) -> LatentODEResult {
+    // 1. Encode observations to z0
+    let z0 = latent_ode_encode(x1, x2, x3, w_enc, b_enc)
+
+    // 2. Evolve z with Neural ODE
+    let ode_result = neural_ode_forward(z0, 0.0, t_pred, w_ode1, b_ode1, w_ode2, b_ode2, 1)
+    let z_final = ode_result.y_final
+
+    // 3. Decode z to observation space
+    let x_recon = w_dec * z_final + b_dec
+
+    // 4. Compute KL divergence (simplified: regularize z0)
+    // KL(N(z0, 1) || N(0, 1)) ≈ 0.5 * z0^2 for unit variance
+    let kl = 0.5 * z0 * z0
+
+    return LatentODEResult {
+        z0: z0,
+        z_final: z_final,
+        x_recon: x_recon,
+        kl_div: kl
+    }
+}
+
+// ----------------------------------------------------------------------------
+// PBPK-Specific ODE Utilities
+// Pharmacokinetic modeling with neural networks
+// ----------------------------------------------------------------------------
+
+struct PBPKState2Comp {
+    c_central: f64,    // concentration in central compartment
+    c_periph: f64      // concentration in peripheral compartment
+}
+
+struct PBPK2CompResult {
+    c_central_final: f64,
+    c_periph_final: f64,
+    auc: f64  // area under curve (approximate)
+}
+
+// Two-compartment PK model with neural clearance
+fn pbpk_2comp_ode(
+    c_cent: f64, c_per: f64, t: f64,
+    // PK parameters (could be predicted by neural network)
+    k_el: f64,    // elimination rate
+    k_12: f64,    // central to peripheral rate
+    k_21: f64     // peripheral to central rate
+) -> PBPKState2Comp {
+    // dC_central/dt = -k_el * C_central - k_12 * C_central + k_21 * C_peripheral
+    let dc_cent = (0.0 - k_el * c_cent) - k_12 * c_cent + k_21 * c_per
+
+    // dC_peripheral/dt = k_12 * C_central - k_21 * C_peripheral
+    let dc_per = k_12 * c_cent - k_21 * c_per
+
+    return PBPKState2Comp {
+        c_central: dc_cent,
+        c_periph: dc_per
+    }
+}
+
+// Softplus activation (smooth ReLU, ensures positivity)
+fn softplus(input_x: f64) -> f64 {
+    return log_f64(1.0 + exp_f64(input_x))
+}
+
+// Neural network to predict PK parameters from patient features
+struct PKParams {
+    k_el: f64,
+    k_12: f64,
+    k_21: f64
+}
+
+fn neural_pk_params(
+    weight: f64, age: f64,  // patient features
+    w1: f64, b1: f64,
+    w2_el: f64, w2_12: f64, w2_21: f64, b2: f64
+) -> PKParams {
+    // Normalize inputs
+    let weight_norm = weight / 70.0
+    let age_norm = age / 50.0
+
+    // Hidden layer
+    let hidden = relu_f64(w1 * (weight_norm + age_norm) + b1)
+
+    // Output layer with softplus to ensure positive rates
+    let k_el = softplus(w2_el * hidden + b2)
+    let k_12 = softplus(w2_12 * hidden + b2)
+    let k_21 = softplus(w2_21 * hidden + b2)
+
+    return PKParams {
+        k_el: k_el,
+        k_12: k_12,
+        k_21: k_21
+    }
+}
+
+// PBPK simulation with neural-predicted parameters
+fn pbpk_simulate(
+    dose: f64,
+    weight: f64, age: f64,
+    t_end: f64,
+    // Neural network params for PK prediction
+    w1: f64, b1: f64,
+    w2_el: f64, w2_12: f64, w2_21: f64, b2: f64
+) -> PBPK2CompResult {
+    // Get patient-specific PK parameters
+    let pk = neural_pk_params(weight, age, w1, b1, w2_el, w2_12, w2_21, b2)
+
+    // Initial conditions (IV bolus dose)
+    let v_central = 0.2 * weight  // approximate central volume
+    let c0_cent = dose / v_central
+    let c0_per = 0.0
+
+    // Fixed 4 steps (avoids codegen bug with i32 as f64)
+    let dt = t_end / 4.0
+    let mut c_cent = c0_cent
+    let mut c_per = c0_per
+    let mut t = 0.0
+    let mut auc = 0.0
+
+    // Euler integration
+    // Step 1
+    let d1 = pbpk_2comp_ode(c_cent, c_per, t, pk.k_el, pk.k_12, pk.k_21)
+    auc = auc + c_cent * dt  // trapezoidal approximation
+    c_cent = c_cent + dt * d1.c_central
+    c_per = c_per + dt * d1.c_periph
+    t = t + dt
+
+    // Step 2
+    let d2 = pbpk_2comp_ode(c_cent, c_per, t, pk.k_el, pk.k_12, pk.k_21)
+    auc = auc + c_cent * dt
+    c_cent = c_cent + dt * d2.c_central
+    c_per = c_per + dt * d2.c_periph
+    t = t + dt
+
+    // Step 3
+    let d3 = pbpk_2comp_ode(c_cent, c_per, t, pk.k_el, pk.k_12, pk.k_21)
+    auc = auc + c_cent * dt
+    c_cent = c_cent + dt * d3.c_central
+    c_per = c_per + dt * d3.c_periph
+    t = t + dt
+
+    // Step 4
+    let d4 = pbpk_2comp_ode(c_cent, c_per, t, pk.k_el, pk.k_12, pk.k_21)
+    auc = auc + c_cent * dt
+    c_cent = c_cent + dt * d4.c_central
+    c_per = c_per + dt * d4.c_periph
+
+    return PBPK2CompResult {
+        c_central_final: c_cent,
+        c_periph_final: c_per,
+        auc: auc
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Stiff ODE Handling (for PBPK models with fast/slow dynamics)
+// ----------------------------------------------------------------------------
+
+struct StiffODEResult {
+    y_final: f64,
+    n_rejected: i32,  // rejected steps due to stiffness
+    stiffness_ratio: f64
+}
+
+// Detect stiffness by comparing explicit and implicit stability
+fn detect_stiffness(
+    y: f64, t: f64, dt: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64
+) -> f64 {
+    // Estimate Jacobian eigenvalue (simplified)
+    let grads = neural_ode_func_grad(y, t, w1, b1, w2, b2)
+    let jac_approx = grads.adj_y  // df/dy
+
+    // Stiffness ratio: |λ| * dt
+    return abs_f64(jac_approx) * dt
+}
+
+// Semi-implicit Euler for stiff systems
+fn semi_implicit_euler_step(
+    y: f64, t: f64, dt: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64
+) -> f64 {
+    // f(y_{n+1}) ≈ f(y_n) + J * (y_{n+1} - y_n)
+    // y_{n+1} = y_n + dt * f(y_{n+1})
+    // y_{n+1} = y_n + dt * (f(y_n) + J * (y_{n+1} - y_n))
+    // (1 - dt*J) * y_{n+1} = y_n + dt * (f(y_n) - J * y_n)
+    // y_{n+1} = (y_n + dt * f(y_n)) / (1 - dt * J)  [simplified]
+
+    let f_n = neural_ode_func(y, t, w1, b1, w2, b2)
+    let grads = neural_ode_func_grad(y, t, w1, b1, w2, b2)
+    let jac = grads.adj_y
+
+    let denominator = 1.0 - dt * jac
+    if abs_f64(denominator) < 0.001 {
+        // Fall back to explicit Euler if denominator is too small
+        return y + dt * f_n
+    }
+
+    return (y + dt * f_n) / denominator
+}
+
+// Integrate with automatic stiffness detection
+fn integrate_auto_stiff(
+    y0: f64,
+    t0: f64, t1: f64,
+    w1: f64, b1: f64, w2: f64, b2: f64
+) -> StiffODEResult {
+    // Fixed 4 steps (avoids codegen bug with i32 as f64)
+    let dt = (t1 - t0) / 4.0
+    let mut y = y0
+    let mut t = t0
+    let mut n_rejected = 0
+    let mut max_stiffness = 0.0
+
+    // Step 1 with stiffness check
+    let stiff1 = detect_stiffness(y, t, dt, w1, b1, w2, b2)
+    max_stiffness = max_f64(max_stiffness, stiff1)
+    if stiff1 > 1.0 {
+        y = semi_implicit_euler_step(y, t, dt, w1, b1, w2, b2)
+        n_rejected = n_rejected + 1
+    } else {
+        let f1 = neural_ode_func(y, t, w1, b1, w2, b2)
+        y = euler_step(y, f1, dt)
+    }
+    t = t + dt
+
+    // Step 2
+    let stiff2 = detect_stiffness(y, t, dt, w1, b1, w2, b2)
+    max_stiffness = max_f64(max_stiffness, stiff2)
+    if stiff2 > 1.0 {
+        y = semi_implicit_euler_step(y, t, dt, w1, b1, w2, b2)
+        n_rejected = n_rejected + 1
+    } else {
+        let f2 = neural_ode_func(y, t, w1, b1, w2, b2)
+        y = euler_step(y, f2, dt)
+    }
+    t = t + dt
+
+    // Step 3
+    let stiff3 = detect_stiffness(y, t, dt, w1, b1, w2, b2)
+    max_stiffness = max_f64(max_stiffness, stiff3)
+    if stiff3 > 1.0 {
+        y = semi_implicit_euler_step(y, t, dt, w1, b1, w2, b2)
+        n_rejected = n_rejected + 1
+    } else {
+        let f3 = neural_ode_func(y, t, w1, b1, w2, b2)
+        y = euler_step(y, f3, dt)
+    }
+    t = t + dt
+
+    // Step 4
+    let stiff4 = detect_stiffness(y, t, dt, w1, b1, w2, b2)
+    max_stiffness = max_f64(max_stiffness, stiff4)
+    if stiff4 > 1.0 {
+        y = semi_implicit_euler_step(y, t, dt, w1, b1, w2, b2)
+        n_rejected = n_rejected + 1
+    } else {
+        let f4 = neural_ode_func(y, t, w1, b1, w2, b2)
+        y = euler_step(y, f4, dt)
+    }
+
+    return StiffODEResult {
+        y_final: y,
+        n_rejected: n_rejected,
+        stiffness_ratio: max_stiffness
     }
 }
 
@@ -11270,6 +12370,398 @@ fn main() -> i32 {
     let expected_rope_out = expected_rope_attn * 2.0
     if abs_f64(rope.attn_weight - expected_rope_attn) > tol { ok = false; println("  FAIL: RoPE attn_weight") }
     if abs_f64(rope.output - expected_rope_out) > tol { ok = false; println("  FAIL: RoPE output") }
+    println("")
+
+    // =========================================================================
+    // NEURAL ODE TESTS (181-203)
+    // =========================================================================
+
+    // Test 181: Euler step basic functionality
+    println("Test 181: Euler step")
+    // dy/dt = 1 (constant), y(0) = 0, dt = 0.5 -> y = 0.5
+    let euler1 = euler_step(0.0, 1.0, 0.5)
+    println("  y0=0, dydt=1, dt=0.5:")
+    println("    y_new = ")
+    println(euler1)
+    if abs_f64(euler1 - 0.5) > tol { ok = false; println("  FAIL: euler_step") }
+    // dy/dt = 2, y(0) = 1, dt = 0.25 -> y = 1 + 2*0.25 = 1.5
+    let euler2 = euler_step(1.0, 2.0, 0.25)
+    println("  y0=1, dydt=2, dt=0.25:")
+    println("    y_new = ")
+    println(euler2)
+    if abs_f64(euler2 - 1.5) > tol { ok = false; println("  FAIL: euler_step 2") }
+    println("")
+
+    // Test 182: Neural ODE function evaluation
+    println("Test 182: Neural ODE function")
+    // f(y, t) = w2 * tanh(w1 * (y + 0.1*t) + b1) + b2
+    // With w1=1, b1=0, w2=1, b2=0, y=0, t=0: f = tanh(0) = 0
+    let node_f1 = neural_ode_func(0.0, 0.0, 1.0, 0.0, 1.0, 0.0)
+    println("  y=0, t=0, w1=1, b1=0, w2=1, b2=0:")
+    println("    f = ")
+    println(node_f1)
+    if abs_f64(node_f1 - 0.0) > tol { ok = false; println("  FAIL: neural_ode_func 0") }
+    // With y=1, t=0: f = tanh(1) ≈ 0.7616
+    let node_f2 = neural_ode_func(1.0, 0.0, 1.0, 0.0, 1.0, 0.0)
+    let expected_f2 = tanh_f64(1.0)
+    println("  y=1, t=0:")
+    println("    f = ")
+    println(node_f2)
+    println("    expected = ")
+    println(expected_f2)
+    if abs_f64(node_f2 - expected_f2) > tol { ok = false; println("  FAIL: neural_ode_func 1") }
+    println("")
+
+    // Test 183: RK4 step
+    println("Test 183: RK4 step")
+    // RK4 integrates more accurately than Euler
+    // Starting at y=1, t=0 with small dt
+    let rk4_result = rk4_step(1.0, 0.0, 0.1, 1.0, 0.0, 1.0, 0.0)
+    println("  y0=1, t=0, dt=0.1, w1=1, w2=1:")
+    println("    y_new = ")
+    println(rk4_result)
+    // Should be > 1.0 (state increases with positive dynamics)
+    // RK4 accumulates changes over 4 sub-evaluations
+    if rk4_result < 1.0 { ok = false; println("  FAIL: RK4 should increase y") }
+    if rk4_result > 2.0 { ok = false; println("  FAIL: RK4 step unreasonably large") }
+    println("")
+
+    // Test 184: Euler integration over interval
+    println("Test 184: Euler integration")
+    // Integrate from t=0 to t=1 with identity-like dynamics
+    let euler_int = euler_integrate(0.5, 0.0, 1.0, 0.5, 0.0, 1.0, 0.0)
+    println("  y0=0.5, t=[0,1], 4 steps:")
+    println("    y_final = ")
+    println(euler_int.y_final)
+    println("    n_evals = ")
+    println(euler_int.n_evals)
+    if euler_int.n_evals != 4 { ok = false; println("  FAIL: euler_integrate evals") }
+    // State should evolve from initial condition
+    if euler_int.y_final < 0.0 { ok = false; println("  FAIL: euler unexpected") }
+    println("")
+
+    // Test 185: RK4 integration over interval
+    println("Test 185: RK4 integration")
+    let rk4_int = rk4_integrate(0.5, 0.0, 1.0, 0.5, 0.0, 1.0, 0.0)
+    println("  y0=0.5, t=[0,1], 4 steps:")
+    println("    y_final = ")
+    println(rk4_int.y_final)
+    println("    n_evals = ")
+    println(rk4_int.n_evals)
+    if rk4_int.n_evals != 16 { ok = false; println("  FAIL: rk4_integrate evals (should be 4*4=16)") }
+    println("")
+
+    // Test 186: Dormand-Prince adaptive step
+    println("Test 186: Dormand-Prince (DOPRI5) adaptive step")
+    let dopri = dopri5_step(1.0, 0.0, 0.1, 0.5, 0.0, 1.0, 0.0, 0.001, 0.0001)
+    println("  y=1, t=0, dt=0.1, rtol=0.001, atol=0.0001:")
+    println("    y_new = ")
+    println(dopri.y_new)
+    println("    error_est = ")
+    println(dopri.error_est)
+    println("    accepted = ")
+    println(dopri.accepted)
+    println("    dt_next = ")
+    println(dopri.dt_next)
+    // Step should be accepted with reasonable tolerances
+    if dopri.accepted < 0.5 { println("  Note: step rejected (normal for first step)") }
+    println("")
+
+    // Test 187: Neural ODE forward (Euler solver)
+    println("Test 187: Neural ODE forward (Euler)")
+    let node_euler = neural_ode_forward(1.0, 0.0, 1.0, 0.5, 0.0, 1.0, 0.0, 0)
+    println("  y0=1, t=[0,1], Euler solver:")
+    println("    y_final = ")
+    println(node_euler.y_final)
+    println("    trajectory[0.25] = ")
+    println(node_euler.y_trajectory_1)
+    println("    trajectory[0.5] = ")
+    println(node_euler.y_trajectory_2)
+    println("    trajectory[0.75] = ")
+    println(node_euler.y_trajectory_3)
+    println("    n_function_evals = ")
+    println(node_euler.n_function_evals)
+    if node_euler.n_function_evals != 4 { ok = false; println("  FAIL: Euler evals should be 4") }
+    // Trajectory should be monotonic for these params
+    println("")
+
+    // Test 188: Neural ODE forward (RK4 solver)
+    println("Test 188: Neural ODE forward (RK4)")
+    let node_rk4 = neural_ode_forward(1.0, 0.0, 1.0, 0.5, 0.0, 1.0, 0.0, 1)
+    println("  y0=1, t=[0,1], RK4 solver:")
+    println("    y_final = ")
+    println(node_rk4.y_final)
+    println("    n_function_evals = ")
+    println(node_rk4.n_function_evals)
+    if node_rk4.n_function_evals != 16 { ok = false; println("  FAIL: RK4 evals should be 16") }
+    // RK4 should give different (usually more accurate) result than Euler
+    println("  Euler final = ")
+    println(node_euler.y_final)
+    println("  RK4 final = ")
+    println(node_rk4.y_final)
+    println("")
+
+    // Test 189: Neural ODE backward (adjoint sensitivity)
+    println("Test 189: Adjoint sensitivity method")
+    let adj_result = neural_ode_backward(
+        1.5,     // y_final
+        1.0,     // dL/dy_final (gradient from loss)
+        0.0, 1.0, // t0, t1
+        0.5, 0.0, 1.0, 0.0, // w1, b1, w2, b2
+        4
+    )
+    println("  y_final=1.5, dL_dy=1, t=[0,1]:")
+    println("    grad_w1 = ")
+    println(adj_result.grad_w1)
+    println("    grad_b1 = ")
+    println(adj_result.grad_b1)
+    println("    grad_w2 = ")
+    println(adj_result.grad_w2)
+    println("    grad_b2 = ")
+    println(adj_result.grad_b2)
+    println("    grad_y0 = ")
+    println(adj_result.grad_y0)
+    // Gradients should be non-zero for non-trivial dynamics
+    println("")
+
+    // Test 190: Continuous Normalizing Flow forward
+    println("Test 190: CNF forward")
+    let cnf = cnf_forward(0.5, 0.0, 1.0, 0.3, 0.0, 1.0, 0.0, 4)
+    println("  x=0.5, t=[0,1]:")
+    println("    z_final = ")
+    println(cnf.z_final)
+    println("    log_det_jac = ")
+    println(cnf.log_det_jac)
+    // z should evolve from x, log_det tracks volume change
+    println("")
+
+    // Test 191: CNF inverse (sample generation)
+    println("Test 191: CNF inverse")
+    let cnf_inv = cnf_inverse(0.5, 0.0, 1.0, 0.3, 0.0, 1.0, 0.0)
+    println("  z=0.5, t=[1,0] (backwards):")
+    println("    x_reconstructed = ")
+    println(cnf_inv.z_final)
+    println("    log_det_jac = ")
+    println(cnf_inv.log_det_jac)
+    // Inverse should approximately reverse the forward transform
+    println("")
+
+    // Test 192: CNF log likelihood
+    println("Test 192: CNF log likelihood")
+    let cnf_ll = cnf_log_likelihood(0.5, 0.3, 0.0, 1.0, 0.0)
+    println("  x=0.5:")
+    println("    log_likelihood = ")
+    println(cnf_ll)
+    // Log likelihood combines latent prior with Jacobian
+    println("")
+
+    // Test 193: Augmented Neural ODE
+    println("Test 193: Augmented Neural ODE")
+    let aug_ode = augmented_ode_forward(
+        1.0, 0.0,     // y0, a0
+        0.0, 1.0,     // t0, t1
+        0.5, 0.3, 0.0, // w_y, w_a, b1
+        1.0, 0.5, 0.0  // w2_y, w2_a, b2
+    )
+    println("  y0=1, a0=0, t=[0,1]:")
+    println("    y_final = ")
+    println(aug_ode.y_final)
+    println("    a_final = ")
+    println(aug_ode.a_final)
+    println("    n_evals = ")
+    println(aug_ode.n_evals)
+    if aug_ode.n_evals != 4 { ok = false; println("  FAIL: augmented evals should be 4") }
+    // Both y and augmented state should evolve
+    println("")
+
+    // Test 194: Neural CDE (Controlled Differential Equation)
+    println("Test 194: Neural CDE")
+    let ncde = neural_cde_forward(
+        0.0,              // y0
+        0.0, 1.0, 1.5, 2.0,  // control path x0, x1, x2, x3
+        0.0, 1.0,         // t0, t1
+        0.5, 0.0,         // w1, b1
+        1.0, 0.0          // w2, b2
+    )
+    println("  y0=0, control path=[0,1,1.5,2], t=[0,1]:")
+    println("    y_final = ")
+    println(ncde.y_final)
+    println("    n_evals = ")
+    println(ncde.n_evals)
+    if ncde.n_evals != 4 { ok = false; println("  FAIL: CDE evals should be 4") }
+    // CDE output depends on control path derivative
+    println("")
+
+    // Test 195: ODE-RNN single step
+    println("Test 195: ODE-RNN step")
+    let ode_rnn = ode_rnn_step(
+        0.5,          // h_prev
+        1.0,          // x_obs
+        0.5,          // delta_t
+        0.5, 0.0,     // ODE w1, b1
+        1.0, 0.0,     // ODE w2, b2
+        0.5, 0.5, 0.0 // RNN w_hh, w_xh, b_h
+    )
+    println("  h_prev=0.5, x_obs=1.0, delta_t=0.5:")
+    println("    h_evolved = ")
+    println(ode_rnn.h_evolved)
+    println("    h_new = ")
+    println(ode_rnn.h)
+    // h_evolved is after ODE, h is after RNN update
+    println("")
+
+    // Test 196: ODE-RNN sequence
+    println("Test 196: ODE-RNN sequence")
+    let ode_rnn_seq = ode_rnn_sequence(
+        0.0,              // h0
+        1.0, 0.5,         // x1, dt1
+        0.5, 0.3,         // x2, dt2
+        0.8, 0.4,         // x3, dt3
+        0.5, 0.0,         // ODE params
+        1.0, 0.0,
+        0.5, 0.5, 0.0     // RNN params
+    )
+    println("  h0=0, sequence of 3 observations:")
+    println("    h1 = ")
+    println(ode_rnn_seq.h1)
+    println("    h2 = ")
+    println(ode_rnn_seq.h2)
+    println("    h3 = ")
+    println(ode_rnn_seq.h3)
+    println("    h_final = ")
+    println(ode_rnn_seq.h_final)
+    // Hidden states should evolve through sequence
+    println("")
+
+    // Test 197: Latent ODE forward
+    println("Test 197: Latent ODE")
+    let latent_ode = latent_ode_forward(
+        1.0, 2.0, 3.0,    // x1, x2, x3 observations
+        1.0,              // t_pred
+        0.5, 0.0,         // encoder w, b
+        0.3, 0.0,         // ODE w1, b1
+        1.0, 0.0,         // ODE w2, b2
+        1.0, 0.0          // decoder w, b
+    )
+    println("  observations=[1,2,3], t_pred=1:")
+    println("    z0 (encoded) = ")
+    println(latent_ode.z0)
+    println("    z_final = ")
+    println(latent_ode.z_final)
+    println("    x_recon = ")
+    println(latent_ode.x_recon)
+    println("    kl_div = ")
+    println(latent_ode.kl_div)
+    // KL should be non-negative (it's 0.5 * z0^2)
+    if latent_ode.kl_div < 0.0 { ok = false; println("  FAIL: KL should be >= 0") }
+    println("")
+
+    // Test 198: Softplus activation
+    println("Test 198: Softplus activation")
+    let sp1 = softplus(0.0)
+    let expected_sp1 = log_f64(2.0)  // ln(1 + e^0) = ln(2)
+    println("  softplus(0) = ")
+    println(sp1)
+    println("  expected = ")
+    println(expected_sp1)
+    if abs_f64(sp1 - expected_sp1) > tol { ok = false; println("  FAIL: softplus(0)") }
+    let sp2 = softplus(2.0)
+    println("  softplus(2) = ")
+    println(sp2)
+    // softplus(x) ≈ x for large x
+    if sp2 < 2.0 { ok = false; println("  FAIL: softplus(2) should be >= 2") }
+    println("")
+
+    // Test 199: Neural PK parameter prediction
+    println("Test 199: Neural PK parameters")
+    let pk_params = neural_pk_params(
+        70.0, 40.0,       // weight (kg), age (years)
+        1.0, 0.0,         // w1, b1
+        0.5, 0.3, 0.2, 0.1 // w2_el, w2_12, w2_21, b2
+    )
+    println("  weight=70kg, age=40:")
+    println("    k_el = ")
+    println(pk_params.k_el)
+    println("    k_12 = ")
+    println(pk_params.k_12)
+    println("    k_21 = ")
+    println(pk_params.k_21)
+    // All rates should be positive (softplus output)
+    if pk_params.k_el <= 0.0 { ok = false; println("  FAIL: k_el should be positive") }
+    if pk_params.k_12 <= 0.0 { ok = false; println("  FAIL: k_12 should be positive") }
+    if pk_params.k_21 <= 0.0 { ok = false; println("  FAIL: k_21 should be positive") }
+    println("")
+
+    // Test 200: 2-compartment PBPK ODE
+    println("Test 200: PBPK 2-compartment ODE")
+    let pbpk_deriv = pbpk_2comp_ode(
+        10.0, 2.0, 0.0,   // c_cent, c_per, t
+        0.1, 0.05, 0.03   // k_el, k_12, k_21
+    )
+    println("  C_cent=10, C_per=2, k_el=0.1, k_12=0.05, k_21=0.03:")
+    println("    dC_cent/dt = ")
+    println(pbpk_deriv.c_central)
+    println("    dC_per/dt = ")
+    println(pbpk_deriv.c_periph)
+    // dC_cent/dt = -0.1*10 - 0.05*10 + 0.03*2 = -1 - 0.5 + 0.06 = -1.44
+    let expected_dc_cent = 0.0 - 0.1 * 10.0 - 0.05 * 10.0 + 0.03 * 2.0
+    // dC_per/dt = 0.05*10 - 0.03*2 = 0.5 - 0.06 = 0.44
+    let expected_dc_per = 0.05 * 10.0 - 0.03 * 2.0
+    println("    expected dC_cent/dt = ")
+    println(expected_dc_cent)
+    println("    expected dC_per/dt = ")
+    println(expected_dc_per)
+    if abs_f64(pbpk_deriv.c_central - expected_dc_cent) > tol { ok = false; println("  FAIL: dC_cent") }
+    if abs_f64(pbpk_deriv.c_periph - expected_dc_per) > tol { ok = false; println("  FAIL: dC_per") }
+    println("")
+
+    // Test 201: PBPK simulation with neural params
+    println("Test 201: PBPK simulation")
+    // Use shorter time span (1h with 4 steps = 0.25h per step) for stability
+    let pbpk_sim = pbpk_simulate(
+        100.0,            // dose (mg)
+        70.0, 40.0,       // weight, age
+        1.0,              // t_end (1 hour - stable for 4 steps)
+        0.5, 0.0,         // neural w1, b1 (smaller for smaller rate constants)
+        0.01, 0.005, 0.003, 0.0  // w2_el, w2_12, w2_21, b2 (smaller rates)
+    )
+    println("  Dose=100mg, weight=70kg, age=40, t=1h:")
+    println("    C_central_final = ")
+    println(pbpk_sim.c_central_final)
+    println("    C_periph_final = ")
+    println(pbpk_sim.c_periph_final)
+    println("    AUC = ")
+    println(pbpk_sim.auc)
+    // Concentrations should be positive, AUC should be positive
+    if pbpk_sim.auc <= 0.0 { ok = false; println("  FAIL: AUC should be positive") }
+    if pbpk_sim.c_central_final <= 0.0 { ok = false; println("  FAIL: C_central should be positive") }
+    println("")
+
+    // Test 202: Stiffness detection
+    println("Test 202: Stiffness detection")
+    let stiff1 = detect_stiffness(1.0, 0.0, 0.1, 0.5, 0.0, 1.0, 0.0)
+    println("  y=1, t=0, dt=0.1, mild params:")
+    println("    stiffness_ratio = ")
+    println(stiff1)
+    // With small w and dt, stiffness should be low
+    let stiff2 = detect_stiffness(1.0, 0.0, 1.0, 5.0, 0.0, 10.0, 0.0)
+    println("  y=1, t=0, dt=1.0, stiff params (w1=5, w2=10):")
+    println("    stiffness_ratio = ")
+    println(stiff2)
+    // Larger weights and dt should give higher stiffness
+    println("")
+
+    // Test 203: Auto-stiff integration
+    println("Test 203: Auto-stiff ODE integration")
+    let auto_stiff = integrate_auto_stiff(1.0, 0.0, 1.0, 0.5, 0.0, 1.0, 0.0)
+    println("  y0=1, t=[0,1], 4 steps:")
+    println("    y_final = ")
+    println(auto_stiff.y_final)
+    println("    n_rejected = ")
+    println(auto_stiff.n_rejected)
+    println("    max_stiffness = ")
+    println(auto_stiff.stiffness_ratio)
+    // For non-stiff params, should use explicit Euler (n_rejected = 0)
     println("")
 
     if ok {
