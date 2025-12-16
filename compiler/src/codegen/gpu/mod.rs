@@ -30,12 +30,15 @@
 pub mod async_pipeline;
 pub mod autotune;
 pub mod bio;
+pub mod collective_ops;
 pub mod cooperative;
 pub mod counterfactual;
 pub mod diagnostics;
 pub mod fusion;
 pub mod graph;
+pub mod multi_gpu;
 pub mod optimizer;
+pub mod p2p_transfer;
 pub mod sourcemap;
 pub mod tile;
 pub mod validation;
@@ -178,4 +181,19 @@ pub use sourcemap::{
 pub use validation::{
     BufferComparison, CorrectnessValidator, PrecisionStats, ToleranceConfig, ValidationConfig,
     ValidationError, ValidationIssue, ValidationResult,
+};
+
+// Multi-GPU / Distributed Computing (Phase 10)
+pub use multi_gpu::{
+    DeviceGroup, DeviceId, DeviceInfo, GpuTopology, InterconnectType, MultiGpuBarrier,
+    MultiGpuConfig, MultiGpuError, MultiGpuEvent, MultiGpuRuntime, P2PCapability,
+};
+pub use p2p_transfer::{
+    AsyncTransfer, P2PManager, P2PStats, ReduceOp, RingTransferStep, TransferChunk,
+    TransferDescriptor, TransferDirection, generate_allgather_steps, generate_reduce_scatter_steps,
+    split_into_chunks,
+};
+pub use collective_ops::{
+    AlgorithmSelector, CollectiveAlgorithm, CollectiveManager, CollectiveOp, CollectiveStats,
+    SimulatedBuffer,
 };
