@@ -54,10 +54,13 @@ pub mod portable;
 pub mod ptq;
 pub mod ptx;
 pub mod quantize;
+pub mod roofline;
 pub mod runtime;
 #[cfg(feature = "gpu")]
 pub mod spirv;
 pub mod tensor_epistemic;
+pub mod costs;
+pub mod profiler;
 
 pub use intrinsics::{GpuIntrinsic, all_intrinsics, get_intrinsic, is_gpu_intrinsic};
 pub use ir::{
@@ -213,4 +216,17 @@ pub use calibration::{
 pub use ptq::{
     ActivationQuantConfig, LayerInfo, LayerQuantStatus, PtqConfig, PtqEngine,
     PtqErrorSummary, QuantizedModule, WeightQuantConfig,
+};
+
+// Performance Profiling & Roofline Analysis (Phase 12)
+pub use costs::{
+    ArchPeakPerf, CostDatabase, FlopsCount, InstructionClass, InstructionCost,
+    KernelCostEstimate, LimitingResource, MemoryTraffic,
+};
+pub use roofline::{
+    Boundedness, OptimizationHint, RooflineAnalysis, RooflineModel, RooflinePlot, RooflinePoint,
+};
+pub use profiler::{
+    Bottleneck, BottleneckKind, BottleneckSeverity, KernelPerfProfile, KernelProfiler,
+    ModulePerfProfile, PerfComparison, PerfCounters, PerfScore,
 };
