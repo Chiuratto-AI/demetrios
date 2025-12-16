@@ -897,6 +897,156 @@ pub enum GpuOp {
     /// Dequantize F8 to F32 with optional scale
     DequantizeF8ToF32(ValueId, Option<ValueId>), // value, optional scale factor
 
+    // === INT8/INT4 Quantization (Phase 11) ===
+    /// Quantize F32 to INT8: q = clamp(round(x / scale) + zero_point, -128, 127)
+    /// Used for symmetric quantization (zero_point = 0) and asymmetric
+    QuantizeF32ToInt8 {
+        value: ValueId,
+        scale: ValueId,
+        zero_point: ValueId,
+        symmetric: bool,
+    },
+
+    /// Dequantize INT8 to F32: x = (q - zero_point) * scale
+    DequantizeInt8ToF32 {
+        value: ValueId,
+        scale: ValueId,
+        zero_point: ValueId,
+    },
+
+    /// Quantize F32 to UINT8: q = clamp(round(x / scale) + zero_point, 0, 255)
+    /// Used for activation quantization where values are non-negative
+    QuantizeF32ToUint8 {
+        value: ValueId,
+        scale: ValueId,
+        zero_point: ValueId,
+    },
+
+    /// Dequantize UINT8 to F32: x = (q - zero_point) * scale
+    DequantizeUint8ToF32 {
+        value: ValueId,
+        scale: ValueId,
+        zero_point: ValueId,
+    },
+
+    /// Quantize F32 to INT4 (packed): two values packed into one byte
+    /// q_lo = clamp(round(x_lo / scale) + zp, -8, 7)
+    /// q_hi = clamp(round(x_hi / scale) + zp, -8, 7)
+    /// result = (q_hi << 4) | (q_lo & 0x0F)
+    QuantizeF32ToInt4 {
+        value_lo: ValueId,
+        value_hi: ValueId,
+        scale: ValueId,
+        zero_point: ValueId,
+    },
+
+    /// Dequantize INT4 (packed) to two F32 values
+    /// Returns low nibble as f32
+    DequantizeInt4ToF32Lo {
+        packed: ValueId,
+        scale: ValueId,
+        zero_point: ValueId,
+    },
+
+    /// Dequantize INT4 (packed) to two F32 values
+    /// Returns high nibble as f32
+    DequantizeInt4ToF32Hi {
+        packed: ValueId,
+        scale: ValueId,
+        zero_point: ValueId,
+    },
+
+    /// INT8 dot product using dp4a instruction (sm_61+)
+    /// Computes: c + dot(a[0:3], b[0:3]) where a, b are packed 4x INT8
+    /// a and b are interpreted as 4 signed 8-bit integers packed in 32 bits
+    Dp4a {
+        a: ValueId,
+        b: ValueId,
+        c: ValueId,
+    },
+
+    /// Unsigned INT8 dot product using dp4a.u32 (sm_61+)
+    Dp4aUnsigned {
+        a: ValueId,
+        b: ValueId,
+        c: ValueId,
+    },
+
+    /// Mixed signed/unsigned dp4a (sm_61+)
+    /// a is signed, b is unsigned
+    Dp4aSU {
+        a: ValueId,
+        b: ValueId,
+        c: ValueId,
+    },
+
+    /// INT8 matrix multiply with tensor cores (sm_75+)
+    /// Performs C = A * B + C where A and B are INT8, C is INT32
+    Int8MatMul {
+        a: ValueId,      // INT8 matrix A
+        b: ValueId,      // INT8 matrix B
+        c: ValueId,      // INT32 accumulator
+        m: u32,          // M dimension
+        n: u32,          // N dimension
+        k: u32,          // K dimension
+        a_scale: ValueId, // Scale for dequantizing A
+        b_scale: ValueId, // Scale for dequantizing B
+    },
+
+    /// Per-channel quantization (for weights)
+    /// Each channel has its own scale and zero_point
+    QuantizePerChannel {
+        values: ValueId,      // Input values
+        scales: ValueId,      // Per-channel scales array
+        zero_points: ValueId, // Per-channel zero points array
+        axis: u32,            // Channel axis (typically 0 for output channels)
+        num_channels: u32,    // Number of channels
+        signed: bool,         // INT8 (true) or UINT8 (false)
+    },
+
+    /// Dequantize per-channel quantized values
+    DequantizePerChannel {
+        values: ValueId,
+        scales: ValueId,
+        zero_points: ValueId,
+        axis: u32,
+        num_channels: u32,
+    },
+
+    /// Compute quantization scale from min/max values
+    /// scale = (max - min) / (qmax - qmin)
+    ComputeQuantScale {
+        min_val: ValueId,
+        max_val: ValueId,
+        num_bits: u32,  // 8 for INT8, 4 for INT4
+        symmetric: bool,
+    },
+
+    /// Compute zero point for asymmetric quantization
+    /// zero_point = round(-min / scale)
+    ComputeZeroPoint {
+        min_val: ValueId,
+        scale: ValueId,
+        num_bits: u32,
+    },
+
+    /// Find min/max in a tensor (reduction)
+    /// Used for calibration
+    FindMinMax {
+        values: ValueId,
+        count: ValueId,
+    },
+
+    /// Requantize from one scale to another
+    /// Useful for fusing quantized layers
+    Requantize {
+        value: ValueId,
+        in_scale: ValueId,
+        in_zero_point: ValueId,
+        out_scale: ValueId,
+        out_zero_point: ValueId,
+    },
+
     // === Blackwell Features (sm_100+) ===
     // Tensor Memory Accelerator (TMA) - bulk async memory operations
     /// TMA async copy from global to shared (sm_90+, enhanced in sm_100)

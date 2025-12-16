@@ -861,6 +861,185 @@ impl MetalCodegen {
                 }
             }
 
+            // === INT8/INT4 Quantization (Phase 11) ===
+            GpuOp::QuantizeF32ToInt8 { value, scale, zero_point, symmetric } => {
+                let v = self.get_var_name(*value);
+                let s = self.get_var_name(*scale);
+                let zp = self.get_var_name(*zero_point);
+                self.emit("// Quantize F32 to INT8");
+                if *symmetric {
+                    self.emit(&format!(
+                        "char {} = (char)clamp(round({} / {}), -128.0f, 127.0f);",
+                        result_name, v, s
+                    ));
+                } else {
+                    self.emit(&format!(
+                        "char {} = (char)clamp(round({} / {}) + float({}), -128.0f, 127.0f);",
+                        result_name, v, s, zp
+                    ));
+                }
+            }
+            GpuOp::DequantizeInt8ToF32 { value, scale, zero_point } => {
+                let v = self.get_var_name(*value);
+                let s = self.get_var_name(*scale);
+                let zp = self.get_var_name(*zero_point);
+                self.emit("// Dequantize INT8 to F32");
+                self.emit(&format!(
+                    "float {} = (float({}) - float({})) * {};",
+                    result_name, v, zp, s
+                ));
+            }
+            GpuOp::QuantizeF32ToUint8 { value, scale, zero_point } => {
+                let v = self.get_var_name(*value);
+                let s = self.get_var_name(*scale);
+                let zp = self.get_var_name(*zero_point);
+                self.emit("// Quantize F32 to UINT8");
+                self.emit(&format!(
+                    "uchar {} = (uchar)clamp(round({} / {}) + float({}), 0.0f, 255.0f);",
+                    result_name, v, s, zp
+                ));
+            }
+            GpuOp::DequantizeUint8ToF32 { value, scale, zero_point } => {
+                let v = self.get_var_name(*value);
+                let s = self.get_var_name(*scale);
+                let zp = self.get_var_name(*zero_point);
+                self.emit("// Dequantize UINT8 to F32");
+                self.emit(&format!(
+                    "float {} = (float({}) - float({})) * {};",
+                    result_name, v, zp, s
+                ));
+            }
+            GpuOp::QuantizeF32ToInt4 { value_lo, value_hi, scale, zero_point } => {
+                let v_lo = self.get_var_name(*value_lo);
+                let v_hi = self.get_var_name(*value_hi);
+                let s = self.get_var_name(*scale);
+                let zp = self.get_var_name(*zero_point);
+                self.emit("// Quantize F32 to INT4 (packed)");
+                self.emit(&format!(
+                    "int lo = (int)clamp(round({} / {}) + float({}), -8.0f, 7.0f);",
+                    v_lo, s, zp
+                ));
+                self.emit(&format!(
+                    "int hi = (int)clamp(round({} / {}) + float({}), -8.0f, 7.0f);",
+                    v_hi, s, zp
+                ));
+                self.emit(&format!(
+                    "uchar {} = (uchar)((lo & 0x0F) | ((hi & 0x0F) << 4));",
+                    result_name
+                ));
+            }
+            GpuOp::DequantizeInt4ToF32Lo { packed, scale, zero_point } => {
+                let p = self.get_var_name(*packed);
+                let s = self.get_var_name(*scale);
+                let zp = self.get_var_name(*zero_point);
+                self.emit("// Dequantize INT4 (low nibble) to F32");
+                self.emit(&format!(
+                    "int lo = ({} & 0x0F); if (lo > 7) lo -= 16;",
+                    p
+                ));
+                self.emit(&format!(
+                    "float {} = (float(lo) - float({})) * {};",
+                    result_name, zp, s
+                ));
+            }
+            GpuOp::DequantizeInt4ToF32Hi { packed, scale, zero_point } => {
+                let p = self.get_var_name(*packed);
+                let s = self.get_var_name(*scale);
+                let zp = self.get_var_name(*zero_point);
+                self.emit("// Dequantize INT4 (high nibble) to F32");
+                self.emit(&format!(
+                    "int hi = (({} >> 4) & 0x0F); if (hi > 7) hi -= 16;",
+                    p
+                ));
+                self.emit(&format!(
+                    "float {} = (float(hi) - float({})) * {};",
+                    result_name, zp, s
+                ));
+            }
+            GpuOp::Dp4a { a, b, c } | GpuOp::Dp4aUnsigned { a, b, c } | GpuOp::Dp4aSU { a, b, c } => {
+                let a_v = self.get_var_name(*a);
+                let b_v = self.get_var_name(*b);
+                let c_v = self.get_var_name(*c);
+                self.emit("// INT8 dot product (dp4a) - software emulation");
+                self.emit(&format!(
+                    "int {} = {} + (int)((char)({} >> 0) & 0xFF) * (int)((char)({} >> 0) & 0xFF)",
+                    result_name, c_v, a_v, b_v
+                ));
+                self.emit(&format!(
+                    "    + (int)((char)({} >> 8) & 0xFF) * (int)((char)({} >> 8) & 0xFF)",
+                    a_v, b_v
+                ));
+                self.emit(&format!(
+                    "    + (int)((char)({} >> 16) & 0xFF) * (int)((char)({} >> 16) & 0xFF)",
+                    a_v, b_v
+                ));
+                self.emit(&format!(
+                    "    + (int)((char)({} >> 24) & 0xFF) * (int)((char)({} >> 24) & 0xFF);",
+                    a_v, b_v
+                ));
+            }
+            GpuOp::Int8MatMul { c, .. } => {
+                let c_v = self.get_var_name(*c);
+                self.emit("// INT8 MatMul not directly supported on Metal");
+                self.emit("// Use simdgroup_matrix with conversion or MPSGraph");
+                self.emit(&format!("int {} = {}; // INT8 MatMul placeholder", result_name, c_v));
+            }
+            GpuOp::QuantizePerChannel { .. } => {
+                self.emit("// Per-channel quantization - implemented at higher level");
+                self.emit(&format!("uchar {} = 0; // Placeholder", result_name));
+            }
+            GpuOp::DequantizePerChannel { .. } => {
+                self.emit("// Per-channel dequantization - implemented at higher level");
+                self.emit(&format!("float {} = 0.0f; // Placeholder", result_name));
+            }
+            GpuOp::ComputeQuantScale { min_val, max_val, num_bits, symmetric } => {
+                let min_v = self.get_var_name(*min_val);
+                let max_v = self.get_var_name(*max_val);
+                self.emit("// Compute quantization scale");
+                if *symmetric {
+                    let qmax = (1 << (num_bits - 1)) - 1;
+                    self.emit(&format!(
+                        "float {} = max(abs({}), abs({})) / {}.0f;",
+                        result_name, min_v, max_v, qmax
+                    ));
+                } else {
+                    let qmax = (1 << *num_bits) - 1;
+                    self.emit(&format!(
+                        "float {} = ({} - {}) / {}.0f;",
+                        result_name, max_v, min_v, qmax
+                    ));
+                }
+            }
+            GpuOp::ComputeZeroPoint { min_val, scale, .. } => {
+                let min_v = self.get_var_name(*min_val);
+                let s = self.get_var_name(*scale);
+                self.emit("// Compute zero point");
+                self.emit(&format!(
+                    "int {} = (int)round(-{} / {});",
+                    result_name, min_v, s
+                ));
+            }
+            GpuOp::FindMinMax { .. } => {
+                self.emit("// FindMinMax - reduction implemented at higher level");
+                self.emit(&format!("float2 {} = float2(0.0f, 0.0f); // Placeholder", result_name));
+            }
+            GpuOp::Requantize { value, in_scale, in_zero_point, out_scale, out_zero_point } => {
+                let v = self.get_var_name(*value);
+                let in_s = self.get_var_name(*in_scale);
+                let in_zp = self.get_var_name(*in_zero_point);
+                let out_s = self.get_var_name(*out_scale);
+                let out_zp = self.get_var_name(*out_zero_point);
+                self.emit("// Requantize from one scale to another");
+                self.emit(&format!(
+                    "float tmp = (float({}) - float({})) * {};",
+                    v, in_zp, in_s
+                ));
+                self.emit(&format!(
+                    "char {} = (char)clamp(round(tmp / {}) + float({}), -128.0f, 127.0f);",
+                    result_name, out_s, out_zp
+                ));
+            }
+
             // === Blackwell Features (CUDA sm_100+ - Not available on Metal) ===
             // Metal doesn't support TMA, WGMMA, or NVLink features
             GpuOp::TmaLoadAsync { .. } => {

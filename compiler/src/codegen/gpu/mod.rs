@@ -30,6 +30,7 @@
 pub mod async_pipeline;
 pub mod autotune;
 pub mod bio;
+pub mod calibration;
 pub mod collective_ops;
 pub mod cooperative;
 pub mod counterfactual;
@@ -50,7 +51,9 @@ pub mod ir;
 pub mod metal;
 pub mod metal_runtime;
 pub mod portable;
+pub mod ptq;
 pub mod ptx;
+pub mod quantize;
 pub mod runtime;
 #[cfg(feature = "gpu")]
 pub mod spirv;
@@ -196,4 +199,18 @@ pub use p2p_transfer::{
 pub use collective_ops::{
     AlgorithmSelector, CollectiveAlgorithm, CollectiveManager, CollectiveOp, CollectiveStats,
     SimulatedBuffer,
+};
+
+// Quantization Pipeline (Phase 11)
+pub use quantize::{
+    PerChannelQuantParams, QuantDtype, QuantError, QuantErrorAnalyzer, QuantParams,
+    QuantScheme, QuantizedTensor, pack_int4, quantize_tensor_int4, quantize_tensor_int8,
+    unpack_int4,
+};
+pub use calibration::{
+    CalibrationCollector, CalibrationMethod, CalibrationStats, PerChannelCalibrator,
+};
+pub use ptq::{
+    ActivationQuantConfig, LayerInfo, LayerQuantStatus, PtqConfig, PtqEngine,
+    PtqErrorSummary, QuantizedModule, WeightQuantConfig,
 };

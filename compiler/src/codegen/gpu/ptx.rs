@@ -1283,6 +1283,357 @@ impl PtxCodegen {
                 }
             }
 
+            // === INT8/INT4 Quantization (Phase 11) ===
+            GpuOp::QuantizeF32ToInt8 { value, scale, zero_point, symmetric } => {
+                let v = self.get_register(*value);
+                let s = self.get_register(*scale);
+                let zp = self.get_register(*zero_point);
+                let reg = self.alloc_register(&GpuType::I8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::I8);
+
+                // q = clamp(round(x / scale) + zero_point, -128, 127)
+                let tmp_f32 = self.alloc_register(&GpuType::F32);
+                let tmp_i32 = self.alloc_register(&GpuType::I32);
+
+                writeln!(self.output, "{}// Quantize F32 to INT8", indent).unwrap();
+                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32, v, s).unwrap();
+                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, tmp_i32, tmp_f32).unwrap();
+                if !symmetric {
+                    // Add zero_point for asymmetric quantization
+                    writeln!(self.output, "{}add.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
+                }
+                // Clamp to [-128, 127]
+                writeln!(self.output, "{}max.s32 {}, {}, -128;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(self.output, "{}min.s32 {}, {}, 127;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(self.output, "{}cvt.s8.s32 {}, {};", indent, reg, tmp_i32).unwrap();
+            }
+
+            GpuOp::DequantizeInt8ToF32 { value, scale, zero_point } => {
+                let v = self.get_register(*value);
+                let s = self.get_register(*scale);
+                let zp = self.get_register(*zero_point);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+
+                // x = (q - zero_point) * scale
+                let tmp_i32 = self.alloc_register(&GpuType::I32);
+                let tmp_f32 = self.alloc_register(&GpuType::F32);
+
+                writeln!(self.output, "{}// Dequantize INT8 to F32", indent).unwrap();
+                writeln!(self.output, "{}cvt.s32.s8 {}, {};", indent, tmp_i32, v).unwrap();
+                writeln!(self.output, "{}sub.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
+                writeln!(self.output, "{}cvt.rn.f32.s32 {}, {};", indent, tmp_f32, tmp_i32).unwrap();
+                writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, reg, tmp_f32, s).unwrap();
+            }
+
+            GpuOp::QuantizeF32ToUint8 { value, scale, zero_point } => {
+                let v = self.get_register(*value);
+                let s = self.get_register(*scale);
+                let zp = self.get_register(*zero_point);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+
+                // q = clamp(round(x / scale) + zero_point, 0, 255)
+                let tmp_f32 = self.alloc_register(&GpuType::F32);
+                let tmp_i32 = self.alloc_register(&GpuType::I32);
+
+                writeln!(self.output, "{}// Quantize F32 to UINT8", indent).unwrap();
+                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32, v, s).unwrap();
+                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, tmp_i32, tmp_f32).unwrap();
+                writeln!(self.output, "{}add.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
+                // Clamp to [0, 255]
+                writeln!(self.output, "{}max.s32 {}, {}, 0;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(self.output, "{}min.s32 {}, {}, 255;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(self.output, "{}cvt.u8.s32 {}, {};", indent, reg, tmp_i32).unwrap();
+            }
+
+            GpuOp::DequantizeUint8ToF32 { value, scale, zero_point } => {
+                let v = self.get_register(*value);
+                let s = self.get_register(*scale);
+                let zp = self.get_register(*zero_point);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+
+                // x = (q - zero_point) * scale
+                let tmp_i32 = self.alloc_register(&GpuType::I32);
+                let tmp_f32 = self.alloc_register(&GpuType::F32);
+
+                writeln!(self.output, "{}// Dequantize UINT8 to F32", indent).unwrap();
+                writeln!(self.output, "{}cvt.s32.u8 {}, {};", indent, tmp_i32, v).unwrap();
+                writeln!(self.output, "{}sub.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
+                writeln!(self.output, "{}cvt.rn.f32.s32 {}, {};", indent, tmp_f32, tmp_i32).unwrap();
+                writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, reg, tmp_f32, s).unwrap();
+            }
+
+            GpuOp::QuantizeF32ToInt4 { value_lo, value_hi, scale, zero_point } => {
+                let v_lo = self.get_register(*value_lo);
+                let v_hi = self.get_register(*value_hi);
+                let s = self.get_register(*scale);
+                let zp = self.get_register(*zero_point);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+
+                // Pack two INT4 values into one byte
+                let tmp_f32 = self.alloc_register(&GpuType::F32);
+                let tmp_i32_lo = self.alloc_register(&GpuType::I32);
+                let tmp_i32_hi = self.alloc_register(&GpuType::I32);
+
+                writeln!(self.output, "{}// Quantize F32 to INT4 (packed)", indent).unwrap();
+                // Quantize low nibble
+                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32, v_lo, s).unwrap();
+                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, tmp_i32_lo, tmp_f32).unwrap();
+                writeln!(self.output, "{}add.s32 {}, {}, {};", indent, tmp_i32_lo, tmp_i32_lo, zp).unwrap();
+                writeln!(self.output, "{}max.s32 {}, {}, -8;", indent, tmp_i32_lo, tmp_i32_lo).unwrap();
+                writeln!(self.output, "{}min.s32 {}, {}, 7;", indent, tmp_i32_lo, tmp_i32_lo).unwrap();
+                writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, tmp_i32_lo, tmp_i32_lo).unwrap();
+
+                // Quantize high nibble
+                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32, v_hi, s).unwrap();
+                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, tmp_i32_hi, tmp_f32).unwrap();
+                writeln!(self.output, "{}add.s32 {}, {}, {};", indent, tmp_i32_hi, tmp_i32_hi, zp).unwrap();
+                writeln!(self.output, "{}max.s32 {}, {}, -8;", indent, tmp_i32_hi, tmp_i32_hi).unwrap();
+                writeln!(self.output, "{}min.s32 {}, {}, 7;", indent, tmp_i32_hi, tmp_i32_hi).unwrap();
+                writeln!(self.output, "{}shl.b32 {}, {}, 4;", indent, tmp_i32_hi, tmp_i32_hi).unwrap();
+
+                // Pack into single byte
+                writeln!(self.output, "{}or.b32 {}, {}, {};", indent, tmp_i32_lo, tmp_i32_lo, tmp_i32_hi).unwrap();
+                writeln!(self.output, "{}cvt.u8.s32 {}, {};", indent, reg, tmp_i32_lo).unwrap();
+            }
+
+            GpuOp::DequantizeInt4ToF32Lo { packed, scale, zero_point } => {
+                let p = self.get_register(*packed);
+                let s = self.get_register(*scale);
+                let zp = self.get_register(*zero_point);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+
+                let tmp_i32 = self.alloc_register(&GpuType::I32);
+                let tmp_f32 = self.alloc_register(&GpuType::F32);
+
+                writeln!(self.output, "{}// Dequantize INT4 (low nibble) to F32", indent).unwrap();
+                // Extract low nibble and sign-extend
+                writeln!(self.output, "{}cvt.s32.u8 {}, {};", indent, tmp_i32, p).unwrap();
+                writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, tmp_i32, tmp_i32).unwrap();
+                // Sign extend from 4-bit
+                writeln!(self.output, "{}shl.b32 {}, {}, 28;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(self.output, "{}shr.s32 {}, {}, 28;", indent, tmp_i32, tmp_i32).unwrap();
+                // Dequantize: (q - zp) * scale
+                writeln!(self.output, "{}sub.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
+                writeln!(self.output, "{}cvt.rn.f32.s32 {}, {};", indent, tmp_f32, tmp_i32).unwrap();
+                writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, reg, tmp_f32, s).unwrap();
+            }
+
+            GpuOp::DequantizeInt4ToF32Hi { packed, scale, zero_point } => {
+                let p = self.get_register(*packed);
+                let s = self.get_register(*scale);
+                let zp = self.get_register(*zero_point);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+
+                let tmp_i32 = self.alloc_register(&GpuType::I32);
+                let tmp_f32 = self.alloc_register(&GpuType::F32);
+
+                writeln!(self.output, "{}// Dequantize INT4 (high nibble) to F32", indent).unwrap();
+                // Extract high nibble and sign-extend
+                writeln!(self.output, "{}cvt.s32.u8 {}, {};", indent, tmp_i32, p).unwrap();
+                writeln!(self.output, "{}shr.b32 {}, {}, 4;", indent, tmp_i32, tmp_i32).unwrap();
+                // Sign extend from 4-bit
+                writeln!(self.output, "{}shl.b32 {}, {}, 28;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(self.output, "{}shr.s32 {}, {}, 28;", indent, tmp_i32, tmp_i32).unwrap();
+                // Dequantize: (q - zp) * scale
+                writeln!(self.output, "{}sub.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
+                writeln!(self.output, "{}cvt.rn.f32.s32 {}, {};", indent, tmp_f32, tmp_i32).unwrap();
+                writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, reg, tmp_f32, s).unwrap();
+            }
+
+            // dp4a - INT8 dot product (sm_61+, Pascal and later)
+            GpuOp::Dp4a { a, b, c } => {
+                let a_reg = self.get_register(*a);
+                let b_reg = self.get_register(*b);
+                let c_reg = self.get_register(*c);
+                let reg = self.alloc_register(&GpuType::I32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::I32);
+
+                writeln!(self.output, "{}// dp4a: c + dot(a[0:3], b[0:3]) (sm_61+)", indent).unwrap();
+                writeln!(self.output, "{}dp4a.s32.s32 {}, {}, {}, {};", indent, reg, a_reg, b_reg, c_reg).unwrap();
+            }
+
+            GpuOp::Dp4aUnsigned { a, b, c } => {
+                let a_reg = self.get_register(*a);
+                let b_reg = self.get_register(*b);
+                let c_reg = self.get_register(*c);
+                let reg = self.alloc_register(&GpuType::U32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U32);
+
+                writeln!(self.output, "{}// dp4a.u32: unsigned INT8 dot product (sm_61+)", indent).unwrap();
+                writeln!(self.output, "{}dp4a.u32.u32 {}, {}, {}, {};", indent, reg, a_reg, b_reg, c_reg).unwrap();
+            }
+
+            GpuOp::Dp4aSU { a, b, c } => {
+                let a_reg = self.get_register(*a);
+                let b_reg = self.get_register(*b);
+                let c_reg = self.get_register(*c);
+                let reg = self.alloc_register(&GpuType::I32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::I32);
+
+                writeln!(self.output, "{}// dp4a.s32.u32: mixed signed/unsigned dot product (sm_61+)", indent).unwrap();
+                writeln!(self.output, "{}dp4a.s32.u32 {}, {}, {}, {};", indent, reg, a_reg, b_reg, c_reg).unwrap();
+            }
+
+            GpuOp::Int8MatMul { a, b, c, m, n, k, a_scale, b_scale } => {
+                let a_reg = self.get_register(*a);
+                let b_reg = self.get_register(*b);
+                let c_reg = self.get_register(*c);
+                let a_s = self.get_register(*a_scale);
+                let b_s = self.get_register(*b_scale);
+                let reg = self.alloc_register(&GpuType::I32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::I32);
+
+                writeln!(self.output, "{}// INT8 Matrix Multiply with Tensor Cores (sm_75+)", indent).unwrap();
+                writeln!(self.output, "{}// M={}, N={}, K={}", indent, m, n, k).unwrap();
+                writeln!(self.output, "{}// Note: Requires WMMA API or mma.sync instruction", indent).unwrap();
+                writeln!(self.output, "{}mma.sync.aligned.m{}n{}k{}.s32.s8.s8.s32",
+                         indent, m, n, k).unwrap();
+                writeln!(self.output, "{}    {{{}}}, {{{}}}, {{{}}}, {{{}}};",
+                         indent, c_reg, a_reg, b_reg, c_reg).unwrap();
+                // Apply dequantization scales
+                writeln!(self.output, "{}// Apply dequant scales: scale_a={}, scale_b={}", indent, a_s, b_s).unwrap();
+                writeln!(self.output, "{}mov.s32 {}, {};", indent, reg, c_reg).unwrap();
+            }
+
+            GpuOp::QuantizePerChannel { values, scales, zero_points, axis, num_channels, signed } => {
+                let v = self.get_register(*values);
+                let s = self.get_register(*scales);
+                let zp = self.get_register(*zero_points);
+                let reg = self.alloc_register(&GpuType::U8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::U8);
+
+                writeln!(self.output, "{}// Per-channel quantization (axis={}, channels={})", indent, axis, num_channels).unwrap();
+                if *signed {
+                    writeln!(self.output, "{}// Output: INT8 (signed)", indent).unwrap();
+                } else {
+                    writeln!(self.output, "{}// Output: UINT8 (unsigned)", indent).unwrap();
+                }
+                writeln!(self.output, "{}// Scale and zero_point arrays at: {}, {}", indent, s, zp).unwrap();
+                // Per-channel quantization is typically done in a loop at the IR level
+                writeln!(self.output, "{}// Placeholder: actual implementation depends on tensor layout", indent).unwrap();
+                writeln!(self.output, "{}mov.u32 {}, 0;", indent, reg).unwrap();
+            }
+
+            GpuOp::DequantizePerChannel { values, scales, zero_points, axis, num_channels } => {
+                let v = self.get_register(*values);
+                let s = self.get_register(*scales);
+                let zp = self.get_register(*zero_points);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+
+                writeln!(self.output, "{}// Per-channel dequantization (axis={}, channels={})", indent, axis, num_channels).unwrap();
+                writeln!(self.output, "{}// Scale and zero_point arrays at: {}, {}", indent, s, zp).unwrap();
+                writeln!(self.output, "{}// Placeholder: actual implementation depends on tensor layout", indent).unwrap();
+                writeln!(self.output, "{}mov.f32 {}, 0f00000000;", indent, reg).unwrap();
+            }
+
+            GpuOp::ComputeQuantScale { min_val, max_val, num_bits, symmetric } => {
+                let min_v = self.get_register(*min_val);
+                let max_v = self.get_register(*max_val);
+                let reg = self.alloc_register(&GpuType::F32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::F32);
+
+                let tmp_range = self.alloc_register(&GpuType::F32);
+                let tmp_qrange = self.alloc_register(&GpuType::F32);
+
+                writeln!(self.output, "{}// Compute quantization scale ({}-bit, symmetric={})", indent, num_bits, symmetric).unwrap();
+                if *symmetric {
+                    // scale = max(|min|, |max|) / 127 (for INT8)
+                    let qmax = (1 << (num_bits - 1)) - 1;
+                    let tmp_abs = self.alloc_register(&GpuType::F32);
+                    writeln!(self.output, "{}abs.f32 {}, {};", indent, tmp_abs, min_v).unwrap();
+                    writeln!(self.output, "{}abs.f32 {}, {};", indent, tmp_range, max_v).unwrap();
+                    writeln!(self.output, "{}max.f32 {}, {}, {};", indent, tmp_range, tmp_range, tmp_abs).unwrap();
+                    writeln!(self.output, "{}mov.f32 {}, 0f{:08X};", indent, tmp_qrange, (qmax as f32).to_bits()).unwrap();
+                    writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, reg, tmp_range, tmp_qrange).unwrap();
+                } else {
+                    // scale = (max - min) / (qmax - qmin)
+                    let qmax = (1 << *num_bits) - 1;
+                    writeln!(self.output, "{}sub.f32 {}, {}, {};", indent, tmp_range, max_v, min_v).unwrap();
+                    writeln!(self.output, "{}mov.f32 {}, 0f{:08X};", indent, tmp_qrange, (qmax as f32).to_bits()).unwrap();
+                    writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, reg, tmp_range, tmp_qrange).unwrap();
+                }
+            }
+
+            GpuOp::ComputeZeroPoint { min_val, scale, num_bits } => {
+                let min_v = self.get_register(*min_val);
+                let s = self.get_register(*scale);
+                let reg = self.alloc_register(&GpuType::I32);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::I32);
+
+                let tmp_f32 = self.alloc_register(&GpuType::F32);
+
+                writeln!(self.output, "{}// Compute zero point ({}-bit)", indent, num_bits).unwrap();
+                // zero_point = round(-min / scale)
+                writeln!(self.output, "{}neg.f32 {}, {};", indent, tmp_f32, min_v).unwrap();
+                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32, tmp_f32, s).unwrap();
+                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, reg, tmp_f32).unwrap();
+            }
+
+            GpuOp::FindMinMax { values, count } => {
+                let v = self.get_register(*values);
+                let cnt = self.get_register(*count);
+                // Returns a vec2 containing (min, max)
+                let reg = self.alloc_register(&GpuType::Vec2(Box::new(GpuType::F32)));
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::Vec2(Box::new(GpuType::F32)));
+
+                writeln!(self.output, "{}// Find min/max in tensor (reduction)", indent).unwrap();
+                writeln!(self.output, "{}// Input: {} values at {}", indent, cnt, v).unwrap();
+                writeln!(self.output, "{}// Placeholder: reduction implemented at higher level", indent).unwrap();
+                writeln!(self.output, "{}mov.v2.f32 {}, {{0f00000000, 0f00000000}};", indent, reg).unwrap();
+            }
+
+            GpuOp::Requantize { value, in_scale, in_zero_point, out_scale, out_zero_point } => {
+                let v = self.get_register(*value);
+                let in_s = self.get_register(*in_scale);
+                let in_zp = self.get_register(*in_zero_point);
+                let out_s = self.get_register(*out_scale);
+                let out_zp = self.get_register(*out_zero_point);
+                let reg = self.alloc_register(&GpuType::I8);
+                self.registers.push(reg.clone());
+                self.value_types.push(GpuType::I8);
+
+                let tmp_i32 = self.alloc_register(&GpuType::I32);
+                let tmp_f32 = self.alloc_register(&GpuType::F32);
+                let tmp_f32_2 = self.alloc_register(&GpuType::F32);
+
+                writeln!(self.output, "{}// Requantize from one scale to another", indent).unwrap();
+                // Dequantize: x = (q - in_zp) * in_scale
+                writeln!(self.output, "{}cvt.s32.s8 {}, {};", indent, tmp_i32, v).unwrap();
+                writeln!(self.output, "{}sub.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, in_zp).unwrap();
+                writeln!(self.output, "{}cvt.rn.f32.s32 {}, {};", indent, tmp_f32, tmp_i32).unwrap();
+                writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, tmp_f32, tmp_f32, in_s).unwrap();
+                // Quantize: q = round(x / out_scale) + out_zp
+                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32_2, tmp_f32, out_s).unwrap();
+                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, tmp_i32, tmp_f32_2).unwrap();
+                writeln!(self.output, "{}add.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, out_zp).unwrap();
+                writeln!(self.output, "{}max.s32 {}, {}, -128;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(self.output, "{}min.s32 {}, {}, 127;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(self.output, "{}cvt.s8.s32 {}, {};", indent, reg, tmp_i32).unwrap();
+            }
+
             // === Blackwell Features (sm_100+) ===
             GpuOp::TmaLoadAsync { dst_shared, src_global, size, barrier } => {
                 let dst = self.get_register(*dst_shared);
