@@ -34,6 +34,7 @@ pub mod cooperative;
 pub mod counterfactual;
 pub mod fusion;
 pub mod graph;
+pub mod optimizer;
 pub mod tile;
 pub mod counterfactual_metal;
 pub mod epistemic_ptx;
@@ -154,4 +155,10 @@ pub use async_pipeline::{
     PipelineBuilder, PipelineCodegen, PipelineSchedule, PipelineScheduler, PipelineStage,
     ScheduledOp, StageBuffer, StageId, apply_pipeline, create_pipeline_from_tile,
     schedule_pipeline,
+};
+
+// GPU Optimization Pipeline (Phase 8)
+pub use optimizer::{
+    GpuOptimizer, OptimizerConfig, OptimizerError, OptimizationReport, PassStats,
+    optimize_module, optimize_module_aggressive,
 };

@@ -1153,17 +1153,24 @@ impl PipelineCodegen {
     }
 
     /// Emit full prologue code
-    pub fn emit_prologue(&self, schedule: &PipelineSchedule, _pipeline: &AsyncPipeline) -> Vec<String> {
+    pub fn emit_prologue(&self, schedule: &PipelineSchedule, pipeline: &AsyncPipeline) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push("// Pipeline prologue: initial prefetches".to_string());
 
         for op in &schedule.prologue {
             match op {
-                ScheduledOp::AsyncLoad(_id) => {
-                    lines.push("// TODO: emit async load".to_string());
+                ScheduledOp::AsyncLoad(id) => {
+                    if let Some(async_op) = pipeline.op_graph.get_op(*id) {
+                        lines.extend(self.emit_async_load_op(async_op, pipeline));
+                    }
                 }
                 ScheduledOp::BarrierArrive(id) => {
-                    lines.push(format!("// barrier arrive {}", id));
+                    if let Some(barrier) = pipeline.barriers.get(*id) {
+                        lines.push(self.emit_barrier_arrive(barrier));
+                    }
+                }
+                ScheduledOp::CpAsyncCommitGroup => {
+                    lines.push(self.emit_cp_async_commit());
                 }
                 _ => {}
             }
@@ -1173,26 +1180,43 @@ impl PipelineCodegen {
     }
 
     /// Emit full main loop code
-    pub fn emit_main_loop(&self, schedule: &PipelineSchedule, _pipeline: &AsyncPipeline) -> Vec<String> {
+    pub fn emit_main_loop(&self, schedule: &PipelineSchedule, pipeline: &AsyncPipeline) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push("// Pipeline main loop: steady state".to_string());
 
         for op in &schedule.main_loop {
             match op {
-                ScheduledOp::AsyncLoad(_id) => {
-                    lines.push("// TODO: emit async load".to_string());
+                ScheduledOp::AsyncLoad(id) => {
+                    if let Some(async_op) = pipeline.op_graph.get_op(*id) {
+                        lines.extend(self.emit_async_load_op(async_op, pipeline));
+                    }
                 }
-                ScheduledOp::Compute(_ops) => {
-                    lines.push("// TODO: emit compute".to_string());
+                ScheduledOp::Compute(ops) => {
+                    lines.extend(self.emit_compute_ops(ops));
                 }
                 ScheduledOp::BarrierWait(id) => {
-                    lines.push(format!("// barrier wait {}", id));
+                    if let Some(barrier) = pipeline.barriers.get(*id) {
+                        lines.extend(self.emit_barrier_wait(barrier));
+                    }
                 }
                 ScheduledOp::BarrierArrive(id) => {
-                    lines.push(format!("// barrier arrive {}", id));
+                    if let Some(barrier) = pipeline.barriers.get(*id) {
+                        lines.push(self.emit_barrier_arrive(barrier));
+                    }
                 }
                 ScheduledOp::AdvancePhase(id) => {
-                    lines.push(format!("// advance phase {}", id));
+                    if let Some(barrier) = pipeline.barriers.get(*id) {
+                        lines.push(format!("// Advance phase for barrier {}", barrier.name));
+                    }
+                }
+                ScheduledOp::CpAsyncCommitGroup => {
+                    lines.push(self.emit_cp_async_commit());
+                }
+                ScheduledOp::CpAsyncWait { count } => {
+                    lines.push(self.emit_cp_async_wait(*count));
+                }
+                ScheduledOp::SyncThreads => {
+                    lines.push("bar.sync 0;".to_string());
                 }
                 _ => {}
             }
@@ -1202,19 +1226,141 @@ impl PipelineCodegen {
     }
 
     /// Emit full epilogue code
-    pub fn emit_epilogue(&self, schedule: &PipelineSchedule, _pipeline: &AsyncPipeline) -> Vec<String> {
+    pub fn emit_epilogue(&self, schedule: &PipelineSchedule, pipeline: &AsyncPipeline) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push("// Pipeline epilogue: drain".to_string());
 
         for op in &schedule.epilogue {
             match op {
-                ScheduledOp::Compute(_ops) => {
-                    lines.push("// TODO: emit compute".to_string());
+                ScheduledOp::Compute(ops) => {
+                    lines.extend(self.emit_compute_ops(ops));
                 }
                 ScheduledOp::BarrierWait(id) => {
-                    lines.push(format!("// barrier wait {}", id));
+                    if let Some(barrier) = pipeline.barriers.get(*id) {
+                        lines.extend(self.emit_barrier_wait(barrier));
+                    }
+                }
+                ScheduledOp::CpAsyncWait { count } => {
+                    lines.push(self.emit_cp_async_wait(*count));
+                }
+                ScheduledOp::SyncThreads => {
+                    lines.push("bar.sync 0;".to_string());
                 }
                 _ => {}
+            }
+        }
+
+        lines
+    }
+
+    /// Emit PTX for an async load operation based on its kind
+    fn emit_async_load_op(&self, op: &AsyncOp, pipeline: &AsyncPipeline) -> Vec<String> {
+        let mut lines = Vec::new();
+
+        match &op.kind {
+            AsyncOpKind::TmaLoad { src, dst, size } => {
+                // TMA load for Hopper+ (sm_90+)
+                if self.target.compute_capability() >= (9, 0) {
+                    // Find the barrier for this stage
+                    let barrier_name = pipeline.stages
+                        .iter()
+                        .find(|s| s.id == op.stage)
+                        .and_then(|s| s.exit_barrier)
+                        .and_then(|bid| pipeline.barriers.get(bid))
+                        .map(|b| b.name.clone())
+                        .unwrap_or_else(|| "mbar0".to_string());
+
+                    lines.push(format!(
+                        "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes \
+                         [smem_{}], [tensor_map_{}, {{coord_x, coord_y}}], [{}];",
+                        dst.0, src.0, barrier_name
+                    ));
+                } else {
+                    // Fallback to cp.async for pre-Hopper
+                    lines.push(format!(
+                        "cp.async.cg.shared.global [smem_{}], [gmem_{}], {};",
+                        dst.0, src.0, size
+                    ));
+                    lines.push("cp.async.commit_group;".to_string());
+                }
+            }
+            AsyncOpKind::CpAsync { src, dst, size } => {
+                // cp.async for Ampere+ (sm_80+)
+                lines.push(format!(
+                    "cp.async.cg.shared.global [smem_{}], [gmem_{}], {};",
+                    dst.0, src.0, size
+                ));
+            }
+            AsyncOpKind::TmaMulticast { src, dst, multicast_mask } => {
+                // TMA multicast for Hopper+ cluster operations
+                lines.push(format!(
+                    "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes.multicast::cluster \
+                     [smem_{}], [tensor_map_{}], [mbar], 0x{:x};",
+                    dst.0, src.0, multicast_mask
+                ));
+            }
+            AsyncOpKind::TmaStore { src, dst, .. } => {
+                // TMA store (Hopper+)
+                lines.push(format!(
+                    "cp.async.bulk.tensor.2d.global.shared::cta [gmem_{}], [smem_{}];",
+                    dst.0, src.0
+                ));
+            }
+            AsyncOpKind::TmaReduce { src, dst, op: reduce_op } => {
+                // TMA reduction (Hopper+)
+                let op_str = match reduce_op {
+                    TmaReduceOp::Add => "add",
+                    TmaReduceOp::Min => "min",
+                    TmaReduceOp::Max => "max",
+                    TmaReduceOp::And => "and",
+                    TmaReduceOp::Or => "or",
+                    TmaReduceOp::Xor => "xor",
+                };
+                lines.push(format!(
+                    "cp.reduce.async.bulk.tensor.2d.global.shared::cta.{} [gmem_{}], [smem_{}];",
+                    op_str, dst.0, src.0
+                ));
+            }
+            AsyncOpKind::CpAsyncCommit => {
+                // Commit current async copy group
+                lines.push("cp.async.commit_group;".to_string());
+            }
+            AsyncOpKind::CpAsyncWait { count } => {
+                // Wait for async copies to complete
+                lines.push(format!("cp.async.wait_group {};", count));
+            }
+        }
+
+        lines
+    }
+
+    /// Emit PTX for compute operations
+    fn emit_compute_ops(&self, ops: &[GpuOp]) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(format!("// Compute block: {} operations", ops.len()));
+
+        // For now, emit placeholder comments for compute operations
+        // Full implementation would translate GpuOp to PTX
+        for (i, op) in ops.iter().enumerate() {
+            match op {
+                GpuOp::Add(a, b) => {
+                    lines.push(format!("add.f32 r{}, r{}, r{};", i, a.0, b.0));
+                }
+                GpuOp::Mul(a, b) => {
+                    lines.push(format!("mul.f32 r{}, r{}, r{};", i, a.0, b.0));
+                }
+                GpuOp::FMulAdd(a, b, c) => {
+                    lines.push(format!("fma.rn.f32 r{}, r{}, r{}, r{};", i, a.0, b.0, c.0));
+                }
+                GpuOp::Load(ptr, _offset) => {
+                    lines.push(format!("ld.shared.f32 r{}, [r{}];", i, ptr.0));
+                }
+                GpuOp::Store(ptr, val, _offset) => {
+                    lines.push(format!("st.shared.f32 [r{}], r{};", ptr.0, val.0));
+                }
+                _ => {
+                    lines.push(format!("// op_{}: {:?}", i, std::mem::discriminant(op)));
+                }
             }
         }
 
