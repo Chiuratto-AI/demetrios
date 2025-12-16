@@ -32,10 +32,13 @@ pub mod autotune;
 pub mod bio;
 pub mod cooperative;
 pub mod counterfactual;
+pub mod diagnostics;
 pub mod fusion;
 pub mod graph;
 pub mod optimizer;
+pub mod sourcemap;
 pub mod tile;
+pub mod validation;
 pub mod counterfactual_metal;
 pub mod epistemic_ptx;
 pub mod hlir_to_gpu;
@@ -161,4 +164,18 @@ pub use async_pipeline::{
 pub use optimizer::{
     GpuOptimizer, OptimizerConfig, OptimizerError, OptimizationReport, PassStats,
     optimize_module, optimize_module_aggressive,
+};
+
+// GPU Diagnostics & Validation (Phase 9)
+pub use diagnostics::{
+    DiagnosticConfig, DiagnosticContext, DiagnosticReport, DiagnosticSeverity, DiagnosticSummary,
+    GpuDiagnostic, GpuDiagnosticKind, GpuIrLocation, HintConfidence, RecoveryGenerator,
+    RecoveryHint,
+};
+pub use sourcemap::{
+    GpuSourceMapper, LocationTrace, PtxDebugEmitter, PtxLocation, SpanTracker,
+};
+pub use validation::{
+    BufferComparison, CorrectnessValidator, PrecisionStats, ToleranceConfig, ValidationConfig,
+    ValidationError, ValidationIssue, ValidationResult,
 };

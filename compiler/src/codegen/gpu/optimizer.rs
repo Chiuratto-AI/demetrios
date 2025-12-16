@@ -297,7 +297,7 @@ impl Default for GpuOptimizer {
 }
 
 /// Errors that can occur during optimization
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum OptimizerError {
     /// Fusion pass failed
     Fusion(FusionError),
