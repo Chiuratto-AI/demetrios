@@ -1977,48 +1977,19 @@ impl TypeChecker {
             }
 
             Expr::While {
-                id,
+                id: _,
                 condition,
                 body,
             } => {
                 let cond_expr = self.check_expr(condition, Some(&Type::Bool))?;
                 let body_block = self.check_block(body, None)?;
 
-                // Desugar while to loop with if/break
+                // Use proper While HIR node - condition will be re-evaluated each iteration
                 (
-                    HirExprKind::Loop(HirBlock {
-                        stmts: vec![
-                            HirStmt::Expr(HirExpr {
-                                id: NodeId::dummy(),
-                                kind: HirExprKind::If {
-                                    condition: Box::new(HirExpr {
-                                        id: NodeId::dummy(),
-                                        kind: HirExprKind::Unary {
-                                            op: HirUnaryOp::Not,
-                                            expr: Box::new(cond_expr),
-                                        },
-                                        ty: HirType::Bool,
-                                    }),
-                                    then_branch: HirBlock {
-                                        stmts: vec![HirStmt::Expr(HirExpr {
-                                            id: NodeId::dummy(),
-                                            kind: HirExprKind::Break(None),
-                                            ty: HirType::Never,
-                                        })],
-                                        ty: HirType::Never,
-                                    },
-                                    else_branch: None,
-                                },
-                                ty: HirType::Unit,
-                            }),
-                            HirStmt::Expr(HirExpr {
-                                id: NodeId::dummy(),
-                                kind: HirExprKind::Block(body_block),
-                                ty: HirType::Unit,
-                            }),
-                        ],
-                        ty: HirType::Unit,
-                    }),
+                    HirExprKind::While {
+                        condition: Box::new(cond_expr),
+                        body: body_block,
+                    },
                     HirType::Unit,
                 )
             }

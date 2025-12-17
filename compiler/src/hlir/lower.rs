@@ -457,6 +457,8 @@ impl<'a> LoweringContext<'a> {
 
             HirExprKind::Loop(body) => self.lower_loop(body, &ty),
 
+            HirExprKind::While { condition, body } => self.lower_while(condition, body, &ty),
+
             HirExprKind::Break(value) => {
                 let break_val = value.as_ref().and_then(|v| self.lower_expr(v));
 
@@ -969,6 +971,64 @@ impl<'a> LoweringContext<'a> {
         // If body didn't terminate, loop back
         if !self.terminated {
             self.builder.build_branch(loop_block);
+        }
+
+        // Pop loop context and collect break values
+        let loop_ctx = self.loop_stack.pop().unwrap();
+
+        // Exit block
+        self.builder.switch_to_block(exit_block);
+        self.terminated = false;
+
+        // Build phi for break values
+        if *ty != HlirType::Void && !loop_ctx.break_values.is_empty() {
+            Some(self.builder.build_phi(loop_ctx.break_values, ty.clone()))
+        } else {
+            None
+        }
+    }
+
+    fn lower_while(
+        &mut self,
+        condition: &HirExpr,
+        body: &HirBlock,
+        ty: &HlirType,
+    ) -> Option<ValueId> {
+        let cond_block = self.builder.create_block("while.cond");
+        let body_block = self.builder.create_block("while.body");
+        let exit_block = self.builder.create_block("while.exit");
+
+        // Jump to condition check
+        self.builder.build_branch(cond_block);
+
+        // Push loop context (continue goes to condition, break goes to exit)
+        self.loop_stack.push(LoopContext {
+            continue_block: cond_block,
+            break_block: exit_block,
+            break_values: Vec::new(),
+        });
+
+        // Condition block - re-evaluate condition each iteration
+        self.builder.switch_to_block(cond_block);
+        self.terminated = false;
+        let cond_val = self.lower_expr(condition);
+
+        if let Some(cond) = cond_val {
+            // Branch based on condition
+            self.builder.build_cond_branch(cond, body_block, exit_block);
+        } else {
+            // If condition lowering failed, assume true and enter body
+            self.builder.build_branch(body_block);
+        }
+
+        // Body block
+        self.builder.switch_to_block(body_block);
+        self.terminated = false;
+        self.lower_block(body);
+
+        // If body didn't terminate, jump back to condition check
+        if !self.terminated {
+            self.builder.build_branch(cond_block);
         }
 
         // Pop loop context and collect break values

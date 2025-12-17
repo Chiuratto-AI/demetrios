@@ -207,6 +207,14 @@ impl EpistemicOptimizer {
                 self.optimize_block(body, ctx);
             }
 
+            HirExprKind::While { condition, body } => {
+                self.optimize_expr(condition, ctx);
+                if self.hoist_validity {
+                    self.try_hoist_validity_checks(body, ctx);
+                }
+                self.optimize_block(body, ctx);
+            }
+
             // Recurse into other expression kinds
             HirExprKind::Block(block) => {
                 self.optimize_block(block, ctx);

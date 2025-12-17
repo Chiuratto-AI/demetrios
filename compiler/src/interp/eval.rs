@@ -259,6 +259,27 @@ impl Interpreter {
                 }
             },
 
+            // While loop - condition re-evaluated FRESH on each iteration
+            HirExprKind::While { condition, body } => loop {
+                // Evaluate condition fresh each iteration (fixes the bug!)
+                let cond_val = self.eval_expr(condition)?;
+                if !cond_val.is_truthy() {
+                    break Ok(Value::Unit);
+                }
+
+                // Execute body
+                match self.eval_block(body) {
+                    Ok(_) => continue,
+                    Err(ControlFlow::Continue) => continue,
+                    Err(ControlFlow::Break(val)) => {
+                        return Ok(val.unwrap_or(Value::Unit));
+                    }
+                    Err(ControlFlow::Return(v)) => {
+                        return Err(ControlFlow::Return(v));
+                    }
+                }
+            },
+
             HirExprKind::Return(value) => {
                 let val = if let Some(expr) = value {
                     self.eval_expr(expr)?

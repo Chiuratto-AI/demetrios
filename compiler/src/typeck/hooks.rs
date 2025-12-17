@@ -307,6 +307,11 @@ impl SemanticTypeChecker {
                 self.check_block(block)?;
             }
 
+            HirExprKind::While { condition, body } => {
+                self.check_expr(condition)?;
+                self.check_block(body)?;
+            }
+
             HirExprKind::Block(block) => {
                 self.check_block(block)?;
             }

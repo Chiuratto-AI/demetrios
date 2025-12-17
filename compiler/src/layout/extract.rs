@@ -405,6 +405,10 @@ impl HirConceptExtractor {
             HirExprKind::Loop(block) => {
                 self.visit_block(block);
             }
+            HirExprKind::While { condition, body } => {
+                self.visit_expr(condition);
+                self.visit_block(body);
+            }
             HirExprKind::Return(expr) => {
                 if let Some(e) = expr {
                     self.visit_expr(e);

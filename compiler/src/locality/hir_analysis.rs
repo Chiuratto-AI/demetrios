@@ -233,6 +233,13 @@ impl HirLocalityAnalyzer {
                 self.loop_depth -= 1;
             }
 
+            HirExprKind::While { condition, body } => {
+                self.analyze_expr(condition, AccessKind::Read);
+                self.loop_depth += 1;
+                self.analyze_block(body);
+                self.loop_depth -= 1;
+            }
+
             HirExprKind::Block(block) => {
                 self.analyze_block(block);
             }

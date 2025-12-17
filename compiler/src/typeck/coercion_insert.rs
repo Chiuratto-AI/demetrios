@@ -151,6 +151,13 @@ impl CoercionInserter {
                 }
             }
 
+            HirExprKind::While { condition, body } => {
+                Self::apply_to_expr_inner_static(condition, coercion_map);
+                for stmt in &mut body.stmts {
+                    Self::apply_to_stmt_static(stmt, coercion_map);
+                }
+            }
+
             HirExprKind::Block(block) => {
                 for stmt in &mut block.stmts {
                     Self::apply_to_stmt_static(stmt, coercion_map);

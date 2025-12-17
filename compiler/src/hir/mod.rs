@@ -555,8 +555,13 @@ pub enum HirExprKind {
         scrutinee: Box<HirExpr>,
         arms: Vec<HirMatchArm>,
     },
-    /// Loop
+    /// Infinite loop
     Loop(HirBlock),
+    /// While loop - condition re-evaluated each iteration
+    While {
+        condition: Box<HirExpr>,
+        body: HirBlock,
+    },
     /// Return
     Return(Option<Box<HirExpr>>),
     /// Break
