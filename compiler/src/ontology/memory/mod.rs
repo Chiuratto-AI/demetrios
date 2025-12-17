@@ -30,7 +30,6 @@ pub use l2_cache::L2Cache;
 pub use l3_store::L3Store;
 
 use std::sync::Arc;
-use std::time::Instant;
 
 /// Statistics for the tiered memory system
 #[derive(Debug, Clone, Default)]

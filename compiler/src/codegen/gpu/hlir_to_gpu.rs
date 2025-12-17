@@ -43,9 +43,9 @@ use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
 use super::async_pipeline::{create_pipeline_from_tile, schedule_pipeline, AsyncPipeline, PipelineSchedule};
-use super::autotune::{AutoTuneConfig, AutoTuner, TileConfig, TunedConfig};
+use super::autotune::{AutoTuneConfig, AutoTuner, TunedConfig};
 use super::fusion::{analyze_and_fuse_kernels, FusionConfig, FusionError};
-use super::graph::{build_graph_from_module, GpuGraph};
+use super::graph::build_graph_from_module;
 use super::ir::*;
 use crate::hlir::{
     BinaryOp, BlockId as HlirBlockId, HlirBlock, HlirConstant, HlirFunction, HlirInstr, HlirModule,

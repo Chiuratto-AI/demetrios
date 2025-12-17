@@ -13,8 +13,6 @@ use std::rc::Rc;
 
 use miette::Result;
 
-use super::value::Value;
-
 /// An operation recorded on the autodiff tape
 #[derive(Clone, Debug)]
 pub enum TapeOp {

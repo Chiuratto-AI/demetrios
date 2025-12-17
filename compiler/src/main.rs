@@ -3794,7 +3794,7 @@ fn diagnostics_check(
 ) -> Result<()> {
     use demetrios::diagnostic::emitter::SarifEmitter;
     use demetrios::diagnostic::{
-        Diagnostic, DiagnosticHandler, DiagnosticLevel, HumanEmitter, JsonEmitter, Span,
+        Diagnostic, DiagnosticHandler, HumanEmitter, JsonEmitter, Span,
     };
 
     tracing::info!("Checking {:?} with rich diagnostics", input);
@@ -4726,7 +4726,7 @@ fn target_create(triple: &str, base: Option<&str>, output: Option<&std::path::Pa
     let registry = TargetRegistry::with_builtins();
 
     // Start with base target or parse triple
-    let mut spec = if let Some(base_name) = base {
+    let spec = if let Some(base_name) = base {
         let mut base_spec = registry
             .get(base_name)
             .map_err(|e| miette::miette!("Base target not found: {}", e))?;
@@ -5423,7 +5423,7 @@ fn ontology_update(lock_file: &Path, write: bool, verbose: bool) -> Result<()> {
 
     // In a real implementation, we would query remote sources for latest versions
     // For now, we just report what's in the lock file
-    let mut updates_available = 0;
+    let updates_available = 0;
 
     for entry in &manifest.ontologies {
         if verbose {
@@ -5671,7 +5671,7 @@ fn layout_analyze(
     output: Option<&Path>,
 ) -> Result<()> {
     use demetrios::layout::{
-        ClusteringResult, DistanceMatrix, LayoutConfig, cluster_concepts,
+        DistanceMatrix, LayoutConfig, cluster_concepts,
         extract_concepts_from_types, generate_layout, generate_report,
     };
     use demetrios::ontology::native::NativeOntology;
@@ -6059,10 +6059,9 @@ fn layout_visualize(
 fn layout_constraints(input: &Path, data_dir: &Path, verbose: bool) -> Result<()> {
     use demetrios::layout::{
         ConstraintSet, ConstraintSource, DistanceMatrix, ForcedRegion, LayoutConfig,
-        LayoutConstraint, cluster_concepts, extract_concepts_from_types, format_diagnostics,
+        LayoutConstraint, cluster_concepts, format_diagnostics,
         solve_constraints, validate_constraints_diagnostic,
     };
-    use demetrios::ontology::native::NativeOntology;
 
     // Read constraint file (simple format: one constraint per line)
     // Format: colocate:A,B,C or separate:X,Y or hot:Z or cold:W
@@ -6321,7 +6320,7 @@ fn layout_explain(concept: &str, input: &Path, data_dir: &Path) -> Result<()> {
 
 /// Format a Unix timestamp as a human-readable string
 fn format_timestamp(timestamp: u64) -> String {
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, UNIX_EPOCH};
 
     let time = UNIX_EPOCH + Duration::from_secs(timestamp);
     let datetime = chrono::DateTime::<chrono::Utc>::from(time);
@@ -7361,7 +7360,7 @@ fn locality_codegen(
     target: &str,
     output: Option<&Path>,
 ) -> Result<()> {
-    use demetrios::locality::access::{AccessAnalyzer, StridePattern};
+    use demetrios::locality::access::StridePattern;
     use demetrios::locality::codegen::{PrefetchCodegen, Target};
 
     // Parse target
@@ -7434,7 +7433,7 @@ fn units_list(category: &str, format: &str, verbose: bool) -> Result<()> {
     use demetrios::units::Dimension;
     use demetrios::units::check::UnitChecker;
 
-    let checker = UnitChecker::new();
+    let _checker = UnitChecker::new();
 
     // Define unit categories
     let si_base = vec![
@@ -8244,7 +8243,7 @@ fn linear_sessions(examples: bool, format: &str) -> Result<()> {
 
 fn linear_check(input: &Path, show_resources: bool, show_usage: bool) -> Result<()> {
     // Read the source file
-    let source = std::fs::read_to_string(input)
+    let _source = std::fs::read_to_string(input)
         .map_err(|e| miette::miette!("Failed to read {}: {}", input.display(), e))?;
 
     println!("Linear Type Checking: {}", input.display());

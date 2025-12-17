@@ -19,7 +19,6 @@
 use std::fmt;
 
 use super::fusion::FusionError;
-use super::ir::{BlockId, ValueId};
 use super::optimizer::OptimizerError;
 use super::sourcemap::GpuSourceMapper;
 use super::validation::{ValidationError, ValidationIssue};

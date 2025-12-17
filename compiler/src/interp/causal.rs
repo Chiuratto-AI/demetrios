@@ -11,8 +11,6 @@ use std::collections::{HashMap, HashSet};
 
 use miette::Result;
 
-use super::value::Value;
-
 /// A causal directed acyclic graph (DAG)
 #[derive(Clone, Debug)]
 pub struct CausalDAG {

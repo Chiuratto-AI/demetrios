@@ -482,7 +482,7 @@ impl ProbRuntime {
 
         // Initialize
         let mut ctx = ProbContext::new(self.rng.next_u64());
-        let mut current_value = model(&mut ctx);
+        let _current_value = model(&mut ctx);
         let mut current_log_prob = ctx.get_log_prob();
         let mut current_params = ctx.get_values().clone();
 
@@ -497,13 +497,12 @@ impl ProbRuntime {
             }
 
             // Evaluate model at proposed state
-            let proposed_value = model(&mut ctx);
+            let _proposed_value = model(&mut ctx);
             let proposed_log_prob = ctx.get_log_prob();
 
             // Accept/reject
             let log_alpha = proposed_log_prob - current_log_prob;
             if log_alpha >= 0.0 || self.rng.next_f64().ln() < log_alpha {
-                current_value = proposed_value;
                 current_log_prob = proposed_log_prob;
                 current_params = ctx.get_values().clone();
                 accepted += 1;

@@ -30,7 +30,6 @@
 //! ```
 
 use std::fmt;
-use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
 
 /// Shape dimension (can be static or dynamic)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

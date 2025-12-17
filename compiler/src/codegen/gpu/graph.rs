@@ -19,7 +19,7 @@
 //! executable.launch(stream);
 //! ```
 
-use super::ir::{GpuKernel, GpuModule, GpuType, ValueId};
+use super::ir::{GpuModule, GpuType, ValueId};
 use rustc_hash::FxHashMap;
 
 /// Unique identifier for a graph node

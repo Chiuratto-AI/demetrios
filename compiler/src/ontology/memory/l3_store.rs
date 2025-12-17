@@ -34,14 +34,6 @@ impl L3Store {
         }
     }
 
-    /// Create with memory-mapped backing file
-    #[cfg(feature = "mmap")]
-    pub fn with_mmap(path: &std::path::Path) -> std::io::Result<Self> {
-        // TODO: Implement actual mmap backing
-        // For now, fall back to in-memory
-        Ok(Self::new())
-    }
-
     /// Get a term from the store
     pub fn get(&self, iri: &str) -> Option<Arc<CompactTerm>> {
         let entries = self.entries.read().ok()?;

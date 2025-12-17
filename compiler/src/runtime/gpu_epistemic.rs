@@ -16,8 +16,6 @@
 //!
 //! The compiler automatically selects the optimal layout based on usage patterns.
 
-use std::sync::Arc;
-
 /// GPU memory layout strategy
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GpuMemoryLayout {

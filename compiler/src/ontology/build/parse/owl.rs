@@ -247,7 +247,7 @@ impl<R: BufRead> TurtleIterator<R> {
 
     fn tokenize_triple<'a>(&self, line: &'a str) -> Vec<&'a str> {
         let mut tokens = Vec::new();
-        let mut chars = line.chars().peekable();
+        let _chars = line.chars().peekable();
         let mut start = 0;
         let mut pos = 0;
         let mut in_uri = false;

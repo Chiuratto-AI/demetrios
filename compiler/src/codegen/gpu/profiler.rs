@@ -4,12 +4,10 @@
 //! simulated hardware counters, bottleneck detection, and optimization
 //! recommendations.
 
-use std::collections::HashMap;
-
-use super::costs::{CostDatabase, FlopsCount, KernelCostEstimate, LimitingResource, MemoryTraffic};
+use super::costs::{CostDatabase, FlopsCount, KernelCostEstimate, MemoryTraffic};
 use super::diagnostics::GpuIrLocation;
 use super::ir::{CudaArch, GpuKernel, GpuModule, GpuOp, MemorySpace};
-use super::roofline::{Boundedness, OptimizationHint, RooflineAnalysis, RooflineModel};
+use super::roofline::{OptimizationHint, RooflineAnalysis, RooflineModel};
 
 // ============================================================================
 // Performance Counters

@@ -715,7 +715,7 @@ where
 
         // Approximate spectral radius using power iteration (1 step)
         let n = y.len();
-        let mut v = vec![1.0 / (n as f64).sqrt(); n];
+        let v = vec![1.0 / (n as f64).sqrt(); n];
 
         // One matrix-vector multiply
         let mut w = vec![0.0; n];

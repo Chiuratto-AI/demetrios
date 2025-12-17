@@ -6,7 +6,7 @@
 //! 3. Pre-computed subsumption index
 //! 4. SIMD-accelerated embedding distance (see embedding/simd.rs)
 
-use super::{IRI, LoadedTerm, OntologyId};
+use super::{LoadedTerm, IRI};
 use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 

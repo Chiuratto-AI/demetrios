@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use super::ir::{CudaArch, GpuKernel, GpuOp, GpuType, MemorySpace};
+use super::ir::{CudaArch, GpuKernel, GpuOp, MemorySpace};
 
 // ============================================================================
 // Instruction Cost Types

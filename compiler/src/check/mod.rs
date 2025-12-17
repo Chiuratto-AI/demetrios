@@ -3596,8 +3596,6 @@ impl TypeChecker {
             Pattern::Or(patterns) => {
                 HirPattern::Or(patterns.iter().map(|p| self.lower_pattern(p)).collect())
             }
-            // For other patterns, default to wildcard
-            _ => HirPattern::Wildcard,
         }
     }
 

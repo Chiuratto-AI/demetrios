@@ -401,7 +401,6 @@ impl BuiltinRegistry {
 
             match (&args[0], &args[1]) {
                 (Value::SymbolicExpr(expr), Value::String(var)) => {
-                    use crate::interp::symbolic::Expr as SymbolicExpr;
                     let derivative = expr.differentiate(var);
                     Ok(Value::SymbolicExpr(std::rc::Rc::new(derivative)))
                 }
