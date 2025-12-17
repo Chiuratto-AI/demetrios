@@ -1,0 +1,438 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║              GPU NUMERICAL STABILITY & ERROR PROPAGATION                     ║
+║                    Integration with Epistemic Computing                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+                         ARCHITECTURE OVERVIEW
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│   ┌─────────────┐      ┌──────────────┐      ┌─────────────────┐          │
+│   │  High-Level │      │  Numerical   │      │   Epistemic     │          │
+│   │    Code     │ ───> │   Analysis   │ ───> │  Shadow Regs    │          │
+│   └─────────────┘      └──────────────┘      └─────────────────┘          │
+│         │                      │                       │                    │
+│         │                      │                       │                    │
+│         v                      v                       v                    │
+│   z = x + y              Error Bounds            %r_z_eps = ε               │
+│   w = z * a              Stability Risk          %p_z_valid = conf          │
+│   result = w / b         Precision Rec           %r_z_prov = ID             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+                        ERROR REPRESENTATION LAYER
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────┐    │
+│  │ UlpError                                                           │    │
+│  │ ────────                                                           │    │
+│  │ • ulps: u64              Units in Last Place                       │    │
+│  │ • relative_error: f64    |computed - exact| / |exact|             │    │
+│  │ • absolute_error: f64    |computed - exact|                       │    │
+│  │                                                                     │    │
+│  │ Methods:                                                           │    │
+│  │   from_values()    Compute ULP distance between two floats        │    │
+│  │   to_epsilon()     Convert to epistemic epsilon                   │    │
+│  │   combine()        Conservative upper bound                       │    │
+│  └────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────┐    │
+│  │ ErrorBound                                                         │    │
+│  │ ──────────                                                         │    │
+│  │ • min_error: f64         Minimum possible error                   │    │
+│  │ • max_error: f64         Maximum possible error                   │    │
+│  │ • expected_error: f64    Expected (average) error                 │    │
+│  │ • confidence: f64        Confidence in bound [0.0, 1.0]           │    │
+│  │                                                                     │    │
+│  │ Methods:                                                           │    │
+│  │   machine_epsilon()  Create from precision level                  │    │
+│  │   from_estimate()    Single point estimate                        │    │
+│  │   combine()          Quadrature: √(ε₁² + ε₂²)                     │    │
+│  │   widen()            Conservative expansion                       │    │
+│  └────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────┐    │
+│  │ StabilityRisk                                                      │    │
+│  │ ─────────────                                                      │    │
+│  │ • Stable                                                           │    │
+│  │ • MildInstability { condition_number }                            │    │
+│  │ • Severe { overflow_risk, underflow_risk }                        │    │
+│  │ • Catastrophic { cancellation_risk }                              │    │
+│  │                                                                     │    │
+│  │ Methods:                                                           │    │
+│  │   severity()     Risk score [0.0, 1.0]                            │    │
+│  │   mitigation()   Recommended fix                                  │    │
+│  └────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+                      ERROR PROPAGATION LAYER
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  ErrorPropagator                                                             │
+│  ────────────────                                                            │
+│                                                                              │
+│  Operation          Formula                          PTX Generation          │
+│  ──────────────────────────────────────────────────────────────────────────  │
+│  Addition           ε_z = √(ε_x² + ε_y²)            Quadrature              │
+│  z = x + y                                          sqrt.approx.f32          │
+│                                                                              │
+│  Multiplication     ε_z = |x|·ε_y + |y|·ε_x         abs + mul + add         │
+│  z = x * y                                          3 extra instructions     │
+│                                                                              │
+│  Division           ε_z = (|x|·ε_y + |y|·ε_x)/y²    abs + mul + div         │
+│  z = x / y          [widen if |y| < min_normal]    + near-zero check        │
+│                                                                              │
+│  FMA                ε_z = √((|a|·ε_b+|b|·ε_a)²+ε_c²) Combined mul+add       │
+│  z = a*b + c        [more accurate than sep ops]   fma.rn.f32               │
+│                                                                              │
+│  exp(x)             ε_out ≈ exp(x) · ε_in           Exponential amp          │
+│  log(x)             ε_out ≈ ε_in / x                Division by value        │
+│  sqrt(x)            ε_out ≈ ε_in / (2·√x)           Root extraction          │
+│  sin(x)             ε_out ≈ |cos(x)| · ε_in         Trig derivative          │
+│  cos(x)             ε_out ≈ |sin(x)| · ε_in         Trig derivative          │
+│  tan(x)             ε_out ≈ sec²(x) · ε_in          Secant squared           │
+│                                                                              │
+│  Sum(n values)      ε_sum = ε_avg · √n              Error grows sqrt(n)      │
+│  Σ xᵢ               [for uncorrelated errors]      Kahan if needed          │
+│                                                                              │
+│  Modes:                                                                      │
+│    Conservative   Worst-case bounds (pessimistic)                           │
+│    Expected       Average-case (default, realistic)                         │
+│    Interval       Tight interval arithmetic                                 │
+│                                                                              │
+│  History Tracking:                                                           │
+│    Records each operation with input/output errors and amplification        │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+                       STABILITY ANALYSIS LAYER
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  StabilityAnalyzer                                                           │
+│  ──────────────────                                                          │
+│                                                                              │
+│  Check Type                  Condition                    Risk               │
+│  ──────────────────────────────────────────────────────────────────────────  │
+│  Catastrophic Cancellation   |x-y| / max(|x|,|y|) < 1e-6  Catastrophic     │
+│  z = x - y where x ≈ y       Loses ~6 decimal digits      cancellation      │
+│                              Example: 1.0000001 - 1.0                        │
+│                              Result: 0.0000001 (1 ULP!)                      │
+│                              Mitigation: 2Sum algorithm                      │
+│                                                                              │
+│  Division by Near-Zero       |divisor| < min_normal        Severe           │
+│  z = x / y where y ≈ 0       Amplifies error by 1/|y|     overflow          │
+│                              Example: 1.0 / 1e-20                            │
+│                              Mitigation: Rescaling                           │
+│                                                                              │
+│  Overflow Risk               |value| > 0.5 * max_value     Severe           │
+│  Value approaching max       Near representable limit      overflow          │
+│                              FP32 max: 3.4e38                                │
+│                              Mitigation: Rescaling                           │
+│                                                                              │
+│  Underflow Risk              |value| < 100 * min_normal    Severe           │
+│  Value approaching zero      Entering subnormal range      underflow         │
+│                              FP32 min: 1.2e-38                               │
+│                              Mitigation: Rescaling/upgrade                   │
+│                                                                              │
+│  Ill-Conditioning            κ = σ_max / σ_min > 1e8       Mild/Catastrophic │
+│  Matrix operations           High condition number         instability       │
+│                              κ=10³: lose 3 digits                            │
+│                              κ=10⁶: lose 6 digits                            │
+│                              κ>10¹²: essentially singular                    │
+│                              Mitigation: Higher precision                    │
+│                                                                              │
+│  Summary Statistics:                                                         │
+│    • Total checks performed                                                  │
+│    • Counts by risk level (stable/mild/severe/catastrophic)                 │
+│    • Acceptability assessment                                                │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+                      PRECISION SELECTION LAYER
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  PrecisionAdvisor                                                            │
+│  ─────────────────                                                           │
+│                                                                              │
+│  Precision  Epsilon      Max Value    Min Normal   Bits   Use Case          │
+│  ──────────────────────────────────────────────────────────────────────────  │
+│  FP8        0.125        448          0.015625     8      Extreme throughput │
+│  FP16       2^-10        65504        6.1e-5       16     Tensor Cores       │
+│  FP32       2^-23        3.4e38       1.2e-38      32     General purpose    │
+│  FP64       2^-52        1.8e308      2.2e-308     64     High precision     │
+│                                                                              │
+│  Recommendation Logic:                                                       │
+│  ─────────────────────                                                       │
+│                                                                              │
+│  1. Range Check:                                                             │
+│     if value > FP16_MAX → upgrade to FP32                                    │
+│     if value > FP32_MAX → upgrade to FP64                                    │
+│                                                                              │
+│  2. Error Check:                                                             │
+│     if error > tolerance → upgrade precision                                 │
+│     if error > 10*tolerance → upgrade to FP64                                │
+│                                                                              │
+│  3. Stability Check:                                                         │
+│     if condition_number > 1e10 → FP64                                        │
+│     if condition_number > 1e6 → FP32                                         │
+│                                                                              │
+│  4. Subnormal Check:                                                         │
+│     if |value| < min_normal → upgrade precision                              │
+│                                                                              │
+│  Mixed-Precision Strategy:                                                   │
+│  ─────────────────────────                                                   │
+│     Input: List of operations with error/risk analysis                       │
+│     Output: Optimal precision per operation                                  │
+│     Performance: Estimate speedup vs all-FP32                                │
+│                                                                              │
+│     Example Transformer Strategy:                                            │
+│       FP16: Q·K^T (matmul, low risk)                                         │
+│       FP32: Softmax (numerically sensitive)                                  │
+│       FP32: LayerNorm (mean/variance computation)                            │
+│       FP64: Matrix inverse (ill-conditioned)                                 │
+│                                                                              │
+│  Quantization Safety:                                                        │
+│  ───────────────────                                                         │
+│     INT8: 256 levels → quantization_step = range / 256                       │
+│     Safe if: quantization_error < tolerance                                  │
+│     Example: [0, 10] range → step = 0.039                                    │
+│              error < 1e-6 → UNSAFE                                           │
+│              error < 1e-2 → SAFE                                             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+                        MITIGATION LAYER
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  StabilityMitigator                                                          │
+│  ───────────────────                                                         │
+│                                                                              │
+│  Strategy              When to Apply              Implementation             │
+│  ──────────────────────────────────────────────────────────────────────────  │
+│  UpgradePrecision      κ > 1e8                    FP16 → FP32 → FP64        │
+│                        error > tolerance          Change register type       │
+│                                                                              │
+│  KahanSummation        n > 10000 additions        Compensated accumulation  │
+│                        Σ xᵢ with large n          O(ε) instead of O(n·ε)    │
+│                                                                              │
+│                        Standard:                  Kahan:                     │
+│                        ───────                    ──────                     │
+│                        sum = 0                    sum = 0; c = 0            │
+│                        for x in values:           for x in values:          │
+│                          sum += x                   y = x - c               │
+│                                                     t = sum + y             │
+│                        Error: O(n·ε)               c = (t-sum) - y          │
+│                                                     sum = t                 │
+│                                                   Error: O(ε)               │
+│                                                                              │
+│  CompensatedAlgorithm  Catastrophic cancellation  2Sum, 2Mul algorithms     │
+│                        a - b where a ≈ b                                     │
+│                                                                              │
+│                        2Sum (a, b):                                          │
+│                        ─────────────                                         │
+│                        x = a + b                  // Rounded sum            │
+│                        b_virtual = x - a          // Recover b              │
+│                        y = (a-(x-b_virtual)) + (b-b_virtual)  // Error      │
+│                        return (x, y)              // x + y = exact!         │
+│                                                                              │
+│  Rescaling             overflow_risk > 0.5        Scale by power of 2       │
+│                        underflow_risk > 0.5       Maintain relative error   │
+│                                                   x' = x * 2^k              │
+│                                                                              │
+│  Reordering            Long accumulations         Sort by magnitude          │
+│                        Σ xᵢ where |xᵢ| varies     Sum small → large         │
+│                                                   Minimize error accum       │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+               INTEGRATION WITH EPISTEMIC COMPUTING
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  Numerical Error  ───────────────>  Epistemic Uncertainty                   │
+│                                                                              │
+│  ErrorBound       ─────────────────> Shadow Epsilon Register                │
+│  .expected_error                     %r_value_eps (f32)                     │
+│  ↓                                   ↓                                       │
+│  1e-4             ────────────────>  mov.f32 %r_value_eps, 1e-4             │
+│                                                                              │
+│                                                                              │
+│  StabilityRisk    ─────────────────> Validity Predicate                     │
+│  .severity()                         %p_value_valid (pred)                  │
+│  ↓                                   ↓                                       │
+│  Catastrophic     ────────────────>  setp with confidence 0.02              │
+│  (severity=0.98)                     and.pred %p_value_valid, ...           │
+│                                                                              │
+│                                                                              │
+│  ULP History      ─────────────────> Provenance Tracking                    │
+│  hash(operations)                    %r_value_prov (u64)                    │
+│  ↓                                   ↓                                       │
+│  0x1A2B3C4D       ────────────────>  mov.u64 %r_value_prov, 0x1A2B3C4D      │
+│                                                                              │
+│                                                                              │
+│  COMPLETE SHADOW REGISTER SET:                                              │
+│  ──────────────────────────────                                             │
+│                                                                              │
+│  Value:       %r_value      (f32/f64)   Actual computed value              │
+│  ├─ Epsilon:  %r_value_eps  (f32)       Uncertainty bound from errors      │
+│  ├─ Validity: %p_value_valid (pred)     Confidence in stability            │
+│  └─ Provenance: %r_value_prov (u64)     Data lineage from error events     │
+│                                                                              │
+│                                                                              │
+│  CONFIDENCE-GATED EXECUTION:                                                 │
+│  ────────────────────────────                                               │
+│                                                                              │
+│  // Only execute if numerically stable                                      │
+│  setp.lt.f32 %p_confident, %r_value_eps, 0.05;  // ε < 5%                  │
+│  and.pred %p_confident, %p_confident, %p_value_valid;                       │
+│  @%p_confident expensive_operation;                                         │
+│  @!%p_confident fallback_operation;                                         │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+                          WORKFLOW EXAMPLE
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  Step 1: High-Level Code                                                     │
+│  ────────────────────────                                                    │
+│    let x = input[i];           // x ∈ [0, 100]                              │
+│    let y = input[j];           // y ∈ [0, 100]                              │
+│    let z = x + y;                                                            │
+│                                                                              │
+│  Step 2: Numerical Analysis                                                  │
+│  ────────────────────────────                                               │
+│    ErrorBound for x: {                                                       │
+│      expected_error: 1e-5,                                                   │
+│      confidence: 0.98                                                        │
+│    }                                                                         │
+│    ErrorBound for y: {                                                       │
+│      expected_error: 1e-5,                                                   │
+│      confidence: 0.98                                                        │
+│    }                                                                         │
+│    ErrorBound for z (after add):                                             │
+│      expected_error: sqrt(1e-5² + 1e-5²) ≈ 1.4e-5                            │
+│      confidence: 0.98 * 0.98 = 0.96                                          │
+│                                                                              │
+│  Step 3: Epistemic Conversion                                                │
+│  ───────────────────────────                                                │
+│    ε_x = 1e-5  →  %r_x_eps                                                   │
+│    ε_y = 1e-5  →  %r_y_eps                                                   │
+│    ε_z = 1.4e-5 → %r_z_eps                                                   │
+│                                                                              │
+│  Step 4: PTX Generation                                                      │
+│  ────────────────────────                                                   │
+│    // Load x with epistemic state                                            │
+│    ld.global.f32 %r_x, [input+i];                                            │
+│    mov.f32 %r_x_eps, 1e-5;                                                   │
+│    setp.eq.u32 %p_x_valid, 1, 1;                                             │
+│    mov.u64 %r_x_prov, 0x01;                                                  │
+│                                                                              │
+│    // Load y with epistemic state                                            │
+│    ld.global.f32 %r_y, [input+j];                                            │
+│    mov.f32 %r_y_eps, 1e-5;                                                   │
+│    setp.eq.u32 %p_y_valid, 1, 1;                                             │
+│    mov.u64 %r_y_prov, 0x02;                                                  │
+│                                                                              │
+│    // Compute z = x + y with epistemic tracking                              │
+│    add.f32 %r_z, %r_x, %r_y;                                                 │
+│                                                                              │
+│    // Quadrature: ε_z = sqrt(ε_x² + ε_y²)                                    │
+│    mul.f32 %t1, %r_x_eps, %r_x_eps;        // ε_x²                           │
+│    mul.f32 %t2, %r_y_eps, %r_y_eps;        // ε_y²                           │
+│    add.f32 %t3, %t1, %t2;                  // ε_x² + ε_y²                    │
+│    sqrt.approx.f32 %r_z_eps, %t3;          // sqrt(ε_x² + ε_y²)             │
+│                                                                              │
+│    // Validity: AND                                                          │
+│    and.pred %p_z_valid, %p_x_valid, %p_y_valid;                             │
+│                                                                              │
+│    // Provenance: XOR merge                                                  │
+│    xor.b64 %r_z_prov, %r_x_prov, %r_y_prov;  // 0x01 ⊕ 0x02 = 0x03          │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+                      PERFORMANCE IMPACT
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  Shadow Register Overhead:                                                   │
+│  ───────────────────────────                                                │
+│    Registers per value: 4 (value + ε + valid + prov)                        │
+│    Instruction overhead: ~30% (error propagation PTX)                        │
+│    Memory overhead: Negligible (shadow state in registers)                   │
+│                                                                              │
+│  Mixed-Precision Benefits:                                                   │
+│  ───────────────────────────                                                │
+│    FP16 Tensor Cores: 2-8x faster than FP32 (Ampere/Hopper)                 │
+│    Memory bandwidth: 2x reduction (FP16 vs FP32)                             │
+│    Register capacity: 2x more values (FP16 vs FP32)                          │
+│                                                                              │
+│  Typical Strategy:                                                           │
+│  ──────────────────                                                          │
+│    60% operations: FP16 (matmuls, convs)                                     │
+│    35% operations: FP32 (activations, norms)                                 │
+│     5% operations: FP64 (reductions, solvers)                                │
+│    Overall speedup: 1.3-1.8x vs all-FP32                                     │
+│                                                                              │
+│  Optimization Strategies:                                                    │
+│  ──────────────────────                                                     │
+│    • Selective tracking: Only critical paths need full shadow state         │
+│    • Compile-time analysis: Eliminate provably-stable operations            │
+│    • Warp-level aggregation: Reduce shadow state across threads             │
+│    • Dead code elimination: Remove unused shadow registers                   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          KEY INNOVATIONS                                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  1. WORLD-FIRST UNIFICATION
+     ───────────────────────
+     Classical numerical analysis + Epistemic computing + GPU code generation
+
+     ErrorBound → Shadow epsilon register (%r_value_eps)
+     StabilityRisk → Validity predicate (%p_value_valid)
+     ULP history → Provenance ID (%r_value_prov)
+
+  2. AUTOMATIC STABILITY ANALYSIS
+     ─────────────────────────────
+     Compile-time detection of:
+       • Catastrophic cancellation (a - b where a ≈ b)
+       • Division by near-zero
+       • Overflow/underflow risks
+       • Ill-conditioned operations (high κ)
+
+  3. INTELLIGENT PRECISION SELECTION
+     ───────────────────────────────
+     Per-operation recommendations:
+       FP16 for stable, low-error operations
+       FP32 for general-purpose computation
+       FP64 for ill-conditioned, high-sensitivity operations
+
+  4. AUTOMATIC MITIGATION INJECTION
+     ───────────────────────────────
+     Compiler inserts fixes:
+       • Kahan summation for long accumulations
+       • 2Sum/2Mul for catastrophic cancellation
+       • Rescaling for overflow/underflow
+       • Precision upgrades for instability
+
+  5. SEAMLESS PTX INTEGRATION
+     ─────────────────────────
+     Generated PTX includes:
+       • Error propagation instructions
+       • Confidence-gated execution
+       • Shadow register management
+       • Zero semantic overhead (types unchanged)
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║             Numerical error is now first-class epistemic uncertainty        ║
+║                    tracked through GPU execution!                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝

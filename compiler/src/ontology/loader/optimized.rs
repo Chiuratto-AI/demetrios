@@ -470,6 +470,7 @@ impl OptimizedTermCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::OntologyId;
 
     #[test]
     fn test_bloom_filter() {

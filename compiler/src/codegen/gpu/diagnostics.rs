@@ -697,6 +697,7 @@ impl From<ValidationError> for GpuDiagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::ir::{BlockId, ValueId};
 
     #[test]
     fn test_diagnostic_severity_ordering() {
