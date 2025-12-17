@@ -35,6 +35,7 @@ pub mod collective_ops;
 pub mod cooperative;
 pub mod counterfactual;
 pub mod diagnostics;
+pub mod divergence;
 pub mod fusion;
 pub mod graph;
 pub mod multi_gpu;
@@ -61,6 +62,8 @@ pub mod spirv;
 pub mod tensor_epistemic;
 pub mod costs;
 pub mod profiler;
+pub mod sparse;
+pub mod numerical;
 
 pub use intrinsics::{GpuIntrinsic, all_intrinsics, get_intrinsic, is_gpu_intrinsic};
 pub use ir::{
@@ -189,6 +192,13 @@ pub use validation::{
     ValidationError, ValidationIssue, ValidationResult,
 };
 
+// Warp Divergence Analysis & Control Flow Optimization
+pub use divergence::{
+    AdaptiveDispatcher, BranchCost, BranchCostEstimator, ControlFlowOpt, ControlFlowOptReport,
+    ControlFlowOptimizer, DivergenceInfo, DivergenceKind, KernelDivergenceAnalysis,
+    PredicateCompiler, PredicateMask, PredicateReg, ThreadMask, WarpDivergenceAnalyzer,
+};
+
 // Multi-GPU / Distributed Computing (Phase 10)
 pub use multi_gpu::{
     DeviceGroup, DeviceId, DeviceInfo, GpuTopology, InterconnectType, MultiGpuBarrier,
@@ -229,4 +239,19 @@ pub use roofline::{
 pub use profiler::{
     Bottleneck, BottleneckKind, BottleneckSeverity, KernelPerfProfile, KernelProfiler,
     ModulePerfProfile, PerfComparison, PerfCounters, PerfScore,
+};
+
+// Numerical Stability & Error Propagation (Phase 13)
+pub use numerical::{
+    AppliedMitigation, ErrorBound, ErrorEvent, ErrorPropagator, MitigationStrategy,
+    MixedPrecisionStrategy, Precision, PrecisionAdvisor, PropagationMode, StabilityAnalyzer,
+    StabilityIssue, StabilityRisk, StabilitySummary, StabilityMitigator, UlpError,
+    error_to_epistemic_epsilon, risk_to_validity_confidence, synthesize_provenance,
+};
+
+// Sparse Tensor Compiler (Phase 14)
+pub use sparse::{
+    add_sparse_kernels, AnalyzerConfig, BlockMap, SparseConvKernel, SparseFormat,
+    SparseFusionAnalyzer, SparseGemmKernel, SparseMVKernel, SparseOpInfo, SparseOpType,
+    SparsePattern, SparseTensor, SparsityCost, SparsityAnalyzer, StructureInfo,
 };
