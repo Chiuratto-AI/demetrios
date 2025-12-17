@@ -2,6 +2,8 @@
 /target/
 /compiler/target/
 **/target/
+# Exception: compiler/src/target/ is source code, not build output
+!compiler/src/target/
 
 # Cargo
 # Cargo.lock  # Keep for reproducible builds
