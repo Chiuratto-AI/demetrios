@@ -125,11 +125,22 @@ impl Interpreter {
             let is_last = i == block.stmts.len() - 1;
 
             match stmt {
-                HirStmt::Let { name, value, .. } => {
+                HirStmt::Let {
+                    name,
+                    value,
+                    is_mut,
+                    ..
+                } => {
                     let val = if let Some(expr) = value {
                         self.eval_expr(expr)?
                     } else {
                         Value::Unit
+                    };
+                    // Wrap mutable structs in Ref to allow field mutation
+                    let val = if *is_mut && matches!(val, Value::Struct { .. }) {
+                        Value::Ref(Rc::new(RefCell::new(val)))
+                    } else {
+                        val
                     };
                     self.env.define(name.clone(), val);
                 }

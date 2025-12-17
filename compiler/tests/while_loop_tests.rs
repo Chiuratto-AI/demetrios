@@ -207,19 +207,78 @@ fn main() -> i64 {
 // ============================================================================
 // While Loop with Struct Field Updates (Bug #1)
 // ============================================================================
-// NOTE: Struct field mutation tests are disabled because they expose a separate
-// bug in the interpreter where struct field assignments silently fail (structs
-// need to be wrapped in Ref for mutation to work). The while loop fix itself
-// (condition re-evaluation) is correct - this is a struct mutability issue.
-//
-// TODO: Fix struct mutability in the interpreter, then re-enable these tests.
 
-// #[test]
-// fn test_while_with_struct_field_condition() { ... }
-// #[test]
-// fn test_while_with_multiple_struct_fields() { ... }
-// #[test]
-// fn test_while_struct_field_with_parameter() { ... }
+/// Test while loop with struct field in condition
+/// This was bug #1: struct field updates weren't reflected in conditions
+/// due to struct values not being wrapped in Ref for mutation.
+#[test]
+fn test_while_with_struct_field_condition() {
+    let source = r#"
+struct Counter {
+    value: i64,
+    limit: i64
+}
+
+fn main() -> i64 {
+    let mut c = Counter { value: 0, limit: 5 };
+    while c.value < c.limit {
+        c.value = c.value + 1;
+    }
+    c.value
+}
+"#;
+    assert_result_int(source, 5);
+}
+
+/// Test while loop updating multiple struct fields
+#[test]
+fn test_while_with_multiple_struct_fields() {
+    let source = r#"
+struct State {
+    x: i64,
+    y: i64
+}
+
+fn main() -> i64 {
+    let mut s = State { x: 0, y: 10 };
+    while s.x < s.y {
+        s.x = s.x + 1;
+        s.y = s.y - 1;
+    }
+    s.x + s.y
+}
+"#;
+    // x: 0,1,2,3,4,5
+    // y: 10,9,8,7,6,5
+    // exits when x >= y (x=5, y=5)
+    assert_result_int(source, 10);
+}
+
+/// Test while loop with struct field and function parameter
+#[test]
+fn test_while_struct_field_with_parameter() {
+    let source = r#"
+struct Accumulator {
+    total: i64
+}
+
+fn accumulate_to(limit: i64) -> i64 {
+    let mut acc = Accumulator { total: 0 };
+    let mut i = 1;
+    while i <= limit {
+        acc.total = acc.total + i;
+        i = i + 1;
+    }
+    acc.total
+}
+
+fn main() -> i64 {
+    accumulate_to(10)
+}
+"#;
+    // 1+2+3+4+5+6+7+8+9+10 = 55
+    assert_result_int(source, 55);
+}
 
 // ============================================================================
 // While Loop with Break and Continue
@@ -456,7 +515,27 @@ fn main() -> i64 {
     assert_result_int(source, 0);
 }
 
-// Regression test: Struct field updates must be visible in condition
-// NOTE: Disabled due to struct mutability bug (separate from while loop fix)
-// #[test]
-// fn test_regression_struct_field_visibility() { ... }
+/// Regression test: Struct field updates must be visible in condition
+/// Original bug: Struct fields weren't mutable because structs weren't wrapped in Ref
+#[test]
+fn test_regression_struct_field_visibility() {
+    let source = r#"
+struct Timer {
+    elapsed: i64,
+    duration: i64
+}
+
+fn run_timer(duration: i64) -> i64 {
+    let mut timer = Timer { elapsed: 0, duration: duration };
+    while timer.elapsed < timer.duration {
+        timer.elapsed = timer.elapsed + 1;
+    }
+    timer.elapsed
+}
+
+fn main() -> i64 {
+    run_timer(10)
+}
+"#;
+    assert_result_int(source, 10);
+}
