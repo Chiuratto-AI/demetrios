@@ -45,11 +45,17 @@
 pub mod circuit;
 pub mod gates;
 pub mod noise;
+pub mod pennylane;
 pub mod states;
 pub mod vqe;
 
 pub use circuit::{CircuitBuilder, CircuitStats, QuantumCircuit};
 pub use gates::{Gate, GateType, ParametricGate};
 pub use noise::{AmplitudeDamping, DepolarizingNoise, NoiseModel, NoiseType};
+pub use pennylane::{
+    EpistemicExpectation, EpistemicGradients, EpistemicHamiltonian, EpistemicParam, LayerType,
+    PauliObservable, PauliType, TrainingConfig, VQEOptimizationResult, VariationalCircuit,
+    VariationalLayer,
+};
 pub use states::{DensityMatrix, EpistemicQubit, QubitState, StateVector};
 pub use vqe::{Hamiltonian, PauliTerm, VQEConfig, VQEResult, VQESolver};
