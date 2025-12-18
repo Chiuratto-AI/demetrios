@@ -2701,6 +2701,22 @@ impl TypeChecker {
                 | "grad"
                 | "jacobian"
                 | "hessian"
+                // FFI / Raw pointer operations
+                | "null_ptr"
+                | "null_mut"
+                | "is_null"
+                | "ptr_eq"
+                | "ptr_addr"
+                | "ptr_from_addr"
+                | "ptr_from_addr_mut"
+                | "ptr_offset"
+                | "ptr_add"
+                | "ptr_sub"
+                | "ptr_diff"
+                | "as_const"
+                | "as_mut"
+                | "size_of"
+                | "align_of"
         )
     }
 
@@ -2971,6 +2987,159 @@ impl TypeChecker {
                     size: None,
                 }),
             },
+
+            // ==================== FFI / RAW POINTER OPERATIONS ====================
+            // Create null const pointer
+            "null_ptr" => HirType::Fn {
+                params: vec![],
+                return_type: Box::new(HirType::RawPointer {
+                    mutable: false,
+                    inner: Box::new(HirType::Unit),
+                }),
+            },
+            // Create null mut pointer
+            "null_mut" => HirType::Fn {
+                params: vec![],
+                return_type: Box::new(HirType::RawPointer {
+                    mutable: true,
+                    inner: Box::new(HirType::Unit),
+                }),
+            },
+            // Check if pointer is null
+            "is_null" => HirType::Fn {
+                params: vec![HirType::RawPointer {
+                    mutable: false,
+                    inner: Box::new(HirType::Unit),
+                }],
+                return_type: Box::new(HirType::Bool),
+            },
+            // Compare two pointers
+            "ptr_eq" => HirType::Fn {
+                params: vec![
+                    HirType::RawPointer {
+                        mutable: false,
+                        inner: Box::new(HirType::Unit),
+                    },
+                    HirType::RawPointer {
+                        mutable: false,
+                        inner: Box::new(HirType::Unit),
+                    },
+                ],
+                return_type: Box::new(HirType::Bool),
+            },
+            // Get address as integer
+            "ptr_addr" => HirType::Fn {
+                params: vec![HirType::RawPointer {
+                    mutable: false,
+                    inner: Box::new(HirType::Unit),
+                }],
+                return_type: Box::new(HirType::I64),
+            },
+            // Create const pointer from address
+            "ptr_from_addr" => HirType::Fn {
+                params: vec![HirType::I64],
+                return_type: Box::new(HirType::RawPointer {
+                    mutable: false,
+                    inner: Box::new(HirType::Unit),
+                }),
+            },
+            // Create mut pointer from address
+            "ptr_from_addr_mut" => HirType::Fn {
+                params: vec![HirType::I64],
+                return_type: Box::new(HirType::RawPointer {
+                    mutable: true,
+                    inner: Box::new(HirType::Unit),
+                }),
+            },
+            // Offset pointer by bytes
+            "ptr_offset" => HirType::Fn {
+                params: vec![
+                    HirType::RawPointer {
+                        mutable: false,
+                        inner: Box::new(HirType::Unit),
+                    },
+                    HirType::I64,
+                ],
+                return_type: Box::new(HirType::RawPointer {
+                    mutable: false,
+                    inner: Box::new(HirType::Unit),
+                }),
+            },
+            // Add elements to pointer
+            "ptr_add" => HirType::Fn {
+                params: vec![
+                    HirType::RawPointer {
+                        mutable: false,
+                        inner: Box::new(HirType::Unit),
+                    },
+                    HirType::I64,
+                ],
+                return_type: Box::new(HirType::RawPointer {
+                    mutable: false,
+                    inner: Box::new(HirType::Unit),
+                }),
+            },
+            // Subtract elements from pointer
+            "ptr_sub" => HirType::Fn {
+                params: vec![
+                    HirType::RawPointer {
+                        mutable: false,
+                        inner: Box::new(HirType::Unit),
+                    },
+                    HirType::I64,
+                ],
+                return_type: Box::new(HirType::RawPointer {
+                    mutable: false,
+                    inner: Box::new(HirType::Unit),
+                }),
+            },
+            // Difference between pointers
+            "ptr_diff" => HirType::Fn {
+                params: vec![
+                    HirType::RawPointer {
+                        mutable: false,
+                        inner: Box::new(HirType::Unit),
+                    },
+                    HirType::RawPointer {
+                        mutable: false,
+                        inner: Box::new(HirType::Unit),
+                    },
+                ],
+                return_type: Box::new(HirType::I64),
+            },
+            // Cast *mut to *const
+            "as_const" => HirType::Fn {
+                params: vec![HirType::RawPointer {
+                    mutable: true,
+                    inner: Box::new(HirType::Unit),
+                }],
+                return_type: Box::new(HirType::RawPointer {
+                    mutable: false,
+                    inner: Box::new(HirType::Unit),
+                }),
+            },
+            // Cast *const to *mut (unsafe)
+            "as_mut" => HirType::Fn {
+                params: vec![HirType::RawPointer {
+                    mutable: false,
+                    inner: Box::new(HirType::Unit),
+                }],
+                return_type: Box::new(HirType::RawPointer {
+                    mutable: true,
+                    inner: Box::new(HirType::Unit),
+                }),
+            },
+            // Get size of type
+            "size_of" => HirType::Fn {
+                params: vec![],
+                return_type: Box::new(HirType::I64),
+            },
+            // Get alignment of type
+            "align_of" => HirType::Fn {
+                params: vec![],
+                return_type: Box::new(HirType::I64),
+            },
+
             _ => HirType::Error,
         }
     }
@@ -3206,6 +3375,10 @@ impl TypeChecker {
                 lifetime: None,
                 inner: Box::new(self.lower_type_expr(inner)),
             },
+            TypeExpr::RawPointer { mutable, inner } => Type::RawPointer {
+                mutable: *mutable,
+                inner: Box::new(self.lower_type_expr(inner)),
+            },
             TypeExpr::Array { element, size } => Type::Array {
                 element: Box::new(self.lower_type_expr(element)),
                 size: None, // TODO: evaluate const expression
@@ -3292,6 +3465,10 @@ impl TypeChecker {
                 mutable: *mutable,
                 inner: Box::new(self.type_to_hir(inner)),
             },
+            Type::RawPointer { mutable, inner } => HirType::RawPointer {
+                mutable: *mutable,
+                inner: Box::new(self.type_to_hir(inner)),
+            },
             Type::Array { element, size } => HirType::Array {
                 element: Box::new(self.type_to_hir(element)),
                 size: *size,
@@ -3358,6 +3535,10 @@ impl TypeChecker {
             HirType::Ref { mutable, inner } => Type::Ref {
                 mutable: *mutable,
                 lifetime: None,
+                inner: Box::new(self.hir_type_to_type(inner)),
+            },
+            HirType::RawPointer { mutable, inner } => Type::RawPointer {
+                mutable: *mutable,
                 inner: Box::new(self.hir_type_to_type(inner)),
             },
             HirType::Array { element, size } => Type::Array {

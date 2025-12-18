@@ -33,37 +33,38 @@ pub mod bio;
 pub mod calibration;
 pub mod collective_ops;
 pub mod cooperative;
+pub mod costs;
 pub mod counterfactual;
+pub mod counterfactual_metal;
 pub mod diagnostics;
 pub mod divergence;
+pub mod epistemic_ptx;
 pub mod fusion;
 pub mod graph;
-pub mod multi_gpu;
-pub mod optimizer;
-pub mod p2p_transfer;
-pub mod sourcemap;
-pub mod tile;
-pub mod validation;
-pub mod counterfactual_metal;
-pub mod epistemic_ptx;
 pub mod hlir_to_gpu;
 pub mod intrinsics;
 pub mod ir;
 pub mod metal;
 pub mod metal_runtime;
+pub mod multi_gpu;
+pub mod numerical;
+pub mod optimizer;
+pub mod p2p_transfer;
 pub mod portable;
+pub mod profiler;
 pub mod ptq;
 pub mod ptx;
 pub mod quantize;
 pub mod roofline;
 pub mod runtime;
+pub mod sourcemap;
+pub mod sparse;
 #[cfg(feature = "gpu")]
 pub mod spirv;
 pub mod tensor_epistemic;
-pub mod costs;
-pub mod profiler;
-pub mod sparse;
-pub mod numerical;
+pub mod tile;
+pub mod uplift_trees;
+pub mod validation;
 
 pub use intrinsics::{GpuIntrinsic, all_intrinsics, get_intrinsic, is_gpu_intrinsic};
 pub use ir::{
@@ -85,8 +86,8 @@ pub use tensor_epistemic::{
 
 // HLIR to GPU lowering - the critical bridge
 pub use hlir_to_gpu::{
-    LoweringConfig, OptimizedGpuModule, compile_to_ptx, compile_to_ptx_epistemic,
-    lower, lower_with_config, lower_and_optimize,
+    LoweringConfig, OptimizedGpuModule, compile_to_ptx, compile_to_ptx_epistemic, lower,
+    lower_and_optimize, lower_with_config,
 };
 
 // Epistemic PTX emission - shadow registers for uncertainty tracking
@@ -129,8 +130,8 @@ pub use cooperative::{
 
 // CUDA Graphs with dynamic control flow
 pub use graph::{
-    BufferId, BufferInfo, BufferLocation, ConditionType, ConditionalNode, GraphExecConfig,
-    GraphKernelArg, GraphNode, GraphNodeId, GraphNodeType, GpuGraph, KernelNode, LoopNode,
+    BufferId, BufferInfo, BufferLocation, ConditionType, ConditionalNode, GpuGraph,
+    GraphExecConfig, GraphKernelArg, GraphNode, GraphNodeId, GraphNodeType, KernelNode, LoopNode,
     MemcpyNode, MemsetNode, StreamId, build_graph_from_module,
 };
 
@@ -150,10 +151,11 @@ pub use tile::{
 
 // Kernel fusion optimization (Phase 3)
 pub use fusion::{
-    analyze_and_fuse_kernels, ArchConstraints, CostWeights, DependencyType, FusionAnalysis,
-    FusionCandidate, FusionCandidateId, FusionConfig, FusionCostModel, FusionError, FusionGroup,
-    FusionGroupId, FusionPlan, FusionStats, FusionTransformer, FusionType, KernelDependencyGraph,
-    KernelId, LaunchConfig as FusionLaunchConfig, ResourceEstimate, SharedMemLayout,
+    ArchConstraints, CostWeights, DependencyType, FusionAnalysis, FusionCandidate,
+    FusionCandidateId, FusionConfig, FusionCostModel, FusionError, FusionGroup, FusionGroupId,
+    FusionPlan, FusionStats, FusionTransformer, FusionType, KernelDependencyGraph, KernelId,
+    LaunchConfig as FusionLaunchConfig, ResourceEstimate, SharedMemLayout,
+    analyze_and_fuse_kernels,
 };
 
 // Auto-tuning for kernel launch configuration (Phase 4)
@@ -165,17 +167,16 @@ pub use autotune::{
 
 // Async memory pipeline (Phase 5)
 pub use async_pipeline::{
-    AsyncOp, AsyncOpGraph, AsyncOpId, AsyncOpKind, AsyncPipeline, Barrier, BarrierKind,
-    BarrierId, BarrierPool, BarrierScheduler, BufferConfig, DependencyAnalyzer,
-    PipelineBuilder, PipelineCodegen, PipelineSchedule, PipelineScheduler, PipelineStage,
-    ScheduledOp, StageBuffer, StageId, apply_pipeline, create_pipeline_from_tile,
-    schedule_pipeline,
+    AsyncOp, AsyncOpGraph, AsyncOpId, AsyncOpKind, AsyncPipeline, Barrier, BarrierId, BarrierKind,
+    BarrierPool, BarrierScheduler, BufferConfig, DependencyAnalyzer, PipelineBuilder,
+    PipelineCodegen, PipelineSchedule, PipelineScheduler, PipelineStage, ScheduledOp, StageBuffer,
+    StageId, apply_pipeline, create_pipeline_from_tile, schedule_pipeline,
 };
 
 // GPU Optimization Pipeline (Phase 8)
 pub use optimizer::{
-    GpuOptimizer, OptimizerConfig, OptimizerError, OptimizationReport, PassStats,
-    optimize_module, optimize_module_aggressive,
+    GpuOptimizer, OptimizationReport, OptimizerConfig, OptimizerError, PassStats, optimize_module,
+    optimize_module_aggressive,
 };
 
 // GPU Diagnostics & Validation (Phase 9)
@@ -184,9 +185,7 @@ pub use diagnostics::{
     GpuDiagnostic, GpuDiagnosticKind, GpuIrLocation, HintConfidence, RecoveryGenerator,
     RecoveryHint,
 };
-pub use sourcemap::{
-    GpuSourceMapper, LocationTrace, PtxDebugEmitter, PtxLocation, SpanTracker,
-};
+pub use sourcemap::{GpuSourceMapper, LocationTrace, PtxDebugEmitter, PtxLocation, SpanTracker};
 pub use validation::{
     BufferComparison, CorrectnessValidator, PrecisionStats, ToleranceConfig, ValidationConfig,
     ValidationError, ValidationIssue, ValidationResult,
@@ -200,6 +199,10 @@ pub use divergence::{
 };
 
 // Multi-GPU / Distributed Computing (Phase 10)
+pub use collective_ops::{
+    AlgorithmSelector, CollectiveAlgorithm, CollectiveManager, CollectiveOp, CollectiveStats,
+    SimulatedBuffer,
+};
 pub use multi_gpu::{
     DeviceGroup, DeviceId, DeviceInfo, GpuTopology, InterconnectType, MultiGpuBarrier,
     MultiGpuConfig, MultiGpuError, MultiGpuEvent, MultiGpuRuntime, P2PCapability,
@@ -209,49 +212,50 @@ pub use p2p_transfer::{
     TransferDescriptor, TransferDirection, generate_allgather_steps, generate_reduce_scatter_steps,
     split_into_chunks,
 };
-pub use collective_ops::{
-    AlgorithmSelector, CollectiveAlgorithm, CollectiveManager, CollectiveOp, CollectiveStats,
-    SimulatedBuffer,
-};
 
 // Quantization Pipeline (Phase 11)
-pub use quantize::{
-    PerChannelQuantParams, QuantDtype, QuantError, QuantErrorAnalyzer, QuantParams,
-    QuantScheme, QuantizedTensor, pack_int4, quantize_tensor_int4, quantize_tensor_int8,
-    unpack_int4,
-};
 pub use calibration::{
     CalibrationCollector, CalibrationMethod, CalibrationStats, PerChannelCalibrator,
 };
 pub use ptq::{
-    ActivationQuantConfig, LayerInfo, LayerQuantStatus, PtqConfig, PtqEngine,
-    PtqErrorSummary, QuantizedModule, WeightQuantConfig,
+    ActivationQuantConfig, LayerInfo, LayerQuantStatus, PtqConfig, PtqEngine, PtqErrorSummary,
+    QuantizedModule, WeightQuantConfig,
+};
+pub use quantize::{
+    PerChannelQuantParams, QuantDtype, QuantError, QuantErrorAnalyzer, QuantParams, QuantScheme,
+    QuantizedTensor, pack_int4, quantize_tensor_int4, quantize_tensor_int8, unpack_int4,
 };
 
 // Performance Profiling & Roofline Analysis (Phase 12)
 pub use costs::{
-    ArchPeakPerf, CostDatabase, FlopsCount, InstructionClass, InstructionCost,
-    KernelCostEstimate, LimitingResource, MemoryTraffic,
-};
-pub use roofline::{
-    Boundedness, OptimizationHint, RooflineAnalysis, RooflineModel, RooflinePlot, RooflinePoint,
+    ArchPeakPerf, CostDatabase, FlopsCount, InstructionClass, InstructionCost, KernelCostEstimate,
+    LimitingResource, MemoryTraffic,
 };
 pub use profiler::{
     Bottleneck, BottleneckKind, BottleneckSeverity, KernelPerfProfile, KernelProfiler,
     ModulePerfProfile, PerfComparison, PerfCounters, PerfScore,
+};
+pub use roofline::{
+    Boundedness, OptimizationHint, RooflineAnalysis, RooflineModel, RooflinePlot, RooflinePoint,
 };
 
 // Numerical Stability & Error Propagation (Phase 13)
 pub use numerical::{
     AppliedMitigation, ErrorBound, ErrorEvent, ErrorPropagator, MitigationStrategy,
     MixedPrecisionStrategy, Precision, PrecisionAdvisor, PropagationMode, StabilityAnalyzer,
-    StabilityIssue, StabilityRisk, StabilitySummary, StabilityMitigator, UlpError,
+    StabilityIssue, StabilityMitigator, StabilityRisk, StabilitySummary, UlpError,
     error_to_epistemic_epsilon, risk_to_validity_confidence, synthesize_provenance,
 };
 
 // Sparse Tensor Compiler (Phase 14)
 pub use sparse::{
-    add_sparse_kernels, AnalyzerConfig, BlockMap, SparseConvKernel, SparseFormat,
-    SparseFusionAnalyzer, SparseGemmKernel, SparseMVKernel, SparseOpInfo, SparseOpType,
-    SparsePattern, SparseTensor, SparsityCost, SparsityAnalyzer, StructureInfo,
+    AnalyzerConfig, BlockMap, SparseConvKernel, SparseFormat, SparseFusionAnalyzer,
+    SparseGemmKernel, SparseMVKernel, SparseOpInfo, SparseOpType, SparsePattern, SparseTensor,
+    SparsityAnalyzer, SparsityCost, StructureInfo, add_sparse_kernels,
+};
+
+// GPU-Accelerated Uplift Trees with Epistemic Heads (CausalML Phase 15)
+pub use uplift_trees::{
+    CustomerSegment, NodeType, SplitCriterion, UpliftHistBin, UpliftTreeGpu, UpliftTreeGpuConfig,
+    UpliftTreeGpuRuntime, UpliftTreeNode, UpliftTreePtxEmitter, compile_uplift_tree_ptx,
 };

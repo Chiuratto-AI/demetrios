@@ -38,6 +38,9 @@ impl BuiltinRegistry {
         // For now: placeholder for ODE, prob, symbolic, etc
         registry.register_scientific_builtins();
 
+        // Register FFI/pointer builtins
+        registry.register_ffi_builtins();
+
         registry
     }
 
@@ -78,466 +81,879 @@ impl Default for BuiltinRegistry {
 impl BuiltinRegistry {
     /// Register I/O builtins (print, println, etc)
     fn register_io_builtins(&mut self) {
-        self.register("print", Rc::new(|args| {
-            let output = args
-                .iter()
-                .map(|v| format!("{}", v))
-                .collect::<Vec<_>>()
-                .join("");
-            print!("{}", output);
-            Ok(Value::Unit)
-        }));
+        self.register(
+            "print",
+            Rc::new(|args| {
+                let output = args
+                    .iter()
+                    .map(|v| format!("{}", v))
+                    .collect::<Vec<_>>()
+                    .join("");
+                print!("{}", output);
+                Ok(Value::Unit)
+            }),
+        );
 
-        self.register("println", Rc::new(|args| {
-            let output = args
-                .iter()
-                .map(|v| format!("{}", v))
-                .collect::<Vec<_>>()
-                .join("");
-            println!("{}", output);
-            Ok(Value::Unit)
-        }));
+        self.register(
+            "println",
+            Rc::new(|args| {
+                let output = args
+                    .iter()
+                    .map(|v| format!("{}", v))
+                    .collect::<Vec<_>>()
+                    .join("");
+                println!("{}", output);
+                Ok(Value::Unit)
+            }),
+        );
     }
 
     /// Register math builtins (sqrt, sin, cos, etc)
     fn register_math_builtins(&mut self) {
-        self.register("sqrt", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("sqrt expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::Float(f) => Ok(Value::Float(f.sqrt())),
-                Value::Int(n) => Ok(Value::Float((*n as f64).sqrt())),
-                _ => Err(format!("sqrt expects numeric argument, got {}", args[0].type_name())),
-            }
-        }));
+        self.register(
+            "sqrt",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("sqrt expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.sqrt())),
+                    Value::Int(n) => Ok(Value::Float((*n as f64).sqrt())),
+                    _ => Err(format!(
+                        "sqrt expects numeric argument, got {}",
+                        args[0].type_name()
+                    )),
+                }
+            }),
+        );
 
-        self.register("abs", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("abs expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::Float(f) => Ok(Value::Float(f.abs())),
-                Value::Int(n) => Ok(Value::Int(n.abs())),
-                _ => Err(format!("abs expects numeric argument")),
-            }
-        }));
+        self.register(
+            "abs",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("abs expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.abs())),
+                    Value::Int(n) => Ok(Value::Int(n.abs())),
+                    _ => Err(format!("abs expects numeric argument")),
+                }
+            }),
+        );
 
-        self.register("sin", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("sin expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::Float(f) => Ok(Value::Float(f.sin())),
-                Value::Int(n) => Ok(Value::Float((*n as f64).sin())),
-                _ => Err(format!("sin expects numeric argument")),
-            }
-        }));
+        self.register(
+            "sin",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("sin expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.sin())),
+                    Value::Int(n) => Ok(Value::Float((*n as f64).sin())),
+                    _ => Err(format!("sin expects numeric argument")),
+                }
+            }),
+        );
 
-        self.register("cos", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("cos expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::Float(f) => Ok(Value::Float(f.cos())),
-                Value::Int(n) => Ok(Value::Float((*n as f64).cos())),
-                _ => Err(format!("cos expects numeric argument")),
-            }
-        }));
+        self.register(
+            "cos",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("cos expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.cos())),
+                    Value::Int(n) => Ok(Value::Float((*n as f64).cos())),
+                    _ => Err(format!("cos expects numeric argument")),
+                }
+            }),
+        );
 
-        self.register("tan", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("tan expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::Float(f) => Ok(Value::Float(f.tan())),
-                Value::Int(n) => Ok(Value::Float((*n as f64).tan())),
-                _ => Err(format!("tan expects numeric argument")),
-            }
-        }));
+        self.register(
+            "tan",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("tan expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.tan())),
+                    Value::Int(n) => Ok(Value::Float((*n as f64).tan())),
+                    _ => Err(format!("tan expects numeric argument")),
+                }
+            }),
+        );
 
-        self.register("exp", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("exp expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::Float(f) => Ok(Value::Float(f.exp())),
-                Value::Int(n) => Ok(Value::Float((*n as f64).exp())),
-                _ => Err(format!("exp expects numeric argument")),
-            }
-        }));
+        self.register(
+            "exp",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("exp expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.exp())),
+                    Value::Int(n) => Ok(Value::Float((*n as f64).exp())),
+                    _ => Err(format!("exp expects numeric argument")),
+                }
+            }),
+        );
 
-        self.register("log", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("log expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::Float(f) => Ok(Value::Float(f.ln())),
-                Value::Int(n) => Ok(Value::Float((*n as f64).ln())),
-                _ => Err(format!("log expects numeric argument")),
-            }
-        }));
+        self.register(
+            "log",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("log expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.ln())),
+                    Value::Int(n) => Ok(Value::Float((*n as f64).ln())),
+                    _ => Err(format!("log expects numeric argument")),
+                }
+            }),
+        );
 
-        self.register("pow", Rc::new(|args| {
-            if args.len() != 2 {
-                return Err(format!("pow expects 2 arguments, got {}", args.len()));
-            }
-            let base = match &args[0] {
-                Value::Float(f) => *f,
-                Value::Int(n) => *n as f64,
-                _ => return Err(format!("pow expects numeric arguments")),
-            };
-            let exp = match &args[1] {
-                Value::Float(f) => *f,
-                Value::Int(n) => *n as f64,
-                _ => return Err(format!("pow expects numeric arguments")),
-            };
-            Ok(Value::Float(base.powf(exp)))
-        }));
+        self.register(
+            "pow",
+            Rc::new(|args| {
+                if args.len() != 2 {
+                    return Err(format!("pow expects 2 arguments, got {}", args.len()));
+                }
+                let base = match &args[0] {
+                    Value::Float(f) => *f,
+                    Value::Int(n) => *n as f64,
+                    _ => return Err(format!("pow expects numeric arguments")),
+                };
+                let exp = match &args[1] {
+                    Value::Float(f) => *f,
+                    Value::Int(n) => *n as f64,
+                    _ => return Err(format!("pow expects numeric arguments")),
+                };
+                Ok(Value::Float(base.powf(exp)))
+            }),
+        );
 
-        self.register("floor", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("floor expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::Float(f) => Ok(Value::Float(f.floor())),
-                Value::Int(n) => Ok(Value::Int(*n)),
-                _ => Err(format!("floor expects numeric argument")),
-            }
-        }));
+        self.register(
+            "floor",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("floor expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.floor())),
+                    Value::Int(n) => Ok(Value::Int(*n)),
+                    _ => Err(format!("floor expects numeric argument")),
+                }
+            }),
+        );
 
-        self.register("ceil", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("ceil expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::Float(f) => Ok(Value::Float(f.ceil())),
-                Value::Int(n) => Ok(Value::Int(*n)),
-                _ => Err(format!("ceil expects numeric argument")),
-            }
-        }));
+        self.register(
+            "ceil",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("ceil expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.ceil())),
+                    Value::Int(n) => Ok(Value::Int(*n)),
+                    _ => Err(format!("ceil expects numeric argument")),
+                }
+            }),
+        );
 
-        self.register("round", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("round expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::Float(f) => Ok(Value::Float(f.round())),
-                Value::Int(n) => Ok(Value::Int(*n)),
-                _ => Err(format!("round expects numeric argument")),
-            }
-        }));
+        self.register(
+            "round",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("round expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.round())),
+                    Value::Int(n) => Ok(Value::Int(*n)),
+                    _ => Err(format!("round expects numeric argument")),
+                }
+            }),
+        );
 
-        self.register("min", Rc::new(|args| {
-            if args.len() != 2 {
-                return Err(format!("min expects 2 arguments, got {}", args.len()));
-            }
-            let a = match &args[0] {
-                Value::Float(f) => *f,
-                Value::Int(n) => *n as f64,
-                _ => return Err(format!("min expects numeric arguments")),
-            };
-            let b = match &args[1] {
-                Value::Float(f) => *f,
-                Value::Int(n) => *n as f64,
-                _ => return Err(format!("min expects numeric arguments")),
-            };
-            Ok(Value::Float(a.min(b)))
-        }));
+        self.register(
+            "min",
+            Rc::new(|args| {
+                if args.len() != 2 {
+                    return Err(format!("min expects 2 arguments, got {}", args.len()));
+                }
+                let a = match &args[0] {
+                    Value::Float(f) => *f,
+                    Value::Int(n) => *n as f64,
+                    _ => return Err(format!("min expects numeric arguments")),
+                };
+                let b = match &args[1] {
+                    Value::Float(f) => *f,
+                    Value::Int(n) => *n as f64,
+                    _ => return Err(format!("min expects numeric arguments")),
+                };
+                Ok(Value::Float(a.min(b)))
+            }),
+        );
 
-        self.register("max", Rc::new(|args| {
-            if args.len() != 2 {
-                return Err(format!("max expects 2 arguments, got {}", args.len()));
-            }
-            let a = match &args[0] {
-                Value::Float(f) => *f,
-                Value::Int(n) => *n as f64,
-                _ => return Err(format!("max expects numeric arguments")),
-            };
-            let b = match &args[1] {
-                Value::Float(f) => *f,
-                Value::Int(n) => *n as f64,
-                _ => return Err(format!("max expects numeric arguments")),
-            };
-            Ok(Value::Float(a.max(b)))
-        }));
+        self.register(
+            "max",
+            Rc::new(|args| {
+                if args.len() != 2 {
+                    return Err(format!("max expects 2 arguments, got {}", args.len()));
+                }
+                let a = match &args[0] {
+                    Value::Float(f) => *f,
+                    Value::Int(n) => *n as f64,
+                    _ => return Err(format!("max expects numeric arguments")),
+                };
+                let b = match &args[1] {
+                    Value::Float(f) => *f,
+                    Value::Int(n) => *n as f64,
+                    _ => return Err(format!("max expects numeric arguments")),
+                };
+                Ok(Value::Float(a.max(b)))
+            }),
+        );
     }
 
     /// Register utility builtins (len, type_of, assert, etc)
     fn register_utility_builtins(&mut self) {
-        self.register("len", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("len expects 1 argument, got {}", args.len()));
-            }
-            match &args[0] {
-                Value::String(s) => Ok(Value::Int(s.len() as i64)),
-                Value::Array(arr) => Ok(Value::Int(arr.borrow().len() as i64)),
-                Value::Tuple(t) => Ok(Value::Int(t.len() as i64)),
-                _ => Err(format!("len expects string, array, or tuple")),
-            }
-        }));
+        self.register(
+            "len",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("len expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::String(s) => Ok(Value::Int(s.len() as i64)),
+                    Value::Array(arr) => Ok(Value::Int(arr.borrow().len() as i64)),
+                    Value::Tuple(t) => Ok(Value::Int(t.len() as i64)),
+                    _ => Err(format!("len expects string, array, or tuple")),
+                }
+            }),
+        );
 
-        self.register("type_of", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("type_of expects 1 argument, got {}", args.len()));
-            }
-            Ok(Value::String(args[0].type_name().to_string()))
-        }));
+        self.register(
+            "type_of",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("type_of expects 1 argument, got {}", args.len()));
+                }
+                Ok(Value::String(args[0].type_name().to_string()))
+            }),
+        );
 
-        self.register("assert", Rc::new(|args| {
-            if args.len() != 1 {
-                return Err(format!("assert expects 1 argument, got {}", args.len()));
-            }
-            if args[0].is_truthy() {
-                Ok(Value::Unit)
-            } else {
-                Err("Assertion failed".to_string())
-            }
-        }));
+        self.register(
+            "assert",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("assert expects 1 argument, got {}", args.len()));
+                }
+                if args[0].is_truthy() {
+                    Ok(Value::Unit)
+                } else {
+                    Err("Assertion failed".to_string())
+                }
+            }),
+        );
 
-        self.register("assert_eq", Rc::new(|args| {
-            if args.len() != 2 {
-                return Err(format!("assert_eq expects 2 arguments, got {}", args.len()));
-            }
-            if format!("{}", args[0]) == format!("{}", args[1]) {
-                Ok(Value::Unit)
-            } else {
-                Err(format!("Assertion failed: {:?} != {:?}", args[0], args[1]))
-            }
-        }));
+        self.register(
+            "assert_eq",
+            Rc::new(|args| {
+                if args.len() != 2 {
+                    return Err(format!("assert_eq expects 2 arguments, got {}", args.len()));
+                }
+                if format!("{}", args[0]) == format!("{}", args[1]) {
+                    Ok(Value::Unit)
+                } else {
+                    Err(format!("Assertion failed: {:?} != {:?}", args[0], args[1]))
+                }
+            }),
+        );
 
-        self.register("panic", Rc::new(|args| {
-            let msg = if args.is_empty() {
-                "panic".to_string()
-            } else {
-                args.iter().map(|v| format!("{}", v)).collect::<Vec<_>>().join("")
-            };
-            Err(format!("panic: {}", msg))
-        }));
+        self.register(
+            "panic",
+            Rc::new(|args| {
+                let msg = if args.is_empty() {
+                    "panic".to_string()
+                } else {
+                    args.iter()
+                        .map(|v| format!("{}", v))
+                        .collect::<Vec<_>>()
+                        .join("")
+                };
+                Err(format!("panic: {}", msg))
+            }),
+        );
 
-        self.register("dbg", Rc::new(|args| {
-            for arg in args {
-                eprintln!("[DEBUG] {}", arg);
-            }
-            if args.len() == 1 {
-                Ok(args[0].clone())
-            } else {
-                Ok(Value::Unit)
-            }
-        }));
+        self.register(
+            "dbg",
+            Rc::new(|args| {
+                for arg in args {
+                    eprintln!("[DEBUG] {}", arg);
+                }
+                if args.len() == 1 {
+                    Ok(args[0].clone())
+                } else {
+                    Ok(Value::Unit)
+                }
+            }),
+        );
     }
 
     /// Register scientific builtins
     fn register_scientific_builtins(&mut self) {
-        use crate::interp::value::{SolverStats, Distribution};
+        use crate::interp::value::{Distribution, SolverStats};
 
         // ODE solver (stub implementation for testing)
-        self.register("solve_ode", Rc::new(|args| {
-            if args.len() < 3 {
-                return Err("solve_ode expects: closure, initial_values, time_span".to_string());
-            }
+        self.register(
+            "solve_ode",
+            Rc::new(|args| {
+                if args.len() < 3 {
+                    return Err("solve_ode expects: closure, initial_values, time_span".to_string());
+                }
 
-            // For now, return a simple ODE solution
-            // Later: integrate with runtime::ode::solve
-            let t = vec![0.0, 0.5, 1.0, 1.5, 2.0];
-            let y = vec![
-                vec![1.0, 1.0],
-                vec![0.9, 1.1],
-                vec![0.8, 1.2],
-                vec![0.7, 1.3],
-                vec![0.6, 1.4],
-            ];
-            let stats = SolverStats {
-                steps: 100,
-                accepted_steps: 100,
-                rejected_steps: 0,
-            };
+                // For now, return a simple ODE solution
+                // Later: integrate with runtime::ode::solve
+                let t = vec![0.0, 0.5, 1.0, 1.5, 2.0];
+                let y = vec![
+                    vec![1.0, 1.0],
+                    vec![0.9, 1.1],
+                    vec![0.8, 1.2],
+                    vec![0.7, 1.3],
+                    vec![0.6, 1.4],
+                ];
+                let stats = SolverStats {
+                    steps: 100,
+                    accepted_steps: 100,
+                    rejected_steps: 0,
+                };
 
-            Ok(Value::ODESolution { t, y, stats })
-        }));
+                Ok(Value::ODESolution { t, y, stats })
+            }),
+        );
 
         // Probabilistic sampling (stub)
-        self.register("sample", Rc::new(|args| {
-            if args.is_empty() {
-                return Err("sample expects distribution argument".to_string());
-            }
+        self.register(
+            "sample",
+            Rc::new(|args| {
+                if args.is_empty() {
+                    return Err("sample expects distribution argument".to_string());
+                }
 
-            match &args[0] {
-                Value::Distribution(d) => {
-                    // Return a sample from the distribution
-                    match d {
-                        Distribution::Normal { mean, std: _ } => Ok(Value::Float(*mean)),
-                        Distribution::Uniform { a, b } => {
-                            Ok(Value::Float((a + b) / 2.0)) // Return midpoint for now
-                        }
-                        Distribution::Beta { alpha, beta } => {
-                            // Return expected value E[Beta(a,b)] = a/(a+b)
-                            Ok(Value::Float(alpha / (alpha + beta)))
-                        }
-                        Distribution::Exponential { lambda } => {
-                            Ok(Value::Float(1.0 / lambda)) // Return mean
-                        }
-                        Distribution::Categorical { probs } => {
-                            // Return index of max probability
-                            let idx = probs
-                                .iter()
-                                .enumerate()
-                                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-                                .map(|(i, _)| i)
-                                .unwrap_or(0);
-                            Ok(Value::Int(idx as i64))
+                match &args[0] {
+                    Value::Distribution(d) => {
+                        // Return a sample from the distribution
+                        match d {
+                            Distribution::Normal { mean, std: _ } => Ok(Value::Float(*mean)),
+                            Distribution::Uniform { a, b } => {
+                                Ok(Value::Float((a + b) / 2.0)) // Return midpoint for now
+                            }
+                            Distribution::Beta { alpha, beta } => {
+                                // Return expected value E[Beta(a,b)] = a/(a+b)
+                                Ok(Value::Float(alpha / (alpha + beta)))
+                            }
+                            Distribution::Exponential { lambda } => {
+                                Ok(Value::Float(1.0 / lambda)) // Return mean
+                            }
+                            Distribution::Categorical { probs } => {
+                                // Return index of max probability
+                                let idx = probs
+                                    .iter()
+                                    .enumerate()
+                                    .max_by(|(_, a), (_, b)| {
+                                        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+                                    })
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(0);
+                                Ok(Value::Int(idx as i64))
+                            }
                         }
                     }
+                    _ => Err("sample expects a Distribution".to_string()),
                 }
-                _ => Err("sample expects a Distribution".to_string()),
-            }
-        }));
+            }),
+        );
 
         // Symbolic differentiation (stub)
-        self.register("differentiate", Rc::new(|args| {
-            if args.len() < 2 {
-                return Err("differentiate expects: expression, variable".to_string());
-            }
-
-            match (&args[0], &args[1]) {
-                (Value::SymbolicExpr(expr), Value::String(var)) => {
-                    let derivative = expr.differentiate(var);
-                    Ok(Value::SymbolicExpr(std::rc::Rc::new(derivative)))
+        self.register(
+            "differentiate",
+            Rc::new(|args| {
+                if args.len() < 2 {
+                    return Err("differentiate expects: expression, variable".to_string());
                 }
-                _ => Err("differentiate expects: SymbolicExpr, String".to_string()),
-            }
-        }));
+
+                match (&args[0], &args[1]) {
+                    (Value::SymbolicExpr(expr), Value::String(var)) => {
+                        let derivative = expr.differentiate(var);
+                        Ok(Value::SymbolicExpr(std::rc::Rc::new(derivative)))
+                    }
+                    _ => Err("differentiate expects: SymbolicExpr, String".to_string()),
+                }
+            }),
+        );
 
         // Array/matrix operations
-        self.register("zeros", Rc::new(|args| {
-            if args.is_empty() {
-                return Ok(Value::Float(0.0));
-            }
-
-            match &args[0] {
-                Value::Int(n) => {
-                    let data = vec![0.0; *n as usize];
-                    Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
-                        data.into_iter().map(Value::Float).collect(),
-                    ))))
+        self.register(
+            "zeros",
+            Rc::new(|args| {
+                if args.is_empty() {
+                    return Ok(Value::Float(0.0));
                 }
-                _ => Err("zeros expects integer dimension".to_string()),
-            }
-        }));
 
-        self.register("ones", Rc::new(|args| {
-            if args.is_empty() {
-                return Ok(Value::Float(1.0));
-            }
-
-            match &args[0] {
-                Value::Int(n) => {
-                    let data = vec![1.0; *n as usize];
-                    Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
-                        data.into_iter().map(Value::Float).collect(),
-                    ))))
+                match &args[0] {
+                    Value::Int(n) => {
+                        let data = vec![0.0; *n as usize];
+                        Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                            data.into_iter().map(Value::Float).collect(),
+                        ))))
+                    }
+                    _ => Err("zeros expects integer dimension".to_string()),
                 }
-                _ => Err("ones expects integer dimension".to_string()),
-            }
-        }));
+            }),
+        );
+
+        self.register(
+            "ones",
+            Rc::new(|args| {
+                if args.is_empty() {
+                    return Ok(Value::Float(1.0));
+                }
+
+                match &args[0] {
+                    Value::Int(n) => {
+                        let data = vec![1.0; *n as usize];
+                        Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                            data.into_iter().map(Value::Float).collect(),
+                        ))))
+                    }
+                    _ => Err("ones expects integer dimension".to_string()),
+                }
+            }),
+        );
 
         // Gradient computation (reverse-mode autodiff)
-        self.register("grad", Rc::new(|args| {
-            if args.len() < 2 {
-                return Err("grad expects: function, parameters".to_string());
-            }
+        self.register(
+            "grad",
+            Rc::new(|args| {
+                if args.len() < 2 {
+                    return Err("grad expects: function, parameters".to_string());
+                }
 
-            // For now, return a placeholder gradient
-            // Full implementation requires integration with interpreter
-            match &args[1] {
-                Value::Float(_) => {
-                    // Return gradient as a float (scalar case)
-                    Ok(Value::Float(0.0))  // Placeholder
+                // For now, return a placeholder gradient
+                // Full implementation requires integration with interpreter
+                match &args[1] {
+                    Value::Float(_) => {
+                        // Return gradient as a float (scalar case)
+                        Ok(Value::Float(0.0)) // Placeholder
+                    }
+                    Value::Array(_) => {
+                        // Return gradient as an array
+                        Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                            vec![],
+                        ))))
+                    }
+                    _ => Err("grad expects scalar or array parameters".to_string()),
                 }
-                Value::Array(_) => {
-                    // Return gradient as an array
-                    Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![]))))
-                }
-                _ => Err("grad expects scalar or array parameters".to_string()),
-            }
-        }));
+            }),
+        );
 
         // Jacobian matrix (gradient for vector functions)
-        self.register("jacobian", Rc::new(|args| {
-            if args.len() < 2 {
-                return Err("jacobian expects: function, parameters".to_string());
-            }
+        self.register(
+            "jacobian",
+            Rc::new(|args| {
+                if args.len() < 2 {
+                    return Err("jacobian expects: function, parameters".to_string());
+                }
 
-            // Placeholder for Jacobian computation
-            // Returns a matrix of partial derivatives
-            Ok(Value::Tensor {
-                data: vec![],
-                shape: vec![0, 0],
-            })
-        }));
+                // Placeholder for Jacobian computation
+                // Returns a matrix of partial derivatives
+                Ok(Value::Tensor {
+                    data: vec![],
+                    shape: vec![0, 0],
+                })
+            }),
+        );
 
         // Hessian matrix (second derivatives)
-        self.register("hessian", Rc::new(|args| {
-            if args.len() < 2 {
-                return Err("hessian expects: function, parameters".to_string());
-            }
+        self.register(
+            "hessian",
+            Rc::new(|args| {
+                if args.len() < 2 {
+                    return Err("hessian expects: function, parameters".to_string());
+                }
 
-            // Placeholder for Hessian computation
-            // Returns a matrix of second partial derivatives
-            Ok(Value::Tensor {
-                data: vec![],
-                shape: vec![0, 0],
-            })
-        }));
+                // Placeholder for Hessian computation
+                // Returns a matrix of second partial derivatives
+                Ok(Value::Tensor {
+                    data: vec![],
+                    shape: vec![0, 0],
+                })
+            }),
+        );
 
         // Causal do-operator: do(model, interventions)
-        self.register("do", Rc::new(|args| {
-            if args.len() < 2 {
-                return Err("do expects: causal_model, interventions".to_string());
-            }
-
-            // For now, return a placeholder causal model
-            // Full implementation requires model integration
-            match &args[0] {
-                Value::CausalModel(_) => {
-                    Ok(Value::CausalModel("intervened_model".to_string()))
+        self.register(
+            "do",
+            Rc::new(|args| {
+                if args.len() < 2 {
+                    return Err("do expects: causal_model, interventions".to_string());
                 }
-                _ => Err("do expects a CausalModel".to_string()),
-            }
-        }));
+
+                // For now, return a placeholder causal model
+                // Full implementation requires model integration
+                match &args[0] {
+                    Value::CausalModel(_) => Ok(Value::CausalModel("intervened_model".to_string())),
+                    _ => Err("do expects a CausalModel".to_string()),
+                }
+            }),
+        );
 
         // Counterfactual reasoning: counterfactual(model, factual, intervention, query)
-        self.register("counterfactual", Rc::new(|args| {
-            if args.len() < 3 {
-                return Err("counterfactual expects: model, factual_evidence, intervention".to_string());
-            }
+        self.register(
+            "counterfactual",
+            Rc::new(|args| {
+                if args.len() < 3 {
+                    return Err(
+                        "counterfactual expects: model, factual_evidence, intervention".to_string(),
+                    );
+                }
 
-            // Placeholder for counterfactual computation
-            // Returns the counterfactual value
-            Ok(Value::Float(0.0))
-        }));
+                // Placeholder for counterfactual computation
+                // Returns the counterfactual value
+                Ok(Value::Float(0.0))
+            }),
+        );
 
         // Estimate average treatment effect (ATE)
-        self.register("estimate_ate", Rc::new(|args| {
-            if args.len() < 3 {
-                return Err("estimate_ate expects: data, treatment, outcome".to_string());
-            }
+        self.register(
+            "estimate_ate",
+            Rc::new(|args| {
+                if args.len() < 3 {
+                    return Err("estimate_ate expects: data, treatment, outcome".to_string());
+                }
 
-            // Placeholder for ATE estimation
-            // Would compute E[Y | do(X=1)] - E[Y | do(X=0)]
-            Ok(Value::Float(0.0))
-        }));
+                // Placeholder for ATE estimation
+                // Would compute E[Y | do(X=1)] - E[Y | do(X=0)]
+                Ok(Value::Float(0.0))
+            }),
+        );
 
         // Detect Simpson's paradox
-        self.register("simpsons_paradox", Rc::new(|args| {
-            if args.len() < 3 {
-                return Err("simpsons_paradox expects: data, x, y, stratified_by_z".to_string());
-            }
+        self.register(
+            "simpsons_paradox",
+            Rc::new(|args| {
+                if args.len() < 3 {
+                    return Err("simpsons_paradox expects: data, x, y, stratified_by_z".to_string());
+                }
 
-            // Placeholder for Simpson's paradox detection
-            // Returns true if paradox is detected
-            Ok(Value::Bool(false))
-        }));
+                // Placeholder for Simpson's paradox detection
+                // Returns true if paradox is detected
+                Ok(Value::Bool(false))
+            }),
+        );
+    }
+
+    /// Register FFI/pointer builtins for raw pointer manipulation
+    fn register_ffi_builtins(&mut self) {
+        // null_ptr<T>() -> *const T
+        // Returns a null pointer
+        self.register(
+            "null_ptr",
+            Rc::new(|_args| {
+                Ok(Value::RawPointer {
+                    address: 0,
+                    mutable: false,
+                })
+            }),
+        );
+
+        // null_mut<T>() -> *mut T
+        // Returns a mutable null pointer
+        self.register(
+            "null_mut",
+            Rc::new(|_args| {
+                Ok(Value::RawPointer {
+                    address: 0,
+                    mutable: true,
+                })
+            }),
+        );
+
+        // is_null(ptr: *const T) -> bool
+        // Check if a pointer is null
+        self.register(
+            "is_null",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("is_null expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::RawPointer { address, .. } => Ok(Value::Bool(*address == 0)),
+                    _ => Err(format!(
+                        "is_null expects a raw pointer, got {}",
+                        args[0].type_name()
+                    )),
+                }
+            }),
+        );
+
+        // ptr_eq(a: *const T, b: *const T) -> bool
+        // Compare two pointers for equality
+        self.register(
+            "ptr_eq",
+            Rc::new(|args| {
+                if args.len() != 2 {
+                    return Err(format!("ptr_eq expects 2 arguments, got {}", args.len()));
+                }
+                match (&args[0], &args[1]) {
+                    (
+                        Value::RawPointer { address: a, .. },
+                        Value::RawPointer { address: b, .. },
+                    ) => Ok(Value::Bool(*a == *b)),
+                    _ => Err("ptr_eq expects two raw pointers".to_string()),
+                }
+            }),
+        );
+
+        // ptr_addr(ptr: *const T) -> usize
+        // Get the address of a pointer as an integer
+        self.register(
+            "ptr_addr",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("ptr_addr expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::RawPointer { address, .. } => Ok(Value::Int(*address as i64)),
+                    _ => Err(format!(
+                        "ptr_addr expects a raw pointer, got {}",
+                        args[0].type_name()
+                    )),
+                }
+            }),
+        );
+
+        // ptr_from_addr(addr: usize) -> *const T
+        // Create a pointer from an integer address (unsafe!)
+        self.register(
+            "ptr_from_addr",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "ptr_from_addr expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                match &args[0] {
+                    Value::Int(addr) => Ok(Value::RawPointer {
+                        address: *addr as usize,
+                        mutable: false,
+                    }),
+                    _ => Err(format!(
+                        "ptr_from_addr expects an integer, got {}",
+                        args[0].type_name()
+                    )),
+                }
+            }),
+        );
+
+        // ptr_from_addr_mut(addr: usize) -> *mut T
+        // Create a mutable pointer from an integer address (unsafe!)
+        self.register(
+            "ptr_from_addr_mut",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "ptr_from_addr_mut expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                match &args[0] {
+                    Value::Int(addr) => Ok(Value::RawPointer {
+                        address: *addr as usize,
+                        mutable: true,
+                    }),
+                    _ => Err(format!(
+                        "ptr_from_addr_mut expects an integer, got {}",
+                        args[0].type_name()
+                    )),
+                }
+            }),
+        );
+
+        // ptr_offset(ptr: *const T, offset: isize) -> *const T
+        // Offset a pointer by a given number of elements (unsafe!)
+        self.register(
+            "ptr_offset",
+            Rc::new(|args| {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "ptr_offset expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::RawPointer { address, mutable }, Value::Int(offset)) => {
+                        // Note: This is simplified - real impl would account for element size
+                        let new_addr = (*address as isize + *offset as isize) as usize;
+                        Ok(Value::RawPointer {
+                            address: new_addr,
+                            mutable: *mutable,
+                        })
+                    }
+                    _ => Err("ptr_offset expects a raw pointer and an integer offset".to_string()),
+                }
+            }),
+        );
+
+        // ptr_add(ptr: *const T, count: usize) -> *const T
+        // Add count elements to a pointer (unsafe!)
+        self.register(
+            "ptr_add",
+            Rc::new(|args| {
+                if args.len() != 2 {
+                    return Err(format!("ptr_add expects 2 arguments, got {}", args.len()));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::RawPointer { address, mutable }, Value::Int(count)) => {
+                        let new_addr = address.wrapping_add(*count as usize);
+                        Ok(Value::RawPointer {
+                            address: new_addr,
+                            mutable: *mutable,
+                        })
+                    }
+                    _ => Err("ptr_add expects a raw pointer and an integer count".to_string()),
+                }
+            }),
+        );
+
+        // ptr_sub(ptr: *const T, count: usize) -> *const T
+        // Subtract count elements from a pointer (unsafe!)
+        self.register(
+            "ptr_sub",
+            Rc::new(|args| {
+                if args.len() != 2 {
+                    return Err(format!("ptr_sub expects 2 arguments, got {}", args.len()));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::RawPointer { address, mutable }, Value::Int(count)) => {
+                        let new_addr = address.wrapping_sub(*count as usize);
+                        Ok(Value::RawPointer {
+                            address: new_addr,
+                            mutable: *mutable,
+                        })
+                    }
+                    _ => Err("ptr_sub expects a raw pointer and an integer count".to_string()),
+                }
+            }),
+        );
+
+        // ptr_diff(a: *const T, b: *const T) -> isize
+        // Calculate the difference between two pointers
+        self.register(
+            "ptr_diff",
+            Rc::new(|args| {
+                if args.len() != 2 {
+                    return Err(format!("ptr_diff expects 2 arguments, got {}", args.len()));
+                }
+                match (&args[0], &args[1]) {
+                    (
+                        Value::RawPointer { address: a, .. },
+                        Value::RawPointer { address: b, .. },
+                    ) => {
+                        let diff = (*a as isize) - (*b as isize);
+                        Ok(Value::Int(diff as i64))
+                    }
+                    _ => Err("ptr_diff expects two raw pointers".to_string()),
+                }
+            }),
+        );
+
+        // as_const(ptr: *mut T) -> *const T
+        // Cast a mutable pointer to a const pointer
+        self.register(
+            "as_const",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("as_const expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::RawPointer { address, .. } => Ok(Value::RawPointer {
+                        address: *address,
+                        mutable: false,
+                    }),
+                    _ => Err(format!(
+                        "as_const expects a raw pointer, got {}",
+                        args[0].type_name()
+                    )),
+                }
+            }),
+        );
+
+        // as_mut(ptr: *const T) -> *mut T (unsafe!)
+        // Cast a const pointer to a mutable pointer
+        self.register(
+            "as_mut",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("as_mut expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::RawPointer { address, .. } => Ok(Value::RawPointer {
+                        address: *address,
+                        mutable: true,
+                    }),
+                    _ => Err(format!(
+                        "as_mut expects a raw pointer, got {}",
+                        args[0].type_name()
+                    )),
+                }
+            }),
+        );
+
+        // size_of<T>() -> usize
+        // Get the size of a type in bytes
+        self.register(
+            "size_of",
+            Rc::new(|args| {
+                // In a real implementation, this would take a type parameter
+                // For now, return a placeholder based on common type sizes
+                if args.is_empty() {
+                    // Default to pointer size
+                    Ok(Value::Int(std::mem::size_of::<usize>() as i64))
+                } else {
+                    match &args[0] {
+                        Value::Int(_) => Ok(Value::Int(8)),   // i64
+                        Value::Float(_) => Ok(Value::Int(8)), // f64
+                        Value::Bool(_) => Ok(Value::Int(1)),
+                        Value::RawPointer { .. } => {
+                            Ok(Value::Int(std::mem::size_of::<usize>() as i64))
+                        }
+                        _ => Ok(Value::Int(8)), // Default
+                    }
+                }
+            }),
+        );
+
+        // align_of<T>() -> usize
+        // Get the alignment of a type in bytes
+        self.register(
+            "align_of",
+            Rc::new(|args| {
+                if args.is_empty() {
+                    Ok(Value::Int(std::mem::align_of::<usize>() as i64))
+                } else {
+                    match &args[0] {
+                        Value::Int(_) => Ok(Value::Int(8)),
+                        Value::Float(_) => Ok(Value::Int(8)),
+                        Value::Bool(_) => Ok(Value::Int(1)),
+                        Value::RawPointer { .. } => {
+                            Ok(Value::Int(std::mem::align_of::<usize>() as i64))
+                        }
+                        _ => Ok(Value::Int(8)),
+                    }
+                }
+            }),
+        );
     }
 }
 
@@ -567,7 +983,9 @@ mod tests {
         let result = registry.call("abs", &[Value::Int(-5)]).unwrap();
         assert_eq!(format!("{}", result), "5");
 
-        let result = registry.call("max", &[Value::Float(3.0), Value::Float(7.0)]).unwrap();
+        let result = registry
+            .call("max", &[Value::Float(3.0), Value::Float(7.0)])
+            .unwrap();
         assert_eq!(format!("{}", result), "7");
     }
 
@@ -605,7 +1023,7 @@ mod tests {
         assert!(result.is_err());
 
         // solve_ode with correct number of args returns ODE solution
-        let f = Value::Float(1.0);  // Dummy closure representation
+        let f = Value::Float(1.0); // Dummy closure representation
         let y0 = Value::Float(1.0);
         let t_span = Value::Float(2.0);
 

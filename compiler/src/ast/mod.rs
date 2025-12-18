@@ -963,8 +963,10 @@ pub enum TypeExpr {
         args: Vec<TypeExpr>,
         unit: Option<String>,
     },
-    /// Reference type: &T or &mut T
+    /// Reference type: &T or &!T (mutable)
     Reference { mutable: bool, inner: Box<TypeExpr> },
+    /// Raw pointer type: *const T or *mut T (for FFI)
+    RawPointer { mutable: bool, inner: Box<TypeExpr> },
     /// Array type: [T] or [T; N]
     Array {
         element: Box<TypeExpr>,

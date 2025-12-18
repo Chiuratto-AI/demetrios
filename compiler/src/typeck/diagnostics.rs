@@ -430,6 +430,13 @@ fn format_type(ty: &HirType) -> String {
                 format!("&{}", format_type(inner))
             }
         }
+        HirType::RawPointer { mutable, inner } => {
+            if *mutable {
+                format!("*mut {}", format_type(inner))
+            } else {
+                format!("*const {}", format_type(inner))
+            }
+        }
         HirType::Array { element, size } => match size {
             Some(s) => format!("[{}; {}]", format_type(element), s),
             None => format!("[{}]", format_type(element)),

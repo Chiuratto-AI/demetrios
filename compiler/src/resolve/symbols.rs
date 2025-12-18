@@ -337,6 +337,22 @@ impl SymbolTable {
             "build_library",     // Build function library
             "poly_library",      // Polynomial library
             "sparse_regression", // Sparse regression
+            // FFI / Raw pointer operations
+            "null_ptr",          // Create null const pointer
+            "null_mut",          // Create null mut pointer
+            "is_null",           // Check if pointer is null
+            "ptr_eq",            // Compare two pointers
+            "ptr_addr",          // Get address as integer
+            "ptr_from_addr",     // Create const pointer from address
+            "ptr_from_addr_mut", // Create mut pointer from address
+            "ptr_offset",        // Offset pointer by bytes
+            "ptr_add",           // Add elements to pointer
+            "ptr_sub",           // Subtract elements from pointer
+            "ptr_diff",          // Difference between pointers
+            "as_const",          // Cast *mut to *const
+            "as_mut",            // Cast *const to *mut (unsafe)
+            "size_of",           // Get size of type
+            "align_of",          // Get alignment of type
         ];
 
         for name in builtin_functions {

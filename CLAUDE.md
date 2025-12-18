@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**For comprehensive Demetrios syntax and programming patterns, see [docs/LLM_PROGRAMMING_GUIDE.md](docs/LLM_PROGRAMMING_GUIDE.md)**
+
 ## Project Identity
 
 **Demetrios (D)** is a novel L0 systems + scientific programming language. This is NOT a dialect of Rust, Julia, or any existing language—D has its own syntax, semantics, and design philosophy.
@@ -58,27 +60,34 @@ Key modules in `compiler/src/`:
 
 ## D Language Syntax (NOT Rust)
 
+**CRITICAL SYNTAX DIFFERENCES:**
+
 ```d
 // Variables
 let x = 5              // immutable
 var y = 10             // mutable
 
-// Functions with effects
-fn read_file(path: string) -> string with IO, Panic { ... }
-
-// References (NOT &mut like Rust)
+// References: D uses &! for mutable, NOT &mut
 &T                     // shared reference
-&!T                    // exclusive reference (D uses &!, not &mut)
+&!T                    // exclusive/mutable reference (NOT &mut!)
+
+// Functions with effects
+fn read_file(path: string) -> string with IO { ... }
 
 // Linear types
 linear struct FileHandle { fd: i32 }
 
 // Units of measure
 let dose: mg = 500.0
-let conc: mg/mL = dose / volume
+let conc: mg/L = dose / volume
+
+// Array/slice operations (Darwin Atlas syntax)
+let head = arr[..k]    // first k elements
+let tail = arr[k..]    // from k to end  
+let combined = a ++ b  // concatenation
 
 // GPU kernels
-kernel fn vector_add(a: &[f32], b: &[f32], c: &!mut [f32]) {
+kernel fn vector_add(a: &[f32], b: &[f32], c: &![f32]) {
     let i = gpu.thread_id.x
     c[i] = a[i] + b[i]
 }
@@ -86,6 +95,13 @@ kernel fn vector_add(a: &[f32], b: &[f32], c: &!mut [f32]) {
 // Refinement types
 type Positive = { x: i32 | x > 0 }
 ```
+
+**What does NOT work in Demetrios:**
+- `&mut` - use `&!` instead
+- `assert!()`, `println!()` - no Rust macros
+- `#[test]`, `#[derive()]` - no attribute macros
+- `let (a, b) = tuple` - no tuple destructuring
+- `|(x, y)| expr` - no tuple destructuring in closures
 
 ## Test Organization
 

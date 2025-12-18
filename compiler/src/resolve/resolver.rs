@@ -424,6 +424,9 @@ impl Resolver {
             TypeExpr::Reference { inner, .. } => {
                 self.resolve_type_expr(inner);
             }
+            TypeExpr::RawPointer { inner, .. } => {
+                self.resolve_type_expr(inner);
+            }
             TypeExpr::Array { element, .. } => {
                 self.resolve_type_expr(element);
             }

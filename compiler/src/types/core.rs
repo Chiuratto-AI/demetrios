@@ -37,6 +37,11 @@ pub enum Type {
         lifetime: Option<Lifetime>,
         inner: Box<Type>,
     },
+    /// Raw pointer: *const T or *mut T (for FFI)
+    RawPointer {
+        mutable: bool,
+        inner: Box<Type>,
+    },
     /// Array: [T; N] or slice [T]
     Array {
         element: Box<Type>,

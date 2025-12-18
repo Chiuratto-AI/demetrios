@@ -670,6 +670,19 @@ impl Formatter {
                     Doc::Concat(vec![Doc::Text("&".to_string()), self.type_to_doc(inner)])
                 }
             }
+            TypeExpr::RawPointer { mutable, inner } => {
+                if *mutable {
+                    Doc::Concat(vec![
+                        Doc::Text("*mut ".to_string()),
+                        self.type_to_doc(inner),
+                    ])
+                } else {
+                    Doc::Concat(vec![
+                        Doc::Text("*const ".to_string()),
+                        self.type_to_doc(inner),
+                    ])
+                }
+            }
             TypeExpr::Array { element, size } => {
                 let mut parts = Vec::new();
                 parts.push(Doc::Text("[".to_string()));

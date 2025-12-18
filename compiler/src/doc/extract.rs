@@ -810,6 +810,13 @@ impl DocExtractor {
                     format!("&{}", self.type_expr_to_string(inner))
                 }
             }
+            TypeExpr::RawPointer { mutable, inner } => {
+                if *mutable {
+                    format!("*mut {}", self.type_expr_to_string(inner))
+                } else {
+                    format!("*const {}", self.type_expr_to_string(inner))
+                }
+            }
             TypeExpr::Array { element, size } => {
                 if let Some(size) = size {
                     format!(

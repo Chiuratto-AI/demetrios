@@ -860,6 +860,22 @@ impl Interpreter {
                 | "round"
                 | "min"
                 | "max"
+                // FFI / Raw pointer operations
+                | "null_ptr"
+                | "null_mut"
+                | "is_null"
+                | "ptr_eq"
+                | "ptr_addr"
+                | "ptr_from_addr"
+                | "ptr_from_addr_mut"
+                | "ptr_offset"
+                | "ptr_add"
+                | "ptr_sub"
+                | "ptr_diff"
+                | "as_const"
+                | "as_mut"
+                | "size_of"
+                | "align_of"
         )
     }
 

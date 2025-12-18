@@ -169,6 +169,7 @@ impl HlirType {
             HirType::Char => HlirType::U32,
             HirType::String => HlirType::Ptr(Box::new(HlirType::U8)),
             HirType::Ref { inner, .. } => HlirType::Ptr(Box::new(Self::from_hir(inner))),
+            HirType::RawPointer { inner, .. } => HlirType::Ptr(Box::new(Self::from_hir(inner))),
             HirType::Array { element, size } => {
                 let elem = Self::from_hir(element);
                 HlirType::Array(Box::new(elem), size.unwrap_or(0))

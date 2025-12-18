@@ -50,7 +50,11 @@ pub mod graph;
 pub mod identification;
 pub mod intervention;
 pub mod knowledge;
+pub mod refutation;
 pub mod structural;
+pub mod uplift;
+pub mod uplift_syntax;
+pub mod z3_identify;
 
 // Re-exports
 pub use composition::*;
@@ -59,4 +63,8 @@ pub use graph::*;
 pub use identification::*;
 pub use intervention::*;
 pub use knowledge::*;
+pub use refutation::*;
 pub use structural::*;
+pub use uplift::*;
+pub use uplift_syntax::*;
+pub use z3_identify::*;

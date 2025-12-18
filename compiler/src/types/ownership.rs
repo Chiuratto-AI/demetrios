@@ -49,6 +49,9 @@ pub fn ownership_of(ty: &Type) -> Ownership {
         // References are Copy (the reference itself, not the data)
         Type::Ref { .. } => Ownership::Copy,
 
+        // Raw pointers are Copy (like references, the pointer itself is copied)
+        Type::RawPointer { .. } => Ownership::Copy,
+
         // Function pointers are Copy
         Type::Function { .. } => Ownership::Copy,
 

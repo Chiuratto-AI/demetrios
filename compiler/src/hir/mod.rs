@@ -231,6 +231,11 @@ pub enum HirType {
         mutable: bool,
         inner: Box<HirType>,
     },
+    /// Raw pointer (for FFI)
+    RawPointer {
+        mutable: bool,
+        inner: Box<HirType>,
+    },
     /// Array
     Array {
         element: Box<HirType>,

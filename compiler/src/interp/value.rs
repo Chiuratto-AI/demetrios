@@ -93,6 +93,8 @@ pub enum Value {
     },
     /// Reference to a value
     Ref(Rc<RefCell<Value>>),
+    /// Raw pointer (for FFI) - stores address and mutability
+    RawPointer { address: usize, mutable: bool },
     /// Option::None
     None,
     /// Option::Some(value)
@@ -116,10 +118,7 @@ pub enum Value {
     /// Symbolic mathematical expression
     SymbolicExpr(Rc<SymbolicExprType>),
     /// Multi-dimensional tensor/array
-    Tensor {
-        data: Vec<f64>,
-        shape: Vec<usize>,
-    },
+    Tensor { data: Vec<f64>, shape: Vec<usize> },
     /// Value with uncertainty bounds (mean ± std)
     Uncertain { mean: f64, std: f64 },
     /// Causal model representation
@@ -150,6 +149,7 @@ impl Value {
             Value::Variant { .. } => "variant",
             Value::Function { .. } => "function",
             Value::Ref(_) => "ref",
+            Value::RawPointer { .. } => "raw_pointer",
             Value::None => "None",
             Value::Some(_) => "Some",
             Value::Ok(_) => "Ok",
@@ -233,11 +233,15 @@ impl Value {
     }
 
     /// Try to get as hybrid model
-    pub fn as_hybrid_model(&self) -> Option<(Rc<RefCell<Vec<f64>>>, Rc<SymbolicExprType>, HybridFusion)> {
+    pub fn as_hybrid_model(
+        &self,
+    ) -> Option<(Rc<RefCell<Vec<f64>>>, Rc<SymbolicExprType>, HybridFusion)> {
         match self {
-            Value::HybridModel { neural_params, symbolic_expr, fusion } => {
-                Some((neural_params.clone(), symbolic_expr.clone(), fusion.clone()))
-            }
+            Value::HybridModel {
+                neural_params,
+                symbolic_expr,
+                fusion,
+            } => Some((neural_params.clone(), symbolic_expr.clone(), fusion.clone())),
             _ => None,
         }
     }
@@ -332,8 +336,13 @@ impl fmt::Debug for Value {
             Value::Err(v) => write!(f, "Err({:?})", v),
             Value::Builtin(name) => write!(f, "<builtin {}>", name),
             Value::ODESolution { t, y, stats } => {
-                write!(f, "ODESolution {{ t: [{}], y: [{}], steps: {} }}",
-                       t.len(), y.len(), stats.steps)
+                write!(
+                    f,
+                    "ODESolution {{ t: [{}], y: [{}], steps: {} }}",
+                    t.len(),
+                    y.len(),
+                    stats.steps
+                )
             }
             Value::Distribution(d) => write!(f, "{:?}", d),
             Value::SymbolicExpr(e) => write!(f, "SymbolicExpr({:?})", e),
@@ -342,9 +351,25 @@ impl fmt::Debug for Value {
             }
             Value::Uncertain { mean, std } => write!(f, "{} ± {}", mean, std),
             Value::CausalModel(m) => write!(f, "CausalModel({})", m),
-            Value::HybridModel { neural_params, symbolic_expr, fusion } => {
-                write!(f, "HybridModel {{ neural_params: [{}], symbolic: {:?}, fusion: {:?} }}",
-                       neural_params.borrow().len(), symbolic_expr, fusion)
+            Value::HybridModel {
+                neural_params,
+                symbolic_expr,
+                fusion,
+            } => {
+                write!(
+                    f,
+                    "HybridModel {{ neural_params: [{}], symbolic: {:?}, fusion: {:?} }}",
+                    neural_params.borrow().len(),
+                    symbolic_expr,
+                    fusion
+                )
+            }
+            Value::RawPointer { address, mutable } => {
+                if *mutable {
+                    write!(f, "*mut 0x{:x}", address)
+                } else {
+                    write!(f, "*const 0x{:x}", address)
+                }
             }
         }
     }
@@ -415,27 +440,46 @@ impl fmt::Display for Value {
             Value::Err(v) => write!(f, "Err({})", v),
             Value::Builtin(name) => write!(f, "<builtin {}>", name),
             Value::ODESolution { t, y, stats } => {
-                write!(f, "ODESolution(t: {} points, y: {} trajectories, steps: {})",
-                       t.len(), y.len(), stats.steps)
+                write!(
+                    f,
+                    "ODESolution(t: {} points, y: {} trajectories, steps: {})",
+                    t.len(),
+                    y.len(),
+                    stats.steps
+                )
             }
-            Value::Distribution(d) => {
-                match d {
-                    Distribution::Normal { mean, std } => write!(f, "Normal({}, {})", mean, std),
-                    Distribution::Uniform { a, b } => write!(f, "Uniform({}, {})", a, b),
-                    Distribution::Beta { alpha, beta } => write!(f, "Beta({}, {})", alpha, beta),
-                    Distribution::Exponential { lambda } => write!(f, "Exponential({})", lambda),
-                    Distribution::Categorical { probs } => write!(f, "Categorical([{}])", probs.len()),
-                }
-            }
+            Value::Distribution(d) => match d {
+                Distribution::Normal { mean, std } => write!(f, "Normal({}, {})", mean, std),
+                Distribution::Uniform { a, b } => write!(f, "Uniform({}, {})", a, b),
+                Distribution::Beta { alpha, beta } => write!(f, "Beta({}, {})", alpha, beta),
+                Distribution::Exponential { lambda } => write!(f, "Exponential({})", lambda),
+                Distribution::Categorical { probs } => write!(f, "Categorical([{}])", probs.len()),
+            },
             Value::SymbolicExpr(e) => write!(f, "Symbolic({})", e),
             Value::Tensor { data, shape } => {
                 write!(f, "Tensor({:?}, {} elements)", shape, data.len())
             }
             Value::Uncertain { mean, std } => write!(f, "{} ± {}", mean, std),
             Value::CausalModel(m) => write!(f, "CausalModel({})", m),
-            Value::HybridModel { neural_params, symbolic_expr, fusion } => {
-                write!(f, "HybridModel(params: {}, expr: {}, fusion: {:?})",
-                       neural_params.borrow().len(), symbolic_expr, fusion)
+            Value::HybridModel {
+                neural_params,
+                symbolic_expr,
+                fusion,
+            } => {
+                write!(
+                    f,
+                    "HybridModel(params: {}, expr: {}, fusion: {:?})",
+                    neural_params.borrow().len(),
+                    symbolic_expr,
+                    fusion
+                )
+            }
+            Value::RawPointer { address, mutable } => {
+                if *mutable {
+                    write!(f, "*mut 0x{:x}", address)
+                } else {
+                    write!(f, "*const 0x{:x}", address)
+                }
             }
         }
     }

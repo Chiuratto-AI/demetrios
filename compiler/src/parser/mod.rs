@@ -2134,6 +2134,26 @@ impl<'a> Parser<'a> {
 
     fn parse_type_primary(&mut self) -> Result<TypeExpr> {
         match self.peek() {
+            // Raw pointer types: *const T or *mut T (for FFI)
+            TokenKind::Star => {
+                self.advance();
+                let is_mut = if self.at(TokenKind::Mut) {
+                    self.advance();
+                    true
+                } else if self.at(TokenKind::Const) {
+                    self.advance();
+                    false
+                } else {
+                    // Default to const if neither specified
+                    false
+                };
+                let inner = self.parse_type_primary()?;
+                Ok(TypeExpr::RawPointer {
+                    mutable: is_mut,
+                    inner: Box::new(inner),
+                })
+            }
+
             // Reference types
             TokenKind::Amp => {
                 self.advance();
