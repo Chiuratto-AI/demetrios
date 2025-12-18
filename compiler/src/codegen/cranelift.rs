@@ -5,6 +5,7 @@
 //! making it ideal for development and scripting use cases.
 
 use crate::hlir::HlirModule;
+#[cfg(feature = "jit")]
 use std::io::Write;
 
 // ==================== Native Runtime Functions ====================
@@ -323,47 +324,58 @@ impl JitCompiler {
         // runtime_print_i64(i64) -> void
         let mut sig_print_i64 = Signature::new(call_conv);
         sig_print_i64.params.push(AbiParam::new(types::I64));
-        let id = self.jit_module
+        let id = self
+            .jit_module
             .declare_function("runtime_print_i64", Linkage::Import, &sig_print_i64)
             .map_err(|e| format!("Failed to declare runtime_print_i64: {}", e))?;
         self.func_ids.insert("runtime_print_i64".to_string(), id);
-        self.func_sigs.insert("runtime_print_i64".to_string(), sig_print_i64);
+        self.func_sigs
+            .insert("runtime_print_i64".to_string(), sig_print_i64);
 
         // runtime_print_f64(f64) -> void
         let mut sig_print_f64 = Signature::new(call_conv);
         sig_print_f64.params.push(AbiParam::new(types::F64));
-        let id = self.jit_module
+        let id = self
+            .jit_module
             .declare_function("runtime_print_f64", Linkage::Import, &sig_print_f64)
             .map_err(|e| format!("Failed to declare runtime_print_f64: {}", e))?;
         self.func_ids.insert("runtime_print_f64".to_string(), id);
-        self.func_sigs.insert("runtime_print_f64".to_string(), sig_print_f64);
+        self.func_sigs
+            .insert("runtime_print_f64".to_string(), sig_print_f64);
 
         // runtime_print_newline() -> void
         let sig_print_newline = Signature::new(call_conv);
-        let id = self.jit_module
+        let id = self
+            .jit_module
             .declare_function("runtime_print_newline", Linkage::Import, &sig_print_newline)
             .map_err(|e| format!("Failed to declare runtime_print_newline: {}", e))?;
-        self.func_ids.insert("runtime_print_newline".to_string(), id);
-        self.func_sigs.insert("runtime_print_newline".to_string(), sig_print_newline);
+        self.func_ids
+            .insert("runtime_print_newline".to_string(), id);
+        self.func_sigs
+            .insert("runtime_print_newline".to_string(), sig_print_newline);
 
         // runtime_print_str(ptr, len) -> void
         let mut sig_print_str = Signature::new(call_conv);
         sig_print_str.params.push(AbiParam::new(types::I64)); // ptr
         sig_print_str.params.push(AbiParam::new(types::I64)); // len
-        let id = self.jit_module
+        let id = self
+            .jit_module
             .declare_function("runtime_print_str", Linkage::Import, &sig_print_str)
             .map_err(|e| format!("Failed to declare runtime_print_str: {}", e))?;
         self.func_ids.insert("runtime_print_str".to_string(), id);
-        self.func_sigs.insert("runtime_print_str".to_string(), sig_print_str);
+        self.func_sigs
+            .insert("runtime_print_str".to_string(), sig_print_str);
 
         // runtime_print_bool(i8) -> void
         let mut sig_print_bool = Signature::new(call_conv);
         sig_print_bool.params.push(AbiParam::new(types::I8));
-        let id = self.jit_module
+        let id = self
+            .jit_module
             .declare_function("runtime_print_bool", Linkage::Import, &sig_print_bool)
             .map_err(|e| format!("Failed to declare runtime_print_bool: {}", e))?;
         self.func_ids.insert("runtime_print_bool".to_string(), id);
-        self.func_sigs.insert("runtime_print_bool".to_string(), sig_print_bool);
+        self.func_sigs
+            .insert("runtime_print_bool".to_string(), sig_print_bool);
 
         Ok(())
     }
@@ -411,7 +423,10 @@ impl JitCompiler {
                     local_func_refs.insert(name.clone(), local_ref);
                 }
             }
-            eprintln!("[JIT DEBUG] Total funcs available: {:?}", local_func_refs.keys().collect::<Vec<_>>());
+            eprintln!(
+                "[JIT DEBUG] Total funcs available: {:?}",
+                local_func_refs.keys().collect::<Vec<_>>()
+            );
 
             translate_function(&mut builder, func, &local_func_refs)?;
             builder.finalize();
@@ -618,7 +633,9 @@ fn translate_instruction(
 
                     if let Some(&func_ref) = func_refs.get(runtime_func) {
                         // Convert argument to expected type if needed
-                        let converted_arg = if runtime_func == "runtime_print_f64" && arg_type == types::F32 {
+                        let converted_arg = if runtime_func == "runtime_print_f64"
+                            && arg_type == types::F32
+                        {
                             builder.ins().fpromote(types::F64, *arg_val)
                         } else if runtime_func == "runtime_print_i64" && arg_type != types::I64 {
                             if arg_type.is_int() && arg_type.bits() < 64 {
