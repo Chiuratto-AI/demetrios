@@ -25,6 +25,7 @@ pub mod einsum;
 pub mod epistemic;
 pub mod gpu_epistemic;
 pub mod gpu_scientific;
+pub mod io;
 pub mod ode;
 pub mod pde;
 pub mod prob;

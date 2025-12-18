@@ -191,6 +191,38 @@ pub fn assembly_extension(_triple: &str) -> &'static str {
     "s"
 }
 
+/// Get shared library extension for target
+pub fn shared_lib_extension(triple: &str) -> &'static str {
+    if triple.contains("windows") {
+        "dll"
+    } else if triple.contains("darwin") || triple.contains("macos") {
+        "dylib"
+    } else {
+        "so"
+    }
+}
+
+/// Create a target machine configured for shared library compilation (with PIC)
+pub fn create_shared_target_machine(
+    triple: &str,
+    opt_level: OptLevel,
+) -> Result<TargetMachine, String> {
+    initialize_all_targets();
+
+    let config = TargetConfig::for_triple(triple).with_reloc_mode(RelocMode::PIC);
+
+    config.create_target_machine(opt_level)
+}
+
+/// Create a native shared library target machine
+pub fn create_native_shared_target_machine(opt_level: OptLevel) -> Result<TargetMachine, String> {
+    initialize_native_target();
+
+    let config = TargetConfig::native().with_reloc_mode(RelocMode::PIC);
+
+    config.create_target_machine(opt_level)
+}
+
 /// Common target triples
 pub mod triples {
     /// x86_64 Linux GNU

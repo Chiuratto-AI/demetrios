@@ -79,6 +79,10 @@ enum Commands {
         /// Verbose output
         #[arg(short, long)]
         verbose: bool,
+
+        /// Build as shared library (cdylib) instead of executable
+        #[arg(long)]
+        cdylib: bool,
     },
 
     /// Type-check a D source file without compiling
@@ -1540,6 +1544,7 @@ fn main() -> Result<()> {
             target,
             strip,
             verbose,
+            cdylib,
         } => build(
             &input,
             output.as_deref(),
@@ -1550,6 +1555,7 @@ fn main() -> Result<()> {
             target.as_deref(),
             strip,
             verbose,
+            cdylib,
         ),
 
         Commands::Check {
@@ -2032,6 +2038,7 @@ fn build(
     target: Option<&str>,
     strip: bool,
     verbose: bool,
+    cdylib: bool,
 ) -> Result<()> {
     #[cfg(feature = "llvm")]
     {
@@ -2040,9 +2047,10 @@ fn build(
             linker::Linker,
             passes,
             target::{
-                compile_to_asm, compile_to_object, create_native_target_machine,
-                create_target_machine, executable_extension, initialize_native_target,
-                object_extension,
+                compile_to_asm, compile_to_object, create_native_shared_target_machine,
+                create_native_target_machine, create_shared_target_machine, create_target_machine,
+                executable_extension, initialize_native_target, object_extension,
+                shared_lib_extension,
             },
         };
         use inkwell::context::Context;
@@ -2107,13 +2115,30 @@ fn build(
             return Err(miette::miette!("LLVM verification failed: {}", e));
         }
 
-        // Get target machine
-        let target_machine = if let Some(triple) = target {
-            create_target_machine(triple, opt)
-                .map_err(|e| miette::miette!("Failed to create target machine: {}", e))?
+        // Get target machine - use PIC for shared libraries
+        let target_machine = if cdylib {
+            // For shared libraries, use PIC (Position Independent Code)
+            if let Some(triple) = target {
+                create_shared_target_machine(triple, opt).map_err(|e| {
+                    miette::miette!("Failed to create shared library target machine: {}", e)
+                })?
+            } else {
+                create_native_shared_target_machine(opt).map_err(|e| {
+                    miette::miette!(
+                        "Failed to create native shared library target machine: {}",
+                        e
+                    )
+                })?
+            }
         } else {
-            create_native_target_machine(opt)
-                .map_err(|e| miette::miette!("Failed to create target machine: {}", e))?
+            // For executables, use default settings
+            if let Some(triple) = target {
+                create_target_machine(triple, opt)
+                    .map_err(|e| miette::miette!("Failed to create target machine: {}", e))?
+            } else {
+                create_native_target_machine(opt)
+                    .map_err(|e| miette::miette!("Failed to create target machine: {}", e))?
+            }
         };
 
         // Run optimization passes
@@ -2163,37 +2188,63 @@ fn build(
             eprintln!("Generated object file: {}", obj_path.display());
         }
 
-        // Link to executable
-        let exe_ext = executable_extension(triple);
-        let exe_path = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
-            let mut p = input.to_path_buf();
-            p.set_extension(exe_ext);
-            if exe_ext.is_empty() {
-                // Remove extension for Unix executables
-                p.set_extension("");
+        // Link to executable or shared library
+        if cdylib {
+            // Link as shared library
+            let lib_ext = shared_lib_extension(triple);
+            let lib_path = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+                let stem = input.file_stem().and_then(|s| s.to_str()).unwrap_or("lib");
+                let mut p = input.to_path_buf();
+                p.set_file_name(format!("lib{}", stem));
+                p.set_extension(lib_ext);
+                p
+            });
+
+            let linker = Linker::new().strip(strip).verbose(verbose);
+
+            linker
+                .link_shared(&[obj_path.clone()], &lib_path)
+                .map_err(|e| miette::miette!("Shared library linking failed: {}", e))?;
+
+            // Clean up object file
+            if std::fs::remove_file(&obj_path).is_err() && verbose {
+                eprintln!("Warning: could not remove temporary object file");
             }
-            p
-        });
 
-        let linker = Linker::new().strip(strip).verbose(verbose);
+            println!("Built shared library: {}", lib_path.display());
+        } else {
+            // Link as executable
+            let exe_ext = executable_extension(triple);
+            let exe_path = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+                let mut p = input.to_path_buf();
+                p.set_extension(exe_ext);
+                if exe_ext.is_empty() {
+                    // Remove extension for Unix executables
+                    p.set_extension("");
+                }
+                p
+            });
 
-        linker
-            .link_with_stdlib(&[obj_path.clone()], &exe_path)
-            .map_err(|e| miette::miette!("Linking failed: {}", e))?;
+            let linker = Linker::new().strip(strip).verbose(verbose);
 
-        // Clean up object file
-        if std::fs::remove_file(&obj_path).is_err() && verbose {
-            eprintln!("Warning: could not remove temporary object file");
+            linker
+                .link_with_stdlib(&[obj_path.clone()], &exe_path)
+                .map_err(|e| miette::miette!("Linking failed: {}", e))?;
+
+            // Clean up object file
+            if std::fs::remove_file(&obj_path).is_err() && verbose {
+                eprintln!("Warning: could not remove temporary object file");
+            }
+
+            println!("Built: {}", exe_path.display());
         }
-
-        println!("Built: {}", exe_path.display());
         Ok(())
     }
 
     #[cfg(not(feature = "llvm"))]
     {
         let _ = (
-            input, output, opt_level, debug, emit_llvm, emit_asm, target, strip, verbose,
+            input, output, opt_level, debug, emit_llvm, emit_asm, target, strip, verbose, cdylib,
         );
         Err(miette::miette!(
             "LLVM backend not enabled. Rebuild with: cargo build --features llvm"
@@ -3794,9 +3845,7 @@ fn diagnostics_check(
     _show_trace: bool,
 ) -> Result<()> {
     use demetrios::diagnostic::emitter::SarifEmitter;
-    use demetrios::diagnostic::{
-        Diagnostic, DiagnosticHandler, HumanEmitter, JsonEmitter, Span,
-    };
+    use demetrios::diagnostic::{Diagnostic, DiagnosticHandler, HumanEmitter, JsonEmitter, Span};
 
     tracing::info!("Checking {:?} with rich diagnostics", input);
 
@@ -5672,8 +5721,8 @@ fn layout_analyze(
     output: Option<&Path>,
 ) -> Result<()> {
     use demetrios::layout::{
-        DistanceMatrix, LayoutConfig, cluster_concepts,
-        extract_concepts_from_types, generate_layout, generate_report,
+        DistanceMatrix, LayoutConfig, cluster_concepts, extract_concepts_from_types,
+        generate_layout, generate_report,
     };
     use demetrios::ontology::native::NativeOntology;
     use std::io::Write;
@@ -6060,8 +6109,8 @@ fn layout_visualize(
 fn layout_constraints(input: &Path, data_dir: &Path, verbose: bool) -> Result<()> {
     use demetrios::layout::{
         ConstraintSet, ConstraintSource, DistanceMatrix, ForcedRegion, LayoutConfig,
-        LayoutConstraint, cluster_concepts, format_diagnostics,
-        solve_constraints, validate_constraints_diagnostic,
+        LayoutConstraint, cluster_concepts, format_diagnostics, solve_constraints,
+        validate_constraints_diagnostic,
     };
 
     // Read constraint file (simple format: one constraint per line)

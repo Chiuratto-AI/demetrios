@@ -4,10 +4,17 @@
 //! that bridge the D interpreter with Rust runtime modules (ODE solvers, probabilistic
 //! inference, symbolic math, etc).
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interp::value::Value;
+
+// Thread-local memory storage for ptr_read/ptr_write operations
+// Maps memory addresses to Values for simulating pointer operations in the interpreter
+thread_local! {
+    static FFI_MEMORY: RefCell<HashMap<usize, Value>> = RefCell::new(HashMap::new());
+}
 
 /// Type alias for a builtin function handler
 pub type BuiltinHandler = Rc<dyn Fn(&[Value]) -> Result<Value, String>>;
@@ -40,6 +47,9 @@ impl BuiltinRegistry {
 
         // Register FFI/pointer builtins
         registry.register_ffi_builtins();
+
+        // Register JSON builtins
+        registry.register_json_builtins();
 
         registry
     }
@@ -954,6 +964,289 @@ impl BuiltinRegistry {
                 }
             }),
         );
+
+        // ptr_read(ptr: *const T) -> T
+        // Read a value from memory through a pointer (unsafe!)
+        self.register(
+            "ptr_read",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("ptr_read expects 1 argument, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::RawPointer { address, .. } => {
+                        if *address == 0 {
+                            return Err("Attempted to read from null pointer".to_string());
+                        }
+                        FFI_MEMORY.with(|mem| {
+                            mem.borrow().get(address).cloned().ok_or_else(|| {
+                                format!(
+                                    "Attempted to read from uninitialized address: {:#x}",
+                                    address
+                                )
+                            })
+                        })
+                    }
+                    _ => Err(format!(
+                        "ptr_read expects a raw pointer, got {}",
+                        args[0].type_name()
+                    )),
+                }
+            }),
+        );
+
+        // ptr_write(ptr: *mut T, value: T)
+        // Write a value to memory through a pointer (unsafe!)
+        self.register(
+            "ptr_write",
+            Rc::new(|args| {
+                if args.len() != 2 {
+                    return Err(format!("ptr_write expects 2 arguments, got {}", args.len()));
+                }
+                match &args[0] {
+                    Value::RawPointer { address, mutable } => {
+                        if *address == 0 {
+                            return Err("Attempted to write to null pointer".to_string());
+                        }
+                        if !mutable {
+                            return Err(
+                                "Attempted to write through const pointer (need *mut)".to_string()
+                            );
+                        }
+                        FFI_MEMORY.with(|mem| {
+                            mem.borrow_mut().insert(*address, args[1].clone());
+                        });
+                        Ok(Value::Unit)
+                    }
+                    _ => Err(format!(
+                        "ptr_write expects a raw pointer as first argument, got {}",
+                        args[0].type_name()
+                    )),
+                }
+            }),
+        );
+    }
+
+    /// Register JSON builtins for parsing and manipulating JSON data
+    fn register_json_builtins(&mut self) {
+        // parse_json(input: &str) -> Result<JsonValue, ParseError>
+        self.register(
+            "parse_json",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!("parse_json expects 1 argument, got {}", args.len()));
+                }
+
+                let json_str = match &args[0] {
+                    Value::String(s) => s,
+                    _ => return Err("parse_json expects a string argument".to_string()),
+                };
+
+                match serde_json::from_str::<serde_json::Value>(json_str) {
+                    Ok(json_val) => {
+                        let d_json = json_value_to_d_value(&json_val);
+                        Ok(Value::Variant {
+                            enum_name: "Result".to_string(),
+                            variant_name: "Ok".to_string(),
+                            fields: vec![d_json],
+                        })
+                    }
+                    Err(e) => {
+                        let err_struct = Value::Struct {
+                            name: "ParseError".to_string(),
+                            fields: std::collections::HashMap::from([(
+                                "message".to_string(),
+                                Value::String(format!("JSON parse error: {}", e)),
+                            )]),
+                        };
+                        Ok(Value::Variant {
+                            enum_name: "Result".to_string(),
+                            variant_name: "Err".to_string(),
+                            fields: vec![err_struct],
+                        })
+                    }
+                }
+            }),
+        );
+
+        // json_to_string(value: &JsonValue) -> String
+        self.register(
+            "json_to_string",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "json_to_string expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+
+                match d_value_to_json_value(&args[0]) {
+                    Some(json_val) => {
+                        let json_str =
+                            serde_json::to_string(&json_val).unwrap_or_else(|_| "null".to_string());
+                        Ok(Value::String(json_str))
+                    }
+                    None => Err("Failed to convert value to JSON".to_string()),
+                }
+            }),
+        );
+
+        // json_to_string_pretty(value: &JsonValue) -> String
+        self.register(
+            "json_to_string_pretty",
+            Rc::new(|args| {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "json_to_string_pretty expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+
+                match d_value_to_json_value(&args[0]) {
+                    Some(json_val) => {
+                        let json_str = serde_json::to_string_pretty(&json_val)
+                            .unwrap_or_else(|_| "null".to_string());
+                        Ok(Value::String(json_str))
+                    }
+                    None => Err("Failed to convert value to JSON".to_string()),
+                }
+            }),
+        );
+    }
+}
+
+// ============================================================================
+// JSON Conversion Helpers
+// ============================================================================
+
+/// Convert serde_json::Value to D's JsonValue (represented as a Variant)
+fn json_value_to_d_value(json: &serde_json::Value) -> Value {
+    match json {
+        serde_json::Value::Null => Value::Variant {
+            enum_name: "JsonValue".to_string(),
+            variant_name: "Null".to_string(),
+            fields: vec![],
+        },
+        serde_json::Value::Bool(b) => Value::Variant {
+            enum_name: "JsonValue".to_string(),
+            variant_name: "Bool".to_string(),
+            fields: vec![Value::Bool(*b)],
+        },
+        serde_json::Value::Number(n) => {
+            let num_val = if let Some(i) = n.as_i64() {
+                Value::Float(i as f64)
+            } else if let Some(f) = n.as_f64() {
+                Value::Float(f)
+            } else {
+                Value::Float(0.0)
+            };
+            Value::Variant {
+                enum_name: "JsonValue".to_string(),
+                variant_name: "Number".to_string(),
+                fields: vec![num_val],
+            }
+        }
+        serde_json::Value::String(s) => Value::Variant {
+            enum_name: "JsonValue".to_string(),
+            variant_name: "String".to_string(),
+            fields: vec![Value::String(s.clone())],
+        },
+        serde_json::Value::Array(arr) => {
+            let d_array: Vec<Value> = arr.iter().map(json_value_to_d_value).collect();
+            let d_vec = Value::Array(Rc::new(RefCell::new(d_array)));
+            Value::Variant {
+                enum_name: "JsonValue".to_string(),
+                variant_name: "Array".to_string(),
+                fields: vec![d_vec],
+            }
+        }
+        serde_json::Value::Object(obj) => {
+            let mut d_map = HashMap::new();
+            for (k, v) in obj.iter() {
+                d_map.insert(k.clone(), json_value_to_d_value(v));
+            }
+            let d_hashmap = Value::Struct {
+                name: "Map".to_string(),
+                fields: d_map,
+            };
+            Value::Variant {
+                enum_name: "JsonValue".to_string(),
+                variant_name: "Object".to_string(),
+                fields: vec![d_hashmap],
+            }
+        }
+    }
+}
+
+/// Convert D's Value back to serde_json::Value
+fn d_value_to_json_value(val: &Value) -> Option<serde_json::Value> {
+    match val {
+        Value::Variant {
+            enum_name,
+            variant_name,
+            fields,
+        } if enum_name == "JsonValue" => match variant_name.as_str() {
+            "Null" => Some(serde_json::Value::Null),
+            "Bool" => fields.first().and_then(|v| {
+                if let Value::Bool(b) = v {
+                    Some(serde_json::Value::Bool(*b))
+                } else {
+                    None
+                }
+            }),
+            "Number" => fields.first().and_then(|v| match v {
+                Value::Float(f) => serde_json::Number::from_f64(*f).map(serde_json::Value::Number),
+                Value::Int(i) => Some(serde_json::Value::Number((*i).into())),
+                _ => None,
+            }),
+            "String" => fields.first().and_then(|v| {
+                if let Value::String(s) = v {
+                    Some(serde_json::Value::String(s.clone()))
+                } else {
+                    None
+                }
+            }),
+            "Array" => fields.first().and_then(|v| {
+                if let Value::Array(arr) = v {
+                    let json_arr: Option<Vec<serde_json::Value>> =
+                        arr.borrow().iter().map(d_value_to_json_value).collect();
+                    json_arr.map(serde_json::Value::Array)
+                } else {
+                    None
+                }
+            }),
+            "Object" => fields.first().and_then(|v| {
+                if let Value::Struct { fields, .. } = v {
+                    let json_obj: Option<serde_json::Map<String, serde_json::Value>> = fields
+                        .iter()
+                        .map(|(k, v)| d_value_to_json_value(v).map(|jv| (k.clone(), jv)))
+                        .collect();
+                    json_obj.map(serde_json::Value::Object)
+                } else {
+                    None
+                }
+            }),
+            _ => None,
+        },
+        Value::Unit => Some(serde_json::Value::Null),
+        Value::Bool(b) => Some(serde_json::Value::Bool(*b)),
+        Value::Int(i) => Some(serde_json::Value::Number((*i).into())),
+        Value::Float(f) => serde_json::Number::from_f64(*f).map(serde_json::Value::Number),
+        Value::String(s) => Some(serde_json::Value::String(s.clone())),
+        Value::Array(arr) => {
+            let json_arr: Option<Vec<serde_json::Value>> =
+                arr.borrow().iter().map(d_value_to_json_value).collect();
+            json_arr.map(serde_json::Value::Array)
+        }
+        Value::Struct { fields, .. } => {
+            let json_obj: Option<serde_json::Map<String, serde_json::Value>> = fields
+                .iter()
+                .map(|(k, v)| d_value_to_json_value(v).map(|jv| (k.clone(), jv)))
+                .collect();
+            json_obj.map(serde_json::Value::Object)
+        }
+        Value::None => Some(serde_json::Value::Null),
+        _ => None,
     }
 }
 
