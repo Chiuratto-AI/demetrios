@@ -18,6 +18,7 @@
 pub mod types;
 pub mod predicates;
 pub mod engine;
+pub mod symbolic_engine;
 
 // Re-exports for convenience
 pub use types::{
@@ -37,4 +38,9 @@ pub use engine::{
     ProofState, ProofStep, DeductionRule, DeductionEngine,
     AlgebraicReasoner, DDAREngine, SearchResult,
     geometry_search_handler, generate_proof_text,
+};
+
+pub use symbolic_engine::{
+    PredicateEpistemic, PredicateKind, EpistemicPruner, PruningDecision,
+    forward_chain, algebraic_simplify, combine_parent_betas,
 };

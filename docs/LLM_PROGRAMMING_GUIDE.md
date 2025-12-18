@@ -12,9 +12,10 @@ This comprehensive guide enables LLMs to correctly generate Demetrios (D) code. 
 6. [Scientific Computing](#scientific-computing)
 7. [Epistemic Types](#epistemic-types)
 8. [FFI (Foreign Function Interface)](#ffi-foreign-function-interface)
-9. [What is NOT Supported](#what-is-not-supported)
-10. [Idiomatic Patterns](#idiomatic-patterns)
-11. [Common Mistakes](#common-mistakes)
+9. [Standard Library](#standard-library)
+10. [What is NOT Supported](#what-is-not-supported)
+11. [Idiomatic Patterns](#idiomatic-patterns)
+12. [Common Mistakes](#common-mistakes)
 
 ---
 
@@ -911,6 +912,224 @@ fn with_buffer() {
     // ... use buffer ...
     free(buf)
 }
+```
+
+---
+
+## Standard Library
+
+Demetrios includes a standard library with modules for I/O, JSON, strings, and more.
+
+### I/O Module (`std.io`)
+
+```d
+import io::*;
+
+// Read entire file as string
+let content = read_file("data.txt")?;
+
+// Write string to file
+write_file("output.txt", "Hello, world!")?;
+
+// Append to file
+append_file("log.txt", "New entry\n")?;
+
+// Check if file exists
+if file_exists("config.json") {
+    // ...
+}
+
+// Exit process
+exit(0);  // Success
+exit(1);  // Error
+
+// Environment variables
+let args = env::args();           // Command line arguments
+let home = env::var("HOME");      // Get env var
+env::set_var("MY_VAR", "value");  // Set env var
+let cwd = env::current_dir()?;    // Current directory
+
+// Standard streams
+print("Hello");
+println("Hello with newline");
+eprint("Error message");
+eprintln("Error with newline");
+let line = read_line()?;
+
+// Path utilities
+let full = path::join("dir", "file.txt");  // "dir/file.txt"
+let name = path::file_name("/home/user/file.txt");  // Some("file.txt")
+let parent = path::parent("/home/user/file.txt");   // Some("/home/user")
+let ext = path::extension("file.txt");              // Some("txt")
+```
+
+### JSON Module (`std.json`)
+
+```d
+import json::*;
+
+// Parse JSON string
+match parse_json(r#"{"name": "test", "value": 42}"#) {
+    Ok(json) => {
+        // Type checking
+        if json.is_object() {
+            // Access by key
+            let name = json["name"].as_str().unwrap_or("default");
+            let value = json["value"].as_i64().unwrap_or(0);
+            
+            // Check key existence
+            if json.has("optional") {
+                let opt = json["optional"];
+            }
+        }
+    },
+    Err(e) => println("Parse error: " ++ e.message()),
+}
+
+// JSON value types
+let null_val = JsonValue::null();
+let bool_val = JsonValue::bool(true);
+let num_val = JsonValue::number(3.14);
+let str_val = JsonValue::string("hello");
+let arr_val = JsonValue::array();
+let obj_val = JsonValue::object();
+
+// Value extraction methods
+json.as_bool()   // -> Option<bool>
+json.as_f64()    // -> Option<f64>
+json.as_i64()    // -> Option<i64>
+json.as_str()    // -> Option<&str>
+json.as_array()  // -> Option<&Vec<JsonValue>>
+json.as_object() // -> Option<&Map<String, JsonValue>>
+
+// Array access
+let first = json[0];
+let len = json.len();
+json.push(JsonValue::number(42));
+
+// Object manipulation
+json.set("key", JsonValue::string("value"));
+json.remove("key");
+
+// Path-based access
+let nested = json.path("users[0].name");
+
+// Serialize back to string
+let s = json.to_json_string();
+let pretty = json.to_json_string_pretty();
+
+// Parse JSON Lines format
+let records = parse_jsonl(content)?;
+```
+
+### String Module (`std.str`)
+
+```d
+import str::*;
+
+// String checks
+if s.is_empty() { }
+let length = s.len();
+
+// Trimming
+let trimmed = "  hello  ".trim();        // "hello"
+let left = "  hello".trim_start();       // "hello"
+let right = "hello  ".trim_end();        // "hello"
+
+// Splitting
+let parts: Vec<&str> = "a,b,c".split(',').collect();
+let lines: Vec<&str> = content.lines().collect();
+
+// Searching
+if s.contains("needle") { }
+if s.starts_with("prefix") { }
+if s.ends_with("suffix") { }
+let pos = s.find("pattern");      // Option<usize>
+let last = s.rfind("pattern");
+
+// Replacement
+let new_s = s.replace("old", "new");
+
+// Case conversion
+let upper = s.to_uppercase();
+let lower = s.to_lowercase();
+
+// Repetition
+let repeated = "ab".repeat(3);  // "ababab"
+
+// Parsing
+let n: i32 = "42".parse().unwrap();
+let f: f64 = "3.14".parse().unwrap();
+
+// Iteration
+for c in s.chars() { }
+for (i, c) in s.char_indices() { }
+for b in s.bytes() { }
+
+// String building
+var builder = String::new();
+builder.push('c');
+builder.push_str("string");
+
+// Concatenation (++ operator)
+let combined = "hello" ++ " " ++ "world";
+```
+
+### Comparison Module (`std.cmp`)
+
+```d
+import cmp::*;
+
+// Min and max
+let smaller = min(10, 20);   // 10
+let larger = max(10, 20);    // 20
+
+// Clamp to range
+let clamped = clamp(15, 0, 10);  // 10
+let clamped = clamp(-5, 0, 10);  // 0
+let clamped = clamp(5, 0, 10);   // 5
+
+// Partial ordering for floats (handles NaN)
+let result = min_partial(1.0, 2.0);  // Some(1.0)
+let nan = 0.0 / 0.0;
+let result = min_partial(nan, 1.0);  // None
+
+// Ordering enum
+match a.cmp(&b) {
+    Ordering::Less => println("a < b"),
+    Ordering::Equal => println("a == b"),
+    Ordering::Greater => println("a > b"),
+}
+```
+
+### Collections Module (`std.collections`)
+
+```d
+import collections::*;
+
+// Vec (dynamic array)
+var vec: Vec<i32> = Vec::new();
+vec.push(1);
+vec.push(2);
+vec.extend([3, 4, 5].iter());
+let first = vec[0];
+let len = vec.len();
+
+// HashMap
+var map: HashMap<String, i32> = HashMap::new();
+map.insert("key", 42);
+let value = map.get("key");
+
+// HashSet
+var set: HashSet<i32> = HashSet::new();
+set.insert(1);
+if set.contains(&1) { }
+
+// Deque (double-ended queue)
+var deque: Deque<i32> = Deque::new();
+deque.push_back(1);
+deque.push_front(0);
+let front = deque.pop_front();
 ```
 
 ---
