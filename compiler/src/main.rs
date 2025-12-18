@@ -2100,7 +2100,7 @@ fn build(
         let mut codegen = LLVMCodegen::new(&context, module_name, opt, debug);
 
         // Compile to LLVM IR
-        let module = codegen.compile(&hlir);
+        codegen.compile(&hlir);
 
         // Verify module
         if let Err(e) = codegen.verify() {
@@ -2117,6 +2117,7 @@ fn build(
         };
 
         // Run optimization passes
+        let module = codegen.get_module();
         passes::optimize_module(module, opt, &target_machine);
 
         // Handle emit options
