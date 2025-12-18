@@ -91,12 +91,57 @@ impl BuildManager {
 
     /// Initialize the build (scan sources, load cache)
     pub fn init(&mut self, source_dir: &Path) -> Result<(), BuildError> {
+        // Try to load existing graph
+        let graph_path = self.config.paths.build_dir.join("graph.bin");
+        if graph_path.exists() {
+            match BuildGraph::load(&graph_path) {
+                Ok(loaded_graph) => {
+                    self.graph = loaded_graph;
+                    if self.config.flags.verbose {
+                        println!("Loaded build graph with {} units", self.graph.len());
+                    }
+                }
+                Err(e) => {
+                    if self.config.flags.verbose {
+                        println!("Could not load build graph: {}, starting fresh", e);
+                    }
+                }
+            }
+        }
+
         // Scan for source files
         let file_count = self.change_detector.scan_directory(source_dir)?;
 
         if self.config.flags.verbose {
             println!("Found {} source files", file_count);
         }
+
+        // Create CompilationUnits for any new files not in the graph
+        let tracked_files = self.change_detector.tracked_files();
+        let mut new_units = 0;
+
+        for path in tracked_files {
+            if self.graph.get_unit_id(&path).is_none() {
+                // New file - create a CompilationUnit
+                if let Ok(content_hash) = ContentHash::from_file(&path) {
+                    let unit = CompilationUnit::new(path.clone(), content_hash);
+                    let unit_id = unit.id;
+                    self.graph.add_unit(unit);
+
+                    // Mark as root if it's a main module or has no dependencies yet
+                    // (dependencies will be resolved during actual compilation)
+                    self.graph.add_root(unit_id);
+                    new_units += 1;
+                }
+            }
+        }
+
+        if self.config.flags.verbose && new_units > 0 {
+            println!("Added {} new compilation units", new_units);
+        }
+
+        // Prune units for files that no longer exist
+        self.graph.prune_missing();
 
         Ok(())
     }
@@ -138,13 +183,25 @@ impl BuildManager {
             println!("Compiling {} units", dirty_units.len());
         }
 
-        // Execute parallel build
-        // Note: For now, we use a simple placeholder compilation function
-        // In a real implementation, this would invoke the actual compiler
-        let results = self.executor.execute(&self.graph, |_unit_id| {
-            // Placeholder: actual compilation would happen here
-            Ok(())
-        })?;
+        // Collect unit info before compilation (to avoid borrow conflicts)
+        let units_to_compile: Vec<(UnitId, std::path::PathBuf)> = dirty_units
+            .iter()
+            .filter_map(|&id| self.graph.get_unit(id).map(|u| (id, u.path.clone())))
+            .collect();
+
+        let verbose = self.config.flags.verbose;
+
+        // Compile each unit using the actual Demetrios compiler
+        let mut results = Vec::new();
+        for (unit_id, path) in &units_to_compile {
+            let compile_result = Self::compile_unit_file(path, verbose);
+            results.push(parallel::BuildResult {
+                unit_id: *unit_id,
+                success: compile_result.is_ok(),
+                duration: std::time::Duration::ZERO,
+                error: compile_result.err(),
+            });
+        }
 
         // Process results
         let mut compiled = 0;
@@ -181,6 +238,28 @@ impl BuildManager {
     }
 
     /// Compile a single unit (placeholder for future implementation)
+    /// Compile a single source file
+    fn compile_unit_file(path: &Path, verbose: bool) -> Result<(), String> {
+        // Read source file
+        let source = std::fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+
+        // Compile using the Demetrios compiler pipeline
+        // For now, just do check (type-checking) - full compilation would use compile()
+        let tokens = crate::lexer::lex(&source)
+            .map_err(|e| format!("Lexer error in {}: {}", path.display(), e))?;
+        let ast = crate::parser::parse(&tokens, &source)
+            .map_err(|e| format!("Parser error in {}: {}", path.display(), e))?;
+        let _hir = crate::check::check(&ast)
+            .map_err(|e| format!("Type error in {}: {}", path.display(), e))?;
+
+        if verbose {
+            println!("  Compiled: {}", path.display());
+        }
+
+        Ok(())
+    }
+
     #[allow(dead_code)]
     fn compile_unit(&mut self, unit_id: UnitId) -> Result<(), String> {
         let unit = self

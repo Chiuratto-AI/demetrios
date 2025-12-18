@@ -204,6 +204,11 @@ impl ChangeDetector {
         self.file_states.len()
     }
 
+    /// Get all tracked file paths
+    pub fn tracked_files(&self) -> Vec<PathBuf> {
+        self.file_states.keys().cloned().collect()
+    }
+
     /// Clear all tracked files
     pub fn clear(&mut self) {
         self.file_states.clear();
