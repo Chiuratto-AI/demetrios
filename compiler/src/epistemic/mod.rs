@@ -37,11 +37,15 @@
 //! ```
 
 pub mod agents;
+pub mod bayesian;
 pub mod composition;
 pub mod confidence;
 pub mod evolution;
+pub mod firewall;
 pub mod heterogeneity;
 pub mod knowledge;
+pub mod merkle;
+pub mod models;
 pub mod operations;
 pub mod provenance;
 pub mod temporal;
@@ -64,3 +68,21 @@ pub use provenance::{
     FunctorTrace, Origin, Provenance, Transformation, TransformationKind, TransformationMetadata,
 };
 pub use temporal::{ContextIndex, ContextTime, TemporalIndex, TemporalOffset, ValidityBounds};
+
+// New modules for advanced epistemic computing
+pub use bayesian::{
+    BayesianFusionResult, BeliefMass, BetaBound, BetaConfidence, BetaConstraintResult,
+    DSTCombinationResult, EvidenceAssessment, HierarchicalPrior, OntologyDomain, SourceReliability,
+    check_beta_constraint, combine_epistemic_beta, combine_epistemic_beta_with_prior,
+    combine_epistemic_hierarchical, dempster_combine, dempster_combine_multiple,
+};
+pub use firewall::{EpistemicFirewall, FirewallConfig, FirewallMode, FirewallViolation};
+pub use merkle::{
+    AuditTrail, Hash256, MerkleProvenanceDAG, MerkleProvenanceNode, OperationKind,
+    ProvenanceMetadata, ProvenanceOperation, ProvenanceSignature,
+};
+pub use models::{
+    AffineConfig, BayesianConfig, BinaryOp, CombinationRule, DempsterShaferConfig, EpistemicConfig,
+    FuzzyConfig, IntervalConfig, ProbabilisticConfig, UncertainValue, UncertaintyModel,
+    propagate_binary,
+};

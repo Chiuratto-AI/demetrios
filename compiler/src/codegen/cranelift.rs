@@ -5,6 +5,56 @@
 //! making it ideal for development and scripting use cases.
 
 use crate::hlir::HlirModule;
+use std::io::Write;
+
+// ==================== Native Runtime Functions ====================
+// These are called from JIT-compiled code via FFI
+
+/// Print an i64 value
+#[cfg(feature = "jit")]
+extern "C" fn runtime_print_i64(val: i64) {
+    print!("{}", val);
+    let _ = std::io::stdout().flush();
+}
+
+/// Print an f64 value
+#[cfg(feature = "jit")]
+extern "C" fn runtime_print_f64(val: f64) {
+    print!("{}", val);
+    let _ = std::io::stdout().flush();
+}
+
+/// Print a newline
+#[cfg(feature = "jit")]
+extern "C" fn runtime_print_newline() {
+    println!();
+}
+
+/// Print a string (pointer + length)
+#[cfg(feature = "jit")]
+extern "C" fn runtime_print_str(ptr: *const u8, len: usize) {
+    if !ptr.is_null() && len > 0 {
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        if let Ok(s) = std::str::from_utf8(slice) {
+            print!("{}", s);
+            let _ = std::io::stdout().flush();
+        }
+    }
+}
+
+/// Print a boolean value
+#[cfg(feature = "jit")]
+extern "C" fn runtime_print_bool(val: i8) {
+    print!("{}", if val != 0 { "true" } else { "false" });
+    let _ = std::io::stdout().flush();
+}
+
+/// Debug test function - just returns 99 to verify FFI works
+#[cfg(feature = "jit")]
+extern "C" fn runtime_debug_test() -> i64 {
+    eprintln!("[DEBUG] runtime_debug_test called!");
+    99
+}
 
 #[cfg(feature = "jit")]
 use crate::hlir::{
@@ -196,6 +246,8 @@ struct JitCompiler {
     func_ids: HashMap<String, FuncId>,
     /// Map from function names to their signatures (for calling)
     func_sigs: HashMap<String, Signature>,
+    /// Set of exported (user-defined) function names
+    exported_funcs: std::collections::HashSet<String>,
 }
 
 #[cfg(feature = "jit")]
@@ -218,7 +270,15 @@ impl JitCompiler {
             .finish(settings::Flags::new(flag_builder))
             .map_err(|e| format!("Failed to create ISA: {}", e))?;
 
-        let jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+
+        // Register runtime functions
+        jit_builder.symbol("runtime_print_i64", runtime_print_i64 as *const u8);
+        jit_builder.symbol("runtime_print_f64", runtime_print_f64 as *const u8);
+        jit_builder.symbol("runtime_print_newline", runtime_print_newline as *const u8);
+        jit_builder.symbol("runtime_print_str", runtime_print_str as *const u8);
+        jit_builder.symbol("runtime_print_bool", runtime_print_bool as *const u8);
+        jit_builder.symbol("runtime_debug_test", runtime_debug_test as *const u8);
 
         let jit_module = JITModule::new(jit_builder);
         let ctx = jit_module.make_context();
@@ -229,11 +289,15 @@ impl JitCompiler {
             func_ctx: FunctionBuilderContext::new(),
             func_ids: HashMap::new(),
             func_sigs: HashMap::new(),
+            exported_funcs: std::collections::HashSet::new(),
         })
     }
 
     fn compile_module(&mut self, module: &HlirModule) -> Result<(), String> {
-        // First pass: declare all functions
+        // Declare runtime functions first
+        self.declare_runtime_functions()?;
+
+        // First pass: declare all user functions
         for func in &module.functions {
             let sig = self.create_signature(func);
             let func_id = self
@@ -242,12 +306,64 @@ impl JitCompiler {
                 .map_err(|e| format!("Failed to declare function {}: {}", func.name, e))?;
             self.func_ids.insert(func.name.clone(), func_id);
             self.func_sigs.insert(func.name.clone(), sig);
+            self.exported_funcs.insert(func.name.clone());
         }
 
         // Second pass: compile all functions
         for func in &module.functions {
             self.compile_function(func)?;
         }
+
+        Ok(())
+    }
+
+    fn declare_runtime_functions(&mut self) -> Result<(), String> {
+        let call_conv = self.jit_module.isa().default_call_conv();
+
+        // runtime_print_i64(i64) -> void
+        let mut sig_print_i64 = Signature::new(call_conv);
+        sig_print_i64.params.push(AbiParam::new(types::I64));
+        let id = self.jit_module
+            .declare_function("runtime_print_i64", Linkage::Import, &sig_print_i64)
+            .map_err(|e| format!("Failed to declare runtime_print_i64: {}", e))?;
+        self.func_ids.insert("runtime_print_i64".to_string(), id);
+        self.func_sigs.insert("runtime_print_i64".to_string(), sig_print_i64);
+
+        // runtime_print_f64(f64) -> void
+        let mut sig_print_f64 = Signature::new(call_conv);
+        sig_print_f64.params.push(AbiParam::new(types::F64));
+        let id = self.jit_module
+            .declare_function("runtime_print_f64", Linkage::Import, &sig_print_f64)
+            .map_err(|e| format!("Failed to declare runtime_print_f64: {}", e))?;
+        self.func_ids.insert("runtime_print_f64".to_string(), id);
+        self.func_sigs.insert("runtime_print_f64".to_string(), sig_print_f64);
+
+        // runtime_print_newline() -> void
+        let sig_print_newline = Signature::new(call_conv);
+        let id = self.jit_module
+            .declare_function("runtime_print_newline", Linkage::Import, &sig_print_newline)
+            .map_err(|e| format!("Failed to declare runtime_print_newline: {}", e))?;
+        self.func_ids.insert("runtime_print_newline".to_string(), id);
+        self.func_sigs.insert("runtime_print_newline".to_string(), sig_print_newline);
+
+        // runtime_print_str(ptr, len) -> void
+        let mut sig_print_str = Signature::new(call_conv);
+        sig_print_str.params.push(AbiParam::new(types::I64)); // ptr
+        sig_print_str.params.push(AbiParam::new(types::I64)); // len
+        let id = self.jit_module
+            .declare_function("runtime_print_str", Linkage::Import, &sig_print_str)
+            .map_err(|e| format!("Failed to declare runtime_print_str: {}", e))?;
+        self.func_ids.insert("runtime_print_str".to_string(), id);
+        self.func_sigs.insert("runtime_print_str".to_string(), sig_print_str);
+
+        // runtime_print_bool(i8) -> void
+        let mut sig_print_bool = Signature::new(call_conv);
+        sig_print_bool.params.push(AbiParam::new(types::I8));
+        let id = self.jit_module
+            .declare_function("runtime_print_bool", Linkage::Import, &sig_print_bool)
+            .map_err(|e| format!("Failed to declare runtime_print_bool: {}", e))?;
+        self.func_ids.insert("runtime_print_bool".to_string(), id);
+        self.func_sigs.insert("runtime_print_bool".to_string(), sig_print_bool);
 
         Ok(())
     }
@@ -291,9 +407,11 @@ impl JitCompiler {
             for (name, id) in &needed_funcs {
                 if let Some(sig) = self.func_sigs.get(name) {
                     let local_ref = self.jit_module.declare_func_in_func(*id, builder.func);
+                    eprintln!("[JIT DEBUG] Declared func '{}' as {:?}", name, local_ref);
                     local_func_refs.insert(name.clone(), local_ref);
                 }
             }
+            eprintln!("[JIT DEBUG] Total funcs available: {:?}", local_func_refs.keys().collect::<Vec<_>>());
 
             translate_function(&mut builder, func, &local_func_refs)?;
             builder.finalize();
@@ -315,9 +433,12 @@ impl JitCompiler {
             .map_err(|e| format!("Failed to finalize: {}", e))?;
 
         let mut functions = HashMap::new();
-        for (name, func_id) in &self.func_ids {
-            let ptr = self.jit_module.get_finalized_function(*func_id);
-            functions.insert(name.clone(), ptr);
+        // Only get function pointers for exported (user-defined) functions, not imported runtime functions
+        for name in &self.exported_funcs {
+            if let Some(&func_id) = self.func_ids.get(name) {
+                let ptr = self.jit_module.get_finalized_function(func_id);
+                functions.insert(name.clone(), ptr);
+            }
         }
 
         Ok(CompiledModule {
@@ -478,6 +599,49 @@ fn translate_instruction(
                 .iter()
                 .map(|a| get_value(values, *a))
                 .collect::<Result<_, _>>()?;
+
+            // Handle print/println specially by routing to runtime functions
+            if name == "print" || name == "println" {
+                eprintln!("[JIT DEBUG] Handling {} with {} args", name, arg_vals.len());
+                for arg_val in &arg_vals {
+                    let arg_type = builder.func.dfg.value_type(*arg_val);
+                    eprintln!("[JIT DEBUG] Arg type: {:?}", arg_type);
+
+                    // Choose runtime function based on argument type
+                    let runtime_func = if arg_type == types::F64 || arg_type == types::F32 {
+                        "runtime_print_f64"
+                    } else if arg_type == types::I8 {
+                        "runtime_print_bool"
+                    } else {
+                        "runtime_print_i64"
+                    };
+
+                    if let Some(&func_ref) = func_refs.get(runtime_func) {
+                        // Convert argument to expected type if needed
+                        let converted_arg = if runtime_func == "runtime_print_f64" && arg_type == types::F32 {
+                            builder.ins().fpromote(types::F64, *arg_val)
+                        } else if runtime_func == "runtime_print_i64" && arg_type != types::I64 {
+                            if arg_type.is_int() && arg_type.bits() < 64 {
+                                builder.ins().sextend(types::I64, *arg_val)
+                            } else {
+                                *arg_val
+                            }
+                        } else {
+                            *arg_val
+                        };
+                        builder.ins().call(func_ref, &[converted_arg]);
+                    }
+                }
+
+                // Add newline for println
+                if name == "println" {
+                    if let Some(&func_ref) = func_refs.get("runtime_print_newline") {
+                        builder.ins().call(func_ref, &[]);
+                    }
+                }
+
+                return Ok(None);
+            }
 
             if let Some(&func_ref) = func_refs.get(name) {
                 let call = builder.ins().call(func_ref, &arg_vals);

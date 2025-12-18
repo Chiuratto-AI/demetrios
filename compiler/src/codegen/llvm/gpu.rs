@@ -225,7 +225,9 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
 
         let ret_type = self.convert_type(&func.return_type);
         let fn_type = ret_type.fn_type(&param_types, false);
-        let fn_val = self.module.add_function(&func.name, fn_type, Some(Linkage::Internal));
+        let fn_val = self
+            .module
+            .add_function(&func.name, fn_type, Some(Linkage::Internal));
 
         // Mark as device function
         fn_val.add_attribute(
@@ -261,9 +263,7 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
         // Add nvvm.annotations for kernel
         let kernel_md = self.context.metadata_node(&[
             fn_val.as_global_value().as_pointer_value().into(),
-            self.context
-                .metadata_string("kernel")
-                .into(),
+            self.context.metadata_string("kernel").into(),
             self.context.i32_type().const_int(1, false).into(),
         ]);
 
@@ -280,11 +280,9 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
         let array_type = elem_type.array_type(shared.size);
 
         // Shared memory address space (3 for NVPTX)
-        let global = self.module.add_global(
-            array_type,
-            Some(AddressSpace::from(3u16)),
-            &shared.name,
-        );
+        let global =
+            self.module
+                .add_global(array_type, Some(AddressSpace::from(3u16)), &shared.name);
 
         global.set_linkage(Linkage::Internal);
         global.set_alignment(shared.align);
@@ -325,60 +323,93 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
                 let float_ty = self.convert_float_type(ty);
                 Some(float_ty.const_float(*val).into())
             }
-            GpuOp::ConstBool(val) => {
-                Some(self.context.bool_type().const_int(*val as u64, false).into())
-            }
+            GpuOp::ConstBool(val) => Some(
+                self.context
+                    .bool_type()
+                    .const_int(*val as u64, false)
+                    .into(),
+            ),
 
             // === Arithmetic ===
             GpuOp::Add(a, b) => {
                 let lhs = self.get_value(*a)?.into_int_value();
                 let rhs = self.get_value(*b)?.into_int_value();
-                self.builder.build_int_add(lhs, rhs, "add").ok().map(|v| v.into())
+                self.builder
+                    .build_int_add(lhs, rhs, "add")
+                    .ok()
+                    .map(|v| v.into())
             }
             GpuOp::Sub(a, b) => {
                 let lhs = self.get_value(*a)?.into_int_value();
                 let rhs = self.get_value(*b)?.into_int_value();
-                self.builder.build_int_sub(lhs, rhs, "sub").ok().map(|v| v.into())
+                self.builder
+                    .build_int_sub(lhs, rhs, "sub")
+                    .ok()
+                    .map(|v| v.into())
             }
             GpuOp::Mul(a, b) => {
                 let lhs = self.get_value(*a)?.into_int_value();
                 let rhs = self.get_value(*b)?.into_int_value();
-                self.builder.build_int_mul(lhs, rhs, "mul").ok().map(|v| v.into())
+                self.builder
+                    .build_int_mul(lhs, rhs, "mul")
+                    .ok()
+                    .map(|v| v.into())
             }
             GpuOp::Div(a, b) => {
                 let lhs = self.get_value(*a)?.into_int_value();
                 let rhs = self.get_value(*b)?.into_int_value();
-                self.builder.build_int_signed_div(lhs, rhs, "div").ok().map(|v| v.into())
+                self.builder
+                    .build_int_signed_div(lhs, rhs, "div")
+                    .ok()
+                    .map(|v| v.into())
             }
             GpuOp::Neg(a) => {
                 let val = self.get_value(*a)?.into_int_value();
-                self.builder.build_int_neg(val, "neg").ok().map(|v| v.into())
+                self.builder
+                    .build_int_neg(val, "neg")
+                    .ok()
+                    .map(|v| v.into())
             }
 
             // === Floating-point ===
             GpuOp::FAdd(a, b) => {
                 let lhs = self.get_value(*a)?.into_float_value();
                 let rhs = self.get_value(*b)?.into_float_value();
-                self.builder.build_float_add(lhs, rhs, "fadd").ok().map(|v| v.into())
+                self.builder
+                    .build_float_add(lhs, rhs, "fadd")
+                    .ok()
+                    .map(|v| v.into())
             }
             GpuOp::FSub(a, b) => {
                 let lhs = self.get_value(*a)?.into_float_value();
                 let rhs = self.get_value(*b)?.into_float_value();
-                self.builder.build_float_sub(lhs, rhs, "fsub").ok().map(|v| v.into())
+                self.builder
+                    .build_float_sub(lhs, rhs, "fsub")
+                    .ok()
+                    .map(|v| v.into())
             }
             GpuOp::FMul(a, b) => {
                 let lhs = self.get_value(*a)?.into_float_value();
                 let rhs = self.get_value(*b)?.into_float_value();
-                self.builder.build_float_mul(lhs, rhs, "fmul").ok().map(|v| v.into())
+                self.builder
+                    .build_float_mul(lhs, rhs, "fmul")
+                    .ok()
+                    .map(|v| v.into())
             }
             GpuOp::FDiv(a, b) => {
                 let lhs = self.get_value(*a)?.into_float_value();
                 let rhs = self.get_value(*b)?.into_float_value();
-                self.builder.build_float_div(lhs, rhs, "fdiv").ok().map(|v| v.into())
+                self.builder
+                    .build_float_div(lhs, rhs, "fdiv")
+                    .ok()
+                    .map(|v| v.into())
             }
             GpuOp::FNeg(a) => {
                 let val = self.get_value(*a)?.into_float_value();
-                self.builder.build_float_neg(val, "fneg").ok().map(|v| v.into())
+                self.builder
+                    .build_float_neg(val, "fneg")
+                    .ok()
+                    .map(|v| v.into())
             }
 
             // === GPU Intrinsics ===
@@ -514,7 +545,9 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
                     self.blocks.get(else_block),
                 ) {
                     let cond_int = cond.into_int_value();
-                    let _ = self.builder.build_conditional_branch(cond_int, *then_bb, *else_bb);
+                    let _ = self
+                        .builder
+                        .build_conditional_branch(cond_int, *then_bb, *else_bb);
                 }
             }
             GpuTerminator::Unreachable => {
@@ -558,9 +591,11 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
                 let elem_ty = self.convert_type(elem);
                 elem_ty.array_type(4).into()
             }
-            GpuType::Ptr(_, space) => {
+            GpuType::Ptr(inner, space) => {
                 let addr_space = self.convert_memory_space(space);
-                self.context.ptr_type(addr_space).into()
+                // Use typed pointers for LLVM 14 compatibility
+                let inner_ty = self.convert_type(inner);
+                inner_ty.ptr_type(addr_space).into()
             }
             GpuType::Array(elem, size) => {
                 let elem_ty = self.convert_type(elem);
@@ -636,7 +671,9 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
         let i32_ty = self.context.i32_type();
         let fn_type = i32_ty.fn_type(&[], false);
 
-        let fn_val = self.module.add_function(name, fn_type, Some(Linkage::External));
+        let fn_val = self
+            .module
+            .add_function(name, fn_type, Some(Linkage::External));
 
         self.builder
             .build_call(fn_val, &[], "intrinsic")
@@ -650,11 +687,9 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
         let void_ty = self.context.void_type();
         let fn_type = void_ty.fn_type(&[], false);
 
-        let fn_val = self.module.add_function(
-            "llvm.nvvm.barrier0",
-            fn_type,
-            Some(Linkage::External),
-        );
+        let fn_val =
+            self.module
+                .add_function("llvm.nvvm.barrier0", fn_type, Some(Linkage::External));
 
         let _ = self.builder.build_call(fn_val, &[], "");
     }
@@ -665,11 +700,9 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
         let i32_ty = self.context.i32_type();
         let fn_type = void_ty.fn_type(&[i32_ty.into()], false);
 
-        let fn_val = self.module.add_function(
-            "llvm.nvvm.bar.warp.sync",
-            fn_type,
-            Some(Linkage::External),
-        );
+        let fn_val =
+            self.module
+                .add_function("llvm.nvvm.bar.warp.sync", fn_type, Some(Linkage::External));
 
         let mask_val = i32_ty.const_int(mask as u64, false);
         let _ = self.builder.build_call(fn_val, &[mask_val.into()], "");
@@ -686,7 +719,9 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
             _ => "llvm.nvvm.membar.sys",
         };
 
-        let fn_val = self.module.add_function(name, fn_type, Some(Linkage::External));
+        let fn_val = self
+            .module
+            .add_function(name, fn_type, Some(Linkage::External));
         let _ = self.builder.build_call(fn_val, &[], "");
     }
 
@@ -714,7 +749,12 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
         self.builder
             .build_call(
                 fn_val,
-                &[mask.into(), value.into_int_value().into(), lane.into(), width.into()],
+                &[
+                    mask.into(),
+                    value.into_int_value().into(),
+                    lane.into(),
+                    width.into(),
+                ],
                 "shfl",
             )
             .ok()?
@@ -803,7 +843,8 @@ mod tests {
         let i32_type = codegen.convert_type(&GpuType::I32);
         assert!(i32_type.is_int_type());
 
-        let ptr_type = codegen.convert_type(&GpuType::Ptr(Box::new(GpuType::F32), MemorySpace::Global));
+        let ptr_type =
+            codegen.convert_type(&GpuType::Ptr(Box::new(GpuType::F32), MemorySpace::Global));
         assert!(ptr_type.is_pointer_type());
     }
 }

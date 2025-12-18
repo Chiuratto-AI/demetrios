@@ -214,6 +214,70 @@ impl EffectInference {
                 ))
                 .with_op(EffectOperation::new("sync", vec![], Type::Unit)),
         );
+
+        // Epistemic effect - tracks operations that affect confidence/provenance
+        //
+        // The Epistemic effect enables:
+        // - Compile-time tracking of uncertainty propagation
+        // - Effect handlers for epistemic firewalls (confidence boundaries)
+        // - Safe composition of epistemic computations
+        // - Integration with the Knowledge[τ, ε, δ, Φ] type system
+        self.definitions.push(
+            EffectDef::new("Epistemic")
+                // Degrade confidence by a factor
+                .with_op(EffectOperation::new(
+                    "degrade",
+                    vec![Type::F64], // degradation factor
+                    Type::Unit,
+                ))
+                // Assert minimum confidence (may fail at runtime)
+                .with_op(EffectOperation::new(
+                    "assert_confidence",
+                    vec![Type::F64], // minimum required confidence
+                    Type::Unit,
+                ))
+                // Enter a firewall with specific mode
+                .with_op(EffectOperation::new(
+                    "firewall",
+                    vec![Type::Named {
+                        name: "FirewallConfig".to_string(),
+                        args: vec![],
+                    }],
+                    Type::Unit,
+                ))
+                // Record provenance transformation
+                .with_op(EffectOperation::new(
+                    "record_provenance",
+                    vec![Type::String], // transformation name
+                    Type::Unit,
+                ))
+                // Switch uncertainty model
+                .with_op(EffectOperation::new(
+                    "switch_model",
+                    vec![Type::Named {
+                        name: "UncertaintyModel".to_string(),
+                        args: vec![],
+                    }],
+                    Type::Unit,
+                ))
+                // Merge knowledge from multiple sources
+                .with_op(EffectOperation::new(
+                    "merge",
+                    vec![Type::Named {
+                        name: "MergeStrategy".to_string(),
+                        args: vec![],
+                    }],
+                    Type::Unit,
+                )),
+        );
+
+        // Div effect - division that may fail
+        self.definitions
+            .push(EffectDef::new("Div").with_op(EffectOperation::new(
+                "div",
+                vec![Type::F64, Type::F64],
+                Type::F64,
+            )));
     }
 
     /// Create fresh effect variable

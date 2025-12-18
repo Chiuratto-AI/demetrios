@@ -1,6 +1,6 @@
 [package]
 name = "demetrios"
-version = "0.69.0"
+version = "0.70.0"
 edition = "2024"
 authors = ["Demetrios Chiuratto Agourakis", "Dionisio Chiuratto Agourakis"]
 description = "A programming language where types have meaning - 15M+ ontological terms as first-class types"
@@ -98,8 +98,9 @@ rustyline = "14"
 # SMT Solver for refinement types (optional)
 z3 = { version = "0.12", features = ["static-link-z3"], optional = true }
 
-# LLVM Backend (optional)
-inkwell = { version = "0.5", features = ["llvm15-0"], optional = true }
+# LLVM Backend (optional) - supports multiple LLVM versions via features
+# Use llvm14, llvm15, llvm16, or llvm17 feature to select version
+inkwell = { version = "0.5", optional = true }
 
 # GPU Backend (optional)
 rspirv = { version = "0.12", optional = true }
@@ -135,8 +136,14 @@ regex = "1.10"
 
 [features]
 default = []
-# Enable LLVM backend (requires LLVM installation)
-llvm = ["dep:inkwell"]
+# Enable LLVM backend with LLVM 15 (default, requires LLVM 15 installation)
+# Note: Code uses LLVM 15 opaque pointer APIs
+llvm = ["llvm15"]
+# LLVM version-specific features
+llvm14 = ["dep:inkwell", "inkwell/llvm14-0"]
+llvm15 = ["dep:inkwell", "inkwell/llvm15-0"]
+llvm16 = ["dep:inkwell", "inkwell/llvm16-0"]
+llvm17 = ["dep:inkwell", "inkwell/llvm17-0"]
 # Enable Cranelift JIT
 jit = [
     "dep:cranelift-codegen",

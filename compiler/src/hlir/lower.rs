@@ -430,7 +430,14 @@ impl<'a> LoweringContext<'a> {
 
                 // Check if it's a direct function call
                 if let HirExprKind::Local(name) = &func.kind {
+                    // Check user-defined functions first
                     if self.functions.contains_key(name) {
+                        return Some(self.builder.build_call(name, arg_vals, ty));
+                    }
+
+                    // Check for builtins that should be lowered to direct calls
+                    // These are handled specially by code generators
+                    if matches!(name.as_str(), "print" | "println" | "dbg" | "panic" | "assert" | "assert_eq") {
                         return Some(self.builder.build_call(name, arg_vals, ty));
                     }
                 }

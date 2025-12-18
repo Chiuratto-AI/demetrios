@@ -312,6 +312,15 @@ impl<'ctx> DebugBuilder<'ctx> {
                 // Function types are represented as pointers
                 self.create_basic_type("fn_ptr", 64, DW_ATE_ADDRESS)
             }
+            // SIMD vector types
+            HlirType::Vec2 => self.create_basic_type("vec2", 64, DW_ATE_FLOAT),
+            HlirType::Vec3 => self.create_basic_type("vec3", 128, DW_ATE_FLOAT),
+            HlirType::Vec4 => self.create_basic_type("vec4", 128, DW_ATE_FLOAT),
+            HlirType::Mat2 => self.create_basic_type("mat2", 128, DW_ATE_FLOAT),
+            HlirType::Mat3 => self.create_basic_type("mat3", 384, DW_ATE_FLOAT),
+            HlirType::Mat4 => self.create_basic_type("mat4", 512, DW_ATE_FLOAT),
+            HlirType::Quat => self.create_basic_type("quat", 128, DW_ATE_FLOAT),
+            HlirType::Dual => self.create_basic_type("dual", 128, DW_ATE_FLOAT),
         }
     }
 
@@ -344,6 +353,13 @@ fn type_size_bits(ty: &HlirType) -> u64 {
         HlirType::Array(elem, size) => type_size_bits(elem) * (*size as u64),
         HlirType::Struct(_) => 64, // Conservative estimate
         HlirType::Tuple(elems) => elems.iter().map(type_size_bits).sum(),
+        // SIMD types
+        HlirType::Vec2 => 64,
+        HlirType::Vec3 | HlirType::Vec4 | HlirType::Quat => 128,
+        HlirType::Mat2 => 128,
+        HlirType::Mat3 => 384,
+        HlirType::Mat4 => 512,
+        HlirType::Dual => 128,
     }
 }
 

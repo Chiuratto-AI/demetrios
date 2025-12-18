@@ -94,6 +94,43 @@ impl<'ctx> TypeConverter<'ctx> {
                 let fn_ty = self.function_type(params, return_type);
                 fn_ty.ptr_type(AddressSpace::default()).into()
             }
+
+            // SIMD vector types
+            HlirType::Vec2 => {
+                // 2x f32 vector
+                self.context.f32_type().vec_type(2).into()
+            }
+            HlirType::Vec3 => {
+                // 3x f32 padded to 4 for SIMD alignment
+                self.context.f32_type().vec_type(4).into()
+            }
+            HlirType::Vec4 => {
+                // 4x f32 vector
+                self.context.f32_type().vec_type(4).into()
+            }
+            HlirType::Mat2 => {
+                // 2x2 matrix as array of 4 f32
+                self.context.f32_type().array_type(4).into()
+            }
+            HlirType::Mat3 => {
+                // 3x3 matrix as array of 12 f32 (padded rows)
+                self.context.f32_type().array_type(12).into()
+            }
+            HlirType::Mat4 => {
+                // 4x4 matrix as array of 16 f32
+                self.context.f32_type().array_type(16).into()
+            }
+            HlirType::Quat => {
+                // Quaternion as 4x f32 vector
+                self.context.f32_type().vec_type(4).into()
+            }
+            HlirType::Dual => {
+                // Dual number: struct { value: f64, derivative: f64 }
+                let f64_ty = self.context.f64_type();
+                self.context
+                    .struct_type(&[f64_ty.into(), f64_ty.into()], false)
+                    .into()
+            }
         }
     }
 
@@ -157,14 +194,16 @@ impl<'ctx> TypeConverter<'ctx> {
         element.ptr_type(AddressSpace::default())
     }
 
-    /// Get generic pointer type (ptr)
+    /// Get generic pointer type (ptr to i8, used as generic pointer)
     pub fn generic_ptr_type(&self) -> PointerType<'ctx> {
-        self.context.ptr_type(AddressSpace::default())
+        // In LLVM 14, use i8* as the generic pointer type
+        self.context.i8_type().ptr_type(AddressSpace::default())
     }
 
     /// Create a string type (fat pointer: ptr + len)
     pub fn string_type(&self) -> StructType<'ctx> {
-        let ptr_ty = self.context.ptr_type(AddressSpace::default());
+        // Use i8* for string data pointer
+        let ptr_ty = self.context.i8_type().ptr_type(AddressSpace::default());
         let len_ty = self.context.i64_type();
         self.context
             .struct_type(&[ptr_ty.into(), len_ty.into()], false)
@@ -172,8 +211,8 @@ impl<'ctx> TypeConverter<'ctx> {
 
     /// Create a slice type (fat pointer: ptr + len)
     pub fn slice_type(&mut self, elem: &HlirType) -> StructType<'ctx> {
-        let _elem_ty = self.convert(elem);
-        let ptr_ty = self.context.ptr_type(AddressSpace::default());
+        let elem_ty = self.convert(elem);
+        let ptr_ty = elem_ty.ptr_type(AddressSpace::default());
         let len_ty = self.context.i64_type();
         self.context
             .struct_type(&[ptr_ty.into(), len_ty.into()], false)
@@ -231,6 +270,15 @@ impl<'ctx> TypeConverter<'ctx> {
             HlirType::Struct(_) => 64, // Conservative estimate
             HlirType::Tuple(elems) => elems.iter().map(|e| self.size_bits(e)).sum(),
             HlirType::Function { .. } => 64, // Function pointer
+            // SIMD types
+            HlirType::Vec2 => 64,  // 2x f32 = 64 bits
+            HlirType::Vec3 => 128, // 4x f32 (padded) = 128 bits
+            HlirType::Vec4 => 128, // 4x f32 = 128 bits
+            HlirType::Mat2 => 128, // 4x f32 = 128 bits
+            HlirType::Mat3 => 384, // 12x f32 = 384 bits
+            HlirType::Mat4 => 512, // 16x f32 = 512 bits
+            HlirType::Quat => 128, // 4x f32 = 128 bits
+            HlirType::Dual => 128, // 2x f64 = 128 bits
         }
     }
 
@@ -256,6 +304,13 @@ impl<'ctx> TypeConverter<'ctx> {
             HlirType::Struct(_) => 8, // Conservative
             HlirType::Tuple(elems) => elems.iter().map(|e| self.align_bytes(e)).max().unwrap_or(1),
             HlirType::Function { .. } => 8,
+            // SIMD types - aligned to 16 bytes for optimal SIMD performance
+            HlirType::Vec2 => 8, // 8-byte alignment for 2x f32
+            HlirType::Vec3 | HlirType::Vec4 | HlirType::Quat => 16, // 16-byte for 4x f32
+            HlirType::Mat2 => 16, // 16-byte alignment
+            HlirType::Mat3 => 16, // 16-byte alignment (rows are padded)
+            HlirType::Mat4 => 16, // 16-byte alignment
+            HlirType::Dual => 16, // 16-byte for 2x f64
         }
     }
 

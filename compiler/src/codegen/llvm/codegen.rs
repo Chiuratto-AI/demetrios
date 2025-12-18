@@ -529,7 +529,8 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 if let BasicValueEnum::PointerValue(_) = ptr_ty.const_zero() {
                     Some(ptr_ty.const_zero())
                 } else {
-                    let ptr_ty = self.context.ptr_type(AddressSpace::default());
+                    // Use i8* as generic null pointer for LLVM 14 compatibility
+                    let ptr_ty = self.context.i8_type().ptr_type(AddressSpace::default());
                     Some(ptr_ty.const_null().into())
                 }
             }

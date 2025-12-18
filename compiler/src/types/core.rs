@@ -402,6 +402,60 @@ impl Effect {
             args: Vec::new(),
         }
     }
+
+    /// Epistemic effect - operations that affect confidence/provenance
+    ///
+    /// The Epistemic effect tracks operations that:
+    /// - Degrade or modify confidence values
+    /// - Add to provenance chains
+    /// - Cross epistemic firewall boundaries
+    /// - Perform uncertainty model operations
+    ///
+    /// This effect enables:
+    /// - Compile-time tracking of epistemic operations
+    /// - Effect handlers for confidence boundaries (firewalls)
+    /// - Safe composition of epistemic computations
+    pub fn epistemic() -> Self {
+        Self {
+            name: "Epistemic".to_string(),
+            args: Vec::new(),
+        }
+    }
+
+    /// Epistemic effect with confidence bound parameter
+    ///
+    /// `Epistemic[min_confidence]` indicates the minimum confidence
+    /// that will be maintained after the operation.
+    pub fn epistemic_bounded(min_confidence: f64) -> Self {
+        Self {
+            name: "Epistemic".to_string(),
+            args: vec![Type::F64], // Would carry the bound as type-level value
+        }
+    }
+
+    /// Div effect - operations that may divide by zero
+    pub fn div() -> Self {
+        Self {
+            name: "Div".to_string(),
+            args: Vec::new(),
+        }
+    }
+
+    /// Exn effect - operations that may throw exceptions
+    pub fn exn() -> Self {
+        Self {
+            name: "Exn".to_string(),
+            args: Vec::new(),
+        }
+    }
+
+    /// Async effect - asynchronous operations
+    pub fn async_effect() -> Self {
+        Self {
+            name: "Async".to_string(),
+            args: Vec::new(),
+        }
+    }
 }
 
 /// Set of effects
