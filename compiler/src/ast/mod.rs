@@ -1491,6 +1491,9 @@ pub enum BinaryOp {
     // Scientific
     /// Plus-minus operator for uncertain values: `x +- 0.1`
     PlusMinus,
+    // Collection operations
+    /// Concatenation operator for arrays/slices: `a ++ b`
+    Concat,
 }
 
 /// Unary operators

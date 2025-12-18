@@ -751,6 +751,19 @@ impl Interpreter {
                 (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + b as f64)),
                 _ => Err(ControlFlow::Return(Value::Unit)),
             },
+            HirBinaryOp::Concat => match (lhs, rhs) {
+                // Concatenate arrays
+                (Value::Array(a), Value::Array(b)) => {
+                    let mut result = a.borrow().clone();
+                    result.extend(b.borrow().iter().cloned());
+                    Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                        result,
+                    ))))
+                }
+                // Concatenate strings
+                (Value::String(a), Value::String(b)) => Ok(Value::String(a + &b)),
+                _ => Err(ControlFlow::Return(Value::Unit)),
+            },
         }
     }
 

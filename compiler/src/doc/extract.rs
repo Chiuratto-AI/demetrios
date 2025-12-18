@@ -948,7 +948,8 @@ impl DocExtractor {
                     tile_n
                 );
                 if let Some(l) = layout {
-                    s = format!("tile<{}, {}, {}, \"{}\">",
+                    s = format!(
+                        "tile<{}, {}, {}, \"{}\">",
                         self.type_expr_to_string(element_type),
                         tile_m,
                         tile_n,
@@ -1088,6 +1089,7 @@ impl DocExtractor {
             ast::BinaryOp::Shl => "<<",
             ast::BinaryOp::Shr => ">>",
             ast::BinaryOp::PlusMinus => "±",
+            ast::BinaryOp::Concat => "++",
         }
     }
 

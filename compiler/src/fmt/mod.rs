@@ -1153,6 +1153,7 @@ impl Formatter {
             BinaryOp::Gt => ">",
             BinaryOp::Ge => ">=",
             BinaryOp::PlusMinus => "±",
+            BinaryOp::Concat => "++",
         }
     }
 

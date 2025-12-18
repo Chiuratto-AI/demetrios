@@ -51,6 +51,7 @@ pub const ITEM_STARTERS: &[TokenKind] = &[
     TokenKind::Effect,
     TokenKind::Handler,
     TokenKind::Import,
+    TokenKind::Use,
     TokenKind::Extern,
 ];
 

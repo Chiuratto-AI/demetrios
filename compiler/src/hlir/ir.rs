@@ -409,6 +409,8 @@ pub enum BinaryOp {
     FOLe,
     FOGt,
     FOGe,
+    // Array/slice operations
+    Concat,
 }
 
 /// Unary operator

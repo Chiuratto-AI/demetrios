@@ -2606,6 +2606,8 @@ impl TypeChecker {
             | BinaryOp::BitXor
             | BinaryOp::Shl
             | BinaryOp::Shr => left.clone(),
+            // Concatenation: result is array type (no unit handling)
+            BinaryOp::Concat => left.clone(),
         }
     }
 
@@ -3058,9 +3060,12 @@ impl TypeChecker {
 
     fn binary_result_type(&self, op: BinaryOp, left: &HirType, right: &HirType) -> HirType {
         match op {
-            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem | BinaryOp::PlusMinus => {
-                left.clone()
-            }
+            BinaryOp::Add
+            | BinaryOp::Sub
+            | BinaryOp::Mul
+            | BinaryOp::Div
+            | BinaryOp::Rem
+            | BinaryOp::PlusMinus => left.clone(),
             BinaryOp::Eq
             | BinaryOp::Ne
             | BinaryOp::Lt
@@ -3073,7 +3078,8 @@ impl TypeChecker {
             | BinaryOp::BitOr
             | BinaryOp::BitXor
             | BinaryOp::Shl
-            | BinaryOp::Shr => left.clone(),
+            | BinaryOp::Shr
+            | BinaryOp::Concat => left.clone(),
         }
     }
 
@@ -3126,6 +3132,7 @@ impl TypeChecker {
             BinaryOp::Shl => HirBinaryOp::Shl,
             BinaryOp::Shr => HirBinaryOp::Shr,
             BinaryOp::PlusMinus => HirBinaryOp::PlusMinus,
+            BinaryOp::Concat => HirBinaryOp::Concat,
         }
     }
 

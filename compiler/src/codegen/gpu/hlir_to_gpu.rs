@@ -42,9 +42,11 @@
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
-use super::async_pipeline::{create_pipeline_from_tile, schedule_pipeline, AsyncPipeline, PipelineSchedule};
+use super::async_pipeline::{
+    AsyncPipeline, PipelineSchedule, create_pipeline_from_tile, schedule_pipeline,
+};
 use super::autotune::{AutoTuneConfig, AutoTuner, TunedConfig};
-use super::fusion::{analyze_and_fuse_kernels, FusionConfig, FusionError};
+use super::fusion::{FusionConfig, FusionError, analyze_and_fuse_kernels};
 use super::graph::build_graph_from_module;
 use super::ir::*;
 use crate::hlir::{
@@ -189,10 +191,13 @@ fn apply_auto_tuning(
     module: &mut GpuModule,
     config: &LoweringConfig,
 ) -> HashMap<String, TunedConfig> {
-    let tune_config = config.tune_config.clone().unwrap_or_else(|| AutoTuneConfig {
-        target: config.target,
-        ..Default::default()
-    });
+    let tune_config = config
+        .tune_config
+        .clone()
+        .unwrap_or_else(|| AutoTuneConfig {
+            target: config.target,
+            ..Default::default()
+        });
 
     let tuner = AutoTuner::new(tune_config);
     let mut results = HashMap::new();
@@ -241,9 +246,7 @@ fn apply_pipelining(
 
     for (name, kernel) in &mut module.kernels {
         // Check if kernel has tile config with pipelining
-        let tile_config = tuned_configs
-            .get(name)
-            .and_then(|t| t.tile_config.as_ref());
+        let tile_config = tuned_configs.get(name).and_then(|t| t.tile_config.as_ref());
 
         if let Some(tile) = tile_config {
             if tile.pipeline_stages > 1 {
@@ -973,6 +976,9 @@ impl HlirToGpuLowering {
             BinaryOp::FOLe => GpuOp::FLe(left, right),
             BinaryOp::FOGt => GpuOp::FGt(left, right),
             BinaryOp::FOGe => GpuOp::FGe(left, right),
+
+            // Array concatenation (not supported on GPU, fallback to add)
+            BinaryOp::Concat => GpuOp::Add(left, right),
         }
     }
 

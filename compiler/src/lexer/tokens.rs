@@ -28,6 +28,8 @@ pub enum TokenKind {
     Module,
     #[token("import")]
     Import,
+    #[token("use")]
+    Use,
     #[token("export")]
     Export,
     #[token("fn")]
@@ -324,6 +326,8 @@ pub enum TokenKind {
     Shl,
     #[token(">>")]
     Shr,
+    #[token("++")]
+    PlusPlus,
     #[token("+=")]
     PlusEq,
     #[token("-=")]
@@ -428,6 +432,7 @@ impl TokenKind {
             self,
             TokenKind::Module
                 | TokenKind::Import
+                | TokenKind::Use
                 | TokenKind::Export
                 | TokenKind::Fn
                 | TokenKind::Let
@@ -581,6 +586,7 @@ impl TokenKind {
         match self {
             TokenKind::Module => "module",
             TokenKind::Import => "import",
+            TokenKind::Use => "use",
             TokenKind::Export => "export",
             TokenKind::Fn => "fn",
             TokenKind::Let => "let",
@@ -671,6 +677,7 @@ impl TokenKind {
             TokenKind::PipePipe => "||",
             TokenKind::Shl => "<<",
             TokenKind::Shr => ">>",
+            TokenKind::PlusPlus => "++",
             TokenKind::PlusEq => "+=",
             TokenKind::MinusEq => "-=",
             TokenKind::StarEq => "*=",

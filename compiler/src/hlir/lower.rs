@@ -437,7 +437,10 @@ impl<'a> LoweringContext<'a> {
 
                     // Check for builtins that should be lowered to direct calls
                     // These are handled specially by code generators
-                    if matches!(name.as_str(), "print" | "println" | "dbg" | "panic" | "assert" | "assert_eq") {
+                    if matches!(
+                        name.as_str(),
+                        "print" | "println" | "dbg" | "panic" | "assert" | "assert_eq"
+                    ) {
                         return Some(self.builder.build_call(name, arg_vals, ty));
                     }
                 }
@@ -856,6 +859,10 @@ impl<'a> LoweringContext<'a> {
                 } else {
                     BinaryOp::Add
                 }
+            }
+            HirBinaryOp::Concat => {
+                // Array/slice concatenation
+                BinaryOp::Concat
             }
         };
 

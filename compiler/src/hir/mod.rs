@@ -701,6 +701,7 @@ pub enum HirBinaryOp {
     Shl,
     Shr,
     PlusMinus,
+    Concat,
 }
 
 impl HirBinaryOp {

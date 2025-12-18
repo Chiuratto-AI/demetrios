@@ -242,7 +242,7 @@ impl<'a> Parser<'a> {
             TokenKind::Type => self.parse_type_alias(visibility),
             TokenKind::Effect => self.parse_effect(visibility),
             TokenKind::Handler => self.parse_handler(visibility),
-            TokenKind::Import => self.parse_import(),
+            TokenKind::Import | TokenKind::Use => self.parse_import(),
             TokenKind::Export => self.parse_export(),
             TokenKind::Extern => self.parse_extern(),
             TokenKind::Ontology => self.parse_ontology_import(),
@@ -1066,7 +1066,14 @@ impl<'a> Parser<'a> {
 
     fn parse_import(&mut self) -> Result<Item> {
         let start = self.span();
-        self.expect(TokenKind::Import)?;
+        // Accept both 'import' and 'use' keywords (Darwin Atlas compatibility)
+        if self.at(TokenKind::Import) {
+            self.advance();
+        } else if self.at(TokenKind::Use) {
+            self.advance();
+        } else {
+            return Err(miette::miette!("Expected 'import' or 'use'"));
+        }
 
         // Check for `import { items } from path;` syntax
         if self.at(TokenKind::LBrace) {
@@ -2662,7 +2669,10 @@ impl<'a> Parser<'a> {
         // Parse tile_m (must be literal integer)
         let tile_m = match self.peek() {
             TokenKind::IntLit => {
-                let val: u32 = self.advance().text.parse()
+                let val: u32 = self
+                    .advance()
+                    .text
+                    .parse()
                     .map_err(|_| miette::miette!("Invalid tile dimension"))?;
                 val
             }
@@ -2673,7 +2683,10 @@ impl<'a> Parser<'a> {
         // Parse tile_n
         let tile_n = match self.peek() {
             TokenKind::IntLit => {
-                let val: u32 = self.advance().text.parse()
+                let val: u32 = self
+                    .advance()
+                    .text
+                    .parse()
                     .map_err(|_| miette::miette!("Invalid tile dimension"))?;
                 val
             }
@@ -2698,10 +2711,18 @@ impl<'a> Parser<'a> {
 
         // Validate tile dimensions
         if !tile_m.is_power_of_two() || !tile_n.is_power_of_two() {
-            return Err(miette::miette!("Tile dimensions must be powers of 2, got {}x{}", tile_m, tile_n));
+            return Err(miette::miette!(
+                "Tile dimensions must be powers of 2, got {}x{}",
+                tile_m,
+                tile_n
+            ));
         }
         if tile_m > 64 || tile_n > 64 {
-            return Err(miette::miette!("Tile dimensions must be ≤64, got {}x{}", tile_m, tile_n));
+            return Err(miette::miette!(
+                "Tile dimensions must be ≤64, got {}x{}",
+                tile_m,
+                tile_n
+            ));
         }
 
         Ok(TypeExpr::Tile {
@@ -2849,6 +2870,7 @@ impl<'a> Parser<'a> {
             TokenKind::Plus => (BinaryOp::Add, 9, Assoc::Left),
             TokenKind::Minus => (BinaryOp::Sub, 9, Assoc::Left),
             TokenKind::PlusMinus => (BinaryOp::PlusMinus, 9, Assoc::Left),
+            TokenKind::PlusPlus => (BinaryOp::Concat, 9, Assoc::Left),
             TokenKind::Star => (BinaryOp::Mul, 10, Assoc::Left),
             TokenKind::Slash => (BinaryOp::Div, 10, Assoc::Left),
             TokenKind::Percent => (BinaryOp::Rem, 10, Assoc::Left),
@@ -2936,7 +2958,28 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::LBracket => {
                     self.advance();
-                    let index = self.parse_expr()?;
+
+                    // Check for slice syntax: [..], [..end], [start..], [start..end]
+                    let index = if self.at(TokenKind::DotDot) || self.at(TokenKind::DotDotEq) {
+                        // [..] or [..end] - range without start
+                        let inclusive = self.at(TokenKind::DotDotEq);
+                        self.advance();
+                        let end = if !self.at(TokenKind::RBracket) {
+                            Some(Box::new(self.parse_expr()?))
+                        } else {
+                            None
+                        };
+                        Expr::Range {
+                            id: self.next_id(),
+                            start: None,
+                            end,
+                            inclusive,
+                        }
+                    } else {
+                        // Regular index or [start..] or [start..end]
+                        self.parse_expr()?
+                    };
+
                     self.expect(TokenKind::RBracket)?;
                     expr = Expr::Index {
                         id: self.next_id(),
@@ -2963,11 +3006,31 @@ impl<'a> Parser<'a> {
                         };
                     } else {
                         let field = self.parse_ident()?;
-                        expr = Expr::Field {
-                            id: self.next_id(),
-                            base: Box::new(expr),
-                            field,
-                        };
+
+                        // Check if this is a method call: expr.method(args)
+                        if self.at(TokenKind::LParen) {
+                            self.advance();
+                            let mut args = Vec::new();
+                            while !self.at(TokenKind::RParen) {
+                                args.push(self.parse_expr_with_span()?);
+                                if !self.at(TokenKind::RParen) {
+                                    self.expect(TokenKind::Comma)?;
+                                }
+                            }
+                            self.expect(TokenKind::RParen)?;
+                            expr = Expr::MethodCall {
+                                id: self.next_id(),
+                                receiver: Box::new(expr),
+                                method: field,
+                                args,
+                            };
+                        } else {
+                            expr = Expr::Field {
+                                id: self.next_id(),
+                                base: Box::new(expr),
+                                field,
+                            };
+                        }
                     }
                 }
                 TokenKind::Question => {
@@ -4259,7 +4322,8 @@ impl<'a> Parser<'a> {
     fn parse_path(&mut self) -> Result<Path> {
         let mut segments = vec![self.parse_ident()?];
 
-        while self.at(TokenKind::ColonColon) {
+        // Accept both :: and . as path separators (Darwin Atlas compatibility)
+        while self.at(TokenKind::ColonColon) || self.at(TokenKind::Dot) {
             self.advance();
             segments.push(self.parse_ident()?);
         }
