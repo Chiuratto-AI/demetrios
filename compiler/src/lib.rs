@@ -51,6 +51,7 @@ pub mod fmt;
 pub mod geometry;
 pub mod hir;
 pub mod hlir;
+pub mod interop;
 pub mod interp;
 pub mod layout;
 pub mod lexer;
@@ -68,6 +69,7 @@ pub mod ownership;
 pub mod parser;
 pub mod pkg;
 pub mod profiling;
+pub mod quantum;
 pub mod refactor;
 pub mod refinement;
 pub mod repl;
@@ -115,9 +117,8 @@ pub fn compile(source: &str) -> miette::Result<Vec<u8>> {
     // Use LLVM backend for AOT compilation
     #[cfg(feature = "llvm")]
     {
-        let context = inkwell::context::Context::create();
-        let mut codegen = codegen::llvm::LLVMCodegen::new(&context, "main", codegen::llvm::OptLevel::O2, false);
-        let _code = codegen.compile(&hlir);
+        let code = codegen::llvm::LLVMCodegen::compile(&hlir)
+            .map_err(|e| miette::miette!("LLVM codegen failed: {}", e))?;
         return Ok(vec![]);
     }
 

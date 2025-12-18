@@ -19,7 +19,12 @@
 //! suggestions via effects.
 
 pub mod algebraic;
+pub mod alpha_geo_zero;
 pub mod engine;
+pub mod geo_game;
+pub mod geo_training;
+pub mod imo_benchmark;
+pub mod imo_parser;
 pub mod predicates;
 pub mod primitives;
 pub mod proof_state;
@@ -36,3 +41,32 @@ pub use reasoning_effect::{
     geometry_reasoning_effect,
 };
 pub use rules::{GeometryRule, RuleDatabase, RuleMatch};
+
+// Geometry Game for AlphaGeometry-style self-play
+pub use geo_game::{
+    GeoAction, GeoConstruction, GeoGameConfig, GeoProofGame, ProofGameEpisode, TrajectoryStep,
+    generate_proof_game, generate_proof_game_random, isoceles_perpendicular, midpoint_theorem,
+    triangle_congruence_sas,
+};
+
+// Geometry Self-Play Training
+pub use geo_training::{
+    GeoNetworkEvaluator, GeoNeuralNetwork, GeoProblem, GeoSelfPlayTrainer, GeoTrainingConfig,
+    GeoTrainingExample, IterationResult, ProblemGenerator, ProblemType, TrainingStats,
+    UniformGeoNetwork, test_midpoint_theorem, test_triangle_congruence, train_geometry_prover,
+};
+
+// IMO Benchmark
+pub use imo_benchmark::{
+    BenchmarkConfig, BenchmarkResult, BenchmarkStats, generate_synthetic_training, get_problem,
+    get_problems_by_difficulty, get_problems_by_year, imo_ag_30, run_baseline_benchmark,
+    run_benchmark, run_benchmark_on_problems,
+};
+pub use imo_parser::{AGParser, IMOProblem, ParseError, parse_ag_problem, parse_imo_problem};
+
+// AlphaGeoZero: Full Self-Play Training Loop with Epistemic MCTS
+pub use alpha_geo_zero::{
+    AlphaGeoZeroConfig, AlphaGeoZeroLoop, AlphaGeoZeroTrainer, BufferStats, EpistemicMCTSNode,
+    EpistemicMCTSTree, LoopConfig, LoopStats, MCTSStats, ProblemCurriculum, SelfPlayGenerator,
+    SelfPlayStats, TrainingConfig, TrainingResult, VariancePriorityBuffer,
+};
