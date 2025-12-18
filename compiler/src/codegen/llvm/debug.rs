@@ -242,9 +242,11 @@ impl<'ctx> DebugBuilder<'ctx> {
 
     /// Create array type
     pub fn create_array_type(&self, element: DIType<'ctx>, size: u64, align: u32) -> DIType<'ctx> {
-        let subscript = self.builder.create_subrange(0, size as i64);
+        // create_subrange was removed in newer inkwell versions
+        // Create array type with empty subscripts for now (inkwell API changed)
+        // TODO: Find correct API for creating array subscripts in newer inkwell
         self.builder
-            .create_array_type(element, size * 8, align, &[subscript])
+            .create_array_type(element, size * 8, align, &[])
             .as_type()
     }
 
