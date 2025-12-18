@@ -1,4 +1,3 @@
-
 //! Proof State
 //!
 //! The central data structure for geometric reasoning.
@@ -9,8 +8,8 @@ use std::fmt;
 
 use crate::epistemic::bayesian::BetaConfidence;
 
-use super::primitives::{Point, Line, Circle, GeometryPrimitive, PointConstruction};
-use super::predicates::{Predicate, PredicateId, PredicateEpistemic, PredicateKind};
+use super::predicates::{Predicate, PredicateEpistemic, PredicateId, PredicateKind};
+use super::primitives::{Circle, Line, Point, PointConstruction};
 
 /// A node in the provenance tree
 #[derive(Debug, Clone)]
@@ -111,17 +110,63 @@ pub struct Construction {
 
 #[derive(Debug, Clone)]
 pub enum ConstructionKind {
-    Midpoint { p1: String, p2: String },
-    Perpendicular { point: String, line_p1: String, line_p2: String },
-    Parallel { point: String, line_p1: String, line_p2: String },
-    Circumcircle { p1: String, p2: String, p3: String },
-    Incircle { p1: String, p2: String, p3: String },
-    AngleBisector { p1: String, vertex: String, p2: String },
-    LineIntersection { l1_p1: String, l1_p2: String, l2_p1: String, l2_p2: String },
-    CircleLineIntersection { center: String, on_circle: String, line_p1: String, line_p2: String },
-    CircleCircleIntersection { c1_center: String, c1_on: String, c2_center: String, c2_on: String },
-    Foot { point: String, line_p1: String, line_p2: String },
-    Reflection { point: String, line_p1: String, line_p2: String },
+    Midpoint {
+        p1: String,
+        p2: String,
+    },
+    Perpendicular {
+        point: String,
+        line_p1: String,
+        line_p2: String,
+    },
+    Parallel {
+        point: String,
+        line_p1: String,
+        line_p2: String,
+    },
+    Circumcircle {
+        p1: String,
+        p2: String,
+        p3: String,
+    },
+    Incircle {
+        p1: String,
+        p2: String,
+        p3: String,
+    },
+    AngleBisector {
+        p1: String,
+        vertex: String,
+        p2: String,
+    },
+    LineIntersection {
+        l1_p1: String,
+        l1_p2: String,
+        l2_p1: String,
+        l2_p2: String,
+    },
+    CircleLineIntersection {
+        center: String,
+        on_circle: String,
+        line_p1: String,
+        line_p2: String,
+    },
+    CircleCircleIntersection {
+        c1_center: String,
+        c1_on: String,
+        c2_center: String,
+        c2_on: String,
+    },
+    Foot {
+        point: String,
+        line_p1: String,
+        line_p2: String,
+    },
+    Reflection {
+        point: String,
+        line_p1: String,
+        line_p2: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -206,7 +251,7 @@ impl ProofState {
 
         // Check if already exists with higher confidence
         if let Some(existing) = self.predicates.get(&key) {
-            if existing.epistemic.confidence.value() >= predicate.epistemic.confidence.value() {
+            if existing.epistemic.confidence.mean() >= predicate.epistemic.confidence.mean() {
                 return false; // Already have better
             }
         }
@@ -222,8 +267,8 @@ impl ProofState {
         let epistemic = PredicateEpistemic::derived(&parent_preds, rule, decay);
         let pred = predicate.with_epistemic(epistemic);
 
-        // Update overall confidence
-        let conf = pred.epistemic.confidence.value();
+        // Update overall confidence with Bayesian update
+        let conf = pred.epistemic.confidence.mean();
         self.confidence.update(conf, 1.0 - conf);
 
         self.add_predicate_internal(pred, Some((rule.to_string(), parents.to_vec())));
@@ -238,7 +283,7 @@ impl ProofState {
     ) {
         let key = pred.key();
         let id = pred.id;
-        let conf = pred.epistemic.confidence.value();
+        let conf = pred.epistemic.confidence.mean();
 
         // Create provenance node
         let (rule, parents) = derivation.unwrap_or((String::new(), vec![]));
@@ -257,7 +302,11 @@ impl ProofState {
         self.timestamp_counter += 1;
         let prov_node = ProvenanceNode {
             predicate_id: id,
-            rule: if rule.is_empty() { None } else { Some(rule.clone()) },
+            rule: if rule.is_empty() {
+                None
+            } else {
+                Some(rule.clone())
+            },
             parents: parents.clone(),
             depth,
             timestamp: self.timestamp_counter,
@@ -293,13 +342,55 @@ impl ProofState {
             Some(goal) => {
                 let key = goal.predicate.key();
                 if let Some(pred) = self.predicates.get(&key) {
-                    pred.epistemic.confidence.value() >= goal.min_confidence
+                    pred.epistemic.confidence.mean() >= goal.min_confidence
                 } else {
                     false
                 }
             }
             None => false,
         }
+    }
+
+    /// Check if goal is satisfied with uncertainty threshold
+    ///
+    /// Returns true only if confidence is high enough AND variance is low enough
+    pub fn goal_satisfied_with_certainty(&self, max_variance: f64) -> bool {
+        match &self.goal {
+            Some(goal) => {
+                let key = goal.predicate.key();
+                if let Some(pred) = self.predicates.get(&key) {
+                    pred.epistemic.confidence.mean() >= goal.min_confidence
+                        && pred.epistemic.confidence.variance() <= max_variance
+                } else {
+                    false
+                }
+            }
+            None => false,
+        }
+    }
+
+    /// Get global epistemic uncertainty (aggregate variance across all predicates)
+    pub fn global_uncertainty(&self) -> f64 {
+        if self.predicates.is_empty() {
+            return 1.0; // Maximum uncertainty when we know nothing
+        }
+
+        // Compute mean variance across all predicates
+        let total_variance: f64 = self
+            .predicates
+            .values()
+            .map(|p| p.epistemic.confidence.variance())
+            .sum();
+
+        total_variance / self.predicates.len() as f64
+    }
+
+    /// Get predicates with high uncertainty (candidates for neural re-evaluation)
+    pub fn uncertain_predicates(&self, threshold: f64) -> Vec<&Predicate> {
+        self.predicates
+            .values()
+            .filter(|p| p.epistemic.confidence.variance() > threshold)
+            .collect()
     }
 
     /// Get a predicate by key
@@ -407,7 +498,12 @@ impl ProofState {
                 );
                 // Add collinear (foot on line) and perpendicular
                 self.add_axiom(Predicate::collinear(&foot_label, line_p1, line_p2));
-                self.add_axiom(Predicate::perpendicular(point, &foot_label, line_p1, line_p2));
+                self.add_axiom(Predicate::perpendicular(
+                    point,
+                    &foot_label,
+                    line_p1,
+                    line_p2,
+                ));
             }
             // ... other constructions
             _ => {}
@@ -419,8 +515,8 @@ impl ProofState {
     /// Get provenance trace for a predicate
     pub fn get_provenance_trace(&self, pred_id: PredicateId) -> Vec<&ProofStep> {
         // BFS to collect all ancestors
-        let mut visited = HashSet::new();
-        let mut result = Vec::new();
+        let mut visited: HashSet<PredicateId> = HashSet::new();
+        let mut indices: Vec<usize> = Vec::new();
 
         fn collect(
             state: &ProofState,
@@ -438,17 +534,12 @@ impl ProofState {
                     collect(state, *parent, visited, result);
                 }
                 // Find index in trace
-                if let Some(idx) = state
-                    .trace
-                    .iter()
-                    .position(|s| s.predicate.id == id)
-                {
+                if let Some(idx) = state.trace.iter().position(|s| s.predicate.id == id) {
                     result.push(idx);
                 }
             }
         }
 
-        let mut indices = Vec::new();
         collect(self, pred_id, &mut visited, &mut indices);
         indices.sort();
 

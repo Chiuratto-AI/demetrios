@@ -4,7 +4,6 @@
 //! These are the atoms of the predicate graph.
 
 use std::fmt;
-use std::hash::{Hash, Hasher};
 
 /// A labeled point in the plane
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
