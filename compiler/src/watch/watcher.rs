@@ -290,22 +290,26 @@ impl Watcher {
         debounce_duration: Duration,
     ) {
         loop {
-            if *stop.lock().unwrap() {
+            // Use unwrap_or_else to recover from poisoned mutex instead of panicking
+            if *stop.lock().unwrap_or_else(|e| e.into_inner()) {
                 break;
             }
 
             // Receive raw events
             {
-                let rx = raw_rx.lock().unwrap();
+                let rx = raw_rx.lock().unwrap_or_else(|e| e.into_inner());
                 while let Ok(event) = rx.try_recv() {
                     if Self::should_include(&event.path, &include_patterns, &exclude_patterns) {
-                        debouncer.lock().unwrap().add(event);
+                        debouncer
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .add(event);
                     }
                 }
             }
 
             // Flush debounced events
-            let events = debouncer.lock().unwrap().flush();
+            let events = debouncer.lock().unwrap_or_else(|e| e.into_inner()).flush();
             for event in events {
                 let _ = tx.send(event);
             }
@@ -345,7 +349,7 @@ impl Watcher {
 
     /// Stop watching
     pub fn stop(&mut self) {
-        *self.stop.lock().unwrap() = true;
+        *self.stop.lock().unwrap_or_else(|e| e.into_inner()) = true;
 
         if let Some(handle) = self.thread.take() {
             let _ = handle.join();
@@ -397,7 +401,7 @@ impl Watcher {
 
     /// Check if watcher is running
     pub fn is_running(&self) -> bool {
-        !*self.stop.lock().unwrap()
+        !*self.stop.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -506,7 +510,7 @@ impl PollBackend {
             let _ = self.scan_recursive(&path);
         }
 
-        while !*stop.lock().unwrap() {
+        while !*stop.lock().unwrap_or_else(|e| e.into_inner()) {
             for path in self.paths.clone() {
                 self.poll_path(&path, &tx);
             }
@@ -517,16 +521,16 @@ impl PollBackend {
     fn scan_recursive(&mut self, path: &Path) -> Result<(), WatchError> {
         if path.is_file() {
             self.add_file(path)?;
-        } else if path.is_dir()
-            && let Ok(entries) = std::fs::read_dir(path)
-        {
-            for entry in entries.flatten() {
-                let entry_path = entry.path();
+        } else if path.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let entry_path = entry.path();
 
-                if entry_path.is_file() {
-                    self.add_file(&entry_path)?;
-                } else if entry_path.is_dir() && self.recursive {
-                    self.scan_recursive(&entry_path)?;
+                    if entry_path.is_file() {
+                        self.add_file(&entry_path)?;
+                    } else if entry_path.is_dir() && self.recursive {
+                        self.scan_recursive(&entry_path)?;
+                    }
                 }
             }
         }
@@ -560,17 +564,17 @@ impl PollBackend {
                         .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
                     let size = metadata.len();
 
-                    if let Some(state) = self.states.get_mut(&file_path)
-                        && (mtime != state.mtime || size != state.size)
-                    {
-                        state.mtime = mtime;
-                        state.size = size;
-                        let _ = tx.send(FsEvent {
-                            path: file_path,
-                            kind: FsEventKind::Modify,
-                            timestamp: Instant::now(),
-                            attrs: FsEventAttrs::default(),
-                        });
+                    if let Some(state) = self.states.get_mut(&file_path) {
+                        if mtime != state.mtime || size != state.size {
+                            state.mtime = mtime;
+                            state.size = size;
+                            let _ = tx.send(FsEvent {
+                                path: file_path,
+                                kind: FsEventKind::Modify,
+                                timestamp: Instant::now(),
+                                attrs: FsEventAttrs::default(),
+                            });
+                        }
                     }
                 }
                 Err(_) => {

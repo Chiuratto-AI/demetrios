@@ -354,7 +354,7 @@ impl MultiProgress {
 
     /// Add a task and return its index
     pub fn add_task(&self, message: impl Into<String>) -> usize {
-        let mut lines = self.lines.lock().unwrap();
+        let mut lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
         let idx = lines.len();
         lines.push(message.into());
         self.render_all(&lines);
@@ -363,7 +363,7 @@ impl MultiProgress {
 
     /// Update a task's message
     pub fn update_task(&self, idx: usize, message: impl Into<String>) {
-        let mut lines = self.lines.lock().unwrap();
+        let mut lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
         if idx < lines.len() {
             lines[idx] = message.into();
             self.render_all(&lines);
@@ -372,7 +372,7 @@ impl MultiProgress {
 
     /// Mark a task as complete
     pub fn complete_task(&self, idx: usize, message: impl Into<String>) {
-        let mut lines = self.lines.lock().unwrap();
+        let mut lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
         if idx < lines.len() {
             lines[idx] = format!("✓ {}", message.into());
             self.render_all(&lines);
@@ -382,7 +382,7 @@ impl MultiProgress {
     /// Clear all progress
     pub fn clear(&self) {
         if self.is_terminal {
-            let lines = self.lines.lock().unwrap();
+            let lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
             // Move up and clear each line
             for _ in 0..lines.len() {
                 eprint!("\x1b[A\x1b[K");

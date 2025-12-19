@@ -270,7 +270,7 @@ impl HotReloadEngine {
         println!("Hot reload server listening on {}", addr);
 
         self.server = Some(listener);
-        *self.running.lock().unwrap() = true;
+        *self.running.lock().unwrap_or_else(|e| e.into_inner()) = true;
 
         // Start accept thread
         let clients = Arc::clone(&self.clients);
@@ -310,7 +310,7 @@ impl HotReloadEngine {
         verbose: bool,
     ) {
         loop {
-            if !*running.lock().unwrap() {
+            if !*running.lock().unwrap_or_else(|e| e.into_inner()) {
                 break;
             }
 
@@ -321,20 +321,20 @@ impl HotReloadEngine {
                     }
 
                     // Check max clients
-                    if clients.read().unwrap().len() >= max_clients {
+                    if clients.read().unwrap_or_else(|e| e.into_inner()).len() >= max_clients {
                         eprintln!("Hot reload: max clients reached, rejecting connection");
                         continue;
                     }
 
                     // Get next client ID
                     let client_id = {
-                        let mut id = next_client_id.lock().unwrap();
+                        let mut id = next_client_id.lock().unwrap_or_else(|e| e.into_inner());
                         let current = *id;
                         *id += 1;
                         current
                     };
 
-                    let current_version = *version.lock().unwrap();
+                    let current_version = *version.lock().unwrap_or_else(|e| e.into_inner());
 
                     // Create client
                     let mut client = ReloadClient {
@@ -351,14 +351,16 @@ impl HotReloadEngine {
                     };
 
                     if Self::send_message(&mut client.stream, &hello).is_ok() {
-                        clients.write().unwrap().push(client);
+                        if let Ok(mut clients_guard) = clients.write() {
+                            clients_guard.push(client);
+                        }
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     thread::sleep(Duration::from_millis(100));
                 }
                 Err(e) => {
-                    if *running.lock().unwrap() {
+                    if *running.lock().unwrap_or_else(|e| e.into_inner()) {
                         eprintln!("Hot reload accept error: {}", e);
                     }
                     break;
@@ -397,18 +399,25 @@ impl HotReloadEngine {
     pub fn register_function(&self, info: FunctionInfo) {
         self.functions
             .write()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .insert(info.name.clone(), info);
     }
 
     /// Unregister a function
     pub fn unregister_function(&self, name: &str) {
-        self.functions.write().unwrap().remove(name);
+        self.functions
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(name);
     }
 
     /// Get registered function info
     pub fn get_function(&self, name: &str) -> Option<FunctionInfo> {
-        self.functions.read().unwrap().get(name).cloned()
+        self.functions
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(name)
+            .cloned()
     }
 
     /// Reload functions
@@ -417,7 +426,7 @@ impl HotReloadEngine {
 
         // Increment version
         let new_version = {
-            let mut version = self.version.lock().unwrap();
+            let mut version = self.version.lock().unwrap_or_else(|e| e.into_inner());
             *version += 1;
             *version
         };
@@ -429,7 +438,7 @@ impl HotReloadEngine {
         };
 
         // Send to all clients
-        let mut clients = self.clients.write().unwrap();
+        let mut clients = self.clients.write().unwrap_or_else(|e| e.into_inner());
         let mut success_count = 0;
         let mut fail_count = 0;
         let mut failed_clients = Vec::new();
@@ -466,7 +475,10 @@ impl HotReloadEngine {
             duration: start.elapsed(),
         };
 
-        self.history.lock().unwrap().push(record);
+        self.history
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(record);
 
         Ok(ReloadResult {
             version: new_version,
@@ -478,7 +490,7 @@ impl HotReloadEngine {
 
     /// Rollback to previous version
     pub fn rollback(&self) -> Result<(), HotReloadError> {
-        let current_version = *self.version.lock().unwrap();
+        let current_version = *self.version.lock().unwrap_or_else(|e| e.into_inner());
 
         if current_version == 0 {
             return Err(HotReloadError::Protocol("No version to rollback to".into()));
@@ -489,20 +501,20 @@ impl HotReloadEngine {
             version: rollback_version,
         };
 
-        let mut clients = self.clients.write().unwrap();
+        let mut clients = self.clients.write().unwrap_or_else(|e| e.into_inner());
         for client in clients.iter_mut() {
             let _ = Self::send_message(&mut client.stream, &rollback_msg);
             client.version = rollback_version;
         }
 
-        *self.version.lock().unwrap() = rollback_version;
+        *self.version.lock().unwrap_or_else(|e| e.into_inner()) = rollback_version;
 
         Ok(())
     }
 
     /// Broadcast a ping to all clients
     pub fn ping(&self) -> usize {
-        let mut clients = self.clients.write().unwrap();
+        let mut clients = self.clients.write().unwrap_or_else(|e| e.into_inner());
         let mut alive = 0;
         let mut dead = Vec::new();
 
@@ -524,30 +536,41 @@ impl HotReloadEngine {
 
     /// Get reload history
     pub fn history(&self) -> Vec<ReloadRecord> {
-        self.history.lock().unwrap().clone()
+        self.history
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Get current version
     pub fn version(&self) -> u64 {
-        *self.version.lock().unwrap()
+        *self.version.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Get connected client count
     pub fn client_count(&self) -> usize {
-        self.clients.read().unwrap().len()
+        self.clients.read().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     /// Get all registered functions
     pub fn functions(&self) -> Vec<FunctionInfo> {
-        self.functions.read().unwrap().values().cloned().collect()
+        self.functions
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .cloned()
+            .collect()
     }
 
     /// Stop the hot reload server
     pub fn stop(&mut self) {
-        *self.running.lock().unwrap() = false;
+        *self.running.lock().unwrap_or_else(|e| e.into_inner()) = false;
 
         // Close all client connections
-        self.clients.write().unwrap().clear();
+        self.clients
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
 
         // Drop server to close listener
         self.server = None;
@@ -560,7 +583,7 @@ impl HotReloadEngine {
 
     /// Check if server is running
     pub fn is_running(&self) -> bool {
-        *self.running.lock().unwrap()
+        *self.running.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
