@@ -21,6 +21,7 @@
 pub mod algebraic;
 pub mod alpha_geo_zero;
 pub mod engine;
+pub mod final_integration;
 pub mod geo_game;
 pub mod geo_training;
 pub mod imo_benchmark;
@@ -84,4 +85,11 @@ pub use synthetic::{
 pub use self_play::{
     AlphaGeoZeroSelfPlay, BenchmarkSnapshot, SelfPlayConfig, SelfPlayStats as FullSelfPlayStats,
     TemplateStats, TrainingStepResult, VarianceReplayBuffer, run_default_self_play,
+};
+
+// Final Integration: Complete AlphaGeoZero System
+pub use final_integration::{
+    AlphaGeoZeroFull, AlphaGeoZeroFullConfig, BenchmarkSnapshot as FinalBenchmarkSnapshot,
+    FullTrainingStats, TemplatePerfStats, main_alphageozero, run_full_training, run_quick_test,
+    run_with_config,
 };

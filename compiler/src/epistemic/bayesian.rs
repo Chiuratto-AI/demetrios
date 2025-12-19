@@ -274,6 +274,14 @@ impl BetaConfidence {
         1.0 - incomplete_beta_regularized(threshold, self.alpha, self.beta)
     }
 
+    /// Probability that the true parameter is greater than a threshold
+    ///
+    /// Alias for `probability_above` - used in AlphaGeoZero benchmarks
+    /// for statistical comparisons (e.g., P(solve_rate > 0.833))
+    pub fn prob_greater_than(&self, threshold: f64) -> f64 {
+        self.probability_above(threshold)
+    }
+
     /// Check if this distribution satisfies a maximum variance requirement
     pub fn variance_below(&self, max_variance: f64) -> bool {
         self.variance() <= max_variance
