@@ -388,6 +388,7 @@ pub trait GeoNeuralNetwork: Send + Sync {
 }
 
 /// Uniform (random) network for baseline/testing
+#[derive(Clone)]
 pub struct UniformGeoNetwork;
 
 impl UniformGeoNetwork {

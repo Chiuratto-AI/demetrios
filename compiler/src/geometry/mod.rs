@@ -30,6 +30,9 @@ pub mod primitives;
 pub mod proof_state;
 pub mod reasoning_effect;
 pub mod rules;
+pub mod self_play;
+pub mod showcase;
+pub mod synthetic;
 
 pub use algebraic::{AlgebraicReasoner, Expression};
 pub use engine::{DeductionResult, EngineConfig, EpistemicPruner, PruningDecision, SymbolicEngine};
@@ -69,4 +72,16 @@ pub use alpha_geo_zero::{
     AlphaGeoZeroConfig, AlphaGeoZeroLoop, AlphaGeoZeroTrainer, BufferStats, EpistemicMCTSNode,
     EpistemicMCTSTree, LoopConfig, LoopStats, MCTSStats, ProblemCurriculum, SelfPlayGenerator,
     SelfPlayStats, TrainingConfig, TrainingResult, VariancePriorityBuffer,
+};
+
+// Synthetic Problem Generation
+pub use synthetic::{
+    GeneratorConfig, GeneratorStats, ProblemTemplate, ProblemVariation, SyntheticProblem,
+    SyntheticProblemGenerator, generate_batch, generate_curriculum_batch,
+};
+
+// Full Self-Play Loop
+pub use self_play::{
+    AlphaGeoZeroSelfPlay, BenchmarkSnapshot, SelfPlayConfig, SelfPlayStats as FullSelfPlayStats,
+    TemplateStats, TrainingStepResult, VarianceReplayBuffer, run_default_self_play,
 };

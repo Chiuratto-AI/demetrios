@@ -3,6 +3,7 @@
 //! This module defines the core IR types for HLIR, which uses SSA form
 //! with explicit basic blocks and control flow.
 
+use crate::ast::Abi;
 use crate::hir::HirType;
 use std::collections::HashMap;
 
@@ -42,6 +43,10 @@ pub struct HlirFunction {
     pub is_kernel: bool,
     /// Local variable types (for stack allocation)
     pub locals: HashMap<ValueId, HlirType>,
+    /// ABI for FFI functions (C, System, etc.)
+    pub abi: Abi,
+    /// Whether this function should be exported with external linkage
+    pub is_exported: bool,
 }
 
 impl HlirFunction {

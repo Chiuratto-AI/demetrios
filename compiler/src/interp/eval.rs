@@ -509,6 +509,8 @@ impl Interpreter {
                         stmts: vec![HirStmt::Expr(body.as_ref().clone())],
                         ty: body.ty.clone(),
                     },
+                    abi: crate::ast::Abi::Rust,
+                    is_exported: false,
                 };
 
                 Ok(Value::Function {

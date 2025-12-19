@@ -126,6 +126,10 @@ impl HirToHlir {
 
         let mut func_builder = FunctionBuilder::new(func_id, &f.name, return_type.clone());
 
+        // Set ABI and export status
+        func_builder.set_abi(f.abi.clone());
+        func_builder.set_exported(f.is_exported);
+
         // Add parameters
         for param in &f.ty.params {
             let ty = HlirType::from_hir(&param.ty);
@@ -1796,6 +1800,8 @@ mod tests {
                     })],
                     ty: HirType::I64,
                 },
+                abi: crate::ast::Abi::Rust,
+                is_exported: false,
             })],
         }
     }
@@ -1872,6 +1878,8 @@ mod tests {
                     })],
                     ty: HirType::I64,
                 },
+                abi: crate::ast::Abi::Rust,
+                is_exported: false,
             })],
         }
     }
@@ -1967,6 +1975,8 @@ mod tests {
                     })],
                     ty: HirType::I64,
                 },
+                abi: crate::ast::Abi::Rust,
+                is_exported: false,
             })],
         };
 

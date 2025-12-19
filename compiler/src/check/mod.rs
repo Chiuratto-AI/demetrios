@@ -1194,6 +1194,17 @@ impl TypeChecker {
         // Clear current function
         self.current_fn = None;
 
+        // Determine ABI: use explicit ABI if specified, otherwise Rust
+        let abi = f.modifiers.abi.clone().unwrap_or(crate::ast::Abi::Rust);
+
+        // Function is exported if it's public AND has C ABI (for FFI)
+        // or if it's just public (for D-to-D linking)
+        let is_exported = matches!(f.visibility, crate::ast::Visibility::Public)
+            || matches!(
+                abi,
+                crate::ast::Abi::C | crate::ast::Abi::CUnwind | crate::ast::Abi::System
+            );
+
         Ok(HirFn {
             id: f.id,
             name: f.name.clone(),
@@ -1203,6 +1214,8 @@ impl TypeChecker {
                 effects: Vec::new(), // TODO: convert effects
             },
             body,
+            abi,
+            is_exported,
         })
     }
 

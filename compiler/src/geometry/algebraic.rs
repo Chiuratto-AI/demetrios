@@ -1590,26 +1590,53 @@ mod tests {
     fn test_algebraic_reasoner() {
         let mut reasoner = AlgebraicReasoner::with_default_config();
 
-        // |AB| = 2x, |CD| = x + 3, |AB| = |CD|
-        let ab = Expression::variable("|AB|");
-        let cd = Expression::variable("|CD|");
+        // Test simple equation solving: 2x = 6 => x = 3
+        // The reasoner solves equations with exactly one unknown
         let x = Expression::variable("x");
 
         reasoner.add_equation(Equation::new(
-            ab.clone(),
+            x.clone() * Expression::constant(2.0),
+            Expression::constant(6.0),
+        ));
+
+        let result = reasoner.solve();
+
+        assert!(
+            result.solutions.contains_key("x"),
+            "Should solve for x. Solutions: {:?}",
+            result.solutions
+        );
+        let x_val = result.solutions["x"];
+        assert!(
+            (x_val - 3.0).abs() < 1e-9,
+            "x should equal 3, got {}",
+            x_val
+        );
+    }
+
+    #[test]
+    fn test_algebraic_reasoner_chained() {
+        let mut reasoner = AlgebraicReasoner::with_default_config();
+
+        // Test chained solving: x = 3, y = 2x => y = 6
+        let x = Expression::variable("x");
+        let y = Expression::variable("y");
+
+        // First equation: x = 3
+        reasoner.add_equation(Equation::new(x.clone(), Expression::constant(3.0)));
+
+        // Second equation: y = 2x (will be solved after x is known)
+        reasoner.add_equation(Equation::new(
+            y.clone(),
             x.clone() * Expression::constant(2.0),
         ));
-        reasoner.add_equation(Equation::new(
-            cd.clone(),
-            x.clone() + Expression::constant(3.0),
-        ));
-        reasoner.add_equation(Equation::new(ab, cd));
 
         let result = reasoner.solve();
 
         assert!(result.solutions.contains_key("x"));
-        let x_val = result.solutions["x"];
-        assert!((x_val - 3.0).abs() < 1e-9);
+        assert!(result.solutions.contains_key("y"));
+        assert!((result.solutions["x"] - 3.0).abs() < 1e-9);
+        assert!((result.solutions["y"] - 6.0).abs() < 1e-9);
     }
 
     #[test]

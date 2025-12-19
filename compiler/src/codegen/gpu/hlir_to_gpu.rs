@@ -1401,6 +1401,8 @@ mod tests {
             }],
             is_kernel: true,
             locals: HashMap::new(),
+            abi: crate::ast::Abi::Rust,
+            is_exported: false,
         };
 
         module.functions.push(func);

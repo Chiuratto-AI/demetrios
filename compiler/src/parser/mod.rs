@@ -244,7 +244,7 @@ impl<'a> Parser<'a> {
             TokenKind::Handler => self.parse_handler(visibility),
             TokenKind::Import | TokenKind::Use => self.parse_import(),
             TokenKind::Export => self.parse_export(),
-            TokenKind::Extern => self.parse_extern(),
+            TokenKind::Extern => self.parse_extern_with_visibility(visibility),
             TokenKind::Ontology => self.parse_ontology_import(),
             TokenKind::Align => self.parse_align_decl(),
             TokenKind::Ode => self.parse_ode_def(visibility),
@@ -477,6 +477,23 @@ impl<'a> Parser<'a> {
     ) -> Result<Item> {
         let start = self.span();
 
+        // Check for extern "ABI" before fn
+        let abi = if self.at(TokenKind::Extern) {
+            self.advance();
+            // Parse optional ABI string (e.g., "C", "system")
+            if self.at(TokenKind::StringLit) {
+                let s = self.advance().text.clone();
+                // Remove quotes from string literal
+                let abi_str = s[1..s.len() - 1].to_string();
+                Some(crate::ast::Abi::from_str(&abi_str))
+            } else {
+                // Default to C ABI if no string specified
+                Some(crate::ast::Abi::C)
+            }
+        } else {
+            None
+        };
+
         let is_kernel = if self.at(TokenKind::Kernel) {
             self.advance();
             true
@@ -503,6 +520,7 @@ impl<'a> Parser<'a> {
                 is_async: modifiers.is_async,
                 is_unsafe: modifiers.is_unsafe,
                 is_kernel,
+                abi,
             },
             attributes,
             name,
@@ -1787,6 +1805,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_extern(&mut self) -> Result<Item> {
+        self.parse_extern_with_visibility(Visibility::Private)
+    }
+
+    fn parse_extern_with_visibility(&mut self, visibility: Visibility) -> Result<Item> {
         let start = self.span();
         self.expect(TokenKind::Extern)?;
 
@@ -1799,6 +1821,13 @@ impl<'a> Parser<'a> {
             Abi::C
         };
 
+        // Check if this is `extern fn` (function with C ABI) or `extern { }` (extern block)
+        if self.at(TokenKind::Fn) || self.at(TokenKind::Kernel) {
+            // extern fn - parse as a regular function with the specified ABI
+            return self.parse_extern_fn_def(visibility, abi, start);
+        }
+
+        // extern { } block
         self.expect(TokenKind::LBrace)?;
         let mut items = Vec::new();
         while !self.at(TokenKind::RBrace) {
@@ -1812,6 +1841,53 @@ impl<'a> Parser<'a> {
             id: self.next_id(),
             abi,
             items,
+            span: start.merge(end),
+        }))
+    }
+
+    /// Parse `extern "C" fn name(...) { ... }` - a function definition with explicit ABI
+    fn parse_extern_fn_def(
+        &mut self,
+        visibility: Visibility,
+        abi: Abi,
+        start: Span,
+    ) -> Result<Item> {
+        let is_kernel = if self.at(TokenKind::Kernel) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+
+        self.expect(TokenKind::Fn)?;
+
+        let name = self.parse_ident()?;
+        let generics = self.parse_generics()?;
+        let params = self.parse_params()?;
+        let return_type = self.parse_return_type()?;
+        let effects = self.parse_effect_clause()?;
+        let where_clause = self.parse_where_clause()?;
+        let body = self.parse_block()?;
+
+        let end = self.span();
+
+        Ok(Item::Function(FnDef {
+            id: self.next_id(),
+            visibility,
+            modifiers: FnModifiers {
+                is_async: false,
+                is_unsafe: false,
+                is_kernel,
+                abi: Some(abi),
+            },
+            attributes: vec![],
+            name,
+            generics,
+            params,
+            return_type,
+            effects,
+            where_clause,
+            body,
             span: start.merge(end),
         }))
     }

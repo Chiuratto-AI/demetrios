@@ -4,6 +4,7 @@
 //! and basic blocks, managing SSA value numbering automatically.
 
 use super::ir::*;
+use crate::ast::Abi;
 use std::collections::HashMap;
 
 /// Builder for constructing HLIR modules
@@ -67,6 +68,8 @@ impl FunctionBuilder {
                 blocks: Vec::new(),
                 is_kernel: false,
                 locals: HashMap::new(),
+                abi: Abi::Rust,
+                is_exported: false,
             },
             next_block_id: 0,
             next_value_id: 0,
@@ -83,6 +86,16 @@ impl FunctionBuilder {
         self.var_values.insert(name.clone(), value);
         self.func.params.push(HlirParam { value, name, ty });
         value
+    }
+
+    /// Set the ABI for this function (C, System, etc.)
+    pub fn set_abi(&mut self, abi: Abi) {
+        self.func.abi = abi;
+    }
+
+    /// Mark this function as exported (external linkage)
+    pub fn set_exported(&mut self, exported: bool) {
+        self.func.is_exported = exported;
     }
 
     /// Create a new basic block

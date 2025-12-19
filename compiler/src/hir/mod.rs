@@ -6,6 +6,7 @@
 //! - Desugared constructs
 //! - Ownership and borrowing information
 
+use crate::ast::Abi;
 use crate::common::NodeId;
 
 /// HIR root
@@ -37,6 +38,10 @@ pub struct HirFn {
     pub name: String,
     pub ty: HirFnType,
     pub body: HirBlock,
+    /// ABI for FFI functions (C, System, etc.)
+    pub abi: Abi,
+    /// Whether this function is exported (pub extern)
+    pub is_exported: bool,
 }
 
 /// Function type in HIR

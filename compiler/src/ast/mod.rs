@@ -147,6 +147,8 @@ pub struct FnModifiers {
     pub is_async: bool,
     pub is_unsafe: bool,
     pub is_kernel: bool,
+    /// ABI for extern functions (e.g., extern "C" fn)
+    pub abi: Option<Abi>,
 }
 
 /// Top-level item

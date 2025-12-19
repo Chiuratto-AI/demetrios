@@ -1267,17 +1267,26 @@ mod tests {
         let game = GeoProofGame::default();
         let mut node = EpistemicMCTSNode::new_root(game);
 
-        // Initial variance should be high (uniform prior)
+        // Initial variance should be high (uniform prior Beta(1,1) has variance ~0.083)
         let initial_var = node.variance();
-        assert!(initial_var > 0.1);
+        assert!(
+            initial_var > 0.05,
+            "Initial variance {} should be > 0.05 for uniform prior",
+            initial_var
+        );
 
         // Update with observations
         node.update_value(0.8);
         node.update_value(0.9);
         node.update_value(0.7);
 
-        // Variance should decrease
-        assert!(node.variance() < initial_var);
+        // Variance should decrease as we accumulate evidence
+        assert!(
+            node.variance() < initial_var,
+            "Variance {} should decrease from initial {}",
+            node.variance(),
+            initial_var
+        );
         assert_eq!(node.visits, 3);
     }
 

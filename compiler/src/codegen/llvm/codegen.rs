@@ -7,16 +7,16 @@ use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::module::Module;
-use inkwell::types::BasicType;
+use inkwell::module::{Linkage, Module};
 use inkwell::values::{
-    AggregateValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
+    BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
 };
 use inkwell::{FloatPredicate, IntPredicate};
 
 use std::collections::HashMap;
 
 use super::types::TypeConverter;
+use crate::ast::Abi;
 use crate::hlir::{
     BinaryOp, BlockId, HlirBlock, HlirConstant, HlirFunction, HlirInstr, HlirModule,
     HlirTerminator, HlirType, Op, UnaryOp, ValueId,
@@ -154,7 +154,23 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
         let fn_type = self.types.function_type(&param_types, &func.return_type);
 
-        let fn_val = self.module.add_function(&func.name, fn_type, None);
+        // Determine linkage based on ABI and export status
+        // extern "C" functions or exported functions get External linkage
+        let linkage = match (&func.abi, func.is_exported) {
+            (Abi::C | Abi::CUnwind | Abi::System | Abi::SystemUnwind, _) => Some(Linkage::External),
+            (_, true) => Some(Linkage::External),
+            _ => None, // Default (internal) linkage
+        };
+
+        let fn_val = self.module.add_function(&func.name, fn_type, linkage);
+
+        // Set calling convention for C ABI
+        match &func.abi {
+            Abi::C | Abi::CUnwind => {
+                fn_val.set_call_conventions(0); // C calling convention
+            }
+            _ => {}
+        }
 
         // Set parameter names
         for (i, param) in func.params.iter().enumerate() {
@@ -242,7 +258,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
             Op::Call { func, args } => {
                 let fn_ptr = self.get_value(*func)?;
-                let arg_vals: Vec<BasicValueEnum> = args
+                let arg_vals: Vec<_> = args
                     .iter()
                     .filter_map(|a| self.get_value(*a))
                     .map(|v| v.into())
@@ -259,15 +275,13 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
             Op::CallDirect { name, args } => {
                 let fn_val = self.functions.get(name)?;
-                let arg_vals: Vec<BasicValueEnum> = args
+                let arg_vals: Vec<_> = args
                     .iter()
                     .filter_map(|a| self.get_value(*a))
                     .map(|v| v.into())
                     .collect();
 
-                // Convert BasicValueEnum to BasicMetadataValueEnum for build_call
-                let arg_metadata: Vec<BasicMetadataValueEnum> = arg_vals.iter().map(|v| (*v).into()).collect();
-                let call = self.builder.build_call(*fn_val, &arg_metadata, "call").ok()?;
+                let call = self.builder.build_call(*fn_val, &arg_vals, "call").ok()?;
 
                 call.try_as_basic_value().left()
             }
@@ -363,18 +377,16 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 let val = self.get_value(*value)?;
 
                 match agg {
-                    BasicValueEnum::StructValue(sv) => {
-                        match self.builder.build_insert_value(sv, val, *index as u32, "insert").ok() {
-                            Some(AggregateValueEnum::StructValue(sv)) => Some(sv.into()),
-                            _ => None,
-                        }
-                    },
-                    BasicValueEnum::ArrayValue(av) => {
-                        match self.builder.build_insert_value(av, val, *index as u32, "insert").ok() {
-                            Some(AggregateValueEnum::ArrayValue(av)) => Some(av.into()),
-                            _ => None,
-                        }
-                    },
+                    BasicValueEnum::StructValue(sv) => self
+                        .builder
+                        .build_insert_value(sv, val, *index as u32, "insert")
+                        .ok()
+                        .map(|v| v.into()),
+                    BasicValueEnum::ArrayValue(av) => self
+                        .builder
+                        .build_insert_value(av, val, *index as u32, "insert")
+                        .ok()
+                        .map(|v| v.into()),
                     _ => None,
                 }
             }
@@ -384,14 +396,14 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
                 let types: Vec<_> = vals.iter().map(|v| v.get_type()).collect();
                 let struct_ty = self.context.struct_type(&types, false);
-                let mut struct_val = struct_ty.const_zero();
+                let mut struct_val = struct_ty.get_undef();
 
                 for (i, val) in vals.iter().enumerate() {
-                    let result = self.builder.build_insert_value(struct_val, *val, i as u32, "tuple").ok();
-                    struct_val = match result {
-                        Some(AggregateValueEnum::StructValue(sv)) => sv,
-                        _ => return None,
-                    };
+                    struct_val = self
+                        .builder
+                        .build_insert_value(struct_val, *val, i as u32, "tuple")
+                        .ok()?
+                        .into_struct_value();
                 }
 
                 Some(struct_val.into())
@@ -406,17 +418,14 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
                 let elem_ty = vals[0].get_type();
                 let arr_ty = elem_ty.array_type(vals.len() as u32);
-                let mut arr_val = arr_ty.const_zero();
+                let mut arr_val = arr_ty.get_undef();
 
                 for (i, val) in vals.iter().enumerate() {
-                    let result = self
+                    arr_val = self
                         .builder
                         .build_insert_value(arr_val, *val, i as u32, "array")
-                        .ok();
-                    arr_val = match result {
-                        Some(AggregateValueEnum::ArrayValue(av)) => av,
-                        _ => return None,
-                    };
+                        .ok()?
+                        .into_array_value();
                 }
 
                 Some(arr_val.into())
@@ -430,14 +439,14 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
                 let types: Vec<_> = vals.iter().map(|v| v.get_type()).collect();
                 let struct_ty = self.context.struct_type(&types, false);
-                let mut struct_val = struct_ty.const_zero();
+                let mut struct_val = struct_ty.get_undef();
 
                 for (i, val) in vals.iter().enumerate() {
-                    let result = self.builder.build_insert_value(struct_val, *val, i as u32, "struct").ok();
-                    struct_val = match result {
-                        Some(AggregateValueEnum::StructValue(sv)) => sv,
-                        _ => return None,
-                    };
+                    struct_val = self
+                        .builder
+                        .build_insert_value(struct_val, *val, i as u32, "struct")
+                        .ok()?
+                        .into_struct_value();
                 }
 
                 Some(struct_val.into())
@@ -498,14 +507,14 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
                 let elem_ty = vals[0].get_type();
                 let arr_ty = elem_ty.array_type(vals.len() as u32);
-                let mut arr_val = arr_ty.const_zero();
+                let mut arr_val = arr_ty.get_undef();
 
                 for (i, val) in vals.iter().enumerate() {
-                    let result = self.builder.build_insert_value(arr_val, *val, i as u32, "const_array").ok();
-                    arr_val = match result {
-                        Some(AggregateValueEnum::ArrayValue(av)) => av,
-                        _ => return None,
-                    };
+                    arr_val = self
+                        .builder
+                        .build_insert_value(arr_val, *val, i as u32, "const_array")
+                        .ok()?
+                        .into_array_value();
                 }
 
                 Some(arr_val.into())
@@ -519,14 +528,14 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
                 let types: Vec<_> = vals.iter().map(|v| v.get_type()).collect();
                 let struct_ty = self.context.struct_type(&types, false);
-                let mut struct_val = struct_ty.const_zero();
+                let mut struct_val = struct_ty.get_undef();
 
                 for (i, val) in vals.iter().enumerate() {
-                    let result = self.builder.build_insert_value(struct_val, *val, i as u32, "const_struct").ok();
-                    struct_val = match result {
-                        Some(AggregateValueEnum::StructValue(sv)) => sv,
-                        _ => return None,
-                    };
+                    struct_val = self
+                        .builder
+                        .build_insert_value(struct_val, *val, i as u32, "const_struct")
+                        .ok()?
+                        .into_struct_value();
                 }
 
                 Some(struct_val.into())
@@ -545,16 +554,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
             HlirConstant::Undef(ty) => {
                 let llvm_ty = self.types.convert(ty);
-                // Use const_zero as undef equivalent for LLVM compatibility
-                match llvm_ty {
-                    inkwell::types::BasicTypeEnum::IntType(it) => Some(it.const_zero().into()),
-                    inkwell::types::BasicTypeEnum::FloatType(ft) => Some(ft.const_zero().into()),
-                    inkwell::types::BasicTypeEnum::PointerType(pt) => Some(pt.const_null().into()),
-                    inkwell::types::BasicTypeEnum::ArrayType(at) => Some(at.const_zero().into()),
-                    inkwell::types::BasicTypeEnum::StructType(st) => Some(st.const_zero().into()),
-                    inkwell::types::BasicTypeEnum::VectorType(vt) => Some(vt.const_zero().into()),
-                    _ => None,
-                }
+                Some(llvm_ty.get_undef())
             }
 
             HlirConstant::FunctionRef(name) => self
@@ -983,7 +983,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
         } else {
             // Fallback: try bitcast
             let target_ty = self.types.convert(to_ty);
-            self.builder.build_bit_cast(val, target_ty, "bitcast").ok()
+            self.builder.build_bitcast(val, target_ty, "bitcast").ok()
         }
     }
 
