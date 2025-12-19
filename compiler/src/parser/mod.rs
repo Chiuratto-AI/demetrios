@@ -18,6 +18,13 @@ pub fn parse(tokens: &[Token], _source: &str) -> Result<Ast> {
     parser.parse_program()
 }
 
+/// Parse a token stream into an AST with a custom NodeId start.
+pub fn parse_with_id_start(tokens: &[Token], _source: &str, start_id: u32) -> Result<(Ast, u32)> {
+    let mut parser = Parser::with_id_start(tokens, start_id);
+    let ast = parser.parse_program()?;
+    Ok((ast, parser.next_id_value()))
+}
+
 /// Parser state
 pub struct Parser<'a> {
     tokens: &'a [Token],
@@ -42,6 +49,21 @@ impl<'a> Parser<'a> {
             node_spans: std::collections::HashMap::new(),
             pending_gt: false,
         }
+    }
+
+    pub fn with_id_start(tokens: &'a [Token], start_id: u32) -> Self {
+        Self {
+            tokens,
+            pos: 0,
+            id_gen: IdGenerator::with_start(start_id),
+            allow_struct_literals: true,
+            node_spans: std::collections::HashMap::new(),
+            pending_gt: false,
+        }
+    }
+
+    pub fn next_id_value(&self) -> u32 {
+        self.id_gen.next_value()
     }
 
     fn next_id(&mut self) -> NodeId {

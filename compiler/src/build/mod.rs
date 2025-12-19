@@ -240,16 +240,10 @@ impl BuildManager {
     /// Compile a single unit (placeholder for future implementation)
     /// Compile a single source file
     fn compile_unit_file(path: &Path, verbose: bool) -> Result<(), String> {
-        // Read source file
-        let source = std::fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-
-        // Compile using the Demetrios compiler pipeline
+        // Compile using the Demetrios compiler pipeline (imports resolved)
         // For now, just do check (type-checking) - full compilation would use compile()
-        let tokens = crate::lexer::lex(&source)
-            .map_err(|e| format!("Lexer error in {}: {}", path.display(), e))?;
-        let ast = crate::parser::parse(&tokens, &source)
-            .map_err(|e| format!("Parser error in {}: {}", path.display(), e))?;
+        let ast = crate::module_loader::load_program_ast(path)
+            .map_err(|e| format!("Module error in {}: {}", path.display(), e))?;
         let _hir = crate::check::check(&ast)
             .map_err(|e| format!("Type error in {}: {}", path.display(), e))?;
 
