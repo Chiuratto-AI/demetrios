@@ -9,7 +9,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::values::{
-    BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
+    BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue,
 };
 use inkwell::{FloatPredicate, IntPredicate};
 
@@ -258,7 +258,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
             Op::Call { func, args } => {
                 let fn_ptr = self.get_value(*func)?;
-                let arg_vals: Vec<_> = args
+                let arg_vals: Vec<BasicMetadataValueEnum> = args
                     .iter()
                     .filter_map(|a| self.get_value(*a))
                     .map(|v| v.into())
@@ -381,12 +381,18 @@ impl<'ctx> LLVMCodegen<'ctx> {
                         .builder
                         .build_insert_value(sv, val, *index as u32, "insert")
                         .ok()
-                        .map(|v| v.into()),
+                        .map(|v| match v {
+                            inkwell::values::AggregateValueEnum::StructValue(s) => s.into(),
+                            inkwell::values::AggregateValueEnum::ArrayValue(a) => a.into(),
+                        }),
                     BasicValueEnum::ArrayValue(av) => self
                         .builder
                         .build_insert_value(av, val, *index as u32, "insert")
                         .ok()
-                        .map(|v| v.into()),
+                        .map(|v| match v {
+                            inkwell::values::AggregateValueEnum::StructValue(s) => s.into(),
+                            inkwell::values::AggregateValueEnum::ArrayValue(a) => a.into(),
+                        }),
                     _ => None,
                 }
             }
@@ -417,7 +423,17 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 }
 
                 let elem_ty = vals[0].get_type();
-                let arr_ty = elem_ty.array_type(vals.len() as u32);
+                let len = vals.len() as u32;
+
+                // Create array type based on element type
+                let arr_ty = match elem_ty {
+                    inkwell::types::BasicTypeEnum::IntType(t) => t.array_type(len),
+                    inkwell::types::BasicTypeEnum::FloatType(t) => t.array_type(len),
+                    inkwell::types::BasicTypeEnum::PointerType(t) => t.array_type(len),
+                    inkwell::types::BasicTypeEnum::ArrayType(t) => t.array_type(len),
+                    inkwell::types::BasicTypeEnum::StructType(t) => t.array_type(len),
+                    inkwell::types::BasicTypeEnum::VectorType(t) => t.array_type(len),
+                };
                 let mut arr_val = arr_ty.get_undef();
 
                 for (i, val) in vals.iter().enumerate() {
@@ -506,7 +522,16 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 }
 
                 let elem_ty = vals[0].get_type();
-                let arr_ty = elem_ty.array_type(vals.len() as u32);
+                let len = vals.len() as u32;
+                // array_type() is not available on BasicTypeEnum, must match on specific type
+                let arr_ty = match elem_ty {
+                    inkwell::types::BasicTypeEnum::IntType(t) => t.array_type(len),
+                    inkwell::types::BasicTypeEnum::FloatType(t) => t.array_type(len),
+                    inkwell::types::BasicTypeEnum::PointerType(t) => t.array_type(len),
+                    inkwell::types::BasicTypeEnum::ArrayType(t) => t.array_type(len),
+                    inkwell::types::BasicTypeEnum::StructType(t) => t.array_type(len),
+                    inkwell::types::BasicTypeEnum::VectorType(t) => t.array_type(len),
+                };
                 let mut arr_val = arr_ty.get_undef();
 
                 for (i, val) in vals.iter().enumerate() {
@@ -542,19 +567,28 @@ impl<'ctx> LLVMCodegen<'ctx> {
             }
 
             HlirConstant::Null(ty) => {
-                let ptr_ty = self.types.convert(ty);
-                if let BasicValueEnum::PointerValue(_) = ptr_ty.const_zero() {
-                    Some(ptr_ty.const_zero())
+                let llvm_ty = self.types.convert(ty);
+                if let inkwell::types::BasicTypeEnum::PointerType(ptr_ty) = llvm_ty {
+                    Some(ptr_ty.const_null().into())
                 } else {
-                    // Use i8* as generic null pointer for LLVM 14 compatibility
-                    let ptr_ty = self.context.i8_type().ptr_type(AddressSpace::default());
+                    // Use opaque pointer for LLVM 15+ compatibility
+                    let ptr_ty = self.context.ptr_type(AddressSpace::default());
                     Some(ptr_ty.const_null().into())
                 }
             }
 
             HlirConstant::Undef(ty) => {
                 let llvm_ty = self.types.convert(ty);
-                Some(llvm_ty.get_undef())
+                // get_undef() is not available on BasicTypeEnum, must match on specific type
+                let undef_val = match llvm_ty {
+                    inkwell::types::BasicTypeEnum::IntType(t) => t.get_undef().into(),
+                    inkwell::types::BasicTypeEnum::FloatType(t) => t.get_undef().into(),
+                    inkwell::types::BasicTypeEnum::PointerType(t) => t.get_undef().into(),
+                    inkwell::types::BasicTypeEnum::ArrayType(t) => t.get_undef().into(),
+                    inkwell::types::BasicTypeEnum::StructType(t) => t.get_undef().into(),
+                    inkwell::types::BasicTypeEnum::VectorType(t) => t.get_undef().into(),
+                };
+                Some(undef_val)
             }
 
             HlirConstant::FunctionRef(name) => self
@@ -978,12 +1012,37 @@ impl<'ctx> LLVMCodegen<'ctx> {
                     .map(|v| v.into())
             }
         } else if matches!(from_ty, HlirType::Ptr(_)) && matches!(to_ty, HlirType::Ptr(_)) {
-            // Pointer to pointer cast (bitcast in LLVM)
-            Some(val) // Opaque pointers, no cast needed
-        } else {
-            // Fallback: try bitcast
+            // Pointer to pointer cast - with opaque pointers in LLVM 15, no cast needed
+            Some(val)
+        } else if matches!(from_ty, HlirType::Ptr(_)) || matches!(to_ty, HlirType::Ptr(_)) {
+            // Pointer to int or int to pointer
             let target_ty = self.types.convert(to_ty);
-            self.builder.build_bitcast(val, target_ty, "bitcast").ok()
+            if matches!(from_ty, HlirType::Ptr(_)) {
+                // Pointer to int: use ptrtoint
+                if let inkwell::types::BasicTypeEnum::IntType(int_ty) = target_ty {
+                    self.builder
+                        .build_ptr_to_int(val.into_pointer_value(), int_ty, "ptrtoint")
+                        .ok()
+                        .map(|v| v.into())
+                } else {
+                    Some(val) // Can't convert, just pass through
+                }
+            } else {
+                // Int to pointer: use inttoptr
+                let ptr_ty = self.context.ptr_type(AddressSpace::default());
+                self.builder
+                    .build_int_to_ptr(val.into_int_value(), ptr_ty, "inttoptr")
+                    .ok()
+                    .map(|v| v.into())
+            }
+        } else {
+            // Fallback for non-pointer bitcasts (e.g., int <-> float of same size)
+            let target_ty = self.types.convert(to_ty);
+            // In LLVM 15+, method is named build_bit_cast (with underscore)
+            self.builder
+                .build_bit_cast(val, target_ty, "bitcast")
+                .ok()
+                .map(|v| v.into())
         }
     }
 

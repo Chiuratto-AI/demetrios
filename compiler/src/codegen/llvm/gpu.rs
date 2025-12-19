@@ -80,6 +80,18 @@ pub struct LlvmGpuCodegen<'ctx> {
 }
 
 impl<'ctx> LlvmGpuCodegen<'ctx> {
+    /// Helper to create array type from BasicTypeEnum (LLVM 15+ compatibility)
+    fn make_array_type(elem_ty: BasicTypeEnum<'ctx>, size: u32) -> inkwell::types::ArrayType<'ctx> {
+        match elem_ty {
+            BasicTypeEnum::IntType(t) => t.array_type(size),
+            BasicTypeEnum::FloatType(t) => t.array_type(size),
+            BasicTypeEnum::PointerType(t) => t.array_type(size),
+            BasicTypeEnum::ArrayType(t) => t.array_type(size),
+            BasicTypeEnum::StructType(t) => t.array_type(size),
+            BasicTypeEnum::VectorType(t) => t.array_type(size),
+        }
+    }
+
     /// Create a new GPU code generator
     pub fn new(context: &'ctx Context, module_name: &str, target: GpuTarget) -> Self {
         let module = context.create_module(module_name);
@@ -190,14 +202,11 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
             self.blocks.insert(block.id, bb);
         }
 
-        // Map parameters to values
-        // Note: GpuParam doesn't have value_id, we need to track it separately
-        // For now, we'll use the parameter index as a temporary solution
-        // This should be fixed in the GPU IR to include value_id in GpuParam
+        // Map parameters to values using index as ValueId
         for (i, _param) in kernel.params.iter().enumerate() {
             if let Some(param_val) = fn_val.get_nth_param(i as u32) {
-                // TODO: Fix GpuParam to include value_id
-                // For now, we skip this mapping as it's not used in GPU codegen
+                // Use parameter index as ValueId
+                self.values.insert(ValueId(i as u32), param_val);
             }
         }
 
@@ -247,12 +256,11 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
             self.blocks.insert(block.id, bb);
         }
 
-        // Map parameters to values
-        // Note: GpuParam doesn't have value_id, we need to track it separately
+        // Map parameters to values using index as ValueId
         for (i, _param) in func.params.iter().enumerate() {
             if let Some(param_val) = fn_val.get_nth_param(i as u32) {
-                // TODO: Fix GpuParam to include value_id
-                // For now, we skip this mapping as it's not used in GPU codegen
+                // Use parameter index as ValueId
+                self.values.insert(ValueId(i as u32), param_val);
             }
         }
 
@@ -273,6 +281,7 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
             self.context.i32_type().const_int(1, false).into(),
         ]);
 
+        // In inkwell 0.5+, use add_global_metadata with key and metadata value
         let existing = self.module.get_global_metadata("nvvm.annotations");
         if existing.is_empty() {
             let _ = self
@@ -282,9 +291,9 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
     }
 
     /// Allocate shared memory
-    fn allocate_shared_memory(&mut self, shared: &SharedMemDecl, fn_val: FunctionValue<'ctx>) {
+    fn allocate_shared_memory(&mut self, shared: &SharedMemDecl, _fn_val: FunctionValue<'ctx>) {
         let elem_type = self.convert_type(&shared.elem_type);
-        let array_type = elem_type.array_type(shared.size);
+        let array_type = Self::make_array_type(elem_type, shared.size);
 
         // Shared memory address space (3 for NVPTX)
         let global =
@@ -528,8 +537,8 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
             GpuTerminator::ReturnVoid => {
                 let _ = self.builder.build_return(None);
             }
-            GpuTerminator::Return(val) => {
-                if let Some(ret_val) = self.get_value(*val) {
+            GpuTerminator::Return(val_id) => {
+                if let Some(ret_val) = self.get_value(*val_id) {
                     let _ = self.builder.build_return(Some(&ret_val));
                 } else {
                     let _ = self.builder.build_return(None);
@@ -581,34 +590,32 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
             GpuType::F16 => self.context.f16_type().into(),
             GpuType::F32 => self.context.f32_type().into(),
             GpuType::F64 => self.context.f64_type().into(),
-            GpuType::BF16 | GpuType::F8E4M3 | GpuType::F8E5M2 | GpuType::F4 => {
-                // Use f32 as fallback for unsupported float types
-                self.context.f32_type().into()
-            }
             GpuType::Vec2(elem) => {
                 let elem_ty = self.convert_type(elem);
-                elem_ty.array_type(2).into()
+                Self::make_array_type(elem_ty, 2).into()
             }
             GpuType::Vec3(elem) => {
                 let elem_ty = self.convert_type(elem);
-                elem_ty.array_type(3).into()
+                Self::make_array_type(elem_ty, 3).into()
             }
             GpuType::Vec4(elem) => {
                 let elem_ty = self.convert_type(elem);
-                elem_ty.array_type(4).into()
+                Self::make_array_type(elem_ty, 4).into()
             }
             GpuType::Ptr(inner, space) => {
                 let addr_space = self.convert_memory_space(space);
-                // Use typed pointers for LLVM 14 compatibility
-                let inner_ty = self.convert_type(inner);
-                inner_ty.ptr_type(addr_space).into()
+                // LLVM 15+ uses opaque pointers with address spaces
+                let _inner_ty = self.convert_type(inner);
+                self.context.ptr_type(addr_space).into()
             }
             GpuType::Array(elem, size) => {
                 let elem_ty = self.convert_type(elem);
-                elem_ty.array_type(*size).into()
+                Self::make_array_type(elem_ty, *size).into()
             }
             GpuType::Struct(_, fields) => {
-                let field_types: Vec<_> = fields.iter().map(|f| self.convert_type(&f.1)).collect();
+                // fields is Vec<(String, GpuType)> - extract just the types
+                let field_types: Vec<_> =
+                    fields.iter().map(|(_, ty)| self.convert_type(ty)).collect();
                 self.context.struct_type(&field_types, false).into()
             }
         }

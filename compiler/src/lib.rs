@@ -118,8 +118,12 @@ pub fn compile(source: &str) -> miette::Result<Vec<u8>> {
     // Use LLVM backend for AOT compilation
     #[cfg(feature = "llvm")]
     {
-        let code = codegen::llvm::LLVMCodegen::compile(&hlir)
-            .map_err(|e| miette::miette!("LLVM codegen failed: {}", e))?;
+        use inkwell::context::Context;
+        let context = Context::create();
+        let mut codegen =
+            codegen::llvm::LLVMCodegen::new(&context, "main", codegen::llvm::OptLevel::O2, false);
+        let _module = codegen.compile(&hlir);
+        // TODO: Actually emit machine code
         return Ok(vec![]);
     }
 

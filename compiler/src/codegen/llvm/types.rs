@@ -55,16 +55,26 @@ impl<'ctx> TypeConverter<'ctx> {
             HlirType::F32 => self.context.f32_type().into(),
             HlirType::F64 => self.context.f64_type().into(),
 
-            // Pointers
-            HlirType::Ptr(inner) => {
-                let inner_ty = self.convert(inner);
-                inner_ty.ptr_type(AddressSpace::default()).into()
+            // Pointers - LLVM 15+ uses opaque pointers, so all pointers are the same type
+            HlirType::Ptr(_inner) => {
+                // In LLVM 15+ with opaque pointers, use context.ptr_type() instead of
+                // calling ptr_type() on a specific element type
+                self.context.ptr_type(AddressSpace::default()).into()
             }
 
-            // Arrays
+            // Arrays - need to match on specific type for array_type() in LLVM 15+
             HlirType::Array(elem, size) => {
                 let elem_ty = self.convert(elem);
-                elem_ty.array_type(*size as u32).into()
+                let len = *size as u32;
+                let arr_ty = match elem_ty {
+                    BasicTypeEnum::IntType(t) => t.array_type(len),
+                    BasicTypeEnum::FloatType(t) => t.array_type(len),
+                    BasicTypeEnum::PointerType(t) => t.array_type(len),
+                    BasicTypeEnum::ArrayType(t) => t.array_type(len),
+                    BasicTypeEnum::StructType(t) => t.array_type(len),
+                    BasicTypeEnum::VectorType(t) => t.array_type(len),
+                };
+                arr_ty.into()
             }
 
             // Structs
@@ -86,13 +96,15 @@ impl<'ctx> TypeConverter<'ctx> {
                 self.context.struct_type(&elem_types, false).into()
             }
 
-            // Function pointers
+            // Function pointers - LLVM 15+ uses opaque pointers
             HlirType::Function {
                 params,
                 return_type,
             } => {
-                let fn_ty = self.function_type(params, return_type);
-                fn_ty.ptr_type(AddressSpace::default()).into()
+                // Function type is still created for call site type checking,
+                // but the pointer itself is opaque in LLVM 15+
+                let _fn_ty = self.function_type(params, return_type);
+                self.context.ptr_type(AddressSpace::default()).into()
             }
 
             // SIMD vector types
@@ -190,29 +202,31 @@ impl<'ctx> TypeConverter<'ctx> {
     }
 
     /// Get pointer type for a given element type
-    pub fn ptr_type(&self, element: BasicTypeEnum<'ctx>) -> PointerType<'ctx> {
-        element.ptr_type(AddressSpace::default())
+    /// Note: In LLVM 15+ with opaque pointers, the element type is ignored
+    pub fn ptr_type(&self, _element: BasicTypeEnum<'ctx>) -> PointerType<'ctx> {
+        // LLVM 15+ uses opaque pointers - all pointers are the same type
+        self.context.ptr_type(AddressSpace::default())
     }
 
-    /// Get generic pointer type (ptr to i8, used as generic pointer)
+    /// Get generic pointer type (opaque pointer in LLVM 15+)
     pub fn generic_ptr_type(&self) -> PointerType<'ctx> {
-        // In LLVM 14, use i8* as the generic pointer type
-        self.context.i8_type().ptr_type(AddressSpace::default())
+        // LLVM 15+ uses opaque pointers
+        self.context.ptr_type(AddressSpace::default())
     }
 
     /// Create a string type (fat pointer: ptr + len)
     pub fn string_type(&self) -> StructType<'ctx> {
-        // Use i8* for string data pointer
-        let ptr_ty = self.context.i8_type().ptr_type(AddressSpace::default());
+        // LLVM 15+ uses opaque pointers
+        let ptr_ty = self.context.ptr_type(AddressSpace::default());
         let len_ty = self.context.i64_type();
         self.context
             .struct_type(&[ptr_ty.into(), len_ty.into()], false)
     }
 
     /// Create a slice type (fat pointer: ptr + len)
-    pub fn slice_type(&mut self, elem: &HlirType) -> StructType<'ctx> {
-        let elem_ty = self.convert(elem);
-        let ptr_ty = elem_ty.ptr_type(AddressSpace::default());
+    pub fn slice_type(&mut self, _elem: &HlirType) -> StructType<'ctx> {
+        // LLVM 15+ uses opaque pointers - element type doesn't affect pointer type
+        let ptr_ty = self.context.ptr_type(AddressSpace::default());
         let len_ty = self.context.i64_type();
         self.context
             .struct_type(&[ptr_ty.into(), len_ty.into()], false)
