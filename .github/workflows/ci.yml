@@ -92,6 +92,10 @@ jobs:
                     -A clippy::eq_op \
                     -A clippy::useless_format \
                     -A clippy::clone_on_ref_ptr \
+                    -A clippy::vec_box \
+                    -A clippy::assertions_on_constants \
+                    -A clippy::cloned_ref_to_slice_refs \
+                    -A clippy::nonminimal_bool \
                     -A unused_imports \
                     -A unused_comparisons
 
