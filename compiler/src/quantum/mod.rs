@@ -43,7 +43,9 @@
 //! ```
 
 pub mod circuit;
+pub mod epistemic_vqe;
 pub mod gates;
+pub mod gpu_quantum;
 pub mod noise;
 pub mod pennylane;
 pub mod states;
@@ -64,3 +66,15 @@ pub use uccsd::{
     UCCSDCircuit, UCCSDResult,
 };
 pub use vqe::{Hamiltonian, PauliTerm, VQEConfig, VQEResult, VQESolver};
+
+// Revolutionary epistemic VQE with full Beta posteriors
+pub use epistemic_vqe::{
+    ActiveInferenceSummary, BetaQuantumParameter, EpistemicEnergy, EpistemicVQE,
+    EpistemicVQEConfig, EpistemicVQEResult, VarianceBreakdown,
+};
+
+// GPU-accelerated quantum simulation
+pub use gpu_quantum::{
+    BatchedVQE, GpuBackend, GpuCircuit, GpuMemoryPool, GpuQuantumConfig, GpuStateVector,
+    SingleQubitKernel, TwoQubitGateType, TwoQubitKernel,
+};
