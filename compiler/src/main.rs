@@ -2480,8 +2480,11 @@ fn check(
 
     // 6. Ownership check
     if !skip_ownership {
-        let mut ownership_checker =
-            demetrios::ownership::OwnershipChecker::new(&resolved.symbols, &source_file);
+        let mut ownership_checker = demetrios::ownership::OwnershipChecker::new(
+            &resolved.symbols,
+            &source_file,
+            &resolved.ast.node_spans,
+        );
         if let Err(errors) = ownership_checker.check_program(&resolved.ast) {
             for e in &errors {
                 eprintln!("{:?}", miette::Report::new(e.clone()));

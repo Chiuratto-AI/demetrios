@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Basic checks - fast feedback
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            compiler/target
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-check-
+
+      - name: Check formatting
+        working-directory: compiler
+        run: cargo fmt --all -- --check
+
+      - name: Clippy lints
+        working-directory: compiler
+        run: cargo clippy --all-targets -- -D warnings -A clippy::too_many_arguments -A clippy::type_complexity
+
+  # Build and test on multiple platforms
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            compiler/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+
+      - name: Build
+        working-directory: compiler
+        run: cargo build --release
+
+      - name: Run tests
+        working-directory: compiler
+        run: cargo test --release
+
+      - name: Test D programs (Unix)
+        if: runner.os != 'Windows'
+        working-directory: compiler
+        run: |
+          echo "Testing stdlib programs..."
+          ./target/release/dc run ../stdlib/prob/beta.d
+          ./target/release/dc run ../stdlib/prob/distributions.d
+          echo "Testing examples..."
+          ./target/release/dc check ../examples/hello.d
+
+      - name: Test D programs (Windows)
+        if: runner.os == 'Windows'
+        working-directory: compiler
+        shell: pwsh
+        run: |
+          echo "Testing stdlib programs..."
+          ./target/release/dc.exe run ../stdlib/prob/beta.d
+          ./target/release/dc.exe run ../stdlib/prob/distributions.d
+          echo "Testing examples..."
+          ./target/release/dc.exe check ../examples/hello.d
+
+  # Build with optional features
+  features:
+    name: Features (${{ matrix.feature }})
+    runs-on: ubuntu-latest
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        feature: [jit, lsp, smt]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Z3 (for SMT feature)
+        if: matrix.feature == 'smt'
+        run: sudo apt-get update && sudo apt-get install -y libz3-dev
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            compiler/target
+          key: ${{ runner.os }}-cargo-${{ matrix.feature }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.feature }}-
+
+      - name: Build with feature
+        working-directory: compiler
+        run: cargo build --release --features ${{ matrix.feature }}
+
+      - name: Test with feature
+        working-directory: compiler
+        run: cargo test --release --features ${{ matrix.feature }}
+
+  # Documentation build
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build documentation
+        working-directory: compiler
+        run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings

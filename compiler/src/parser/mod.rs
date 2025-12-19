@@ -4419,8 +4419,11 @@ impl<'a> Parser<'a> {
     fn parse_path(&mut self) -> Result<Path> {
         let mut segments = vec![self.parse_ident()?];
 
-        // Accept both :: and . as path separators (Darwin Atlas compatibility)
-        while self.at(TokenKind::ColonColon) || self.at(TokenKind::Dot) {
+        // Only use :: as path separator for module-qualified paths
+        // Note: Previously accepted . for Darwin Atlas compatibility, but this broke
+        // struct field access (s.field was parsed as path ["s", "field"] instead of
+        // Expr::Field). Field access is now handled in parse_postfix via TokenKind::Dot.
+        while self.at(TokenKind::ColonColon) {
             self.advance();
             segments.push(self.parse_ident()?);
         }
