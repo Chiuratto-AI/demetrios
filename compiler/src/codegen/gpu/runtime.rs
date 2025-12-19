@@ -307,7 +307,7 @@ impl GpuRuntime {
 
     /// Copy data to device
     pub fn copy_to_device<T>(&self, dst: &DeviceBuffer, src: &[T]) -> Result<(), GpuError> {
-        let size = src.len() * std::mem::size_of::<T>();
+        let size = std::mem::size_of_val(src);
         if size > dst.size {
             return Err(GpuError::BufferTooSmall);
         }
@@ -329,7 +329,7 @@ impl GpuRuntime {
 
     /// Copy data from device
     pub fn copy_to_host<T>(&self, dst: &mut [T], src: &DeviceBuffer) -> Result<(), GpuError> {
-        let size = dst.len() * std::mem::size_of::<T>();
+        let size = std::mem::size_of_val(dst);
         if size > src.size {
             return Err(GpuError::BufferTooSmall);
         }

@@ -105,12 +105,12 @@ impl PtxCodegen {
         }
 
         // Emit device functions
-        for (_, func) in &module.device_functions {
+        for func in module.device_functions.values() {
             self.emit_device_function(func);
         }
 
         // Emit kernels
-        for (_, kernel) in &module.kernels {
+        for kernel in module.kernels.values() {
             self.emit_kernel(kernel);
         }
 
@@ -3420,7 +3420,7 @@ impl PtxCodegen {
                     CooperativeScope::Cluster => 3,
                     CooperativeScope::Grid => 4,
                     CooperativeScope::Coalesced => 5,
-                    CooperativeScope::TiledPartition(n) => 0x100 | (*n as u32),
+                    CooperativeScope::TiledPartition(n) => 0x100 | *n,
                 };
                 writeln!(self.output, "{}// CoopThisGroup scope={:?}", indent, scope).unwrap();
                 writeln!(self.output, "{}mov.u32 {}, {};", indent, reg, scope_val).unwrap();
@@ -3738,7 +3738,7 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&GpuType::U32);
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U32);
-                let scope_val = 0x100 | (*tile_size as u32);
+                let scope_val = 0x100 | *tile_size;
                 writeln!(
                     self.output,
                     "{}// CoopPartitionTiled size={}",

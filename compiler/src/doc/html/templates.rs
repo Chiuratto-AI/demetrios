@@ -112,7 +112,7 @@ impl Templates {
 </li>"#,
                     html_escape(&module.name),
                     html_escape(&module.name),
-                    html_escape(&module.doc.as_deref().unwrap_or(""))
+                    html_escape(module.doc.as_deref().unwrap_or(""))
                 ));
             }
             content.push_str("</ul>");
@@ -197,7 +197,7 @@ impl Templates {
 </li>"#,
                     html_escape(&submodule.name),
                     html_escape(&submodule.name),
-                    html_escape(&submodule.doc.as_deref().unwrap_or(""))
+                    html_escape(submodule.doc.as_deref().unwrap_or(""))
                 ));
             }
             content.push_str("</ul>");
@@ -649,7 +649,7 @@ impl Templates {
                 html_escape(&ty.name),
                 prefix,
                 html_escape(&ty.name),
-                html_escape(&ty.doc.as_deref().unwrap_or(""))
+                html_escape(ty.doc.as_deref().unwrap_or(""))
             ));
         }
         html.push_str("</ul>");
@@ -667,7 +667,7 @@ impl Templates {
 </li>"#,
                 html_escape(&t.name),
                 html_escape(&t.name),
-                html_escape(&t.doc.as_deref().unwrap_or(""))
+                html_escape(t.doc.as_deref().unwrap_or(""))
             ));
         }
         html.push_str("</ul>");
@@ -687,7 +687,7 @@ impl Templates {
                 html_escape(&f.name),
                 html_escape(&f.name),
                 html_escape(&self.brief_signature(f)),
-                html_escape(&f.doc.as_deref().unwrap_or(""))
+                html_escape(f.doc.as_deref().unwrap_or(""))
             ));
         }
         html.push_str("</ul>");
@@ -706,7 +706,7 @@ impl Templates {
                 html_escape(&c.name),
                 html_escape(&c.name),
                 html_escape(&c.ty.display),
-                html_escape(&c.doc.as_deref().unwrap_or(""))
+                html_escape(c.doc.as_deref().unwrap_or(""))
             ));
         }
         html.push_str("</ul>");

@@ -124,8 +124,8 @@ impl<T: Clone> StructuralKnowledge<T> {
     ) -> Distribution {
         // Find an affected variable with evidence
         for var in affected_vars {
-            if let Some(&observed) = evidence.get(*var) {
-                if let Some(eq) = self.model.equations.get(*var) {
+            if let Some(&observed) = evidence.get(*var)
+                && let Some(eq) = self.model.equations.get(*var) {
                     // Try to invert: if Y = f(PA, U), solve for U given Y and PA
                     // For linear equations: U = Y - Σ(β_i * PA_i) - intercept
 
@@ -145,7 +145,6 @@ impl<T: Clone> StructuralKnowledge<T> {
                     // Return point mass at inferred U
                     return Distribution::PointMass { value: inferred_u };
                 }
-            }
         }
 
         // No useful evidence, use prior

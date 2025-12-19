@@ -250,11 +250,10 @@ impl ProofState {
         let key = predicate.key();
 
         // Check if already exists with higher confidence
-        if let Some(existing) = self.predicates.get(&key) {
-            if existing.epistemic.confidence.mean() >= predicate.epistemic.confidence.mean() {
+        if let Some(existing) = self.predicates.get(&key)
+            && existing.epistemic.confidence.mean() >= predicate.epistemic.confidence.mean() {
                 return false; // Already have better
             }
-        }
 
         // Get parent predicates
         let parent_preds: Vec<&Predicate> = parents

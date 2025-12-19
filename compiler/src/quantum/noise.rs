@@ -225,11 +225,10 @@ impl PhaseDamping {
             "phase".hash(&mut hasher);
             let rand = (hasher.finish() as f64) / (u64::MAX as f64);
 
-            if rand < self.lambda / 2.0 {
-                if let QuantumState::Pure(ref mut sv) = state.state {
+            if rand < self.lambda / 2.0
+                && let QuantumState::Pure(ref mut sv) = state.state {
                     apply_pauli_z(sv, q);
                 }
-            }
         }
 
         state.amplitude_variance += self.lambda * 0.5 * qubits.len() as f64;

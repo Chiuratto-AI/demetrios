@@ -219,7 +219,7 @@ fn count_block_lines(block: &Block) -> usize {
 
 fn count_stmt_lines(stmt: &Stmt) -> usize {
     match stmt {
-        Stmt::Let { value, .. } => 1 + value.as_ref().map(|e| count_expr_lines(e)).unwrap_or(0),
+        Stmt::Let { value, .. } => 1 + value.as_ref().map(count_expr_lines).unwrap_or(0),
         Stmt::Expr { expr, .. } => count_expr_lines(expr) + 1,
         Stmt::Assign { target, value, .. } => {
             count_expr_lines(target) + count_expr_lines(value) + 1
@@ -273,7 +273,7 @@ fn count_decision_points_stmt(stmt: &Stmt) -> usize {
         Stmt::Expr { expr, .. } => count_decision_points_expr(expr),
         Stmt::Let { value, .. } => value
             .as_ref()
-            .map(|e| count_decision_points_expr(e))
+            .map(count_decision_points_expr)
             .unwrap_or(0),
         Stmt::Assign { target, value, .. } => {
             count_decision_points_expr(target) + count_decision_points_expr(value)

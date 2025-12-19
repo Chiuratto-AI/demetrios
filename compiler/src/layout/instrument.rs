@@ -135,11 +135,10 @@ impl CacheInstrumentation {
             self.stats.misses += 1;
 
             // Evict if full
-            if self.cache.len() >= self.cache_size {
-                if let Some(evicted) = self.cache.pop_back() {
+            if self.cache.len() >= self.cache_size
+                && let Some(evicted) = self.cache.pop_back() {
                     self.in_cache.remove(&evicted);
                 }
-            }
 
             // Add to cache
             self.cache.push_front(concept.to_string());
@@ -230,8 +229,8 @@ pub fn simulate_with_clustering(
         cache.access(concept);
 
         // Prefetch nearby concepts from same cluster
-        if let Some(layout) = plan.get(concept) {
-            if let Some(cluster) = cluster_concepts.get(&layout.cluster_id) {
+        if let Some(layout) = plan.get(concept)
+            && let Some(cluster) = cluster_concepts.get(&layout.cluster_id) {
                 // Prefetch concepts near this one in the cluster
                 let idx = cluster.iter().position(|c| c == concept).unwrap_or(0);
                 let start = idx.saturating_sub(prefetch_size / 2);
@@ -240,16 +239,14 @@ pub fn simulate_with_clustering(
                 for i in start..end {
                     if cluster[i] != *concept {
                         // Prefetch doesn't count as access for stats
-                        if !cache.in_cache.contains_key(&cluster[i]) {
-                            if cache.cache.len() < cache.cache_size {
+                        if !cache.in_cache.contains_key(&cluster[i])
+                            && cache.cache.len() < cache.cache_size {
                                 cache.cache.push_back(cluster[i].clone());
                                 cache.in_cache.insert(cluster[i].clone(), ());
                             }
-                        }
                     }
                 }
             }
-        }
     }
 
     cache.finish()

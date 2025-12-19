@@ -104,8 +104,8 @@ impl NumaTopology {
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
 
-                if name_str.starts_with("node") {
-                    if let Ok(id) = name_str[4..].parse::<u32>() {
+                if name_str.starts_with("node")
+                    && let Ok(id) = name_str[4..].parse::<u32>() {
                         let mut node = NumaNode::new(id);
 
                         // Read CPUs
@@ -135,7 +135,6 @@ impl NumaTopology {
 
                         topo.add_node(node);
                     }
-                }
             }
 
             topo.numa_available = !topo.nodes.is_empty();
@@ -318,12 +317,11 @@ impl NumaTopology {
             // Find related types
             if prefetch_table.has_hints(t) {
                 for hint in prefetch_table.get_type_hints(t) {
-                    if hint.distance.is_prefetchable() && !assigned.contains(hint.target.as_str()) {
-                        if types.contains(&hint.target.as_str()) {
+                    if hint.distance.is_prefetchable() && !assigned.contains(hint.target.as_str())
+                        && types.contains(&hint.target.as_str()) {
                             group.push(hint.target.clone());
                             assigned.insert(Box::leak(hint.target.clone().into_boxed_str()));
                         }
-                    }
                 }
             }
 
@@ -352,11 +350,10 @@ fn parse_cpu_list(s: &str) -> Vec<u32> {
     for part in s.trim().split(',') {
         if part.contains('-') {
             let bounds: Vec<_> = part.split('-').collect();
-            if bounds.len() == 2 {
-                if let (Ok(start), Ok(end)) = (bounds[0].parse::<u32>(), bounds[1].parse::<u32>()) {
+            if bounds.len() == 2
+                && let (Ok(start), Ok(end)) = (bounds[0].parse::<u32>(), bounds[1].parse::<u32>()) {
                     cpus.extend(start..=end);
                 }
-            }
         } else if let Ok(cpu) = part.parse::<u32>() {
             cpus.push(cpu);
         }
@@ -370,11 +367,10 @@ fn parse_meminfo(s: &str) -> u64 {
     for line in s.lines() {
         if line.starts_with("MemTotal:") || line.contains("MemTotal:") {
             let parts: Vec<_> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                if let Ok(kb) = parts[parts.len() - 2].parse::<u64>() {
+            if parts.len() >= 2
+                && let Ok(kb) = parts[parts.len() - 2].parse::<u64>() {
                     return kb * 1024; // Convert to bytes
                 }
-            }
         }
     }
     0
@@ -443,11 +439,10 @@ impl PlacementStrategy {
     /// Check if the strategy respects all affinities.
     pub fn respects_affinities(&self) -> bool {
         for (t1, t2) in &self.affinities {
-            if let (Some(n1), Some(n2)) = (self.placements.get(t1), self.placements.get(t2)) {
-                if n1 != n2 {
+            if let (Some(n1), Some(n2)) = (self.placements.get(t1), self.placements.get(t2))
+                && n1 != n2 {
                     return false;
                 }
-            }
         }
         true
     }

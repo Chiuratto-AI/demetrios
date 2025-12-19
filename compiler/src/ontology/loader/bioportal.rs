@@ -342,11 +342,10 @@ impl BioPortalClient {
         let ontology = iri.ontology();
         if ontology == OntologyId::Unknown {
             // Try to extract from IRI pattern
-            if iri.0.contains("obolibrary.org") {
-                if let Some((prefix, _)) = iri.to_curie() {
+            if iri.0.contains("obolibrary.org")
+                && let Some((prefix, _)) = iri.to_curie() {
                     return Ok(prefix);
                 }
-            }
             return Err(ResolutionError::OntologyNotAvailable(OntologyId::Unknown));
         }
         Ok(ontology.bioportal_acronym().to_string())

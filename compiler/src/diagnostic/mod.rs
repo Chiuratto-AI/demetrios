@@ -610,11 +610,10 @@ impl DiagnosticHandler {
             .emit_with_source_map(diagnostic, &self.source_map);
 
         // Check error limit
-        if let Some(max) = self.max_errors {
-            if self.error_count >= max {
+        if let Some(max) = self.max_errors
+            && self.error_count >= max {
                 self.emit_too_many_errors();
             }
-        }
     }
 
     /// Emit an error

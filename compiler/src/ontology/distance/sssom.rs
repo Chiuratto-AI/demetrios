@@ -588,13 +588,13 @@ impl SSSOMParser {
             .col_subject_id
             .and_then(|i| cols.get(i))
             .filter(|s| !s.is_empty())
-            .map(|s| IRI::new(*s))?;
+            .map(|s| IRI::new(s))?;
 
         let object_id = self
             .col_object_id
             .and_then(|i| cols.get(i))
             .filter(|s| !s.is_empty())
-            .map(|s| IRI::new(*s))?;
+            .map(|s| IRI::new(s))?;
 
         let predicate = self
             .col_predicate

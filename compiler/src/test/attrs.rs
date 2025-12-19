@@ -145,8 +145,10 @@ impl FixtureAttr {
 
 /// Fixture scope
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum FixtureScope {
     /// Fresh fixture for each test (default)
+    #[default]
     Test,
     /// Shared across all tests in module
     Module,
@@ -154,11 +156,6 @@ pub enum FixtureScope {
     Session,
 }
 
-impl Default for FixtureScope {
-    fn default() -> Self {
-        Self::Test
-    }
-}
 
 /// Raw attribute as parsed from source
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,8 +168,10 @@ pub struct RawAttribute {
 
 /// Attribute arguments
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum AttributeArgs {
     /// No arguments: `#[test]`
+    #[default]
     None,
     /// Single value: `#[ignore("reason")]` or `#[timeout(1000)]`
     Single(AttributeValue),
@@ -182,11 +181,6 @@ pub enum AttributeArgs {
     List(Vec<AttributeValue>),
 }
 
-impl Default for AttributeArgs {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 /// Attribute argument value
 #[derive(Debug, Clone, Serialize, Deserialize)]

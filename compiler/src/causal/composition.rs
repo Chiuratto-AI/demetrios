@@ -256,7 +256,7 @@ impl<T: Clone> CausalKnowledge<T> {
 
     /// Marginalize over a variable (remove from causal structure)
     pub fn marginalize(mut self, variable: &str) -> Result<CausalKnowledge<T>, CausalError> {
-        if variable == &self.outcome || self.treatments.contains(&variable.to_string()) {
+        if variable == self.outcome || self.treatments.contains(&variable.to_string()) {
             return Err(CausalError::InvalidIntervention {
                 reason: "Cannot marginalize treatment or outcome variable".to_string(),
             });

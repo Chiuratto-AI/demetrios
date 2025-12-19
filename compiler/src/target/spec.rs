@@ -694,18 +694,15 @@ impl Default for OsSpec {
 /// Panic handling strategy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum PanicStrategy {
     /// Unwind the stack on panic
+    #[default]
     Unwind,
     /// Abort immediately on panic
     Abort,
 }
 
-impl Default for PanicStrategy {
-    fn default() -> Self {
-        Self::Unwind
-    }
-}
 
 /// Environment-specific settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -740,8 +737,10 @@ impl Default for EnvSpec {
 /// C runtime library selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum CRuntime {
     /// GNU libc
+    #[default]
     Glibc,
     /// musl libc
     Musl,
@@ -755,17 +754,14 @@ pub enum CRuntime {
     None,
 }
 
-impl Default for CRuntime {
-    fn default() -> Self {
-        Self::Glibc
-    }
-}
 
 /// Code relocation model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum RelocationModel {
     /// Position-independent code
+    #[default]
     Pic,
     /// Position-independent executable
     Pie,
@@ -781,19 +777,16 @@ pub enum RelocationModel {
     RopiRwpi,
 }
 
-impl Default for RelocationModel {
-    fn default() -> Self {
-        Self::Pic
-    }
-}
 
 /// Code model for code generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum CodeModel {
     /// Tiny code model (very limited address range)
     Tiny,
     /// Small code model (default, 2GB address range)
+    #[default]
     Small,
     /// Kernel code model (high addresses)
     Kernel,
@@ -803,17 +796,14 @@ pub enum CodeModel {
     Large,
 }
 
-impl Default for CodeModel {
-    fn default() -> Self {
-        Self::Small
-    }
-}
 
 /// Thread-local storage model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum TlsModel {
     /// General dynamic (most compatible)
+    #[default]
     GeneralDynamic,
     /// Local dynamic (multiple TLS variables)
     LocalDynamic,
@@ -823,11 +813,6 @@ pub enum TlsModel {
     LocalExec,
 }
 
-impl Default for TlsModel {
-    fn default() -> Self {
-        Self::GeneralDynamic
-    }
-}
 
 /// Target CPU features configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -936,10 +921,12 @@ impl Default for LinkerSpec {
 /// Linker flavor/type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum LinkerFlavor {
     /// GNU ld
     Gnu,
     /// GCC (uses system linker)
+    #[default]
     Gcc,
     /// Microsoft link.exe
     Msvc,
@@ -963,17 +950,14 @@ pub enum LinkerFlavor {
     Bpf,
 }
 
-impl Default for LinkerFlavor {
-    fn default() -> Self {
-        Self::Gcc
-    }
-}
 
 /// LTO (Link-Time Optimization) mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum LtoMode {
     /// Thin LTO (faster, parallel)
+    #[default]
     Thin,
     /// Fat LTO (slower, better optimization)
     Fat,
@@ -981,11 +965,6 @@ pub enum LtoMode {
     Off,
 }
 
-impl Default for LtoMode {
-    fn default() -> Self {
-        Self::Thin
-    }
-}
 
 /// Code generation options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1028,12 +1007,14 @@ impl Default for CodegenSpec {
 
 /// Optimization level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum OptLevel {
     /// No optimization
     O0,
     /// Basic optimization
     O1,
     /// Default optimization
+    #[default]
     O2,
     /// Aggressive optimization
     O3,
@@ -1043,17 +1024,14 @@ pub enum OptLevel {
     Oz,
 }
 
-impl Default for OptLevel {
-    fn default() -> Self {
-        Self::O2
-    }
-}
 
 /// Debug information level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum DebugInfo {
     /// No debug info
+    #[default]
     None,
     /// Line tables only
     LineTablesOnly,
@@ -1063,35 +1041,29 @@ pub enum DebugInfo {
     Full,
 }
 
-impl Default for DebugInfo {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 /// Frame pointer behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum FramePointer {
     /// Always keep frame pointer
     Always,
     /// Only keep for non-leaf functions
     NonLeaf,
     /// May omit frame pointer
+    #[default]
     MayOmit,
 }
 
-impl Default for FramePointer {
-    fn default() -> Self {
-        Self::MayOmit
-    }
-}
 
 /// Symbol stripping mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum StripMode {
     /// Don't strip
+    #[default]
     None,
     /// Strip debug info only
     Debuginfo,
@@ -1099,11 +1071,6 @@ pub enum StripMode {
     Symbols,
 }
 
-impl Default for StripMode {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 /// Additional target options.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

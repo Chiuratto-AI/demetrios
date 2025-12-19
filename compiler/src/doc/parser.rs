@@ -381,7 +381,6 @@ fn parse_attribute(sections: &mut DocSections, line: &str) {
     // @example title
     if line.starts_with("@example") {
         // Just marks the beginning of an example section
-        return;
     }
 }
 
@@ -493,8 +492,8 @@ fn parse_see_also(sections: &mut DocSections, content: &str) {
             if let Some(close_bracket) = item.find(']') {
                 let text = &item[1..close_bracket];
 
-                if item[close_bracket..].starts_with("](") {
-                    if let Some(close_paren) = item[close_bracket..].find(')') {
+                if item[close_bracket..].starts_with("](")
+                    && let Some(close_paren) = item[close_bracket..].find(')') {
                         let path = &item[close_bracket + 2..close_bracket + close_paren];
                         sections.see_also.push(CrossRef {
                             path: path.to_string(),
@@ -502,7 +501,6 @@ fn parse_see_also(sections: &mut DocSections, content: &str) {
                         });
                         continue;
                     }
-                }
 
                 // [`path`] format - path is also the text
                 let path = text.trim_matches('`');

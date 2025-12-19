@@ -191,10 +191,10 @@ impl BlockShape {
         self.x * self.y * self.z
     }
     pub fn warps(&self) -> u32 {
-        (self.total_threads() + 31) / 32
+        self.total_threads().div_ceil(32)
     }
     pub fn is_warp_aligned(&self) -> bool {
-        self.total_threads() % 32 == 0
+        self.total_threads().is_multiple_of(32)
     }
 }
 
@@ -779,12 +779,11 @@ impl OccupancyCalculator {
         registers_per_thread: u32,
         shared_mem_per_block: u32,
     ) -> OccupancyInfo {
-        let warps_per_block = (block_size + self.arch.warp_size - 1) / self.arch.warp_size;
+        let warps_per_block = block_size.div_ceil(self.arch.warp_size);
         let blocks_by_warps = self.arch.max_warps_per_sm / warps_per_block;
 
         let regs_per_block = registers_per_thread * block_size;
-        let aligned_regs = (regs_per_block + self.arch.register_alloc_granularity - 1)
-            / self.arch.register_alloc_granularity
+        let aligned_regs = regs_per_block.div_ceil(self.arch.register_alloc_granularity)
             * self.arch.register_alloc_granularity;
         let blocks_by_regs = if aligned_regs > 0 {
             self.arch.registers_per_sm / aligned_regs
@@ -792,8 +791,7 @@ impl OccupancyCalculator {
             self.arch.max_blocks_per_sm
         };
 
-        let aligned_shared = (shared_mem_per_block + self.arch.shared_alloc_granularity - 1)
-            / self.arch.shared_alloc_granularity
+        let aligned_shared = shared_mem_per_block.div_ceil(self.arch.shared_alloc_granularity)
             * self.arch.shared_alloc_granularity;
         let blocks_by_shared = if aligned_shared > 0 {
             self.arch.shared_memory_per_sm / aligned_shared

@@ -160,7 +160,7 @@ impl Predicate {
             Predicate::True
         } else if preds.len() == 1 {
             preds.into_iter().next().unwrap()
-        } else if preds.iter().any(|p| *p == Predicate::False) {
+        } else if preds.contains(&Predicate::False) {
             Predicate::False
         } else {
             Predicate::And(preds)
@@ -178,7 +178,7 @@ impl Predicate {
             Predicate::False
         } else if preds.len() == 1 {
             preds.into_iter().next().unwrap()
-        } else if preds.iter().any(|p| *p == Predicate::True) {
+        } else if preds.contains(&Predicate::True) {
             Predicate::True
         } else {
             Predicate::Or(preds)

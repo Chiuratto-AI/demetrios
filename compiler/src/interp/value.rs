@@ -10,6 +10,7 @@ use crate::interp::symbolic::Expr as SymbolicExprType;
 
 /// ODE solver statistics
 #[derive(Clone, Debug)]
+#[derive(Default)]
 pub struct SolverStats {
     /// Number of steps taken
     pub steps: usize,
@@ -19,15 +20,6 @@ pub struct SolverStats {
     pub rejected_steps: usize,
 }
 
-impl Default for SolverStats {
-    fn default() -> Self {
-        SolverStats {
-            steps: 0,
-            accepted_steps: 0,
-            rejected_steps: 0,
-        }
-    }
-}
 
 /// Probabilistic distributions
 #[derive(Clone, Debug)]

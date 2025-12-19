@@ -243,7 +243,7 @@ pub fn cmd_check(_package: Option<String>) -> Result<()> {
 
     if src_dir.exists() {
         for entry in walkdir(&src_dir)? {
-            if entry.extension().map_or(false, |e| e == "d") {
+            if entry.extension().is_some_and(|e| e == "d") {
                 let content = std::fs::read_to_string(&entry)?;
 
                 // Run lexer and parser
@@ -323,7 +323,7 @@ pub fn cmd_doc(open: bool, document_private: bool) -> Result<()> {
 
     if src_dir.exists() {
         for entry in walkdir(&src_dir)? {
-            if entry.extension().map_or(false, |e| e == "d") {
+            if entry.extension().is_some_and(|e| e == "d") {
                 let content = std::fs::read_to_string(&entry)?;
                 match crate::lexer::lex(&content) {
                     Ok(tokens) => match crate::parser::parse(&tokens, &content) {
@@ -404,13 +404,12 @@ pub fn cmd_doc_book(output: Option<PathBuf>) -> Result<()> {
 
     if src_dir.exists() {
         for entry in walkdir(&src_dir)? {
-            if entry.extension().map_or(false, |e| e == "d") {
+            if entry.extension().is_some_and(|e| e == "d") {
                 let content = std::fs::read_to_string(&entry)?;
-                if let Ok(tokens) = crate::lexer::lex(&content) {
-                    if let Ok(ast) = crate::parser::parse(&tokens, &content) {
+                if let Ok(tokens) = crate::lexer::lex(&content)
+                    && let Ok(ast) = crate::parser::parse(&tokens, &content) {
                         ast_items.push(ast);
                     }
-                }
             }
         }
     }
@@ -475,13 +474,12 @@ pub fn cmd_doctest(filter: Option<String>, verbose: bool) -> Result<()> {
 
     if src_dir.exists() {
         for entry in walkdir(&src_dir)? {
-            if entry.extension().map_or(false, |e| e == "d") {
+            if entry.extension().is_some_and(|e| e == "d") {
                 let content = std::fs::read_to_string(&entry)?;
-                if let Ok(tokens) = crate::lexer::lex(&content) {
-                    if let Ok(ast) = crate::parser::parse(&tokens, &content) {
+                if let Ok(tokens) = crate::lexer::lex(&content)
+                    && let Ok(ast) = crate::parser::parse(&tokens, &content) {
                         ast_items.push(ast);
                     }
-                }
             }
         }
     }
@@ -548,13 +546,12 @@ pub fn cmd_doc_coverage() -> Result<()> {
 
     if src_dir.exists() {
         for entry in walkdir(&src_dir)? {
-            if entry.extension().map_or(false, |e| e == "d") {
+            if entry.extension().is_some_and(|e| e == "d") {
                 let content = std::fs::read_to_string(&entry)?;
-                if let Ok(tokens) = crate::lexer::lex(&content) {
-                    if let Ok(ast) = crate::parser::parse(&tokens, &content) {
+                if let Ok(tokens) = crate::lexer::lex(&content)
+                    && let Ok(ast) = crate::parser::parse(&tokens, &content) {
                         ast_items.push(ast);
                     }
-                }
             }
         }
     }
@@ -826,7 +823,7 @@ pub fn cmd_fmt(check: bool) -> Result<()> {
 
     if src_dir.exists() {
         for entry in walkdir(&src_dir)? {
-            if entry.extension().map_or(false, |e| e == "d") {
+            if entry.extension().is_some_and(|e| e == "d") {
                 // Would format file here
                 formatted += 1;
             }
@@ -854,7 +851,7 @@ pub fn cmd_lint(fix: bool) -> Result<()> {
 
     if src_dir.exists() {
         for entry in walkdir(&src_dir)? {
-            if entry.extension().map_or(false, |e| e == "d") {
+            if entry.extension().is_some_and(|e| e == "d") {
                 // Would lint file here
                 let _ = entry; // Suppress unused warning
             }

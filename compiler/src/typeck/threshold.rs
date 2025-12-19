@@ -12,12 +12,14 @@ use crate::common::Span;
 
 /// Named threshold levels
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Default)]
 pub enum ThresholdLevel {
     /// Exact match required (0.0)
     Exact,
     /// Very strict (0.05)
     Strict,
     /// Default tolerance (0.15)
+    #[default]
     Default,
     /// Relaxed matching (0.25)
     Loose,
@@ -61,11 +63,6 @@ impl ThresholdLevel {
     }
 }
 
-impl Default for ThresholdLevel {
-    fn default() -> Self {
-        ThresholdLevel::Default
-    }
-}
 
 /// Resolved threshold with provenance
 #[derive(Debug, Clone)]
@@ -212,26 +209,24 @@ impl ThresholdResolver {
         context: Option<ThresholdContext>,
     ) -> ResolvedThreshold {
         // Check parameter-level override first
-        if let (Some(item), Some(idx)) = (item_path, param_index) {
-            if let Some(level) = self.param_overrides.get(&(item.to_string(), idx)) {
+        if let (Some(item), Some(idx)) = (item_path, param_index)
+            && let Some(level) = self.param_overrides.get(&(item.to_string(), idx)) {
                 return ResolvedThreshold {
                     level: *level,
                     source: ThresholdSource::ParameterAnnotation,
                     annotation_span: None,
                 };
             }
-        }
 
         // Check item-level override
-        if let Some(item) = item_path {
-            if let Some(level) = self.item_overrides.get(item) {
+        if let Some(item) = item_path
+            && let Some(level) = self.item_overrides.get(item) {
                 return ResolvedThreshold {
                     level: *level,
                     source: ThresholdSource::ItemAnnotation,
                     annotation_span: None,
                 };
             }
-        }
 
         // Check module-level default
         if let Some(level) = self.module_defaults.get(module_path) {

@@ -70,17 +70,15 @@ impl DAG {
         self.add_node(from);
         self.add_node(to);
 
-        if let Some(children) = self.edges.get_mut(from) {
-            if !children.contains(&to.to_string()) {
+        if let Some(children) = self.edges.get_mut(from)
+            && !children.contains(&to.to_string()) {
                 children.push(to.to_string());
             }
-        }
 
-        if let Some(pars) = self.parents.get_mut(to) {
-            if !pars.contains(&from.to_string()) {
+        if let Some(pars) = self.parents.get_mut(to)
+            && !pars.contains(&from.to_string()) {
                 pars.push(from.to_string());
             }
-        }
     }
 
     /// Get all nodes

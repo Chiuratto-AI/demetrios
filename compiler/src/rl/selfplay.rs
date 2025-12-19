@@ -258,14 +258,13 @@ where
         let result = search(&mut tree, &evaluator);
 
         // Check for resignation
-        if let Some(threshold) = config.resign_threshold {
-            if result.root_value.mean() < threshold {
+        if let Some(threshold) = config.resign_threshold
+            && result.root_value.mean() < threshold {
                 trajectory.resigned = true;
                 trajectory.resigned_by = Some(state.current_player());
                 trajectory.finalize(GameOutcome::Win(state.current_player().opponent()));
                 return trajectory;
             }
-        }
 
         // Select action
         let action = if let Some(action) = result.best_action.clone() {
@@ -279,7 +278,7 @@ where
             state: state.clone(),
             action: action.clone(),
             policy: result.action_probabilities.clone(),
-            value: result.root_value.clone(),
+            value: result.root_value,
             mcts_stats: result.stats.clone(),
             uncertainty: result.global_uncertainty,
             move_num,

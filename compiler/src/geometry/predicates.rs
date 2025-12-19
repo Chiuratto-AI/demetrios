@@ -586,7 +586,7 @@ impl Predicate {
 
     /// Create midpoint predicate
     pub fn midpoint(mid: &str, p1: &str, p2: &str) -> Self {
-        let mut endpoints = vec![p1.to_string(), p2.to_string()];
+        let mut endpoints = [p1.to_string(), p2.to_string()];
         endpoints.sort();
         let args = vec![mid.to_string(), endpoints[0].clone(), endpoints[1].clone()];
         Predicate::new(PredicateKind::Midpoint, args)
@@ -594,7 +594,7 @@ impl Predicate {
 
     /// Create right angle predicate
     pub fn right_angle(p1: &str, vertex: &str, p2: &str) -> Self {
-        let mut rays = vec![p1.to_string(), p2.to_string()];
+        let mut rays = [p1.to_string(), p2.to_string()];
         rays.sort();
         let args = vec![rays[0].clone(), vertex.to_string(), rays[1].clone()];
         Predicate::new(PredicateKind::RightAngle, args)

@@ -329,8 +329,8 @@ pub fn version_satisfies(version: &OntologyVersion, constraint: &Constraint) -> 
         }
 
         ConstraintOp::DateWildcard => {
-            if let OntologyVersion::Date { year, month, .. } = version {
-                if let Some(c_year) = constraint.wildcard_year {
+            if let OntologyVersion::Date { year, month, .. } = version
+                && let Some(c_year) = constraint.wildcard_year {
                     if *year != c_year {
                         return false;
                     }
@@ -339,7 +339,6 @@ pub fn version_satisfies(version: &OntologyVersion, constraint: &Constraint) -> 
                     }
                     return true;
                 }
-            }
             false
         }
     }
@@ -490,14 +489,13 @@ impl VersionResolver {
             };
 
             // Warn if not exact match
-            if let Some(min) = onto_constraints.iter().find_map(|c| c.minimum()) {
-                if *selected != min {
+            if let Some(min) = onto_constraints.iter().find_map(|c| c.minimum())
+                && *selected != min {
                     warnings.push(format!(
                         "{}: using {} instead of minimum {}",
                         ontology, selected, min
                     ));
                 }
-            }
 
             versions.insert(ontology.clone(), (*selected).clone());
         }

@@ -420,7 +420,7 @@ fn parse_request(stream: &mut TcpStream) -> Result<HttpRequest, DevServerError> 
     let mut request_line = String::new();
     reader.read_line(&mut request_line)?;
 
-    let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
+    let parts: Vec<&str> = request_line.split_whitespace().collect();
     if parts.len() < 2 {
         return Err(DevServerError::InvalidConfig {
             message: "Invalid request line".to_string(),

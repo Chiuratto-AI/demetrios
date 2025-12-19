@@ -7,8 +7,6 @@ use demetrios::codegen::gpu::{
     ArchPeakPerf,
     // IR types
     BlockId,
-    // Profiler
-    Bottleneck,
     BottleneckKind,
     BottleneckSeverity,
     // Roofline model
@@ -16,7 +14,6 @@ use demetrios::codegen::gpu::{
     CostDatabase,
     // Arch types
     CudaArch,
-    FlopsCount,
     GpuBlock,
     GpuKernel,
     GpuModule,
@@ -25,21 +22,12 @@ use demetrios::codegen::gpu::{
     GpuTerminator,
     GpuType,
     InstructionClass,
-    InstructionCost,
-    KernelCostEstimate,
-    KernelPerfProfile,
     KernelProfiler,
-    LimitingResource,
     MemorySpace,
-    MemoryTraffic,
-    ModulePerfProfile,
     OptimizationHint,
-    PerfComparison,
     PerfCounters,
     PerfScore,
-    RooflineAnalysis,
     RooflineModel,
-    RooflinePlot,
     RooflinePoint,
     ValueId,
 };
@@ -171,7 +159,7 @@ fn test_kernel_cost_estimate() {
     let target = GpuTarget::Cuda {
         compute_capability: (8, 0),
     };
-    let mut module = GpuModule::new("test_module", target);
+    let module = GpuModule::new("test_module", target);
     let mut kernel = GpuKernel::new("test_kernel");
 
     let mut block = GpuBlock::new(BlockId(0), "entry");
@@ -422,7 +410,7 @@ fn test_module_profiling() {
 
     // Add multiple kernels
     for i in 0..3 {
-        let mut kernel = GpuKernel::new(&format!("kernel_{}", i));
+        let mut kernel = GpuKernel::new(format!("kernel_{}", i));
         let mut block = GpuBlock::new(BlockId(0), "entry");
         block.add_instruction(ValueId(0), GpuOp::ConstFloat(1.0, GpuType::F32));
         block.add_instruction(ValueId(1), GpuOp::FAdd(ValueId(0), ValueId(0)));
@@ -658,7 +646,7 @@ fn test_roofline_plot_data() {
     // Create some test kernels and analyze them
     let mut analyses = Vec::new();
     for i in 1..=5 {
-        let mut kernel = GpuKernel::new(&format!("kernel_{}", i));
+        let mut kernel = GpuKernel::new(format!("kernel_{}", i));
         let mut block = GpuBlock::new(BlockId(0), "entry");
 
         // Add operations to create different arithmetic intensities

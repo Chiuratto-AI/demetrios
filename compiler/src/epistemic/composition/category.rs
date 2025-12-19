@@ -236,7 +236,7 @@ impl EpistemicMonad {
     {
         move |a: A| {
             let kb = f(a);
-            Self::bind(kb, |b| g(b))
+            Self::bind(kb, &g)
         }
     }
 }

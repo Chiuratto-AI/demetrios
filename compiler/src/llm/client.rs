@@ -168,14 +168,13 @@ impl LLMClientRegistry {
         let mut last_error = LLMError::NoProvidersAvailable;
 
         // Try default provider first
-        if let Some(provider) = &self.default_provider {
-            if let Some(client) = self.get(provider) {
+        if let Some(provider) = &self.default_provider
+            && let Some(client) = self.get(provider) {
                 match client.query(request) {
                     Ok(response) => return Ok(response),
                     Err(e) => last_error = e,
                 }
             }
-        }
 
         // Try other providers
         for (provider, client) in &self.clients {

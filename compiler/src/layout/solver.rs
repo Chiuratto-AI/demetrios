@@ -280,8 +280,8 @@ fn split_for_separate(
             // Keep first concept, move rest to new clusters
             for concept in concepts_in_cluster.into_iter().skip(1) {
                 // Remove from original cluster
-                if let Some(cluster) = clustering.clusters.get_mut(cluster_idx) {
-                    if let Some(pos) = cluster.concepts.iter().position(|c| c == concept) {
+                if let Some(cluster) = clustering.clusters.get_mut(cluster_idx)
+                    && let Some(pos) = cluster.concepts.iter().position(|c| c == concept) {
                         cluster.concepts.remove(pos);
                         // Estimate access split (simple division)
                         let moved_accesses = cluster.total_accesses / 2;
@@ -297,7 +297,6 @@ fn split_for_separate(
                         });
                         splits += 1;
                     }
-                }
             }
         }
     }

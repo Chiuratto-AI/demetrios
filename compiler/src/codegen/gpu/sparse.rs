@@ -686,7 +686,7 @@ impl SparseFusionAnalyzer {
 
         // Density-aware fusion: only fuse if densities are similar
         let density_ratio = op1.density / op2.density.max(0.001);
-        if density_ratio < 0.5 || density_ratio > 2.0 {
+        if !(0.5..=2.0).contains(&density_ratio) {
             return false;
         }
 

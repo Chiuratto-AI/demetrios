@@ -20,11 +20,13 @@ use crate::common::Span;
 
 /// Lint level
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Default)]
 pub enum LintLevel {
     /// Lint is allowed (disabled)
     Allow,
 
     /// Lint produces a warning
+    #[default]
     Warn,
 
     /// Lint produces an error
@@ -34,11 +36,6 @@ pub enum LintLevel {
     Forbid,
 }
 
-impl Default for LintLevel {
-    fn default() -> Self {
-        LintLevel::Warn
-    }
-}
 
 impl std::fmt::Display for LintLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -477,7 +474,7 @@ impl<'a> LintContext<'a> {
                     .variables
                     .iter()
                     .filter(|(name, info)| !info.used && !name.starts_with('_'))
-                    .map(|(name, info)| (name.as_str(), info.span.clone()))
+                    .map(|(name, info)| (name.as_str(), info.span))
                     .collect()
             })
             .unwrap_or_default()
@@ -508,7 +505,7 @@ impl<'a> LintContext<'a> {
         self.defined_names
             .iter()
             .filter(|(name, _)| !self.used_names.contains(*name) && !name.starts_with('_'))
-            .map(|(name, (span, kind))| (name.as_str(), span.clone(), *kind))
+            .map(|(name, (span, kind))| (name.as_str(), *span, *kind))
             .collect()
     }
 }
@@ -648,7 +645,7 @@ impl Linter {
                             .get_level("naming_convention")
                             .unwrap_or(LintLevel::Warn),
                         format!("function `{}` should be snake_case", f.name),
-                        f.span.clone(),
+                        f.span,
                     );
                     diag.help
                         .push(format!("rename to `{}`", self.to_snake_case(&f.name)));
@@ -668,7 +665,7 @@ impl Linter {
                             f.params.len(),
                             self.config.max_params
                         ),
-                        f.span.clone(),
+                        f.span,
                     );
                     diag.help
                         .push("consider grouping parameters into a struct".to_string());
@@ -684,7 +681,7 @@ impl Linter {
                             .get_level("naming_convention")
                             .unwrap_or(LintLevel::Warn),
                         format!("struct `{}` should be PascalCase", s.name),
-                        s.span.clone(),
+                        s.span,
                     );
                     diag.help
                         .push(format!("rename to `{}`", self.to_pascal_case(&s.name)));
@@ -700,7 +697,7 @@ impl Linter {
                             .get_level("naming_convention")
                             .unwrap_or(LintLevel::Warn),
                         format!("enum `{}` should be PascalCase", e.name),
-                        e.span.clone(),
+                        e.span,
                     );
                     diag.help
                         .push(format!("rename to `{}`", self.to_pascal_case(&e.name)));
@@ -709,15 +706,15 @@ impl Linter {
             }
             ast::Item::Global(g) if g.is_const => {
                 // Check naming convention (SCREAMING_SNAKE_CASE) for constants
-                if let Pattern::Binding { name, .. } = &g.pattern {
-                    if !self.is_screaming_snake_case(name) {
+                if let Pattern::Binding { name, .. } = &g.pattern
+                    && !self.is_screaming_snake_case(name) {
                         let mut diag = LintDiagnostic::new(
                             "naming_convention",
                             self.config
                                 .get_level("naming_convention")
                                 .unwrap_or(LintLevel::Warn),
                             format!("constant `{}` should be SCREAMING_SNAKE_CASE", name),
-                            g.span.clone(),
+                            g.span,
                         );
                         diag.help.push(format!(
                             "rename to `{}`",
@@ -725,7 +722,6 @@ impl Linter {
                         ));
                         ctx.diagnostics.push(diag);
                     }
-                }
             }
             _ => {}
         }
@@ -812,7 +808,7 @@ impl Linter {
                     if let Pattern::Binding { name, .. } = &param.pattern {
                         ctx.declare_var(
                             name,
-                            f.span.clone(), // Use function span as param doesn't have its own span
+                            f.span, // Use function span as param doesn't have its own span
                             Some(param.ty.clone()),
                             param.is_mut,
                         );
@@ -832,7 +828,7 @@ impl Linter {
                     ctx.report_with_suggestion(
                         &rules::UnusedVariable,
                         format!("unused variable `{}`", name),
-                        span.clone(),
+                        span,
                         Suggestion {
                             message: "prefix with underscore to indicate intentionally unused"
                                 .into(),
@@ -965,7 +961,7 @@ impl Linter {
             ctx.report_with_suggestion(
                 &rules::UnusedVariable,
                 format!("unused variable `{}`", name),
-                span.clone(),
+                span,
                 Suggestion {
                     message: "prefix with underscore to indicate intentionally unused".into(),
                     edits: vec![Edit {

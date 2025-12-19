@@ -719,7 +719,7 @@ impl Default for CorrectnessValidator {
 
 /// Helper to cast byte slices to typed slices
 fn bytemuck_cast_slice<T: Copy>(bytes: &[u8]) -> Result<&[T], ValidationError> {
-    if bytes.len() % std::mem::size_of::<T>() != 0 {
+    if !bytes.len().is_multiple_of(std::mem::size_of::<T>()) {
         return Err(ValidationError::InvalidOutput {
             description: format!(
                 "Buffer size {} not aligned to type size {}",

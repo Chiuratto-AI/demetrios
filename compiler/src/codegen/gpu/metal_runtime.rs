@@ -559,7 +559,7 @@ impl MetalRuntime {
 
     /// Copy data to buffer (for Shared storage mode)
     pub fn copy_to_buffer<T>(&self, buffer: &MetalBuffer, data: &[T]) -> Result<(), MetalError> {
-        let size = data.len() * std::mem::size_of::<T>();
+        let size = std::mem::size_of_val(data);
         if size > buffer.size {
             return Err(MetalError::BufferTooSmall);
         }
@@ -655,9 +655,9 @@ impl MetalRuntime {
 
         // Calculate number of threadgroups
         let threadgroups = (
-            (total_threads.0 + threads_per_threadgroup.0 - 1) / threads_per_threadgroup.0,
-            (total_threads.1 + threads_per_threadgroup.1 - 1) / threads_per_threadgroup.1,
-            (total_threads.2 + threads_per_threadgroup.2 - 1) / threads_per_threadgroup.2,
+            total_threads.0.div_ceil(threads_per_threadgroup.0),
+            total_threads.1.div_ceil(threads_per_threadgroup.1),
+            total_threads.2.div_ceil(threads_per_threadgroup.2),
         );
 
         let dispatch_size = MetalDispatchSize::new(threadgroups, threads_per_threadgroup);
@@ -870,7 +870,7 @@ impl EpistemicMetalRunner {
         self.runtime.copy_to_buffer(&buf_eps_b, epsilon_b)?;
 
         // Dispatch
-        let dispatch = MetalDispatchSize::new_1d((n as u32 + 255) / 256, 256);
+        let dispatch = MetalDispatchSize::new_1d((n as u32).div_ceil(256), 256);
         self.runtime.dispatch_kernel(
             &kernel,
             &[

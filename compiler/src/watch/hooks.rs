@@ -440,11 +440,10 @@ impl HookManager {
 
         for hook in hooks {
             // Check condition
-            if let Some(ref condition) = hook.condition {
-                if !condition.evaluate() {
+            if let Some(ref condition) = hook.condition
+                && !condition.evaluate() {
                     continue;
                 }
-            }
 
             let result = self.run_hook(hook, context);
             let failed = !result.success;
@@ -807,8 +806,8 @@ impl HookManager {
                     self.register(hook)?;
                 }
                 current_hook = Some(HookConfig::default());
-            } else if let Some(ref mut hook) = current_hook {
-                if let Some((key, value)) = line.split_once('=') {
+            } else if let Some(ref mut hook) = current_hook
+                && let Some((key, value)) = line.split_once('=') {
                     let key = key.trim();
                     let value = value.trim().trim_matches('"');
 
@@ -863,7 +862,6 @@ impl HookManager {
                         _ => {}
                     }
                 }
-            }
         }
 
         // Don't forget the last hook

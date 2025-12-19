@@ -482,11 +482,10 @@ impl TypeChecker {
         }
 
         // Handle last expression (no trailing comma)
-        if !current_tokens.is_empty() {
-            if let Some(expr) = self.tokens_to_simple_expr(&current_tokens) {
+        if !current_tokens.is_empty()
+            && let Some(expr) = self.tokens_to_simple_expr(&current_tokens) {
                 exprs.push(expr);
             }
-        }
 
         exprs
     }
@@ -499,11 +498,10 @@ impl TypeChecker {
         // directly (already unwrapped from the bracket).
         //
         // For recursive calls with [Delimited(Bracket, inner)], we need to unwrap.
-        if args.len() == 1 {
-            if let TokenTree::Delimited(Delimiter::Bracket, inner, _) = &args[0] {
+        if args.len() == 1
+            && let TokenTree::Delimited(Delimiter::Bracket, inner, _) = &args[0] {
                 return inner;
             }
-        }
 
         // Otherwise, args are the direct content
         args
@@ -518,9 +516,9 @@ impl TypeChecker {
         }
 
         // Check for nested vec! macro: [Token("vec"), Token("!"), Delimited(Bracket, ...)]
-        if tokens.len() >= 3 {
-            if let (TokenTree::Token(first), TokenTree::Token(second)) = (&tokens[0], &tokens[1]) {
-                if first.token.kind == TokenKind::Ident
+        if tokens.len() >= 3
+            && let (TokenTree::Token(first), TokenTree::Token(second)) = (&tokens[0], &tokens[1])
+                && first.token.kind == TokenKind::Ident
                     && first.token.text == "vec"
                     && second.token.kind == TokenKind::Bang
                 {
@@ -531,8 +529,6 @@ impl TypeChecker {
                         elements: nested_exprs,
                     });
                 }
-            }
-        }
 
         // For single token, convert directly
         if tokens.len() == 1 {
@@ -556,11 +552,10 @@ impl TypeChecker {
                         _ => current.push(tt.clone()),
                     }
                 }
-                if !current.is_empty() {
-                    if let Some(e) = self.tokens_to_simple_expr(&current) {
+                if !current.is_empty()
+                    && let Some(e) = self.tokens_to_simple_expr(&current) {
                         inner_exprs.push(e);
                     }
-                }
                 return Some(Expr::Array {
                     id: NodeId::dummy(),
                     elements: inner_exprs,
@@ -690,11 +685,10 @@ impl TypeChecker {
                     match &attr.args {
                         AttributeArgs::Named(pairs) => {
                             for (key, value) in pairs {
-                                if key == "threshold" {
-                                    if let AttributeValue::Float(threshold) = value {
+                                if key == "threshold"
+                                    && let AttributeValue::Float(threshold) = value {
                                         self.validate_and_insert_threshold(&f.name, *threshold);
                                     }
-                                }
                             }
                         }
                         AttributeArgs::Value(AttributeValue::Float(threshold)) => {
@@ -1039,8 +1033,7 @@ impl TypeChecker {
                 // Look up if these are type aliases to ontology types
                 if let (Some(TypeDef::Alias(exp_ty, _, _)), Some(TypeDef::Alias(found_ty, _, _))) =
                     (self.type_defs.get(exp_name), self.type_defs.get(found_name))
-                {
-                    if let (
+                    && let (
                         Type::Ontology {
                             namespace: exp_ns,
                             term: exp_term,
@@ -1052,10 +1045,10 @@ impl TypeChecker {
                     ) = (exp_ty, found_ty)
                     {
                         match self.check_ontology_compatibility(
-                            &exp_ns,
-                            &exp_term,
-                            &found_ns,
-                            &found_term,
+                            exp_ns,
+                            exp_term,
+                            found_ns,
+                            found_term,
                             threshold,
                         ) {
                             Ok(_) => {}
@@ -1075,7 +1068,6 @@ impl TypeChecker {
                             }
                         }
                     }
-                }
             }
             // For mixed cases (named + ontology), also check
             (
@@ -1561,11 +1553,11 @@ impl TypeChecker {
                             let error_msg = if let Some(ref resolved) = path.resolved_module {
                                 format!(
                                     "Unknown qualified path `{}` (resolved to module {:?})",
-                                    path.to_string(),
+                                    path,
                                     resolved.path
                                 )
                             } else {
-                                format!("Unknown qualified path `{}`", path.to_string())
+                                format!("Unknown qualified path `{}`", path)
                             };
                             self.error(error_msg, Span::dummy());
                             (HirExprKind::Global(path.to_string()), HirType::Error)
@@ -2404,7 +2396,7 @@ impl TypeChecker {
                         arm_types.iter().filter(|t| **t != HirType::Never).collect();
                     if non_never.len() == 1 {
                         non_never[0].clone()
-                    } else if arm_types.iter().any(|t| *t == HirType::Unit) {
+                    } else if arm_types.contains(&HirType::Unit) {
                         // If any arm returns Unit (like if-let without else), the whole expression is Unit
                         HirType::Unit
                     } else {
@@ -2652,8 +2644,8 @@ impl TypeChecker {
             | BinaryOp::Le
             | BinaryOp::Gt
             | BinaryOp::Ge => {
-                if let (Some(lu), Some(ru)) = (&left_unit, &right_unit) {
-                    if !lu.is_compatible(ru) {
+                if let (Some(lu), Some(ru)) = (&left_unit, &right_unit)
+                    && !lu.is_compatible(ru) {
                         self.error(
                             format!(
                                 "Unit mismatch in comparison: cannot compare {} and {}",
@@ -2663,7 +2655,6 @@ impl TypeChecker {
                             Span::dummy(),
                         );
                     }
-                }
                 HirType::Bool
             }
             // Logical operators
@@ -3226,14 +3217,12 @@ impl TypeChecker {
                     name: type_name,
                     args,
                 }) = expected
-                {
-                    if type_name == "Option" {
+                    && type_name == "Option" {
                         return HirType::Named {
                             name: "Option".to_string(),
                             args: args.iter().map(|t| self.type_to_hir(t)).collect(),
                         };
                     }
-                }
                 // Default to Option<()>
                 HirType::Named {
                     name: "Option".to_string(),
@@ -3960,8 +3949,8 @@ impl TypeChecker {
             }
             // Named type (alias) compared with Ontology type - resolve alias
             (Type::Named { name, .. }, Type::Ontology { namespace, term }) => {
-                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name) {
-                    if let Type::Ontology {
+                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name)
+                    && let Type::Ontology {
                         namespace: alias_ns,
                         term: alias_term,
                     } = alias_ty
@@ -3978,13 +3967,12 @@ impl TypeChecker {
                             .map(|d| d <= self.default_threshold)
                             .unwrap_or(false);
                     }
-                }
                 false
             }
             // Ontology type compared with Named type (alias) - resolve alias
             (Type::Ontology { namespace, term }, Type::Named { name, .. }) => {
-                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name) {
-                    if let Type::Ontology {
+                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name)
+                    && let Type::Ontology {
                         namespace: alias_ns,
                         term: alias_term,
                     } = alias_ty
@@ -4001,7 +3989,6 @@ impl TypeChecker {
                             .map(|d| d <= self.default_threshold)
                             .unwrap_or(false);
                     }
-                }
                 false
             }
             _ => false,

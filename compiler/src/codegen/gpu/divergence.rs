@@ -262,7 +262,7 @@ impl WarpDivergenceAnalyzer {
             for &succ in &successors {
                 self.reverse_cfg
                     .entry(succ)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(block.id);
             }
 
@@ -886,11 +886,10 @@ impl ControlFlowOptimizer {
         let mut uniform_conditions = Vec::new();
 
         for block in &kernel.blocks {
-            if let GpuTerminator::CondBr(cond, _, _) = &block.terminator {
-                if self.analyzer.is_uniform_value(*cond, block, kernel) {
+            if let GpuTerminator::CondBr(cond, _, _) = &block.terminator
+                && self.analyzer.is_uniform_value(*cond, block, kernel) {
                     uniform_conditions.push((block.id, *cond));
                 }
-            }
         }
 
         uniform_conditions

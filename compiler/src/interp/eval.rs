@@ -196,7 +196,7 @@ impl Interpreter {
                 } else {
                     self.env
                         .get(name)
-                        .ok_or_else(|| ControlFlow::Return(Value::Unit))
+                        .ok_or(ControlFlow::Return(Value::Unit))
                 }
             }
 
@@ -384,14 +384,14 @@ impl Interpreter {
                     Value::Struct { fields, .. } => fields
                         .get(field)
                         .cloned()
-                        .ok_or_else(|| ControlFlow::Return(Value::Unit)),
+                        .ok_or(ControlFlow::Return(Value::Unit)),
                     Value::Ref(r) => {
                         let inner = r.borrow();
                         if let Value::Struct { ref fields, .. } = *inner {
                             fields
                                 .get(field)
                                 .cloned()
-                                .ok_or_else(|| ControlFlow::Return(Value::Unit))
+                                .ok_or(ControlFlow::Return(Value::Unit))
                         } else {
                             Err(ControlFlow::Return(Value::Unit))
                         }
@@ -406,7 +406,7 @@ impl Interpreter {
                     Value::Tuple(elements) => elements
                         .get(*index)
                         .cloned()
-                        .ok_or_else(|| ControlFlow::Return(Value::Unit)),
+                        .ok_or(ControlFlow::Return(Value::Unit)),
                     _ => Err(ControlFlow::Return(Value::Unit)),
                 }
             }
@@ -417,7 +417,7 @@ impl Interpreter {
 
                 let idx = idx_val
                     .as_int()
-                    .ok_or_else(|| ControlFlow::Return(Value::Unit))?
+                    .ok_or(ControlFlow::Return(Value::Unit))?
                     as usize;
 
                 match base_val {
@@ -425,13 +425,13 @@ impl Interpreter {
                         let arr = arr.borrow();
                         arr.get(idx)
                             .cloned()
-                            .ok_or_else(|| ControlFlow::Return(Value::Unit))
+                            .ok_or(ControlFlow::Return(Value::Unit))
                     }
                     Value::String(s) => s
                         .chars()
                         .nth(idx)
                         .map(|c| Value::String(c.to_string()))
-                        .ok_or_else(|| ControlFlow::Return(Value::Unit)),
+                        .ok_or(ControlFlow::Return(Value::Unit)),
                     _ => Err(ControlFlow::Return(Value::Unit)),
                 }
             }
@@ -914,19 +914,17 @@ impl Interpreter {
                 Ok(Value::Unit)
             }
             "assert" => {
-                if let Some(val) = args.first() {
-                    if !val.is_truthy() {
+                if let Some(val) = args.first()
+                    && !val.is_truthy() {
                         return Err(ControlFlow::Return(Value::Unit)); // Assertion failed
                     }
-                }
                 Ok(Value::Unit)
             }
             "assert_eq" => {
-                if args.len() >= 2 {
-                    if args[0] != args[1] {
+                if args.len() >= 2
+                    && args[0] != args[1] {
                         return Err(ControlFlow::Return(Value::Unit)); // Assertion failed
                     }
-                }
                 Ok(Value::Unit)
             }
             "len" => {
@@ -1198,11 +1196,10 @@ impl Interpreter {
             }
             HirExprKind::Field { base, field } => {
                 let base_val = self.eval_expr(base)?;
-                if let Value::Ref(r) = base_val {
-                    if let Value::Struct { ref mut fields, .. } = *r.borrow_mut() {
+                if let Value::Ref(r) = base_val
+                    && let Value::Struct { ref mut fields, .. } = *r.borrow_mut() {
                         fields.insert(field.clone(), value);
                     }
-                }
                 Ok(())
             }
             HirExprKind::Index { base, index } => {

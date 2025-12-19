@@ -455,9 +455,7 @@ impl UpliftCodeGen {
     }
 
     fn generate_segment_classifier(&mut self, block: &UpliftBlock, model_name: &str) {
-        self.emit(&format!(
-            "fn classify_segment(result: &UpliftResult) -> CustomerSegment {{",
-        ));
+        self.emit("fn classify_segment(result: &UpliftResult) -> CustomerSegment {");
         self.indent += 1;
 
         for rule in &block.segments {

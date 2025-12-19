@@ -337,13 +337,12 @@ impl<'a> Iterator for IndexIterator<'a> {
 impl<'a> IndexIterator<'a> {
     fn advance_to_next_leaf(&mut self) {
         while let Some((node, child_idx)) = self.stack.pop() {
-            if let BTreeNode::Internal { children, .. } = node {
-                if child_idx + 1 < children.len() {
+            if let BTreeNode::Internal { children, .. } = node
+                && child_idx + 1 < children.len() {
                     self.stack.push((node, child_idx + 1));
                     self.descend_left(&children[child_idx + 1]);
                     return;
                 }
-            }
         }
     }
 }
@@ -373,11 +372,10 @@ impl BTreeIndexBuilder {
 
     /// Add an entry to the builder
     pub fn add(&mut self, entry: IndexEntry) {
-        if let Some(last) = self.entries.last() {
-            if entry.iri_hash < last.iri_hash {
+        if let Some(last) = self.entries.last()
+            && entry.iri_hash < last.iri_hash {
                 self.sorted = false;
             }
-        }
         self.entries.push(entry);
     }
 

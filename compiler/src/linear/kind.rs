@@ -60,6 +60,7 @@ use std::fmt;
 /// - `Affine`: Can be used at most once (weakening allowed, no contraction)
 /// - `Linear`: Must be used exactly once (no weakening, no contraction)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum Linearity {
     /// Linear (1): Must be used exactly once
     ///
@@ -77,6 +78,7 @@ pub enum Linearity {
     ///
     /// Both weakening and contraction allowed.
     /// Example: Integers, strings, immutable data
+    #[default]
     Unrestricted,
 }
 
@@ -231,11 +233,6 @@ impl fmt::Display for Linearity {
     }
 }
 
-impl Default for Linearity {
-    fn default() -> Self {
-        Linearity::Unrestricted
-    }
-}
 
 impl PartialOrd for Linearity {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {

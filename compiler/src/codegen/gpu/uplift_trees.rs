@@ -657,9 +657,7 @@ impl UpliftTreePtxEmitter {
             "setp.lt.u32 %p0, %r_ut0, {};",
             self.config.n_bins * 6
         ));
-        self.emit(&format!(
-            "@%p0 ld.shared.f32 %r_ft0, [smem_hist + %r_ut0*4];"
-        ));
+        self.emit("@%p0 ld.shared.f32 %r_ft0, [smem_hist + %r_ut0*4];");
         self.emit(&format!(
             "@%p0 st.global.f32 [{} + %r_ut0*4], %r_ft0;",
             hist_out_ptr
@@ -682,7 +680,7 @@ impl UpliftTreePtxEmitter {
         self.emit_comment("Compute prefix sums for left/right partition statistics");
 
         // Each lane handles a subset of bins
-        let bins_per_lane = (self.config.n_bins + 31) / 32;
+        let bins_per_lane = self.config.n_bins.div_ceil(32);
         self.emit(&format!("mov.u32 %r_my_bins, {};", bins_per_lane));
 
         self.emit_comment("Evaluate splits");

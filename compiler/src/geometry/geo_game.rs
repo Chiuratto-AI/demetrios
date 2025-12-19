@@ -369,7 +369,7 @@ impl GeoProofGame {
         self.state.goal.as_ref().and_then(|g| {
             self.state
                 .get_predicate(&g.predicate.key())
-                .map(|p| p.epistemic.confidence.clone())
+                .map(|p| p.epistemic.confidence)
         })
     }
 

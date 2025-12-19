@@ -103,11 +103,9 @@ impl<T: Clone> VersionedKnowledge<T> {
                     ref mut superseded_by,
                     ..
                 } = superseded.current.temporal
-                {
-                    if superseded_by.is_none() {
+                    && superseded_by.is_none() {
                         *superseded_by = Some(new_version.clone());
                     }
-                }
                 superseded
             })
             .collect();

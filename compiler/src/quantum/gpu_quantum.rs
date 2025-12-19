@@ -36,11 +36,10 @@
 
 use std::f64::consts::PI;
 
-use super::epistemic_vqe::{EpistemicEnergy, EpistemicVQE, VarianceBreakdown};
+use super::epistemic_vqe::EpistemicEnergy;
 use super::noise::NoiseModel;
 use super::states::{Complex, StateVector};
 use super::vqe::Hamiltonian;
-use crate::epistemic::bayesian::BetaConfidence;
 
 // =============================================================================
 // GPU Configuration

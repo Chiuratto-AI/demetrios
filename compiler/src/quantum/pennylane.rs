@@ -627,7 +627,7 @@ impl VariationalCircuit {
         EpistemicExpectation {
             mean: exp_value,
             variance: total_variance,
-            confidence: state.confidence.clone(),
+            confidence: state.confidence,
             shots: self.config.shots,
             provenance_hash: self.provenance_root ^ observable.hash(),
         }
@@ -661,7 +661,7 @@ impl VariationalCircuit {
         EpistemicExpectation {
             mean: total_exp,
             variance: total_variance,
-            confidence: state.confidence.clone(),
+            confidence: state.confidence,
             shots: self.config.shots,
             provenance_hash: self.provenance_root ^ hamiltonian.provenance_hash,
         }

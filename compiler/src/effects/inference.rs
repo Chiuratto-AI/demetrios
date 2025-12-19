@@ -639,16 +639,14 @@ impl<'a> EffectChecker<'a> {
     }
 
     fn get_callee_effects(&self, callee: &Expr) -> EffectSet {
-        if let Expr::Path { path, id } = callee {
-            if path.is_simple() {
+        if let Expr::Path { path, id } = callee
+            && path.is_simple() {
                 // Look up the function by NodeId reference
-                if let Some(def_id) = self.symbols.ref_for_node(*id) {
-                    if let Some(effects) = self.fn_effects.get(&def_id) {
+                if let Some(def_id) = self.symbols.ref_for_node(*id)
+                    && let Some(effects) = self.fn_effects.get(&def_id) {
                         return effects.clone();
                     }
-                }
             }
-        }
         EffectSet::new()
     }
 
@@ -675,15 +673,13 @@ impl<'a> EffectChecker<'a> {
             // Simple path like `foo.method()` - we need type info from the checker
             Expr::Path { path, id } => {
                 // Try to look up the variable's type from symbol table
-                if path.is_simple() {
-                    if let Some(def_id) = self.symbols.ref_for_node(*id) {
-                        if let Some(symbol) = self.symbols.get(def_id) {
+                if path.is_simple()
+                    && let Some(def_id) = self.symbols.ref_for_node(*id)
+                        && let Some(symbol) = self.symbols.get(def_id) {
                             // Return the symbol's type name if available
                             // For now, return the symbol name as a heuristic
                             return Some(symbol.name.clone());
                         }
-                    }
-                }
                 None
             }
             // Struct literal: `MyStruct { ... }.method()`

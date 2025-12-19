@@ -188,7 +188,7 @@ impl LOOMClient {
                 continue;
             }
 
-            if let Some(mapping) = self.parse_tsv_line(&line) {
+            if let Some(mapping) = self.parse_tsv_line(line) {
                 self.add_mapping(mapping);
                 loaded += 1;
             }
@@ -279,13 +279,7 @@ impl LOOMClient {
         }
 
         // Check reverse mapping
-        for mapping in self.get_mappings_to(source) {
-            if &mapping.source_class == target {
-                return Some(mapping);
-            }
-        }
-
-        None
+        self.get_mappings_to(source).iter().find(|&mapping| &mapping.source_class == target).map(|v| v as _)
     }
 
     /// Compute distance between two IRIs via LOOM mappings

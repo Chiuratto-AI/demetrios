@@ -43,7 +43,7 @@ impl BloomFilter {
         // Calculate optimal number of bits and hashes
         let num_bits = Self::optimal_bits(expected_items.max(1), fp_rate);
         let num_hashes = Self::optimal_hashes(num_bits, expected_items.max(1));
-        let num_words = (num_bits + 63) / 64;
+        let num_words = num_bits.div_ceil(64);
 
         Self {
             bits: vec![0u64; num_words],
@@ -121,11 +121,10 @@ impl IRIInterner {
     /// Intern a string, returning its interned ID
     pub fn intern(&self, s: &str) -> InternedIRI {
         // Check if already interned
-        if let Ok(indices) = self.indices.read() {
-            if let Some(&idx) = indices.get(s) {
+        if let Ok(indices) = self.indices.read()
+            && let Some(&idx) = indices.get(s) {
                 return idx;
             }
-        }
 
         // Intern new string
         let mut strings = self.strings.write().unwrap();

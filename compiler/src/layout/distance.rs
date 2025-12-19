@@ -127,8 +127,8 @@ fn compute_ontology_distance(a: &str, b: &str, ontology: &NativeOntology) -> u32
 
     // Otherwise, find LCA and compute distance through it
     if let Some(lca) = ontology.lca(a, b) {
-        let dist_a = count_hierarchy_steps(a, &lca, ontology);
-        let dist_b = count_hierarchy_steps(b, &lca, ontology);
+        let dist_a = count_hierarchy_steps(a, lca, ontology);
+        let dist_b = count_hierarchy_steps(b, lca, ontology);
         return dist_a.saturating_add(dist_b);
     }
 

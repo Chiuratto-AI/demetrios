@@ -575,7 +575,7 @@ pub fn build_graph_from_module(module: &GpuModule) -> GpuGraph {
     // Create a node for each kernel
     let mut kernel_nodes: FxHashMap<String, GraphNodeId> = FxHashMap::default();
 
-    for (name, _kernel) in &module.kernels {
+    for name in module.kernels.keys() {
         let node_id = graph.alloc_node_id();
         let node = GraphNode {
             id: node_id,

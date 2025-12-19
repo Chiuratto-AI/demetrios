@@ -362,11 +362,10 @@ pub fn simplify(expr: &Expr) -> Expr {
                 return Expr::one();
             }
             // const / const
-            if let (Some(ca), Some(cb)) = (a.as_const(), b.as_const()) {
-                if cb.abs() > 1e-15 {
+            if let (Some(ca), Some(cb)) = (a.as_const(), b.as_const())
+                && cb.abs() > 1e-15 {
                     return Expr::Const(ca / cb);
                 }
-            }
             Expr::Div(Rc::new(a), Rc::new(b))
         }
 
@@ -417,8 +416,8 @@ pub fn simplify(expr: &Expr) -> Expr {
             let args: Vec<Rc<Expr>> = args.iter().map(|a| Rc::new(simplify(a))).collect();
 
             // Evaluate constant functions
-            if args.len() == 1 {
-                if let Some(x) = args[0].as_const() {
+            if args.len() == 1
+                && let Some(x) = args[0].as_const() {
                     match name.as_str() {
                         "sin" => return Expr::Const(x.sin()),
                         "cos" => return Expr::Const(x.cos()),
@@ -430,7 +429,6 @@ pub fn simplify(expr: &Expr) -> Expr {
                         _ => {}
                     }
                 }
-            }
 
             Expr::Fn(name.clone(), args)
         }
@@ -485,8 +483,8 @@ pub fn expand(expr: &Expr) -> Expr {
         // (a + b)^n expansion (binomial for small integer n)
         Expr::Pow(a, b) => {
             let a_exp = expand(a);
-            if let Some(n) = b.as_const() {
-                if n > 0.0 && n == n.floor() && n <= 5.0 {
+            if let Some(n) = b.as_const()
+                && n > 0.0 && n == n.floor() && n <= 5.0 {
                     let n = n as usize;
                     if let Expr::Add(x, y) = &a_exp {
                         // Binomial expansion
@@ -509,7 +507,6 @@ pub fn expand(expr: &Expr) -> Expr {
                         return simplify(&result);
                     }
                 }
-            }
             Expr::Pow(Rc::new(a_exp), Rc::new(expand(b)))
         }
 
@@ -705,9 +702,9 @@ pub fn integrate(expr: &Expr, var: &str) -> Option<Expr> {
         // ∫x^n dx = x^(n+1)/(n+1) for n != -1
         Expr::Pow(base, exp) => {
             // Only handle x^n where n is constant
-            if let Expr::Symbol(s) = base.as_ref() {
-                if s == var && !exp.contains_var(var) {
-                    if let Some(n) = exp.as_const() {
+            if let Expr::Symbol(s) = base.as_ref()
+                && s == var && !exp.contains_var(var)
+                    && let Some(n) = exp.as_const() {
                         if (n + 1.0).abs() > 1e-10 {
                             return Some(
                                 Expr::Symbol(var.to_string()).pow(Expr::Const(n + 1.0))
@@ -718,8 +715,6 @@ pub fn integrate(expr: &Expr, var: &str) -> Option<Expr> {
                             return Some(Expr::Symbol(var.to_string()).abs().ln());
                         }
                     }
-                }
-            }
             return None;
         }
 
@@ -733,8 +728,8 @@ pub fn integrate(expr: &Expr, var: &str) -> Option<Expr> {
         Expr::Fn(name, args) if args.len() == 1 => {
             let arg = &args[0];
             // Only handle simple case where arg == var
-            if let Expr::Symbol(s) = arg.as_ref() {
-                if s == var {
+            if let Expr::Symbol(s) = arg.as_ref()
+                && s == var {
                     match name.as_str() {
                         // ∫sin(x) dx = -cos(x)
                         "sin" => return Some(-Expr::Symbol(var.to_string()).cos()),
@@ -746,7 +741,6 @@ pub fn integrate(expr: &Expr, var: &str) -> Option<Expr> {
                         _ => return None,
                     }
                 }
-            }
             return None;
         }
 
@@ -909,38 +903,32 @@ fn extract_polynomial_coeffs(expr: &Expr, var: &str) -> Option<Vec<f64>> {
             Expr::Mul(a, b) => {
                 // Handle c * x^n
                 if let Some(c) = a.as_const() {
-                    if let Expr::Symbol(s) = b.as_ref() {
-                        if s == var {
+                    if let Expr::Symbol(s) = b.as_ref()
+                        && s == var {
                             *coeffs.entry(1).or_insert(0.0) += sign * c;
                             return true;
                         }
-                    }
-                    if let Expr::Pow(base, exp) = b.as_ref() {
-                        if let (Expr::Symbol(s), Some(n)) = (base.as_ref(), exp.as_const()) {
-                            if s == var && n >= 0.0 && n == n.floor() {
+                    if let Expr::Pow(base, exp) = b.as_ref()
+                        && let (Expr::Symbol(s), Some(n)) = (base.as_ref(), exp.as_const())
+                            && s == var && n >= 0.0 && n == n.floor() {
                                 *coeffs.entry(n as usize).or_insert(0.0) += sign * c;
                                 return true;
                             }
-                        }
-                    }
                 }
-                if let Some(c) = b.as_const() {
-                    if let Expr::Symbol(s) = a.as_ref() {
-                        if s == var {
+                if let Some(c) = b.as_const()
+                    && let Expr::Symbol(s) = a.as_ref()
+                        && s == var {
                             *coeffs.entry(1).or_insert(0.0) += sign * c;
                             return true;
                         }
-                    }
-                }
                 false
             }
             Expr::Pow(base, exp) => {
-                if let (Expr::Symbol(s), Some(n)) = (base.as_ref(), exp.as_const()) {
-                    if s == var && n >= 0.0 && n == n.floor() {
+                if let (Expr::Symbol(s), Some(n)) = (base.as_ref(), exp.as_const())
+                    && s == var && n >= 0.0 && n == n.floor() {
                         *coeffs.entry(n as usize).or_insert(0.0) += sign;
                         return true;
                     }
-                }
                 false
             }
             _ => false,

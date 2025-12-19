@@ -189,11 +189,10 @@ impl Linker {
     /// Find the linker for the given target and flavor.
     fn find_linker(spec: &TargetSpec, flavor: LinkerFlavor) -> LinkerResult<PathBuf> {
         // Check if user specified a path
-        if let Some(ref path) = spec.linker.path {
-            if path.exists() {
+        if let Some(ref path) = spec.linker.path
+            && path.exists() {
                 return Ok(path.clone());
             }
-        }
 
         // Try to find linker based on flavor
         let candidates = match flavor {
@@ -575,11 +574,8 @@ impl Linker {
     /// Build arguments for MSVC linker.
     fn build_msvc_args(&self, cmd: &mut Command) -> LinkerResult<()> {
         // Output type
-        match self.output_type {
-            OutputType::DynamicLib => {
-                cmd.arg("/DLL");
-            }
-            _ => {}
+        if self.output_type == OutputType::DynamicLib {
+            cmd.arg("/DLL");
         }
 
         // Library paths
@@ -939,7 +935,7 @@ impl LinkerScriptBuilder {
                 script.push_str(&format!(" > {}", region));
             }
 
-            script.push_str("\n");
+            script.push('\n');
         }
         script.push_str("}\n");
 

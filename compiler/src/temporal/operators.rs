@@ -399,11 +399,10 @@ impl<T: Clone> ValidityConstraint<T> {
         let now = Utc::now();
 
         // Check deadline
-        if let Some(deadline) = self.valid_until {
-            if now > deadline {
+        if let Some(deadline) = self.valid_until
+            && now > deadline {
                 return false;
             }
-        }
 
         // Check confidence threshold
         current_conf >= self.min_confidence_threshold

@@ -380,7 +380,7 @@ pub struct TransferChunk {
 
 /// Split a transfer into chunks for pipelining
 pub fn split_into_chunks(total_size: usize, chunk_size: usize) -> Vec<TransferChunk> {
-    let num_chunks = (total_size + chunk_size - 1) / chunk_size;
+    let num_chunks = total_size.div_ceil(chunk_size);
     let mut chunks = Vec::with_capacity(num_chunks);
 
     let mut offset = 0;

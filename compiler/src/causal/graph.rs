@@ -500,11 +500,9 @@ impl CausalGraph {
         for (from, to, et) in &self.edges {
             if let Some((_, _, other_et)) =
                 other.edges.iter().find(|(f, t, _)| f == from && t == to)
-            {
-                if et != other_et {
+                && et != other_et {
                     return false;
                 }
-            }
         }
         true
     }

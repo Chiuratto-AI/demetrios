@@ -625,7 +625,7 @@ impl<N: GeoNeuralNetwork> GeoSelfPlayTrainer<N> {
     fn train_on_examples(&mut self, examples: &[GeoTrainingExample]) -> f64 {
         // Shuffle and batch
         let mut total_loss = 0.0;
-        let num_batches = (examples.len() + self.config.batch_size - 1) / self.config.batch_size;
+        let num_batches = examples.len().div_ceil(self.config.batch_size);
 
         for batch_start in (0..examples.len()).step_by(self.config.batch_size) {
             let batch_end = (batch_start + self.config.batch_size).min(examples.len());

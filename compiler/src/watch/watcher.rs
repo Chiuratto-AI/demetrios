@@ -517,8 +517,8 @@ impl PollBackend {
     fn scan_recursive(&mut self, path: &Path) -> Result<(), WatchError> {
         if path.is_file() {
             self.add_file(path)?;
-        } else if path.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(path) {
+        } else if path.is_dir()
+            && let Ok(entries) = std::fs::read_dir(path) {
                 for entry in entries.flatten() {
                     let entry_path = entry.path();
 
@@ -529,7 +529,6 @@ impl PollBackend {
                     }
                 }
             }
-        }
         Ok(())
     }
 
@@ -560,8 +559,8 @@ impl PollBackend {
                         .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
                     let size = metadata.len();
 
-                    if let Some(state) = self.states.get_mut(&file_path) {
-                        if mtime != state.mtime || size != state.size {
+                    if let Some(state) = self.states.get_mut(&file_path)
+                        && (mtime != state.mtime || size != state.size) {
                             state.mtime = mtime;
                             state.size = size;
                             let _ = tx.send(FsEvent {
@@ -571,7 +570,6 @@ impl PollBackend {
                                 attrs: FsEventAttrs::default(),
                             });
                         }
-                    }
                 }
                 Err(_) => {
                     // File deleted

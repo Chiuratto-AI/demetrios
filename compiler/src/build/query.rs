@@ -142,26 +142,23 @@ impl QueryDb {
     /// Check if a cached result is still valid
     fn is_valid(&self, key: &QueryKey, result: &QueryResult) -> bool {
         // Check if this key's input itself has changed
-        if let Some(&input_revision) = self.input_revisions.get(key) {
-            if input_revision > result.computed_at {
+        if let Some(&input_revision) = self.input_revisions.get(key)
+            && input_revision > result.computed_at {
                 return false;
             }
-        }
 
         // Check if any dependency has changed since this was computed
         for (dep_key, dep_revision) in &result.dependencies {
-            if let Some(&current_revision) = self.input_revisions.get(dep_key) {
-                if current_revision > *dep_revision {
+            if let Some(&current_revision) = self.input_revisions.get(dep_key)
+                && current_revision > *dep_revision {
                     return false;
                 }
-            }
 
             // Also check cached dependency results
-            if let Some(cached) = self.cache.get(dep_key) {
-                if cached.computed_at > *dep_revision {
+            if let Some(cached) = self.cache.get(dep_key)
+                && cached.computed_at > *dep_revision {
                     return false;
                 }
-            }
         }
 
         true

@@ -323,8 +323,8 @@ impl CacheLinePacker {
         for pattern in patterns.values() {
             for co in &pattern.co_accesses {
                 // Extract field name from qualified name (Type.field)
-                let a = co.field_a.split('.').last().unwrap_or(&co.field_a);
-                let b = co.field_b.split('.').last().unwrap_or(&co.field_b);
+                let a = co.field_a.split('.').next_back().unwrap_or(&co.field_a);
+                let b = co.field_b.split('.').next_back().unwrap_or(&co.field_b);
 
                 if field_names.contains(a) && field_names.contains(b) {
                     result.push((a.to_string(), b.to_string(), co.correlation));
@@ -391,17 +391,16 @@ impl CacheLinePacker {
 
         for field in fields {
             let root = find(&mut parent, &field.name);
-            let group = group_map.entry(root).or_insert_with(FieldGroup::new);
+            let group = group_map.entry(root).or_default();
             group.add(&field.name, field.size);
         }
 
         // Add correlation info
         for (a, b, corr) in co_accesses {
-            if let Some(root) = parent.get(a.as_str()) {
-                if let Some(group) = group_map.get_mut(*root) {
+            if let Some(root) = parent.get(a.as_str())
+                && let Some(group) = group_map.get_mut(*root) {
                     group.correlation = group.correlation.max(*corr);
                 }
-            }
         }
 
         group_map.into_values().collect()
@@ -422,7 +421,7 @@ impl CacheLinePacker {
                 let field = access
                     .field_name
                     .split('.')
-                    .last()
+                    .next_back()
                     .unwrap_or(&access.field_name);
                 let heat = access.heat();
                 let current = *hotness.get(field).unwrap_or(&0.0);
@@ -481,12 +480,11 @@ impl CacheLinePacker {
                 if group.fields.contains(&field.name) {
                     // Add all group members
                     for member in &group.fields {
-                        if let Some(&member_idx) = name_to_idx.get(member.as_str()) {
-                            if !used.contains(&member_idx) {
+                        if let Some(&member_idx) = name_to_idx.get(member.as_str())
+                            && !used.contains(&member_idx) {
                                 result.push(member_idx);
                                 used.insert(member_idx);
                             }
-                        }
                     }
                     break;
                 }
@@ -521,7 +519,7 @@ impl CacheLinePacker {
 
             // Align
             let align = field.alignment;
-            let aligned_offset = (offset + align - 1) / align * align;
+            let aligned_offset = offset.div_ceil(align) * align;
             total_padding += aligned_offset - offset;
             offset = aligned_offset;
 
@@ -544,12 +542,12 @@ impl CacheLinePacker {
 
         // Final alignment for struct
         let struct_align = fields.iter().map(|f| f.alignment).max().unwrap_or(1);
-        let final_size = (offset + struct_align - 1) / struct_align * struct_align;
+        let final_size = offset.div_ceil(struct_align) * struct_align;
         total_padding += final_size - offset;
 
         layout.total_size = final_size;
         layout.padding = total_padding;
-        layout.cache_lines = (final_size + self.cache_line_size - 1) / self.cache_line_size;
+        layout.cache_lines = final_size.div_ceil(self.cache_line_size);
 
         // Compute improvement (based on cache line reduction)
         let original_cache_lines = self.estimate_original_cache_lines(fields);
@@ -565,11 +563,11 @@ impl CacheLinePacker {
         let mut offset = 0usize;
 
         for field in fields {
-            let aligned = (offset + field.alignment - 1) / field.alignment * field.alignment;
+            let aligned = offset.div_ceil(field.alignment) * field.alignment;
             offset = aligned + field.size;
         }
 
-        (offset + self.cache_line_size - 1) / self.cache_line_size
+        offset.div_ceil(self.cache_line_size)
     }
 }
 

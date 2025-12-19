@@ -186,11 +186,10 @@ impl CalibrationCollector {
             self.stats.count += 1;
 
             // Store values for percentile/MSE methods
-            if let Some(ref mut collected) = self.stats.collected_values {
-                if collected.len() < self.stats.max_stored_values {
+            if let Some(ref mut collected) = self.stats.collected_values
+                && collected.len() < self.stats.max_stored_values {
                     collected.push(val);
                 }
-            }
         }
 
         // Initialize histogram bin edges after first batch

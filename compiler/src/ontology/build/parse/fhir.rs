@@ -154,14 +154,13 @@ impl FhirParser {
                 // Extract designations (synonyms)
                 if let Some(Value::Array(designations)) = obj.get("designation") {
                     for des in designations {
-                        if let Some(des_obj) = des.as_object() {
-                            if let Some(Value::String(value)) = des_obj.get("value") {
+                        if let Some(des_obj) = des.as_object()
+                            && let Some(Value::String(value)) = des_obj.get("value") {
                                 // Don't add if it's the same as the display
                                 if term.label.as_ref() != Some(value) {
                                     term.synonyms.push(value.clone());
                                 }
                             }
-                        }
                     }
                 }
 
@@ -268,8 +267,8 @@ impl FhirParser {
         terms.push(root);
 
         // Parse compose section
-        if let Some(compose) = obj.get("compose").and_then(|v| v.as_object()) {
-            if let Some(Value::Array(includes)) = compose.get("include") {
+        if let Some(compose) = obj.get("compose").and_then(|v| v.as_object())
+            && let Some(Value::Array(includes)) = compose.get("include") {
                 for include in includes {
                     if let Some(inc_obj) = include.as_object() {
                         let system = inc_obj.get("system").and_then(|v| v.as_str()).unwrap_or("");
@@ -277,8 +276,8 @@ impl FhirParser {
                         // Parse concepts in the include
                         if let Some(Value::Array(concepts)) = inc_obj.get("concept") {
                             for concept in concepts {
-                                if let Some(c_obj) = concept.as_object() {
-                                    if let Some(Value::String(code)) = c_obj.get("code") {
+                                if let Some(c_obj) = concept.as_object()
+                                    && let Some(Value::String(code)) = c_obj.get("code") {
                                         let term = RawTerm {
                                             iri: format!(
                                                 "{}#{}",
@@ -293,20 +292,17 @@ impl FhirParser {
                                         };
                                         terms.push(term);
                                     }
-                                }
                             }
                         }
                     }
                 }
             }
-        }
 
         // Parse expansion section (if present)
-        if let Some(expansion) = obj.get("expansion").and_then(|v| v.as_object()) {
-            if let Some(Value::Array(contains)) = expansion.get("contains") {
+        if let Some(expansion) = obj.get("expansion").and_then(|v| v.as_object())
+            && let Some(Value::Array(contains)) = expansion.get("contains") {
                 self.parse_expansion_contains(&mut terms, contains)?;
             }
-        }
 
         Ok(terms)
     }
@@ -392,17 +388,15 @@ impl FhirParser {
         terms.push(root);
 
         // Parse elements if this is a detailed structure
-        if let Some(snapshot) = obj.get("snapshot").and_then(|v| v.as_object()) {
-            if let Some(Value::Array(elements)) = snapshot.get("element") {
+        if let Some(snapshot) = obj.get("snapshot").and_then(|v| v.as_object())
+            && let Some(Value::Array(elements)) = snapshot.get("element") {
                 for element in elements {
-                    if let Some(elem_obj) = element.as_object() {
-                        if let Some(term) = self.parse_element(elem_obj, url) {
+                    if let Some(elem_obj) = element.as_object()
+                        && let Some(term) = self.parse_element(elem_obj, url) {
                             terms.push(term);
                         }
-                    }
                 }
             }
-        }
 
         Ok(terms)
     }
@@ -436,14 +430,13 @@ impl FhirParser {
         // Extract type information
         if let Some(Value::Array(types)) = obj.get("type") {
             for type_val in types {
-                if let Some(type_obj) = type_val.as_object() {
-                    if let Some(Value::String(code)) = type_obj.get("code") {
+                if let Some(type_obj) = type_val.as_object()
+                    && let Some(Value::String(code)) = type_obj.get("code") {
                         term.relations.push(Relation {
                             predicate: "type".to_string(),
                             target: code.clone(),
                         });
                     }
-                }
             }
         }
 
@@ -557,8 +550,8 @@ impl FhirParser {
         // Parse targets
         if let Some(Value::Array(targets)) = obj.get("target") {
             for target in targets {
-                if let Some(t_obj) = target.as_object() {
-                    if let Some(Value::String(t_code)) = t_obj.get("code") {
+                if let Some(t_obj) = target.as_object()
+                    && let Some(Value::String(t_code)) = t_obj.get("code") {
                         let equivalence = t_obj
                             .get("equivalence")
                             .and_then(|v| v.as_str())
@@ -569,7 +562,6 @@ impl FhirParser {
                             target: format!("{}#{}", target_sys.trim_end_matches('/'), t_code),
                         });
                     }
-                }
             }
         }
 
@@ -582,8 +574,8 @@ impl FhirParser {
 
         if let Some(Value::Array(entries)) = obj.get("entry") {
             for entry in entries {
-                if let Some(entry_obj) = entry.as_object() {
-                    if let Some(resource) = entry_obj.get("resource").and_then(|v| v.as_object()) {
+                if let Some(entry_obj) = entry.as_object()
+                    && let Some(resource) = entry_obj.get("resource").and_then(|v| v.as_object()) {
                         // Recursively parse each resource in the bundle
                         let resource_type = resource
                             .get("resourceType")
@@ -602,7 +594,6 @@ impl FhirParser {
                             terms.extend(t);
                         }
                     }
-                }
             }
         }
 

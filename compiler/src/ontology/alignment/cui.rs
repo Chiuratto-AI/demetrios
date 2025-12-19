@@ -63,7 +63,7 @@ impl SourceAtom {
     /// Convert to IRI based on source vocabulary
     pub fn to_iri(&self) -> Option<IRI> {
         let prefix = source_to_prefix(&self.source)?;
-        Some(IRI::from_curie(&prefix, &self.code))
+        Some(IRI::from_curie(prefix, &self.code))
     }
 }
 

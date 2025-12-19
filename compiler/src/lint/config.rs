@@ -91,27 +91,24 @@ impl LintConfig {
         loop {
             // Check for d.toml [lint] section
             let d_toml = dir.join("d.toml");
-            if d_toml.exists() {
-                if let Ok(config) = Self::from_d_toml(&d_toml) {
+            if d_toml.exists()
+                && let Ok(config) = Self::from_d_toml(&d_toml) {
                     return Some(config);
                 }
-            }
 
             // Check for .dlint.toml
             let dlint = dir.join(".dlint.toml");
-            if dlint.exists() {
-                if let Ok(config) = Self::from_file(&dlint) {
+            if dlint.exists()
+                && let Ok(config) = Self::from_file(&dlint) {
                     return Some(config);
                 }
-            }
 
             // Check for dlint.toml (without dot)
             let dlint_nodot = dir.join("dlint.toml");
-            if dlint_nodot.exists() {
-                if let Ok(config) = Self::from_file(&dlint_nodot) {
+            if dlint_nodot.exists()
+                && let Ok(config) = Self::from_file(&dlint_nodot) {
                     return Some(config);
                 }
-            }
 
             if !dir.pop() {
                 break;

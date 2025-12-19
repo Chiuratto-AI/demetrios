@@ -210,17 +210,15 @@ impl ParsedTermRef {
         // Try to extract from full IRI first (must come before CURIE check)
         if input.starts_with("http://") || input.starts_with("https://") {
             // OBO format: http://purl.obolibrary.org/obo/CHEBI_15365
-            if input.contains("obolibrary.org/obo/") {
-                if let Some(term) = input.rsplit('/').next() {
-                    if let Some((prefix, local_id)) = term.split_once('_') {
+            if input.contains("obolibrary.org/obo/")
+                && let Some(term) = input.rsplit('/').next()
+                    && let Some((prefix, local_id)) = term.split_once('_') {
                         return Ok(Self {
                             prefix: prefix.to_uppercase(),
                             local_id: local_id.to_string(),
                             curie: format!("{}:{}", prefix.to_uppercase(), local_id),
                         });
                     }
-                }
-            }
             return Err(OntologyError::InvalidTermFormat(format!(
                 "Cannot parse IRI: {}",
                 input
@@ -237,15 +235,14 @@ impl ParsedTermRef {
         }
 
         // Try OBO-style format (PREFIX_ID)
-        if let Some((prefix, local_id)) = input.split_once('_') {
-            if prefix.chars().all(|c| c.is_ascii_alphabetic()) {
+        if let Some((prefix, local_id)) = input.split_once('_')
+            && prefix.chars().all(|c| c.is_ascii_alphabetic()) {
                 return Ok(Self {
                     prefix: prefix.to_uppercase(),
                     local_id: local_id.to_string(),
                     curie: format!("{}:{}", prefix.to_uppercase(), local_id),
                 });
             }
-        }
 
         Err(OntologyError::InvalidTermFormat(format!(
             "Cannot parse term reference: {}",

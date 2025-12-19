@@ -169,7 +169,7 @@ impl AGParser {
 
         // Goal line
         if line.starts_with('?') {
-            return self.parse_goal(&line[1..].trim());
+            return self.parse_goal(line[1..].trim());
         }
 
         // Declaration line: "names = construction constraints"

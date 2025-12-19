@@ -240,8 +240,8 @@ impl Comparator {
             Op::Wildcard => true,
             Op::Exact => {
                 version.major == self.major
-                    && self.minor.map_or(true, |m| version.minor == m)
-                    && self.patch.map_or(true, |p| version.patch == p)
+                    && self.minor.is_none_or(|m| version.minor == m)
+                    && self.patch.is_none_or(|p| version.patch == p)
             }
             Op::Greater => {
                 if version.major != self.major {
@@ -325,11 +325,10 @@ impl Comparator {
                         if version.minor != minor {
                             return false;
                         }
-                        if minor == 0 {
-                            if let Some(patch) = self.patch {
+                        if minor == 0
+                            && let Some(patch) = self.patch {
                                 return version.patch >= patch;
                             }
-                        }
                     }
                 }
                 true

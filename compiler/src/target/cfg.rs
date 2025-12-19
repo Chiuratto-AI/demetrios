@@ -190,7 +190,7 @@ impl CfgPredicate {
                     .filter(|p| *p != Self::True)
                     .collect();
 
-                if simplified.iter().any(|p| *p == Self::False) {
+                if simplified.contains(&Self::False) {
                     Self::False
                 } else if simplified.is_empty() {
                     Self::True
@@ -207,7 +207,7 @@ impl CfgPredicate {
                     .filter(|p| *p != Self::False)
                     .collect();
 
-                if simplified.iter().any(|p| *p == Self::True) {
+                if simplified.contains(&Self::True) {
                     Self::True
                 } else if simplified.is_empty() {
                     Self::False

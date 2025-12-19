@@ -584,16 +584,14 @@ impl TestRunner {
                 TestOutcome::TimedOut => println!("  timed out"),
                 _ => {}
             }
-            if let Some(stdout) = &result.stdout {
-                if !stdout.is_empty() {
+            if let Some(stdout) = &result.stdout
+                && !stdout.is_empty() {
                     println!("\n  stdout:\n{}", indent(stdout, 4));
                 }
-            }
-            if let Some(stderr) = &result.stderr {
-                if !stderr.is_empty() {
+            if let Some(stderr) = &result.stderr
+                && !stderr.is_empty() {
                     println!("\n  stderr:\n{}", indent(stderr, 4));
                 }
-            }
             println!();
         }
 

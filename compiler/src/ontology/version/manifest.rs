@@ -422,17 +422,15 @@ impl Manifest {
         get_data: impl Fn(&str) -> Option<Vec<u8>>,
     ) -> Result<(), ManifestError> {
         for entry in &self.ontologies {
-            if let Some(checksum) = &entry.checksum {
-                if let Some(data) = get_data(&entry.name) {
-                    if !checksum.verify(&data) {
+            if let Some(checksum) = &entry.checksum
+                && let Some(data) = get_data(&entry.name)
+                    && !checksum.verify(&data) {
                         return Err(ManifestError::ChecksumMismatch {
                             ontology: entry.name.clone(),
                             expected: checksum.hash.clone(),
                             actual: "computed_hash".to_string(), // Would compute actual hash
                         });
                     }
-                }
-            }
         }
         Ok(())
     }
@@ -445,11 +443,10 @@ impl Manifest {
         let mut updates = Vec::new();
 
         for entry in &self.ontologies {
-            if let Some(available_version) = available.get(&entry.name) {
-                if let Some(std::cmp::Ordering::Less) = entry.version.compare(available_version) {
+            if let Some(available_version) = available.get(&entry.name)
+                && let Some(std::cmp::Ordering::Less) = entry.version.compare(available_version) {
                     updates.push((entry, available_version));
                 }
-            }
         }
 
         updates
@@ -657,7 +654,7 @@ fn chrono_lite_now() -> String {
 }
 
 fn is_leap_year(year: u64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
 #[cfg(test)]

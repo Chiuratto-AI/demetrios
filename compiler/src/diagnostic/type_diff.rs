@@ -307,13 +307,12 @@ impl TypeDiff {
 
     /// Extract base type and unit from a type with unit annotation
     fn extract_unit(ty: &str) -> (String, Option<String>) {
-        if let Some(open) = ty.find('<') {
-            if let Some(close) = ty.rfind('>') {
+        if let Some(open) = ty.find('<')
+            && let Some(close) = ty.rfind('>') {
                 let base = ty[..open].trim().to_string();
                 let unit = ty[open + 1..close].trim().to_string();
                 return (base, Some(unit));
             }
-        }
         (ty.to_string(), None)
     }
 
@@ -639,8 +638,8 @@ impl TypeErrorBuilder {
         }
 
         // Add diff explanation
-        if let Some(diff) = &self.diff {
-            if !diff.is_same() {
+        if let Some(diff) = &self.diff
+            && !diff.is_same() {
                 let diff_summary = diff.summary();
                 if diff_summary != primary_msg {
                     diagnostic.notes.push(diff_summary);
@@ -683,7 +682,6 @@ impl TypeErrorBuilder {
                     _ => {}
                 }
             }
-        }
 
         // Add unification trace
         if !self.unification_trace.is_empty() {

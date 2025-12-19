@@ -179,7 +179,7 @@ fn generate_sequential_related_workload() -> (ConceptUsage, Vec<String>) {
     }
 
     // Record co-occurrences
-    let refs: Vec<&str> = drugs.iter().copied().collect();
+    let refs: Vec<&str> = drugs.to_vec();
     usage.record_scope(&refs);
 
     (usage, access_pattern)
@@ -223,7 +223,7 @@ fn generate_mixed_workload() -> (ConceptUsage, Vec<String>) {
 
     let local_concepts = vec!["CHEBI:15365", "CHEBI:6807", "CHEBI:6801", "CHEBI:28748"];
 
-    let random_concepts = vec!["GO:0008150", "GO:0008152", "GO:0006810", "CHEBI:28304"];
+    let random_concepts = ["GO:0008150", "GO:0008152", "GO:0006810", "CHEBI:28304"];
 
     let mut access_pattern = Vec::new();
 
@@ -247,7 +247,7 @@ fn generate_mixed_workload() -> (ConceptUsage, Vec<String>) {
     }
 
     // Record co-occurrences for local concepts
-    let refs: Vec<&str> = local_concepts.iter().copied().collect();
+    let refs: Vec<&str> = local_concepts.to_vec();
     usage.record_scope(&refs);
 
     (usage, access_pattern)

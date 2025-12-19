@@ -314,8 +314,8 @@ pub fn jordan_wigner_excitation(excitation: &FermionString) -> Vec<PauliString> 
     let mut result = Vec::new();
 
     // For a single excitation (2 operators)
-    if excitation.operators.len() == 2 {
-        if let (FermionOp::Create(p), FermionOp::Annihilate(q)) =
+    if excitation.operators.len() == 2
+        && let (FermionOp::Create(p), FermionOp::Annihilate(q)) =
             (excitation.operators[0], excitation.operators[1])
         {
             let (lo, hi) = if p < q { (p, q) } else { (q, p) };
@@ -335,7 +335,6 @@ pub fn jordan_wigner_excitation(excitation: &FermionString) -> Vec<PauliString> 
             result.push(PauliString::with_imag(paulis1, 0.0, 0.5));
             result.push(PauliString::with_imag(paulis2, 0.0, -0.5));
         }
-    }
 
     // For double excitation (4 operators) - more complex
     if excitation.operators.len() == 4 {

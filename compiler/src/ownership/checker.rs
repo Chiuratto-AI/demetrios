@@ -75,8 +75,8 @@ impl<'a> OwnershipChecker<'a> {
     pub fn check_program(&mut self, ast: &Ast) -> Result<(), Vec<CompileError>> {
         // Build linearity cache from struct definitions
         for item in &ast.items {
-            if let Item::Struct(s) = item {
-                if let Some(def_id) = self.symbols.def_for_node(s.id) {
+            if let Item::Struct(s) = item
+                && let Some(def_id) = self.symbols.def_for_node(s.id) {
                     let linearity = if s.modifiers.linear {
                         Linearity::Linear
                     } else if s.modifiers.affine {
@@ -86,7 +86,6 @@ impl<'a> OwnershipChecker<'a> {
                     };
                     self.linearity_cache.insert(def_id, linearity);
                 }
-            }
         }
 
         // Check functions
@@ -177,11 +176,10 @@ impl<'a> OwnershipChecker<'a> {
             Expr::Literal { .. } => {}
 
             Expr::Path { path, id } => {
-                if path.is_simple() {
-                    if let Some(def_id) = self.symbols.ref_for_node(*id) {
+                if path.is_simple()
+                    && let Some(def_id) = self.symbols.ref_for_node(*id) {
                         self.use_value(def_id, use_kind, expr_span);
                     }
-                }
             }
 
             Expr::Binary {
@@ -705,11 +703,10 @@ impl<'a> OwnershipChecker<'a> {
                 if let Some(name) = path.name() {
                     // Check if it's a known linear/affine type
                     for (def_id, linearity) in &self.linearity_cache {
-                        if let Some(sym) = self.symbols.get(*def_id) {
-                            if sym.name == name {
+                        if let Some(sym) = self.symbols.get(*def_id)
+                            && sym.name == name {
                                 return *linearity;
                             }
-                        }
                     }
                 }
                 Linearity::Unrestricted
@@ -732,11 +729,10 @@ impl<'a> OwnershipChecker<'a> {
     fn expr_to_place(&self, expr: &Expr) -> Option<Place> {
         match expr {
             Expr::Path { path, id } => {
-                if path.is_simple() {
-                    if let Some(def_id) = self.symbols.ref_for_node(*id) {
+                if path.is_simple()
+                    && let Some(def_id) = self.symbols.ref_for_node(*id) {
                         return Some(Place::var(def_id));
                     }
-                }
                 None
             }
             Expr::Field { base, field, .. } => {
@@ -846,7 +842,7 @@ impl<'a> OwnershipChecker<'a> {
 
         if consuming_methods.iter().any(|&m| method.starts_with(m)) {
             UseKind::Move
-        } else if mutating_methods.iter().any(|&m| method == m) {
+        } else if mutating_methods.contains(&method) {
             // For mutating methods, we still use Copy here because
             // the exclusive borrow is handled separately
             UseKind::Copy
@@ -885,11 +881,11 @@ impl<'a> OwnershipChecker<'a> {
     ) {
         match expr {
             Expr::Path { path, id } => {
-                if path.is_simple() {
-                    if let Some(name) = path.name() {
+                if path.is_simple()
+                    && let Some(name) = path.name() {
                         // Check if this is a free variable (not bound locally)
-                        if !bound_vars.contains(name) {
-                            if let Some(def_id) = self.symbols.ref_for_node(*id) {
+                        if !bound_vars.contains(name)
+                            && let Some(def_id) = self.symbols.ref_for_node(*id) {
                                 // Check if already captured
                                 if !captures.iter().any(|c| c.def_id == def_id) {
                                     let span = self.span_for(*id);
@@ -903,9 +899,7 @@ impl<'a> OwnershipChecker<'a> {
                                     });
                                 }
                             }
-                        }
                     }
-                }
             }
             Expr::Binary { left, right, .. } => {
                 self.find_free_variables(left, bound_vars, captures);

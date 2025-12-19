@@ -114,10 +114,12 @@ impl fmt::Display for QuantDtype {
 
 /// Quantization scheme determining how scale/zero_point are computed
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum QuantScheme {
     /// Symmetric quantization: zero_point = 0
     /// scale = max(|min|, |max|) / qmax
     /// Best for weights (centered around 0)
+    #[default]
     Symmetric,
 
     /// Asymmetric quantization: uses both scale and zero_point
@@ -167,11 +169,6 @@ impl QuantScheme {
     }
 }
 
-impl Default for QuantScheme {
-    fn default() -> Self {
-        QuantScheme::Symmetric
-    }
-}
 
 impl fmt::Display for QuantScheme {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -691,7 +688,7 @@ pub fn quantize_tensor_int4(data: &[f32], shape: Vec<usize>, name: String) -> Qu
     let params = QuantParams::from_minmax_symmetric(min_val, max_val, QuantDtype::Int4);
 
     // Quantize and pack
-    let mut packed = Vec::with_capacity((data.len() + 1) / 2);
+    let mut packed = Vec::with_capacity(data.len().div_ceil(2));
     for chunk in data.chunks(2) {
         let lo = params.quantize(chunk[0]) as i8;
         let hi = if chunk.len() > 1 {

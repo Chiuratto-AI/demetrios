@@ -524,8 +524,8 @@ impl<'a> SubtypeChecker<'a> {
         }
 
         // Try using lower bounds
-        if let (Some(lb1), Some(v2)) = (conf1.lower_bound(self.ctx), conf2.evaluate(self.ctx)) {
-            if lb1 >= v2 {
+        if let (Some(lb1), Some(v2)) = (conf1.lower_bound(self.ctx), conf2.evaluate(self.ctx))
+            && lb1 >= v2 {
                 return SubtypeResult::Subtype {
                     proof: Proof::arith(
                         super::proofs::ArithDerivation::lower_bound(lb1, v2),
@@ -533,7 +533,6 @@ impl<'a> SubtypeChecker<'a> {
                     ),
                 };
             }
-        }
 
         // Definitional equality
         if conf1.definitionally_equal(conf2) {

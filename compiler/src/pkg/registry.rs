@@ -225,13 +225,11 @@ impl Registry for LocalRegistry {
         for entry in std::fs::read_dir(&pkg_dir).map_err(RegistryError::Io)? {
             let entry = entry.map_err(RegistryError::Io)?;
             let path = entry.path();
-            if path.is_dir() {
-                if let Some(version_str) = path.file_name().and_then(|n| n.to_str()) {
-                    if let Ok(version) = Version::parse(version_str) {
+            if path.is_dir()
+                && let Some(version_str) = path.file_name().and_then(|n| n.to_str())
+                    && let Ok(version) = Version::parse(version_str) {
                         versions.push(version);
                     }
-                }
-            }
         }
 
         versions.sort();
@@ -261,12 +259,12 @@ impl Registry for LocalRegistry {
             for entry in std::fs::read_dir(&self.root).map_err(RegistryError::Io)? {
                 let entry = entry.map_err(RegistryError::Io)?;
                 let path = entry.path();
-                if path.is_dir() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if name.to_lowercase().contains(&query_lower) {
+                if path.is_dir()
+                    && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                        && name.to_lowercase().contains(&query_lower) {
                             let versions = self.get_versions(name)?;
-                            if let Some(latest) = versions.last() {
-                                if let Ok(manifest) = self.get_manifest(name, latest) {
+                            if let Some(latest) = versions.last()
+                                && let Ok(manifest) = self.get_manifest(name, latest) {
                                     results.push(PackageSummary {
                                         name: name.to_string(),
                                         version: latest.clone(),
@@ -274,10 +272,7 @@ impl Registry for LocalRegistry {
                                         downloads: 0,
                                     });
                                 }
-                            }
                         }
-                    }
-                }
 
                 if results.len() >= limit {
                     break;

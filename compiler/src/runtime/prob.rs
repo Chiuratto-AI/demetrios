@@ -514,7 +514,7 @@ impl ProbRuntime {
                     trace
                         .samples
                         .entry(name.clone())
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(value);
                 }
                 trace.log_probs.push(current_log_prob);

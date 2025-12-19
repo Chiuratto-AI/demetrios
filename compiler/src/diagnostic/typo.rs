@@ -417,7 +417,7 @@ impl SuggestionBuilder {
         // Add builtin functions (they might have meant a function)
         candidates.extend(self.builtin_fns.iter().copied());
 
-        let suggestions = find_similar(query, candidates.into_iter(), 3, 3);
+        let suggestions = find_similar(query, candidates, 3, 3);
         format_did_you_mean(&suggestions)
     }
 
@@ -430,7 +430,7 @@ impl SuggestionBuilder {
             candidates.extend(names.iter().map(|s| s.as_str()));
         }
 
-        let suggestions = find_similar(query, candidates.into_iter(), 3, 3);
+        let suggestions = find_similar(query, candidates, 3, 3);
         format_did_you_mean(&suggestions)
     }
 
@@ -448,7 +448,7 @@ impl SuggestionBuilder {
             candidates.extend(names.iter().map(|s| s.as_str()));
         }
 
-        let suggestions = find_similar(query, candidates.into_iter(), 3, 3);
+        let suggestions = find_similar(query, candidates, 3, 3);
         format_did_you_mean(&suggestions)
     }
 

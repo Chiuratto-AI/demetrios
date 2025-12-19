@@ -200,18 +200,16 @@ impl BuildGraph {
         }
 
         // Add forward edge
-        if let Some(unit) = self.units.get_mut(&from) {
-            if !unit.dependencies.contains(&to) {
+        if let Some(unit) = self.units.get_mut(&from)
+            && !unit.dependencies.contains(&to) {
                 unit.dependencies.push(to);
             }
-        }
 
         // Add reverse edge
-        if let Some(unit) = self.units.get_mut(&to) {
-            if !unit.dependents.contains(&from) {
+        if let Some(unit) = self.units.get_mut(&to)
+            && !unit.dependents.contains(&from) {
                 unit.dependents.push(from);
             }
-        }
 
         self.version += 1;
         Ok(())
@@ -243,13 +241,12 @@ impl BuildGraph {
                 return true;
             }
 
-            if visited.insert(current) {
-                if let Some(unit) = self.units.get(&current) {
+            if visited.insert(current)
+                && let Some(unit) = self.units.get(&current) {
                     for &dep in &unit.dependencies {
                         queue.push_back(dep);
                     }
                 }
-            }
         }
 
         false
@@ -354,14 +351,13 @@ impl BuildGraph {
         to_invalidate.push_back(id);
 
         while let Some(current) = to_invalidate.pop_front() {
-            if let Some(unit) = self.units.get_mut(&current) {
-                if !unit.dirty {
+            if let Some(unit) = self.units.get_mut(&current)
+                && !unit.dirty {
                     unit.dirty = true;
                     for &dependent in &unit.dependents {
                         to_invalidate.push_back(dependent);
                     }
                 }
-            }
         }
 
         self.version += 1;
@@ -463,14 +459,14 @@ impl BuildGraph {
         })
         .map_err(|e| BuildGraphError::SerializationError(e.to_string()))?;
 
-        std::fs::write(path, data).map_err(|e| BuildGraphError::IoError(e))?;
+        std::fs::write(path, data).map_err(BuildGraphError::IoError)?;
 
         Ok(())
     }
 
     /// Load graph from disk
     pub fn load(path: &Path) -> Result<Self, BuildGraphError> {
-        let data = std::fs::read(path).map_err(|e| BuildGraphError::IoError(e))?;
+        let data = std::fs::read(path).map_err(BuildGraphError::IoError)?;
 
         let snapshot: GraphSnapshot = bincode::deserialize(&data)
             .map_err(|e| BuildGraphError::SerializationError(e.to_string()))?;

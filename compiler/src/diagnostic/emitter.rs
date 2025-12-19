@@ -427,15 +427,14 @@ impl JsonEmitter {
             ));
 
             // Add resolved location if source map available
-            if let Some(sm) = source_map {
-                if let Some(loc) = sm.lookup_span(label.span) {
+            if let Some(sm) = source_map
+                && let Some(loc) = sm.lookup_span(label.span) {
                     json.push_str(&format!(
                         ",\"location\":{{\"file\":\"{}\",\"start_line\":{},\"start_col\":{},\"end_line\":{},\"end_col\":{}}}",
                         escape_json(&loc.file_path.display().to_string()),
                         loc.start_line, loc.start_col, loc.end_line, loc.end_col
                     ));
                 }
-            }
 
             json.push('}');
         }

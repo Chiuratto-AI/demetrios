@@ -261,13 +261,11 @@ impl EmbeddingStore for MmapStore {
     }
 
     fn delete(&mut self, iri: &IRI) -> Result<(), EmbeddingError> {
-        if let Ok(mut cache) = self.cache.write() {
-            if cache.remove(iri).is_some() {
-                if let Ok(mut count) = self.count.write() {
+        if let Ok(mut cache) = self.cache.write()
+            && cache.remove(iri).is_some()
+                && let Ok(mut count) = self.count.write() {
                     *count = count.saturating_sub(1);
                 }
-            }
-        }
         Ok(())
     }
 

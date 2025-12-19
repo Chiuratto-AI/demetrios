@@ -131,11 +131,10 @@ impl ConstraintSet {
         let mut partners = HashSet::new();
 
         for constraint in &self.constraints {
-            if let LayoutConstraint::Colocate { concepts, .. } = constraint {
-                if concepts.iter().any(|c| c == concept) {
+            if let LayoutConstraint::Colocate { concepts, .. } = constraint
+                && concepts.iter().any(|c| c == concept) {
                     partners.extend(concepts.iter().cloned());
                 }
-            }
         }
 
         partners.remove(concept);
@@ -162,11 +161,9 @@ impl ConstraintSet {
             if let LayoutConstraint::ForceRegion {
                 concept: c, region, ..
             } = constraint
-            {
-                if c == concept {
+                && c == concept {
                     return Some(*region);
                 }
-            }
         }
         None
     }

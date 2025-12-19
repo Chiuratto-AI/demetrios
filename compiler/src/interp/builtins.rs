@@ -146,7 +146,7 @@ impl BuiltinRegistry {
                 match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.abs())),
                     Value::Int(n) => Ok(Value::Int(n.abs())),
-                    _ => Err(format!("abs expects numeric argument")),
+                    _ => Err("abs expects numeric argument".to_string()),
                 }
             }),
         );
@@ -160,7 +160,7 @@ impl BuiltinRegistry {
                 match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.sin())),
                     Value::Int(n) => Ok(Value::Float((*n as f64).sin())),
-                    _ => Err(format!("sin expects numeric argument")),
+                    _ => Err("sin expects numeric argument".to_string()),
                 }
             }),
         );
@@ -174,7 +174,7 @@ impl BuiltinRegistry {
                 match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.cos())),
                     Value::Int(n) => Ok(Value::Float((*n as f64).cos())),
-                    _ => Err(format!("cos expects numeric argument")),
+                    _ => Err("cos expects numeric argument".to_string()),
                 }
             }),
         );
@@ -188,7 +188,7 @@ impl BuiltinRegistry {
                 match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.tan())),
                     Value::Int(n) => Ok(Value::Float((*n as f64).tan())),
-                    _ => Err(format!("tan expects numeric argument")),
+                    _ => Err("tan expects numeric argument".to_string()),
                 }
             }),
         );
@@ -202,7 +202,7 @@ impl BuiltinRegistry {
                 match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.exp())),
                     Value::Int(n) => Ok(Value::Float((*n as f64).exp())),
-                    _ => Err(format!("exp expects numeric argument")),
+                    _ => Err("exp expects numeric argument".to_string()),
                 }
             }),
         );
@@ -216,7 +216,7 @@ impl BuiltinRegistry {
                 match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.ln())),
                     Value::Int(n) => Ok(Value::Float((*n as f64).ln())),
-                    _ => Err(format!("log expects numeric argument")),
+                    _ => Err("log expects numeric argument".to_string()),
                 }
             }),
         );
@@ -230,12 +230,12 @@ impl BuiltinRegistry {
                 let base = match &args[0] {
                     Value::Float(f) => *f,
                     Value::Int(n) => *n as f64,
-                    _ => return Err(format!("pow expects numeric arguments")),
+                    _ => return Err("pow expects numeric arguments".to_string()),
                 };
                 let exp = match &args[1] {
                     Value::Float(f) => *f,
                     Value::Int(n) => *n as f64,
-                    _ => return Err(format!("pow expects numeric arguments")),
+                    _ => return Err("pow expects numeric arguments".to_string()),
                 };
                 Ok(Value::Float(base.powf(exp)))
             }),
@@ -250,7 +250,7 @@ impl BuiltinRegistry {
                 match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.floor())),
                     Value::Int(n) => Ok(Value::Int(*n)),
-                    _ => Err(format!("floor expects numeric argument")),
+                    _ => Err("floor expects numeric argument".to_string()),
                 }
             }),
         );
@@ -264,7 +264,7 @@ impl BuiltinRegistry {
                 match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.ceil())),
                     Value::Int(n) => Ok(Value::Int(*n)),
-                    _ => Err(format!("ceil expects numeric argument")),
+                    _ => Err("ceil expects numeric argument".to_string()),
                 }
             }),
         );
@@ -278,7 +278,7 @@ impl BuiltinRegistry {
                 match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.round())),
                     Value::Int(n) => Ok(Value::Int(*n)),
-                    _ => Err(format!("round expects numeric argument")),
+                    _ => Err("round expects numeric argument".to_string()),
                 }
             }),
         );
@@ -292,12 +292,12 @@ impl BuiltinRegistry {
                 let a = match &args[0] {
                     Value::Float(f) => *f,
                     Value::Int(n) => *n as f64,
-                    _ => return Err(format!("min expects numeric arguments")),
+                    _ => return Err("min expects numeric arguments".to_string()),
                 };
                 let b = match &args[1] {
                     Value::Float(f) => *f,
                     Value::Int(n) => *n as f64,
-                    _ => return Err(format!("min expects numeric arguments")),
+                    _ => return Err("min expects numeric arguments".to_string()),
                 };
                 Ok(Value::Float(a.min(b)))
             }),
@@ -312,12 +312,12 @@ impl BuiltinRegistry {
                 let a = match &args[0] {
                     Value::Float(f) => *f,
                     Value::Int(n) => *n as f64,
-                    _ => return Err(format!("max expects numeric arguments")),
+                    _ => return Err("max expects numeric arguments".to_string()),
                 };
                 let b = match &args[1] {
                     Value::Float(f) => *f,
                     Value::Int(n) => *n as f64,
-                    _ => return Err(format!("max expects numeric arguments")),
+                    _ => return Err("max expects numeric arguments".to_string()),
                 };
                 Ok(Value::Float(a.max(b)))
             }),
@@ -336,7 +336,7 @@ impl BuiltinRegistry {
                     Value::String(s) => Ok(Value::Int(s.len() as i64)),
                     Value::Array(arr) => Ok(Value::Int(arr.borrow().len() as i64)),
                     Value::Tuple(t) => Ok(Value::Int(t.len() as i64)),
-                    _ => Err(format!("len expects string, array, or tuple")),
+                    _ => Err("len expects string, array, or tuple".to_string()),
                 }
             }),
         );

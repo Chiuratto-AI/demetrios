@@ -661,7 +661,7 @@ impl SimpleChecker {
             Predicate::Not(p) => Self::check(p).map(|b| !b),
 
             Predicate::And(ps) => {
-                let results: Vec<_> = ps.iter().filter_map(|p| Self::check(p)).collect();
+                let results: Vec<_> = ps.iter().filter_map(Self::check).collect();
                 if results.len() == ps.len() {
                     Some(results.iter().all(|&b| b))
                 } else {
@@ -670,7 +670,7 @@ impl SimpleChecker {
             }
 
             Predicate::Or(ps) => {
-                let results: Vec<_> = ps.iter().filter_map(|p| Self::check(p)).collect();
+                let results: Vec<_> = ps.iter().filter_map(Self::check).collect();
                 if results.len() == ps.len() {
                     Some(results.iter().any(|&b| b))
                 } else {

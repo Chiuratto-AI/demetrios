@@ -205,14 +205,13 @@ impl FoundationOntologies {
         }
 
         // Check relative to executable
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(parent) = exe.parent() {
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(parent) = exe.parent() {
                 let stdlib = parent.join("stdlib");
                 if stdlib.exists() {
                     return Ok(stdlib);
                 }
             }
-        }
 
         // Default location
         Ok(PathBuf::from("/usr/share/demetrios/stdlib"))

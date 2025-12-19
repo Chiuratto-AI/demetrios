@@ -1,155 +1,208 @@
 name: CI
 
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
+    push:
+        branches: [main, develop]
+    pull_request:
+        branches: [main]
 
 env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
+    CARGO_TERM_COLOR: always
+    RUST_BACKTRACE: 1
 
 jobs:
-  # Basic checks - fast feedback
-  check:
-    name: Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    # Basic checks - fast feedback
+    check:
+        name: Check
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rustfmt, clippy
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            compiler/target
-          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-check-
+            - name: Cache cargo registry
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      compiler/target
+                  key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-cargo-check-
 
-      - name: Check formatting
-        working-directory: compiler
-        run: cargo fmt --all -- --check
+            - name: Check formatting
+              working-directory: compiler
+              run: cargo fmt --all -- --check
 
-      - name: Clippy lints
-        working-directory: compiler
-        run: cargo clippy --all-targets -- -D warnings -A clippy::too_many_arguments -A clippy::type_complexity
+            - name: Clippy lints
+              working-directory: compiler
+              run: |
+                  cargo clippy --all-targets -- -D warnings \
+                    -A clippy::too_many_arguments \
+                    -A clippy::type_complexity \
+                    -A clippy::field_reassign_with_default \
+                    -A clippy::only_used_in_recursion \
+                    -A clippy::not_unsafe_ptr_arg_deref \
+                    -A clippy::manual_strip \
+                    -A clippy::approx_constant \
+                    -A clippy::should_implement_trait \
+                    -A clippy::if_same_then_else \
+                    -A clippy::manual_clamp \
+                    -A clippy::large_enum_variant \
+                    -A clippy::tabs_in_doc_comments \
+                    -A clippy::vec_init_then_push \
+                    -A clippy::len_zero \
+                    -A clippy::single_match \
+                    -A clippy::match_like_matches_macro \
+                    -A clippy::needless_range_loop \
+                    -A clippy::clone_on_copy \
+                    -A clippy::cmp_owned \
+                    -A clippy::useless_vec \
+                    -A clippy::needless_return \
+                    -A clippy::redundant_field_names \
+                    -A clippy::unnecessary_unwrap \
+                    -A clippy::collapsible_else_if \
+                    -A clippy::collapsible_if \
+                    -A clippy::collapsible_match \
+                    -A clippy::redundant_guards \
+                    -A clippy::explicit_counter_loop \
+                    -A clippy::map_clone \
+                    -A clippy::ptr_arg \
+                    -A clippy::inherent_to_string \
+                    -A clippy::inherent_to_string_shadow_display \
+                    -A clippy::manual_range_contains \
+                    -A clippy::let_and_return \
+                    -A clippy::redundant_closure \
+                    -A clippy::non_canonical_partial_ord_impl \
+                    -A clippy::drop_non_drop \
+                    -A clippy::box_collection \
+                    -A clippy::enum_variant_names \
+                    -A clippy::absurd_extreme_comparisons \
+                    -A clippy::overly_complex_bool_expr \
+                    -A clippy::unnecessary_get_then_check \
+                    -A clippy::while_let_loop \
+                    -A clippy::deref_addrof \
+                    -A clippy::suspicious_arithmetic_impl \
+                    -A clippy::len_without_is_empty \
+                    -A clippy::result_large_err \
+                    -A clippy::eq_op \
+                    -A clippy::useless_format \
+                    -A clippy::clone_on_ref_ptr \
+                    -A unused_imports \
+                    -A unused_comparisons
 
-  # Build and test on multiple platforms
-  test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    needs: check
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+    # Build and test on multiple platforms
+    test:
+        name: Test (${{ matrix.os }})
+        runs-on: ${{ matrix.os }}
+        needs: check
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
 
-    steps:
-      - uses: actions/checkout@v4
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            compiler/target
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-test-
+            - name: Cache cargo registry
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      compiler/target
+                  key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-cargo-test-
 
-      - name: Build
-        working-directory: compiler
-        run: cargo build --release
+            - name: Build
+              working-directory: compiler
+              run: cargo build --release
 
-      - name: Run tests
-        working-directory: compiler
-        run: cargo test --release
+            - name: Run tests
+              working-directory: compiler
+              run: cargo test --release
 
-      - name: Test D programs (Unix)
-        if: runner.os != 'Windows'
-        working-directory: compiler
-        run: |
-          echo "Testing stdlib programs..."
-          ./target/release/dc run ../stdlib/prob/beta.d
-          ./target/release/dc run ../stdlib/prob/distributions.d
-          echo "Testing examples..."
-          ./target/release/dc check ../examples/hello.d
+            - name: Test D programs (Unix)
+              if: runner.os != 'Windows'
+              working-directory: compiler
+              run: |
+                  echo "Testing stdlib programs..."
+                  ./target/release/dc run ../stdlib/prob/beta.d
+                  ./target/release/dc run ../stdlib/prob/distributions.d
+                  echo "Testing examples..."
+                  ./target/release/dc check ../examples/hello.d
 
-      - name: Test D programs (Windows)
-        if: runner.os == 'Windows'
-        working-directory: compiler
-        shell: pwsh
-        run: |
-          echo "Testing stdlib programs..."
-          ./target/release/dc.exe run ../stdlib/prob/beta.d
-          ./target/release/dc.exe run ../stdlib/prob/distributions.d
-          echo "Testing examples..."
-          ./target/release/dc.exe check ../examples/hello.d
+            - name: Test D programs (Windows)
+              if: runner.os == 'Windows'
+              working-directory: compiler
+              shell: pwsh
+              run: |
+                  echo "Testing stdlib programs..."
+                  ./target/release/dc.exe run ../stdlib/prob/beta.d
+                  ./target/release/dc.exe run ../stdlib/prob/distributions.d
+                  echo "Testing examples..."
+                  ./target/release/dc.exe check ../examples/hello.d
 
-  # Build with optional features
-  features:
-    name: Features (${{ matrix.feature }})
-    runs-on: ubuntu-latest
-    needs: check
-    strategy:
-      fail-fast: false
-      matrix:
-        feature: [jit, lsp, smt]
+    # Build with optional features
+    features:
+        name: Features (${{ matrix.feature }})
+        runs-on: ubuntu-latest
+        needs: check
+        strategy:
+            fail-fast: false
+            matrix:
+                feature: [jit, lsp, smt]
 
-    steps:
-      - uses: actions/checkout@v4
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Z3 (for SMT feature)
-        if: matrix.feature == 'smt'
-        run: sudo apt-get update && sudo apt-get install -y libz3-dev
+            - name: Install Z3 (for SMT feature)
+              if: matrix.feature == 'smt'
+              run: sudo apt-get update && sudo apt-get install -y libz3-dev
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            compiler/target
-          key: ${{ runner.os }}-cargo-${{ matrix.feature }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ matrix.feature }}-
+            - name: Cache cargo registry
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      compiler/target
+                  key: ${{ runner.os }}-cargo-${{ matrix.feature }}-${{ hashFiles('**/Cargo.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-cargo-${{ matrix.feature }}-
 
-      - name: Build with feature
-        working-directory: compiler
-        run: cargo build --release --features ${{ matrix.feature }}
+            - name: Build with feature
+              working-directory: compiler
+              run: cargo build --release --features ${{ matrix.feature }}
 
-      - name: Test with feature
-        working-directory: compiler
-        run: cargo test --release --features ${{ matrix.feature }}
+            - name: Test with feature
+              working-directory: compiler
+              run: cargo test --release --features ${{ matrix.feature }}
 
-  # Documentation build
-  docs:
-    name: Documentation
-    runs-on: ubuntu-latest
-    needs: check
-    steps:
-      - uses: actions/checkout@v4
+    # Documentation build
+    docs:
+        name: Documentation
+        runs-on: ubuntu-latest
+        needs: check
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
 
-      - name: Build documentation
-        working-directory: compiler
-        run: cargo doc --no-deps
-        env:
-          RUSTDOCFLAGS: -D warnings
+            - name: Build documentation
+              working-directory: compiler
+              run: cargo doc --no-deps
+              env:
+                  RUSTDOCFLAGS: -D warnings

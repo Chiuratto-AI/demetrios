@@ -1580,12 +1580,12 @@ impl BetaBound {
 
     /// Check if this bound guarantees the confidence is above a threshold
     pub fn guarantees_above(&self, threshold: f64) -> bool {
-        self.min_mean().map_or(false, |min| min >= threshold)
+        self.min_mean().is_some_and(|min| min >= threshold)
     }
 
     /// Check if this bound guarantees the confidence is below a threshold
     pub fn guarantees_below(&self, threshold: f64) -> bool {
-        self.max_mean().map_or(false, |max| max <= threshold)
+        self.max_mean().is_some_and(|max| max <= threshold)
     }
 }
 

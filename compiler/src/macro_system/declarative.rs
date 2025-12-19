@@ -223,11 +223,10 @@ impl MacroExpander {
         for i in 0..repeat_count {
             let iter_bindings = self.index_bindings(bindings, i)?;
 
-            if i > 0 {
-                if let Some(sep) = separator {
+            if i > 0
+                && let Some(sep) = separator {
                     result.extend(self.transcribe_tree(sep, &iter_bindings, ctx)?);
                 }
-            }
 
             for template in templates {
                 result.extend(self.transcribe_tree(template, &iter_bindings, ctx)?);
@@ -243,11 +242,10 @@ impl MacroExpander {
         bindings: &Bindings,
     ) -> Result<usize, MacroError> {
         for template in templates {
-            if let TemplateTree::MetaVar(name) = template {
-                if let Some(repeated) = bindings.get_repeat(name) {
+            if let TemplateTree::MetaVar(name) = template
+                && let Some(repeated) = bindings.get_repeat(name) {
                     return Ok(repeated.len());
                 }
-            }
         }
 
         Err(MacroError::InvalidRepetition {
@@ -263,11 +261,10 @@ impl MacroExpander {
         }
 
         for (name, repeated) in &bindings.repeats {
-            if let Some(iter_bindings) = repeated.get(index) {
-                if let Some(capture) = iter_bindings.get_single(name) {
+            if let Some(iter_bindings) = repeated.get(index)
+                && let Some(capture) = iter_bindings.get_single(name) {
                     result.insert_single(name.clone(), capture.clone());
                 }
-            }
         }
 
         Ok(result)
@@ -278,28 +275,23 @@ impl MacroExpander {
         let mut i = 0;
 
         while i < trees.len() {
-            if i + 1 < trees.len() {
-                if let (TokenTree::Token(name_tok), TokenTree::Token(bang_tok)) =
+            if i + 1 < trees.len()
+                && let (TokenTree::Token(name_tok), TokenTree::Token(bang_tok)) =
                     (&trees[i], &trees[i + 1])
-                {
-                    if name_tok.token.kind == TokenKind::Ident
+                    && name_tok.token.kind == TokenKind::Ident
                         && bang_tok.token.kind == TokenKind::Bang
                     {
                         let macro_name = &name_tok.token.text;
 
-                        if self.macros.contains_key(macro_name) {
-                            if i + 2 < trees.len() {
-                                if let TokenTree::Delimited(_, inner, _) = &trees[i + 2] {
+                        if self.macros.contains_key(macro_name)
+                            && i + 2 < trees.len()
+                                && let TokenTree::Delimited(_, inner, _) = &trees[i + 2] {
                                     let expanded = self.expand(macro_name, inner.clone())?;
                                     result.extend(expanded);
                                     i += 3;
                                     continue;
                                 }
-                            }
-                        }
                     }
-                }
-            }
 
             match &trees[i] {
                 TokenTree::Delimited(d, inner, span) => {

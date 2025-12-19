@@ -135,14 +135,13 @@ impl DomainOntologies {
         }
 
         // Check relative to executable
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(parent) = exe.parent() {
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(parent) = exe.parent() {
                 let db_path = parent.join("ontology_db");
                 if db_path.exists() {
                     return db_path;
                 }
             }
-        }
 
         // Default location
         PathBuf::from("/usr/share/demetrios/ontology_db")
@@ -309,15 +308,13 @@ impl DomainOntologies {
         self.ensure_loaded(&prefix)?;
 
         // Look up term
-        if let Some(ontology) = self.ontologies.get(&prefix) {
-            if let Some(index) = &ontology.index {
-                if let Some(term) = index.terms.get(curie) {
+        if let Some(ontology) = self.ontologies.get(&prefix)
+            && let Some(index) = &ontology.index
+                && let Some(term) = index.terms.get(curie) {
                     // Cache the result
                     self.cache.put(curie.to_string(), term.clone());
                     return Ok(Some(term.clone()));
                 }
-            }
-        }
 
         Ok(None)
     }
@@ -347,13 +344,11 @@ impl DomainOntologies {
         self.ensure_loaded(&prefix)?;
 
         // Check transitive closure
-        if let Some(ontology) = self.ontologies.get(&prefix) {
-            if let Some(index) = &ontology.index {
-                if let Some(ancestors) = index.ancestors.get(child) {
+        if let Some(ontology) = self.ontologies.get(&prefix)
+            && let Some(index) = &ontology.index
+                && let Some(ancestors) = index.ancestors.get(child) {
                     return Ok(ancestors.contains(&parent.to_string()));
                 }
-            }
-        }
 
         Ok(false)
     }

@@ -252,16 +252,13 @@ impl OntologyCache {
         self.stats.lookups += 1;
 
         // Check negative cache first
-        if self.config.cache_negatives {
-            if let Some(cached_at) = self.negative.get(curie) {
-                if let Some(ttl) = self.config.ttl {
-                    if cached_at.elapsed() <= ttl {
+        if self.config.cache_negatives
+            && let Some(cached_at) = self.negative.get(curie)
+                && let Some(ttl) = self.config.ttl
+                    && cached_at.elapsed() <= ttl {
                         self.stats.negative_hits += 1;
                         return None;
                     }
-                }
-            }
-        }
 
         // Check hot cache
         if let Some(entry) = self.hot.get_mut(curie) {
@@ -284,19 +281,15 @@ impl OntologyCache {
                 // Cascade eviction when promoting to hot
                 if let Some((evicted_key, evicted_entry)) =
                     self.hot.push(curie.to_string(), promoted)
-                {
-                    if let Some((warm_evicted_key, warm_evicted_entry)) =
+                    && let Some((warm_evicted_key, warm_evicted_entry)) =
                         self.warm.push(evicted_key, evicted_entry)
-                    {
-                        if self
+                        && self
                             .cold
                             .push(warm_evicted_key, warm_evicted_entry)
                             .is_some()
                         {
                             self.stats.evictions += 1;
                         }
-                    }
-                }
                 return self.hot.get(curie);
             } else {
                 self.stats.expirations += 1;
@@ -312,11 +305,9 @@ impl OntologyCache {
                 // Cascade eviction when promoting to warm
                 if let Some((evicted_key, evicted_entry)) =
                     self.warm.push(curie.to_string(), promoted)
-                {
-                    if self.cold.push(evicted_key, evicted_entry).is_some() {
+                    && self.cold.push(evicted_key, evicted_entry).is_some() {
                         self.stats.evictions += 1;
                     }
-                }
                 return self.warm.get(curie);
             } else {
                 self.stats.expirations += 1;
@@ -417,20 +408,18 @@ impl OntologyCache {
     pub fn demote(&mut self) {
         // Demote least recently used from hot to warm
         while self.hot.len() > self.config.hot_cache_size {
-            if let Some((key, value)) = self.hot.pop_lru() {
-                if self.warm.push(key, value).is_some() {
+            if let Some((key, value)) = self.hot.pop_lru()
+                && self.warm.push(key, value).is_some() {
                     self.stats.evictions += 1;
                 }
-            }
         }
 
         // Demote least recently used from warm to cold
         while self.warm.len() > self.config.warm_cache_size {
-            if let Some((key, value)) = self.warm.pop_lru() {
-                if self.cold.push(key, value).is_some() {
+            if let Some((key, value)) = self.warm.pop_lru()
+                && self.cold.push(key, value).is_some() {
                     self.stats.evictions += 1;
                 }
-            }
         }
     }
 

@@ -86,6 +86,12 @@ pub struct Tape {
     variables: HashMap<String, usize>,
 }
 
+impl Default for Tape {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Tape {
     /// Create a new tape
     pub fn new() -> Self {

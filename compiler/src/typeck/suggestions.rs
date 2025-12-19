@@ -244,16 +244,14 @@ impl SuggestionEngine {
         if let HirType::Ontology {
             term: found_term, ..
         } = found
-        {
-            if let Some(corrections) = self.common_typos.get(found_term) {
+            && let Some(corrections) = self.common_typos.get(found_term) {
                 for correction in corrections {
                     // Check if correction matches expected
                     if let HirType::Ontology {
                         namespace: ns_e,
                         term: t_e,
                     } = expected
-                    {
-                        if t_e == correction {
+                        && t_e == correction {
                             suggestions.push(ScoredSuggestion {
                                 suggested_type: HirType::Ontology {
                                     namespace: ns_e.clone(),
@@ -265,10 +263,8 @@ impl SuggestionEngine {
                                 category: SuggestionCategory::LexicallySimilar,
                             });
                         }
-                    }
                 }
             }
-        }
 
         suggestions
     }
@@ -286,8 +282,8 @@ impl SuggestionEngine {
         ) = (expected, found)
         {
             // Check if found is an alias of expected
-            if let Some(canonical) = self.type_aliases.get(t_f) {
-                if canonical == t_e {
+            if let Some(canonical) = self.type_aliases.get(t_f)
+                && canonical == t_e {
                     suggestions.push(ScoredSuggestion {
                         suggested_type: expected.clone(),
                         score: 0.90,
@@ -296,11 +292,10 @@ impl SuggestionEngine {
                         category: SuggestionCategory::LexicallySimilar,
                     });
                 }
-            }
 
             // Check reverse: if expected is an alias
-            if let Some(canonical) = self.type_aliases.get(t_e) {
-                if canonical == t_f {
+            if let Some(canonical) = self.type_aliases.get(t_e)
+                && canonical == t_f {
                     suggestions.push(ScoredSuggestion {
                         suggested_type: found.clone(),
                         score: 0.90,
@@ -309,7 +304,6 @@ impl SuggestionEngine {
                         category: SuggestionCategory::LexicallySimilar,
                     });
                 }
-            }
         }
 
         suggestions

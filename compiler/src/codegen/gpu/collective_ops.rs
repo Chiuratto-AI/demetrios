@@ -299,7 +299,7 @@ impl CollectiveManager {
     ) -> Result<(), MultiGpuError> {
         let n = buffers.len();
         let total_size = buffers[0].len();
-        let chunk_size = (total_size + n - 1) / n;
+        let chunk_size = total_size.div_ceil(n);
 
         // Build ring
         let ring: Vec<DeviceId> = (0..n as u32).map(DeviceId).collect();
@@ -620,7 +620,7 @@ impl CollectiveManager {
         }
 
         let total_size = send_buffers[0].len();
-        let chunk_size = (total_size + n - 1) / n;
+        let chunk_size = total_size.div_ceil(n);
 
         // Each recv buffer should be chunk_size
         for buf in recv_buffers.iter() {

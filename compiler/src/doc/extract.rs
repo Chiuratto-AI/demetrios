@@ -676,8 +676,8 @@ impl DocExtractor {
 
                 // Add methods
                 for impl_item in &impl_def.items {
-                    if let ast::ImplItem::Fn(f) = impl_item {
-                        if self.should_document_visibility(&f.visibility) {
+                    if let ast::ImplItem::Fn(f) = impl_item
+                        && self.should_document_visibility(&f.visibility) {
                             let method_doc = self.extract_function(f, &type_path);
 
                             search_index.add(SearchEntry {
@@ -690,7 +690,6 @@ impl DocExtractor {
 
                             type_doc.methods.push(method_doc);
                         }
-                    }
                 }
 
                 break;

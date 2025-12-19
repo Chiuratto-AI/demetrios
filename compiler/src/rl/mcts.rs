@@ -521,7 +521,7 @@ where
         SearchResult {
             best_action,
             action_probabilities: action_probs,
-            root_value: self.root.value.clone(),
+            root_value: self.root.value,
             root_visits: self.root.visits,
             global_uncertainty: self.global_variance,
             stats: self.stats.clone(),

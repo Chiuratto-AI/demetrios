@@ -33,6 +33,7 @@ use crate::ontology::{FoundationOntologies, OntologyResolver, ParsedTermRef, Sub
 /// Represents a point in time for temporal epistemic constraints.
 /// Supports ISO 8601 timestamps and Unix epoch seconds.
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub struct TemporalIndex {
     /// ISO 8601 timestamp string (e.g., "2024-01-15T10:30:00Z")
     pub timestamp: Option<String>,
@@ -102,14 +103,6 @@ impl TemporalIndex {
     }
 }
 
-impl Default for TemporalIndex {
-    fn default() -> Self {
-        Self {
-            timestamp: None,
-            epoch_secs: None,
-        }
-    }
-}
 
 /// Parse ISO 8601 timestamp to Unix epoch seconds
 ///
@@ -133,7 +126,7 @@ fn parse_iso_to_epoch(iso: &str) -> Option<i64> {
     let day: u32 = trimmed[8..10].parse().ok()?;
 
     // Basic validation
-    if month < 1 || month > 12 || day < 1 || day > 31 {
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
 
@@ -525,11 +518,10 @@ impl EpistemicChecker {
                 match (&most_recent, ts.epoch_secs) {
                     (None, _) => most_recent = Some(ts),
                     (Some(current), Some(new_epoch)) => {
-                        if let Some(curr_epoch) = current.epoch_secs {
-                            if new_epoch > curr_epoch {
+                        if let Some(curr_epoch) = current.epoch_secs
+                            && new_epoch > curr_epoch {
                                 most_recent = Some(ts);
                             }
-                        }
                     }
                     _ => {}
                 }
@@ -537,13 +529,11 @@ impl EpistemicChecker {
         }
 
         // Also check the source for timestamp information
-        if most_recent.is_none() {
-            if let Source::Measurement { timestamp, .. } = &status.source {
-                if let Some(ts_str) = timestamp {
+        if most_recent.is_none()
+            && let Source::Measurement { timestamp, .. } = &status.source
+                && let Some(ts_str) = timestamp {
                     most_recent = Some(TemporalIndex::from_iso(ts_str));
                 }
-            }
-        }
 
         most_recent
     }
@@ -581,12 +571,9 @@ impl EpistemicChecker {
                 let day: u32 = date_str[8..10].parse().ok()?;
 
                 // Validate
-                if year >= 1900
-                    && year <= 2100
-                    && month >= 1
-                    && month <= 12
-                    && day >= 1
-                    && day <= 31
+                if (1900..=2100).contains(&year)
+                    && (1..=12).contains(&month)
+                    && (1..=31).contains(&day)
                 {
                     return Some(TemporalIndex::from_iso(date_str));
                 }
@@ -895,7 +882,7 @@ pub fn combine_epistemic_weighted_bayesian(statuses: &[EpistemicStatus]) -> Epis
     // Calculate evidence weight for each status
     let weights: Vec<f64> = statuses
         .iter()
-        .map(|s| calculate_evidence_weight(s))
+        .map(calculate_evidence_weight)
         .collect();
 
     let total_weight: f64 = weights.iter().sum();

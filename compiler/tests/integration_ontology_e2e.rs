@@ -14,10 +14,10 @@
 
 use std::time::Instant;
 
-use demetrios::ontology::distance::{DistanceConfig, SemanticDistance, SemanticDistanceIndex};
+use demetrios::ontology::distance::SemanticDistanceIndex;
 use demetrios::ontology::embedding::{Embedding, EmbeddingConfig, EmbeddingModel, EmbeddingSpace};
 use demetrios::ontology::loader::{IRI, LoadedTerm, OntologyId};
-use demetrios::types::semantic::{SemanticCompatibility, SemanticType, SemanticTypeChecker};
+use demetrios::types::semantic::{SemanticType, SemanticTypeChecker};
 use std::sync::{Arc, RwLock};
 
 // ============================================================================

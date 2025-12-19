@@ -564,9 +564,7 @@ pub fn suggest_fix(error: &UnitError) -> Option<String> {
             "ensure both operands have dimension {}; found {} instead",
             expected, found
         )),
-        UnitError::Incompatible { left, right } => Some(format!(
-            "convert one operand to match the other's unit, or use explicit conversion"
-        )),
+        UnitError::Incompatible { left, right } => Some("convert one operand to match the other's unit, or use explicit conversion".to_string()),
         UnitError::UnknownUnit(s) => Some(format!(
             "check spelling of unit '{}'; common units: kg, g, mg, m, s, L, mol",
             s
@@ -576,7 +574,7 @@ pub fn suggest_fix(error: &UnitError) -> Option<String> {
             dimension, root
         )),
         UnitError::UnitRequired { context } => {
-            Some(format!("add a unit annotation, e.g., `value: f64<mg/L>`"))
+            Some("add a unit annotation, e.g., `value: f64<mg/L>`".to_string())
         }
         _ => None,
     }

@@ -206,8 +206,8 @@ impl CompatibilityDiagnostic {
         }
 
         // Add note about distance components
-        if let Some(details) = &distance_details {
-            if !details.breakdown.is_empty() {
+        if let Some(details) = &distance_details
+            && !details.breakdown.is_empty() {
                 let components: Vec<String> = details
                     .breakdown
                     .iter()
@@ -218,7 +218,6 @@ impl CompatibilityDiagnostic {
                     span: None,
                 });
             }
-        }
 
         Self {
             severity,
@@ -253,9 +252,7 @@ impl CompatibilityDiagnostic {
         );
 
         let mut notes = vec![DiagnosticNote {
-            message: format!(
-                "this coercion is close to the threshold; consider using explicit conversion"
-            ),
+            message: "this coercion is close to the threshold; consider using explicit conversion".to_string(),
             span: None,
         }];
 
@@ -401,7 +398,7 @@ fn format_type(ty: &HirType) -> String {
         HirType::Var(id) => format!("?T{}", id),
         HirType::Named { name, args } if args.is_empty() => name.clone(),
         HirType::Named { name, args } => {
-            let args_str: Vec<_> = args.iter().map(|a| format_type(a)).collect();
+            let args_str: Vec<_> = args.iter().map(format_type).collect();
             format!("{}<{}>", name, args_str.join(", "))
         }
         HirType::Ontology { namespace, term } => format!("{}:{}", namespace, term),
@@ -412,7 +409,7 @@ fn format_type(ty: &HirType) -> String {
             params,
             return_type,
         } => {
-            let params_str: Vec<_> = params.iter().map(|p| format_type(p)).collect();
+            let params_str: Vec<_> = params.iter().map(format_type).collect();
             format!(
                 "fn({}) -> {}",
                 params_str.join(", "),
@@ -420,7 +417,7 @@ fn format_type(ty: &HirType) -> String {
             )
         }
         HirType::Tuple(elems) => {
-            let elems_str: Vec<_> = elems.iter().map(|e| format_type(e)).collect();
+            let elems_str: Vec<_> = elems.iter().map(format_type).collect();
             format!("({})", elems_str.join(", "))
         }
         HirType::Ref { mutable, inner } => {

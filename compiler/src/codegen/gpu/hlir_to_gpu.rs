@@ -248,8 +248,8 @@ fn apply_pipelining(
         // Check if kernel has tile config with pipelining
         let tile_config = tuned_configs.get(name).and_then(|t| t.tile_config.as_ref());
 
-        if let Some(tile) = tile_config {
-            if tile.pipeline_stages > 1 {
+        if let Some(tile) = tile_config
+            && tile.pipeline_stages > 1 {
                 let pipeline = create_pipeline_from_tile(tile, arch);
                 let schedule = schedule_pipeline(&pipeline);
 
@@ -258,7 +258,6 @@ fn apply_pipelining(
 
                 pipelines.insert(name.clone(), (pipeline, schedule));
             }
-        }
     }
 
     pipelines
@@ -345,8 +344,8 @@ impl HlirToGpuLowering {
 
         // Lower global constants
         for global in &hlir.globals {
-            if global.is_const {
-                if let Some(init) = &global.init {
+            if global.is_const
+                && let Some(init) = &global.init {
                     let constant = GpuConstant {
                         name: global.name.clone(),
                         ty: self.lower_type(&global.ty),
@@ -354,7 +353,6 @@ impl HlirToGpuLowering {
                     };
                     self.module.add_constant(constant);
                 }
-            }
         }
 
         std::mem::replace(

@@ -117,7 +117,7 @@ impl DecayModel {
                 BetaConfidence::new(new_alpha, new_beta)
             }
 
-            DecayModel::Perfect => conf.clone(),
+            DecayModel::Perfect => *conf,
 
             DecayModel::Custom { .. } => {
                 // Custom decay - default to linear for now
@@ -145,8 +145,10 @@ impl DecayModel {
 
 /// Prior distribution type for hierarchical combination
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub enum PriorType {
     /// Uniform prior Beta(1, 1) - maximum ignorance
+    #[default]
     Uniform,
 
     /// Jeffreys prior Beta(0.5, 0.5) - uninformative
@@ -247,11 +249,6 @@ impl PriorType {
     }
 }
 
-impl Default for PriorType {
-    fn default() -> Self {
-        PriorType::Uniform
-    }
-}
 
 // =============================================================================
 // BetaEpistemicStatus - Full Beta posterior epistemic status
@@ -363,7 +360,7 @@ impl BetaEpistemicStatus {
     pub fn axiomatic() -> Self {
         let confidence = BetaConfidence::new(1000.0, 1.0); // Very high alpha
         Self {
-            confidence: confidence.clone(),
+            confidence,
             revisability: Revisability::NonRevisable,
             source: Source::Axiom,
             evidence: vec![],
@@ -388,7 +385,7 @@ impl BetaEpistemicStatus {
             BetaConfidence::new(prior_beta.alpha + successes, prior_beta.beta + failures);
 
         Self {
-            confidence: confidence.clone(),
+            confidence,
             revisability: Revisability::Revisable {
                 conditions: vec!["new_evidence".into()],
             },
@@ -407,7 +404,7 @@ impl BetaEpistemicStatus {
         let prior = PriorType::Uniform;
 
         Self {
-            confidence: confidence.clone(),
+            confidence,
             revisability: Revisability::Revisable {
                 conditions: vec!["new_evidence".into()],
             },
@@ -429,7 +426,7 @@ impl BetaEpistemicStatus {
         prior: PriorType,
     ) -> Self {
         Self {
-            confidence: confidence.clone(),
+            confidence,
             revisability,
             source,
             evidence: vec![],
@@ -468,7 +465,7 @@ impl BetaEpistemicStatus {
 
     /// Update with new observation
     pub fn observe(&mut self, success: bool) {
-        let old_beta = self.confidence.clone();
+        let old_beta = self.confidence;
 
         if success {
             self.confidence =
@@ -484,7 +481,7 @@ impl BetaEpistemicStatus {
 
     /// Update with weighted evidence
     pub fn observe_weighted(&mut self, success_weight: f64, failure_weight: f64) {
-        let old_beta = self.confidence.clone();
+        let old_beta = self.confidence;
 
         self.confidence = BetaConfidence::new(
             self.confidence.alpha + success_weight,
@@ -501,7 +498,7 @@ impl BetaEpistemicStatus {
         let new_confidence = self.decay_model.apply(&self.confidence, new_depth);
 
         Self {
-            confidence: new_confidence.clone(),
+            confidence: new_confidence,
             revisability: self.revisability.clone(),
             source: Source::Transformation {
                 original: Box::new(self.source.clone()),
@@ -542,7 +539,7 @@ impl BetaEpistemicStatus {
         };
 
         Self {
-            confidence: confidence.clone(),
+            confidence,
             revisability,
             source: Source::Derivation("combined".to_string()),
             evidence: [self.evidence.clone(), other.evidence.clone()].concat(),
@@ -596,7 +593,7 @@ impl BetaEpistemicStatus {
             .unwrap_or(0);
 
         Self {
-            confidence: confidence.clone(),
+            confidence,
             revisability: Revisability::Revisable {
                 conditions: vec!["revision of any source".into()],
             },

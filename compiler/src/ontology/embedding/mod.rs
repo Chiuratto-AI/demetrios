@@ -359,11 +359,10 @@ impl EmbeddingSpace {
     pub fn get(&self, iri: &IRI) -> Result<Embedding, EmbeddingError> {
         // Check cache first
         {
-            if let Ok(cache) = self.cache.read() {
-                if let Some(emb) = cache.peek(iri) {
+            if let Ok(cache) = self.cache.read()
+                && let Some(emb) = cache.peek(iri) {
                     return Ok(emb.clone());
                 }
-            }
         }
 
         // Check storage

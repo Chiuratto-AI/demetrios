@@ -188,7 +188,7 @@ impl RuntimeProvenance {
         let step = ProvenanceStep {
             operation: operation.into(),
             timestamp: current_timestamp(),
-            params: params.map(|s| Arc::from(s)),
+            params: params.map(Arc::from),
         };
         self.chain.push(step);
         self.hash = Self::compute_hash(&self.source, self.timestamp, &self.chain);

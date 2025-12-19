@@ -146,7 +146,7 @@ impl SyntaxHighlighter {
 
                         // Read until */
                         let mut prev = ' ';
-                        while let Some(next) = chars.next() {
+                        for next in chars.by_ref() {
                             result.push(self.escape_html_char(next));
                             if prev == '*' && next == '/' {
                                 break;
@@ -167,11 +167,10 @@ impl SyntaxHighlighter {
                         if next == '"' {
                             break;
                         }
-                        if next == '\\' {
-                            if let Some(escaped) = chars.next() {
+                        if next == '\\'
+                            && let Some(escaped) = chars.next() {
                                 result.push(self.escape_html_char(escaped));
                             }
-                        }
                     }
                     result.push_str("</span>");
                 }
@@ -184,11 +183,10 @@ impl SyntaxHighlighter {
                         if next == '\'' {
                             break;
                         }
-                        if next == '\\' {
-                            if let Some(escaped) = chars.next() {
+                        if next == '\\'
+                            && let Some(escaped) = chars.next() {
                                 result.push(self.escape_html_char(escaped));
                             }
-                        }
                     }
                     result.push_str("</span>");
                 }

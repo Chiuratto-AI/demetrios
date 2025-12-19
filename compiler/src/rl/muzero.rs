@@ -262,7 +262,7 @@ impl EpistemicPrediction {
 fn rand_simple() -> f64 {
     use std::cell::RefCell;
     thread_local! {
-        static STATE: RefCell<u64> = RefCell::new(12345);
+        static STATE: RefCell<u64> = const { RefCell::new(12345) };
     }
     STATE.with(|s| {
         let mut state = s.borrow_mut();
@@ -636,11 +636,10 @@ impl<M: MuZeroModel> LatentMCTSTree<M> {
             node.backpropagate(values[depth]);
         }
 
-        if let Some((&action, rest)) = path.split_first() {
-            if let Some(child) = node.children.get_mut(&action) {
+        if let Some((&action, rest)) = path.split_first()
+            && let Some(child) = node.children.get_mut(&action) {
                 Self::backpropagate_node(child, rest, values, depth + 1);
             }
-        }
     }
 
     /// Get action probabilities (visit counts normalized)
@@ -701,7 +700,7 @@ impl<M: MuZeroModel> LatentMCTSTree<M> {
             max_depth,
             mean_uncertainty,
             root_value: self.root.q_value(),
-            root_confidence: self.root.value.clone(),
+            root_confidence: self.root.value,
         }
     }
 
@@ -1106,7 +1105,7 @@ impl GameState for DummyGameState {
     }
 
     fn current_player(&self) -> Player {
-        if self.step % 2 == 0 {
+        if self.step.is_multiple_of(2) {
             Player::One
         } else {
             Player::Two

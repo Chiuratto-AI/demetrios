@@ -639,9 +639,7 @@ impl EvolutionEngine {
             // Find high-confidence belief
             if let Some((id, _)) = state
                 .beliefs
-                .iter()
-                .filter(|(_, b)| b.confidence > 0.9)
-                .next()
+                .iter().find(|(_, b)| b.confidence > 0.9)
             {
                 return Some(Mutation {
                     mutation_type: MutationType::PromoteBelief {

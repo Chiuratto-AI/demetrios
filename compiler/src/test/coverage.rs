@@ -257,11 +257,10 @@ impl CoverageReport {
             covered_functions += file.covered_functions;
 
             // Check thresholds
-            if let Some(min) = config.min_line_coverage {
-                if file.line_coverage_percent() < min {
+            if let Some(min) = config.min_line_coverage
+                && file.line_coverage_percent() < min {
                     below_threshold.push(path.clone());
                 }
-            }
         }
 
         Self {
@@ -302,21 +301,18 @@ impl CoverageReport {
 
     /// Check if coverage meets thresholds
     pub fn meets_thresholds(&self, config: &CoverageConfig) -> bool {
-        if let Some(min) = config.min_line_coverage {
-            if self.line_coverage_percent() < min {
+        if let Some(min) = config.min_line_coverage
+            && self.line_coverage_percent() < min {
                 return false;
             }
-        }
-        if let Some(min) = config.min_branch_coverage {
-            if self.branch_coverage_percent() < min {
+        if let Some(min) = config.min_branch_coverage
+            && self.branch_coverage_percent() < min {
                 return false;
             }
-        }
-        if let Some(min) = config.min_function_coverage {
-            if self.function_coverage_percent() < min {
+        if let Some(min) = config.min_function_coverage
+            && self.function_coverage_percent() < min {
                 return false;
             }
-        }
         true
     }
 
@@ -589,11 +585,10 @@ impl CoverageTracker {
             }
 
             // Detect function definitions
-            if trimmed.starts_with("fn ") || trimmed.contains("fn ") {
-                if let Some(name) = extract_function_name(trimmed) {
+            if (trimmed.starts_with("fn ") || trimmed.contains("fn "))
+                && let Some(name) = extract_function_name(trimmed) {
                     functions.insert(name);
                 }
-            }
 
             // Detect branch points
             if trimmed.starts_with("if ")

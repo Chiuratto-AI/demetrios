@@ -180,7 +180,7 @@ impl CoqServer {
         let process = self
             .process
             .as_mut()
-            .ok_or_else(|| CoqExecutionError::NotInitialized)?;
+            .ok_or(CoqExecutionError::NotInitialized)?;
 
         let stdin = process
             .stdin
@@ -578,7 +578,7 @@ impl CoqInterop {
                 if trimmed.starts_with("Proof") {
                     break;
                 }
-                statement.push_str(" ");
+                statement.push(' ');
                 statement.push_str(trimmed);
             }
         }

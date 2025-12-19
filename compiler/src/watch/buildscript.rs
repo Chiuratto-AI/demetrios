@@ -406,14 +406,13 @@ impl BuildScriptRunner {
         }
 
         // rustc-env
-        if let Some(env) = rest.strip_prefix("rustc-env=") {
-            if let Some((key, value)) = env.split_once('=') {
+        if let Some(env) = rest.strip_prefix("rustc-env=")
+            && let Some((key, value)) = env.split_once('=') {
                 return Some(BuildInstruction::Env {
                     key: key.to_string(),
                     value: value.to_string(),
                 });
             }
-        }
 
         // rustc-cdylib-link-arg and rustc-link-arg (simplified)
         if rest.starts_with("rustc-cdylib-link-arg=") || rest.starts_with("rustc-link-arg=") {
@@ -437,14 +436,13 @@ impl BuildScriptRunner {
         }
 
         // metadata
-        if rest.contains('=') && !rest.starts_with("rustc-") {
-            if let Some((key, value)) = rest.split_once('=') {
+        if rest.contains('=') && !rest.starts_with("rustc-")
+            && let Some((key, value)) = rest.split_once('=') {
                 return Some(BuildInstruction::Metadata {
                     key: key.to_string(),
                     value: value.to_string(),
                 });
             }
-        }
 
         None
     }

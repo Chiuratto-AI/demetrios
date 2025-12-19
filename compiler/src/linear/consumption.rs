@@ -278,7 +278,7 @@ impl ConsumptionTracker {
 
     /// Check if a resource is available
     pub fn is_available(&self, name: &str) -> bool {
-        self.resources.get(name).map_or(false, |r| r.is_available())
+        self.resources.get(name).is_some_and(|r| r.is_available())
     }
 
     /// Get all available resources
@@ -369,9 +369,7 @@ impl ConsumptionTracker {
 
         // Add any resources only in right
         for (name, right_tracker) in right.resources {
-            if !result.resources.contains_key(&name) {
-                result.resources.insert(name, right_tracker);
-            }
+            result.resources.entry(name).or_insert(right_tracker);
         }
 
         Ok(result)

@@ -56,19 +56,18 @@
 //! └─────────────────────────────────────────────────────────────────────────┘
 //! ```
 
-use std::collections::HashMap;
 use std::f64::consts::PI;
 
 use crate::epistemic::bayesian::BetaConfidence;
 use crate::epistemic::beta_knowledge::{
-    ActiveInferenceMetrics, BetaEpistemicStatus, BetaKnowledge, DecayModel, PriorType,
+    ActiveInferenceMetrics, BetaKnowledge,
 };
 use crate::epistemic::merkle::{MerkleProvenanceNode, OperationKind, ProvenanceOperation};
 
 use super::noise::NoiseModel;
-use super::states::{Complex, EpistemicQubit, QubitState, StateVector};
-use super::uccsd::{MolecularSystem, UCCSDCircuit};
-use super::vqe::{Hamiltonian, PauliOp, PauliTerm, VQEConfig};
+use super::states::{Complex, QubitState, StateVector};
+use super::uccsd::MolecularSystem;
+use super::vqe::{Hamiltonian, VQEConfig};
 
 // =============================================================================
 // BetaQuantumParameter - Parameters with Full Posterior
@@ -102,7 +101,7 @@ impl BetaQuantumParameter {
         let confidence = BetaConfidence::uniform_prior();
         Self {
             value,
-            confidence: confidence.clone(),
+            confidence,
             gradient: 0.0,
             gradient_variance: 1.0, // High initial uncertainty
             gradient_evaluations: 0,
@@ -116,7 +115,7 @@ impl BetaQuantumParameter {
         let confidence = BetaConfidence::weak_prior(prior_mean, prior_strength);
         Self {
             value,
-            confidence: confidence.clone(),
+            confidence,
             gradient: 0.0,
             gradient_variance: 0.5,
             gradient_evaluations: 0,
@@ -267,7 +266,7 @@ impl EpistemicEnergy {
         Self {
             mean,
             variance,
-            confidence: confidence.clone(),
+            confidence,
             variance_breakdown: VarianceBreakdown {
                 shot_noise: variance * 0.6,
                 gate_noise: variance * 0.2,
@@ -693,8 +692,8 @@ impl EpistemicVQE {
         let parent_hash = self
             .provenance
             .last()
-            .map(|n| n.id.clone())
-            .unwrap_or_else(|| crate::epistemic::merkle::Hash256::zero());
+            .map(|n| n.id)
+            .unwrap_or_else(crate::epistemic::merkle::Hash256::zero);
         let new_node = MerkleProvenanceNode::derived(
             vec![parent_hash],
             ProvenanceOperation::new(operation, OperationKind::Computation),

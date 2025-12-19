@@ -280,7 +280,7 @@ impl BuildScheduler {
 
             queues
                 .entry(priority)
-                .or_insert_with(VecDeque::new)
+                .or_default()
                 .push_back(task.clone());
 
             all_tasks.insert(unit_id, task);

@@ -60,19 +60,16 @@ use crate::epistemic::bayesian::BetaConfidence;
 use crate::rl::game::{GameState, GameTrait};
 
 use super::alpha_geo_zero::{
-    AlphaGeoZeroConfig, AlphaGeoZeroTrainer, EpistemicMCTSTree, ProofGameEpisode,
-    SelfPlayGenerator, TrainingConfig, VariancePriorityBuffer,
+    AlphaGeoZeroConfig, EpistemicMCTSTree, ProofGameEpisode, TrainingConfig, VariancePriorityBuffer,
 };
-use super::geo_game::{GeoAction, GeoGameConfig, GeoProofGame};
+use super::geo_game::{GeoGameConfig, GeoProofGame};
 use super::geo_training::{GeoNeuralNetwork, GeoTrainingExample, UniformGeoNetwork};
 use super::imo_benchmark::{BenchmarkConfig, BenchmarkStats, imo_ag_30, run_benchmark_on_problems};
 use super::imo_parser::IMOProblem;
 use super::predicates::Predicate;
 use super::proof_state::ProofState;
-use super::self_play::{SelfPlayConfig, SelfPlayStats};
-use super::showcase::{EpistemicBenchmarkResult, ShowcaseConfig};
 use super::synthetic::{
-    GeneratorConfig, ProblemTemplate, SyntheticProblem, SyntheticProblemGenerator,
+    GeneratorConfig, ProblemTemplate, SyntheticProblemGenerator,
 };
 
 // =============================================================================
@@ -592,18 +589,18 @@ impl<N: GeoNeuralNetwork + Clone> AlphaGeoZeroFull<N> {
             }
 
             // Phase 3: Evaluate on IMO benchmark
-            if self.stats.iteration % self.config.eval_interval == 0 {
+            if self.stats.iteration.is_multiple_of(self.config.eval_interval) {
                 self.evaluate_imo();
             }
 
             // Phase 4: Logging
-            if self.stats.iteration % self.config.log_interval == 0 {
+            if self.stats.iteration.is_multiple_of(self.config.log_interval) {
                 self.log_progress(iter_start.elapsed());
             }
 
             // Phase 5: Checkpointing
             if self.config.checkpoint_interval > 0
-                && self.stats.iteration % self.config.checkpoint_interval == 0
+                && self.stats.iteration.is_multiple_of(self.config.checkpoint_interval)
             {
                 self.save_checkpoint();
             }
@@ -737,11 +734,10 @@ impl<N: GeoNeuralNetwork + Clone> AlphaGeoZeroFull<N> {
             // Select and apply action
             if let Some(action) = tree.select_action() {
                 let legal = game.legal_actions();
-                if let Some(idx) = legal.iter().position(|a| *a == action) {
-                    if let Some(last) = trajectory.last_mut() {
+                if let Some(idx) = legal.iter().position(|a| *a == action)
+                    && let Some(last) = trajectory.last_mut() {
                         last.action_idx = idx;
                     }
-                }
                 game = game.apply_action(&action);
             } else {
                 break;

@@ -144,12 +144,11 @@ impl DistanceCache {
         let key = DistanceCacheKey::new(a, b);
 
         // First try read lock
-        if let Ok(cache) = self.cache.read() {
-            if let Some(entry) = cache.get(&key) {
+        if let Ok(cache) = self.cache.read()
+            && let Some(entry) = cache.get(&key) {
                 self.stats.l1_hits.fetch_add(1, Ordering::Relaxed);
                 return Some(entry.value);
             }
-        }
 
         self.stats.misses.fetch_add(1, Ordering::Relaxed);
         None
@@ -283,18 +282,17 @@ impl TieredDistanceCache {
         let clock = self.clock.fetch_add(1, Ordering::Relaxed);
 
         // Check L1 first
-        if let Ok(mut l1) = self.l1.write() {
-            if let Some(entry) = l1.get_mut(&key) {
+        if let Ok(mut l1) = self.l1.write()
+            && let Some(entry) = l1.get_mut(&key) {
                 entry.last_access = clock;
                 entry.access_count = entry.access_count.saturating_add(1);
                 self.stats.l1_hits.fetch_add(1, Ordering::Relaxed);
                 return Some(entry.value);
             }
-        }
 
         // Check L2
-        if let Ok(mut l2) = self.l2.write() {
-            if let Some(entry) = l2.get_mut(&key) {
+        if let Ok(mut l2) = self.l2.write()
+            && let Some(entry) = l2.get_mut(&key) {
                 entry.last_access = clock;
                 entry.access_count = entry.access_count.saturating_add(1);
                 let value = entry.value;
@@ -311,7 +309,6 @@ impl TieredDistanceCache {
 
                 return Some(value);
             }
-        }
 
         self.stats.misses.fetch_add(1, Ordering::Relaxed);
         None

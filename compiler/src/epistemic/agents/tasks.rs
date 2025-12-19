@@ -163,6 +163,7 @@ pub enum EvidenceKind {
 
 /// Strategy for revising knowledge
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum RevisionStrategy {
     /// Replace old belief with new
     Replace,
@@ -171,14 +172,10 @@ pub enum RevisionStrategy {
     /// Keep both as alternatives
     Alternative,
     /// Weighted combination
+    #[default]
     Bayesian,
 }
 
-impl Default for RevisionStrategy {
-    fn default() -> Self {
-        RevisionStrategy::Bayesian
-    }
-}
 
 /// An evolution task
 #[derive(Debug, Clone)]
@@ -238,27 +235,26 @@ pub enum GenerationTarget {
 
 /// How to integrate generated content
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Default)]
 pub enum IntegrationMode {
     /// Don't integrate, just return
     Preview,
     /// Integrate after human approval
+    #[default]
     Supervised,
     /// Integrate if confidence above threshold
     Automatic { min_confidence: f64 },
 }
 
-impl Default for IntegrationMode {
-    fn default() -> Self {
-        IntegrationMode::Supervised
-    }
-}
 
 /// Task priority levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default)]
 pub enum Priority {
     /// Background task, run when idle
     Low = 0,
     /// Normal priority
+    #[default]
     Normal = 1,
     /// High priority, run soon
     High = 2,
@@ -266,11 +262,6 @@ pub enum Priority {
     Critical = 3,
 }
 
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Normal
-    }
-}
 
 /// Task execution status
 #[derive(Debug, Clone, PartialEq, Eq)]

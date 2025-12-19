@@ -50,7 +50,9 @@ pub struct GPUBuffer {
 
 /// Supported data types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum DataType {
+    #[default]
     F32,
     F64,
     I32,
@@ -80,7 +82,7 @@ pub struct LaunchConfig {
 
 impl LaunchConfig {
     pub fn for_1d(n: usize, block_size: u32) -> Self {
-        let grid_size = ((n as u32 + block_size - 1) / block_size, 1, 1);
+        let grid_size = ((n as u32).div_ceil(block_size), 1, 1);
         Self {
             grid_size,
             block_size: (block_size, 1, 1),
@@ -91,8 +93,8 @@ impl LaunchConfig {
     pub fn for_2d(m: usize, n: usize, block_x: u32, block_y: u32) -> Self {
         Self {
             grid_size: (
-                (n as u32 + block_x - 1) / block_x,
-                (m as u32 + block_y - 1) / block_y,
+                (n as u32).div_ceil(block_x),
+                (m as u32).div_ceil(block_y),
                 1,
             ),
             block_size: (block_x, block_y, 1),
@@ -1045,11 +1047,6 @@ pub struct KernelParams {
     pub dtype: DataType,
 }
 
-impl Default for DataType {
-    fn default() -> Self {
-        DataType::F32
-    }
-}
 
 impl Default for KernelManager {
     fn default() -> Self {

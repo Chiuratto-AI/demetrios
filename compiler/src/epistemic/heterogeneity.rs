@@ -25,10 +25,12 @@ use super::{Confidence, EpistemicStatus, Evidence, Revisability, Source};
 
 /// Strategy for resolving epistemic heterogeneity
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum ResolutionStrategy {
     /// Higher confidence source wins
     Prioritized,
     /// Bayesian combination using log-odds
+    #[default]
     Bayesian,
     /// AGM belief revision
     AGM,
@@ -42,11 +44,6 @@ pub enum ResolutionStrategy {
     WeightedAverage,
 }
 
-impl Default for ResolutionStrategy {
-    fn default() -> Self {
-        Self::Bayesian
-    }
-}
 
 /// Configuration for heterogeneity resolution
 #[derive(Debug, Clone)]
@@ -398,7 +395,7 @@ impl HeterogeneityResolver {
 
         ResolutionResult {
             status: EpistemicStatus {
-                confidence: min.confidence.clone(),
+                confidence: min.confidence,
                 revisability: self.combine_revisability(statuses),
                 source: Source::Derivation("conservative".into()),
                 evidence: statuses.iter().flat_map(|s| s.evidence.clone()).collect(),
@@ -432,7 +429,7 @@ impl HeterogeneityResolver {
 
         ResolutionResult {
             status: EpistemicStatus {
-                confidence: max.confidence.clone(),
+                confidence: max.confidence,
                 revisability: self.combine_revisability(statuses),
                 source: Source::Derivation("optimistic".into()),
                 evidence: statuses.iter().flat_map(|s| s.evidence.clone()).collect(),

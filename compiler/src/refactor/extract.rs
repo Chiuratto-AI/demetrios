@@ -103,7 +103,7 @@ impl ExtractFunction {
             generated_code: new_function,
             replacement_code: replacement_call,
             edits: workspace_edit,
-            parameters: analysis.free_variables.iter().cloned().collect(),
+            parameters: analysis.free_variables.to_vec(),
             return_type: analysis.inferred_return_type,
         })
     }
@@ -157,7 +157,7 @@ impl ExtractFunction {
                 // Extract variable name
                 let parts: Vec<&str> = trimmed.split_whitespace().collect();
                 if parts.len() >= 2 {
-                    let name = parts[1].trim_end_matches(|c| c == ':' || c == '=');
+                    let name = parts[1].trim_end_matches([':', '=']);
                     defined_vars.insert(name.to_string());
                     free_vars.remove(name);
                 }
@@ -216,12 +216,11 @@ impl ExtractFunction {
         result.push(')');
 
         // Return type
-        if let Some(ref ret_type) = analysis.inferred_return_type {
-            if ret_type != "()" {
+        if let Some(ref ret_type) = analysis.inferred_return_type
+            && ret_type != "()" {
                 result.push_str(" -> ");
                 result.push_str(ret_type);
             }
-        }
 
         // Body
         result.push_str(" {\n");

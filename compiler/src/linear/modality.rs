@@ -20,9 +20,11 @@ use std::fmt;
 
 /// The four modalities of resource usage
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum Modality {
     /// Use exactly once (most restrictive)
     /// Neither weakening nor contraction allowed
+    #[default]
     Linear,
 
     /// Use at most once (can discard)
@@ -175,11 +177,6 @@ impl fmt::Display for Modality {
     }
 }
 
-impl Default for Modality {
-    fn default() -> Self {
-        Modality::Linear
-    }
-}
 
 impl PartialOrd for Modality {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {

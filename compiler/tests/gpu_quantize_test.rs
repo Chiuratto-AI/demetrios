@@ -415,8 +415,8 @@ fn test_quantize_clipping() {
     let q_underflow = params.quantize(-10.0);
 
     // Should clip to valid INT8 range
-    assert!(q_overflow >= -128 && q_overflow <= 127);
-    assert!(q_underflow >= -128 && q_underflow <= 127);
+    assert!((-128..=127).contains(&q_overflow));
+    assert!((-128..=127).contains(&q_underflow));
 }
 
 #[test]

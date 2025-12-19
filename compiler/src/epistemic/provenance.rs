@@ -391,8 +391,10 @@ impl TransformationMetadata {
 
 /// Origin of a knowledge value
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub enum Origin {
     /// Created as a literal in source code
+    #[default]
     Literal,
     /// Loaded from external source
     External { uri: String },
@@ -406,11 +408,6 @@ pub enum Origin {
     OntologyAssertion { ontology: String, term: String },
 }
 
-impl Default for Origin {
-    fn default() -> Self {
-        Origin::Literal
-    }
-}
 
 #[cfg(test)]
 mod tests {

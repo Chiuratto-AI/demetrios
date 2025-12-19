@@ -379,7 +379,7 @@ impl BuildExecutor {
         warnings: &mut Vec<String>,
     ) -> Result<(), BuildError> {
         if self.context.verbose {
-            println!("   Compiling {} v{}", unit.package, "0.1.0");
+            println!("   Compiling {} v0.1.0", unit.package);
         }
 
         // Create output directory
@@ -502,7 +502,7 @@ impl BuildExecutor {
 
             if path.is_dir() {
                 self.find_sources_recursive(&path, sources)?;
-            } else if path.extension().map_or(false, |e| e == "d") {
+            } else if path.extension().is_some_and(|e| e == "d") {
                 sources.push(path);
             }
         }

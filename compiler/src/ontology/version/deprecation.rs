@@ -42,8 +42,10 @@ use crate::common::Span;
 
 /// Level of deprecation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum DeprecationLevel {
     /// Just a warning, code still works
+    #[default]
     Warning,
     /// Error, code won't compile
     Error,
@@ -51,11 +53,6 @@ pub enum DeprecationLevel {
     Silent,
 }
 
-impl Default for DeprecationLevel {
-    fn default() -> Self {
-        DeprecationLevel::Warning
-    }
-}
 
 impl std::fmt::Display for DeprecationLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -296,11 +293,11 @@ impl DeprecationTracker {
             .clone()
             .unwrap_or_else(|| format!("Term '{}' is deprecated", id));
 
-        let suggestion = term.replacement.as_ref().and_then(|r| match r {
-            Replacement::Single(replacement) => Some(format!("use '{}' instead", replacement)),
-            Replacement::Alternatives(alts) => Some(format!("use one of: {}", alts.join(", "))),
-            Replacement::None { reason } => Some(format!("no replacement: {}", reason)),
-            Replacement::Migration { description } => Some(description.clone()),
+        let suggestion = term.replacement.as_ref().map(|r| match r {
+            Replacement::Single(replacement) => format!("use '{}' instead", replacement),
+            Replacement::Alternatives(alts) => format!("use one of: {}", alts.join(", ")),
+            Replacement::None { reason } => format!("no replacement: {}", reason),
+            Replacement::Migration { description } => description.clone(),
         });
 
         let help = term.since_version.as_ref().map(|v| {
@@ -397,8 +394,8 @@ impl DeprecationTracker {
         output.push('\n');
 
         // Terms without replacements
-        if let Some(no_replacement) = by_replacement.get(&None) {
-            if !no_replacement.is_empty() {
+        if let Some(no_replacement) = by_replacement.get(&None)
+            && !no_replacement.is_empty() {
                 output.push_str("## No Direct Replacement\n\n");
                 for term in no_replacement {
                     output.push_str(&format!("- **{}**", term.id));
@@ -408,7 +405,6 @@ impl DeprecationTracker {
                     output.push('\n');
                 }
             }
-        }
 
         output
     }

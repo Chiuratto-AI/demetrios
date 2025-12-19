@@ -372,7 +372,7 @@ impl GameStateRefinement {
         self.invariants
             .iter()
             .cloned()
-            .fold(Predicate::true_pred(), |acc, inv| Predicate::and(acc, inv))
+            .fold(Predicate::true_pred(), Predicate::and)
     }
 
     /// Get refined type for board
@@ -523,7 +523,7 @@ impl MoveRefinement {
         self.custom
             .iter()
             .cloned()
-            .fold(base, |acc, p| Predicate::and(acc, p))
+            .fold(base, Predicate::and)
     }
 }
 

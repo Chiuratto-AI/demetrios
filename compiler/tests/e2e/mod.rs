@@ -21,4 +21,3 @@ mod performance;
 mod pharmacology;
 
 // Re-export test harness for use in tests
-pub use common::{CompileResult, TestHarness};

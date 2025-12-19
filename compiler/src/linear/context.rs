@@ -13,8 +13,10 @@ use super::modality::Modality;
 
 /// Usage count for tracking how many times a variable has been used
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum UsageCount {
     /// Not yet used
+    #[default]
     Zero,
     /// Used exactly once
     One,
@@ -50,11 +52,6 @@ impl UsageCount {
     }
 }
 
-impl Default for UsageCount {
-    fn default() -> Self {
-        UsageCount::Zero
-    }
-}
 
 impl fmt::Display for UsageCount {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -285,14 +285,16 @@ impl Bencher {
         // Warmup
         for _ in 0..self.config.warmup_iterations {
             let input = setup();
-            std::hint::black_box(f(input));
+            f(input);
+            std::hint::black_box(());
         }
 
         // Collect samples - each sample is a single iteration with setup
         for _ in 0..self.config.sample_count {
             let input = setup();
             let start = Instant::now();
-            std::hint::black_box(f(input));
+            f(input);
+            std::hint::black_box(());
             let elapsed = start.elapsed();
             self.samples.push(elapsed.as_nanos() as f64);
         }

@@ -111,7 +111,7 @@ fn benchmark_pattern_analysis(c: &mut Criterion) {
 
         // Add many accesses with varying heat levels
         for i in 0..100 {
-            let mut access = FieldAccess::new("Type", &format!("field_{}", i % 20));
+            let mut access = FieldAccess::new("Type", format!("field_{}", i % 20));
             if i % 5 == 0 {
                 access = access.in_loop(2);
             } else if i % 3 == 0 {

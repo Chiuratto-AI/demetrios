@@ -135,11 +135,10 @@ impl EpistemicAugmenter {
         // (would need xref info in TermEntry)
 
         // Very short labels might be abbreviations (less clear)
-        if let Some(label) = &entry.id.label {
-            if label.len() < 3 {
+        if let Some(label) = &entry.id.label
+            && label.len() < 3 {
                 adjustment *= 0.95;
             }
-        }
 
         adjustment
     }

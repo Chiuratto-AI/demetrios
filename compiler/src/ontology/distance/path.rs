@@ -418,13 +418,12 @@ impl HierarchyGraph {
         }
 
         while let Some(current) = queue.pop_front() {
-            if let Some(iri) = self.get_iri(current) {
-                if descendants.insert(iri.clone()) {
+            if let Some(iri) = self.get_iri(current)
+                && descendants.insert(iri.clone()) {
                     for child in self.graph.neighbors_directed(current, Direction::Incoming) {
                         queue.push_back(child);
                     }
                 }
-            }
         }
 
         descendants
@@ -547,8 +546,8 @@ impl HierarchyGraph {
                     });
                 }
 
-                if !visited.contains_key(&parent) {
-                    visited.insert(parent, current_dist + 1);
+                if let std::collections::hash_map::Entry::Vacant(e) = visited.entry(parent) {
+                    e.insert(current_dist + 1);
                     parent_map.insert(parent, current);
                     queue.push_back(parent);
                 }

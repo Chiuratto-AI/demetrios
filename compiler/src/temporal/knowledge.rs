@@ -306,7 +306,7 @@ impl<T: Clone> TemporalKnowledge<T> {
     /// Add ontology reference
     pub fn with_ontology(mut self, ontology: impl Into<String>) -> Self {
         let onto_ref =
-            crate::epistemic::composition::knowledge::OntologyRef::new(&ontology.into(), "");
+            crate::epistemic::composition::knowledge::OntologyRef::new(ontology.into(), "");
         let mut ontology_set = self.core.ontology().clone();
         ontology_set.insert(onto_ref);
 

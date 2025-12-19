@@ -247,14 +247,13 @@ impl SemanticTypeChecker {
 
         // Check cache first
         {
-            if let Ok(cache) = self.compatibility_cache.read() {
-                if let Some(result) = cache.get(&(from.iri.clone(), to.iri.clone())) {
+            if let Ok(cache) = self.compatibility_cache.read()
+                && let Some(result) = cache.get(&(from.iri.clone(), to.iri.clone())) {
                     if let Ok(mut stats) = self.stats.write() {
                         stats.cache_hits += 1;
                     }
                     return result.clone();
                 }
-            }
         }
 
         // Same type = exact match

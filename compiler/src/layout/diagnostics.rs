@@ -113,9 +113,9 @@ impl LayoutDiagnostic {
                 "  --> {}:{}:{}\n",
                 source.file, source.line, source.column
             ));
-            output.push_str(&format!("   |\n"));
+            output.push_str("   |\n");
             output.push_str(&format!("{:>3} | #[{}]\n", source.line, source.attribute));
-            output.push_str(&format!("   |\n"));
+            output.push_str("   |\n");
         }
 
         // Notes

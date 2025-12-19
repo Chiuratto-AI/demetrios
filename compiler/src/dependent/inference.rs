@@ -532,11 +532,10 @@ impl ConstraintSolver {
         if let (Some(lb), Some(v2)) = (
             c1_subst.lower_bound(&self.ctx.type_ctx),
             c2_subst.evaluate(&self.ctx.type_ctx),
-        ) {
-            if lb >= v2 {
+        )
+            && lb >= v2 {
                 return true;
             }
-        }
 
         // Gradual fallback
         self.proof_config.allow_gradual

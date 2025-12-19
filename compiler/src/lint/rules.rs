@@ -77,7 +77,7 @@ impl Lint for UnusedImport {
         Some(Fix {
             message: "remove unused import".into(),
             edits: vec![Edit {
-                span: diagnostic.span.clone(),
+                span: diagnostic.span,
                 replacement: "".into(),
             }],
         })
@@ -111,7 +111,6 @@ impl Lint for UnusedFunction {
                 || f.name == "main"
                 || f.name.starts_with("test_")
             {
-                return;
             }
 
             // Would check if function is called anywhere
@@ -166,13 +165,11 @@ impl Lint for DivisionByZero {
     }
 
     fn check_expr(&self, expr: &Expr, ctx: &mut LintContext) {
-        if let Expr::Binary { op, right, .. } = expr {
-            if matches!(op, BinaryOp::Div | BinaryOp::Rem) {
-                if is_zero(right) {
+        if let Expr::Binary { op, right, .. } = expr
+            && matches!(op, BinaryOp::Div | BinaryOp::Rem)
+                && is_zero(right) {
                     ctx.report(self, "division by zero", Span::dummy());
                 }
-            }
-        }
     }
 }
 
@@ -298,7 +295,7 @@ impl Lint for NamingConvention {
                     ctx.report_with_help(
                         self,
                         format!("function `{}` should be snake_case", f.name),
-                        f.span.clone(),
+                        f.span,
                         format!("rename to `{}`", to_snake_case(&f.name)),
                     );
                 }
@@ -309,7 +306,7 @@ impl Lint for NamingConvention {
                     ctx.report_with_help(
                         self,
                         format!("struct `{}` should be PascalCase", s.name),
-                        s.span.clone(),
+                        s.span,
                         format!("rename to `{}`", to_pascal_case(&s.name)),
                     );
                 }
@@ -320,23 +317,22 @@ impl Lint for NamingConvention {
                     ctx.report_with_help(
                         self,
                         format!("enum `{}` should be PascalCase", e.name),
-                        e.span.clone(),
+                        e.span,
                         format!("rename to `{}`", to_pascal_case(&e.name)),
                     );
                 }
             }
             Item::Global(g) if g.is_const => {
                 // Constants should be SCREAMING_SNAKE_CASE
-                if let Pattern::Binding { name, .. } = &g.pattern {
-                    if !is_screaming_snake_case(name) {
+                if let Pattern::Binding { name, .. } = &g.pattern
+                    && !is_screaming_snake_case(name) {
                         ctx.report_with_help(
                             self,
                             format!("constant `{}` should be SCREAMING_SNAKE_CASE", name),
-                            g.span.clone(),
+                            g.span,
                             format!("rename to `{}`", to_screaming_snake_case(name)),
                         );
                     }
-                }
             }
             Item::Trait(t) => {
                 // Traits should be PascalCase
@@ -344,7 +340,7 @@ impl Lint for NamingConvention {
                     ctx.report_with_help(
                         self,
                         format!("trait `{}` should be PascalCase", t.name),
-                        t.span.clone(),
+                        t.span,
                         format!("rename to `{}`", to_pascal_case(&t.name)),
                     );
                 }
@@ -437,7 +433,7 @@ impl Lint for MissingDocumentation {
                     ctx.report_with_help(
                         self,
                         format!("public function `{}` is missing documentation", f.name),
-                        f.span.clone(),
+                        f.span,
                         "add a doc comment with `///`",
                     );
                 }
@@ -449,7 +445,7 @@ impl Lint for MissingDocumentation {
                     ctx.report_with_help(
                         self,
                         format!("public struct `{}` is missing documentation", s.name),
-                        s.span.clone(),
+                        s.span,
                         "add a doc comment with `///`",
                     );
                 }
@@ -461,7 +457,7 @@ impl Lint for MissingDocumentation {
                     ctx.report_with_help(
                         self,
                         format!("public enum `{}` is missing documentation", e.name),
-                        e.span.clone(),
+                        e.span,
                         "add a doc comment with `///`",
                     );
                 }
@@ -473,7 +469,7 @@ impl Lint for MissingDocumentation {
                     ctx.report_with_help(
                         self,
                         format!("public trait `{}` is missing documentation", t.name),
-                        t.span.clone(),
+                        t.span,
                         "add a doc comment with `///`",
                     );
                 }
@@ -537,7 +533,7 @@ impl Lint for TooManyArguments {
                         f.params.len(),
                         MAX_ARGS
                     ),
-                    f.span.clone(),
+                    f.span,
                     "consider grouping parameters into a struct",
                 );
             }
@@ -577,7 +573,7 @@ impl Lint for TooLongFunction {
                         "function `{}` is {} lines long (max {})",
                         f.name, line_count, MAX_LINES
                     ),
-                    f.span.clone(),
+                    f.span,
                     "consider breaking this function into smaller functions",
                 );
             }
@@ -651,7 +647,7 @@ impl Lint for DeepNesting {
                         "function `{}` has nesting depth of {} (max {})",
                         f.name, max_depth, MAX_NESTING
                     ),
-                    f.span.clone(),
+                    f.span,
                     "consider extracting nested code into separate functions",
                 );
             }
@@ -729,7 +725,7 @@ impl Lint for CyclomaticComplexity {
                         "function `{}` has cyclomatic complexity of {} (max {})",
                         f.name, complexity, MAX_COMPLEXITY
                     ),
-                    f.span.clone(),
+                    f.span,
                     "consider breaking this function into smaller pieces",
                 );
             }
@@ -816,8 +812,7 @@ impl Lint for UnnecessaryClone {
         if let Expr::MethodCall {
             method, receiver, ..
         } = expr
-        {
-            if method == "clone" {
+            && method == "clone" {
                 // Check if clone result is immediately passed to a function
                 // This is a simplified check - a full check would need type info
                 ctx.report_with_help(
@@ -827,7 +822,6 @@ impl Lint for UnnecessaryClone {
                     "cloning has a runtime cost; use references when possible",
                 );
             }
-        }
     }
 }
 
@@ -896,12 +890,11 @@ impl Lint for UnusedEffect {
     }
 
     fn check_item(&self, item: &Item, ctx: &mut LintContext) {
-        if let Item::Function(f) = item {
-            if !f.effects.is_empty() {
+        if let Item::Function(f) = item
+            && !f.effects.is_empty() {
                 // Would analyze if declared effects are actually performed
                 // For now, just skip
             }
-        }
     }
 }
 

@@ -301,7 +301,7 @@ where
 
     while t < t_final {
         // Apply boundary conditions
-        apply_boundary_1d(&mut u, &boundary, dx);
+        apply_boundary_1d(&mut u, boundary, dx);
 
         // FTCS scheme: u_new[i] = u[i] + r * (u[i+1] - 2*u[i] + u[i-1])
         for i in 1..(nx - 1) {
@@ -374,7 +374,7 @@ where
     let mut step = 0;
 
     while t < t_final {
-        apply_boundary_1d(&mut u, &boundary, dx);
+        apply_boundary_1d(&mut u, boundary, dx);
 
         // Build RHS
         let mut rhs = vec![0.0; nx];
@@ -391,7 +391,7 @@ where
         let b = 1.0 + r; // diagonal
         let c = -r / 2.0; // super-diagonal
 
-        u = solve_tridiagonal(a, b, c, &rhs, &boundary);
+        u = solve_tridiagonal(a, b, c, &rhs, boundary);
 
         t += dt;
         step += 1;

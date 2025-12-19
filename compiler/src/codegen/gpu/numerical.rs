@@ -1014,7 +1014,7 @@ impl StabilityAnalyzer {
             total_checks: self.issues.len(),
             stable,
             mild_instability: mild,
-            severe: severe,
+            severe,
             catastrophic,
         }
     }

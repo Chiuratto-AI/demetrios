@@ -9,20 +9,17 @@ use super::Type;
 
 /// Ownership mode for a type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum Ownership {
     /// Can be freely copied
     Copy,
     /// Can be used at most once (can be dropped without using)
+    #[default]
     Affine,
     /// Must be used exactly once (cannot be dropped implicitly)
     Linear,
 }
 
-impl Default for Ownership {
-    fn default() -> Self {
-        Ownership::Affine
-    }
-}
 
 /// Determine the ownership mode of a type
 pub fn ownership_of(ty: &Type) -> Ownership {

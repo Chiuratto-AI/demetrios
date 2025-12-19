@@ -512,10 +512,12 @@ pub struct WhereClause {
 
 /// Visibility level
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum Visibility {
     Public,
     Crate,
     Super,
+    #[default]
     Private,
 }
 
@@ -526,11 +528,6 @@ impl Visibility {
     }
 }
 
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Private
-    }
-}
 
 /// Source location
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

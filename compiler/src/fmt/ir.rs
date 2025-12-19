@@ -5,8 +5,10 @@
 
 /// Document IR for formatting
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum Doc {
     /// Empty document
+    #[default]
     Empty,
 
     /// Literal text
@@ -208,11 +210,6 @@ impl Doc {
     }
 }
 
-impl Default for Doc {
-    fn default() -> Self {
-        Doc::Empty
-    }
-}
 
 /// Builder for constructing documents
 pub struct DocBuilder {

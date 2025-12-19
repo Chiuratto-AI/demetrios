@@ -297,7 +297,7 @@ impl GeometryReasoningHandler for PureSymbolicHandler {
             root,
             nodes,
             predicate_hashes,
-            confidence: result.confidence.clone(),
+            confidence: result.confidence,
             proved: result.proved,
         }
     }
@@ -535,7 +535,7 @@ impl<N: NeuralSuggester> GeometryReasoningHandler for NeSyHandler<N> {
             root,
             nodes,
             predicate_hashes,
-            confidence: result.confidence.clone(),
+            confidence: result.confidence,
             proved: result.proved,
         }
     }

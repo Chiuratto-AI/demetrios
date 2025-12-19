@@ -351,8 +351,8 @@ impl WatchMode {
             let mut buf = [0u8; 1];
 
             // Try to read without blocking
-            if let Ok(n) = stdin.read(&mut buf) {
-                if n > 0 {
+            if let Ok(n) = stdin.read(&mut buf)
+                && n > 0 {
                     return Some(match buf[0] {
                         b'q' | 27 => KeyAction::Quit,    // 27 = ESC
                         b'r' | 13 => KeyAction::Rebuild, // 13 = Enter
@@ -363,7 +363,6 @@ impl WatchMode {
                         _ => KeyAction::None,
                     });
                 }
-            }
         }
 
         None
@@ -427,12 +426,11 @@ impl WatchMode {
         }
 
         // Run command if configured
-        if result.success {
-            if let Some(ref cmd) = self.config.exec {
+        if result.success
+            && let Some(ref cmd) = self.config.exec {
                 *self.state.lock().unwrap() = WatchState::Running;
                 self.run_command(cmd)?;
             }
-        }
 
         *self.state.lock().unwrap() = WatchState::Idle;
         self.print_status();
@@ -515,9 +513,8 @@ impl WatchMode {
         let stats = self.stats.lock().unwrap();
 
         println!(
-            "\n{}[watch]{} {} [builds: {}, errors: {}]",
+            "\n{}[watch]\x1b[0m {} [builds: {}, errors: {}]",
             state.color(),
-            "\x1b[0m",
             state.display(),
             stats.build_count,
             stats.error_count

@@ -402,11 +402,13 @@ impl MergeOp {
 
 /// Strategy for merging multiple knowledge sources
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum MergeStrategy {
     /// Take the most confident
     MostConfident,
 
     /// Weighted average by confidence
+    #[default]
     WeightedAverage,
 
     /// Consensus (require agreement)
@@ -416,11 +418,6 @@ pub enum MergeStrategy {
     Union,
 }
 
-impl Default for MergeStrategy {
-    fn default() -> Self {
-        MergeStrategy::WeightedAverage
-    }
-}
 
 /// Inspect epistemic metadata
 #[derive(Debug, Clone)]

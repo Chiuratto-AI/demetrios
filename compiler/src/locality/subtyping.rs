@@ -130,8 +130,8 @@ impl LocalityLattice {
                 match constraint {
                     LocalityConstraint::FasterOrEqual(l1, l2) => {
                         // l1 <= l2, so if l1 is slower, we need to slow down l2
-                        if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2)) {
-                            if loc1 > loc2 {
+                        if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2))
+                            && loc1 > loc2 {
                                 // Need to make l2 at least as slow as l1
                                 let new_loc2 = self.join(loc1, loc2);
                                 if let Some(param) = params.iter().find(|p| &p.name == l2) {
@@ -143,12 +143,11 @@ impl LocalityLattice {
                                     }
                                 }
                             }
-                        }
                     }
                     LocalityConstraint::Faster(l1, l2) => {
                         // l1 < l2 strictly
-                        if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2)) {
-                            if loc1 >= loc2 {
+                        if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2))
+                            && loc1 >= loc2 {
                                 // Need to make l2 strictly slower
                                 if let Some(slower) = loc1.slower() {
                                     let new_loc2 = self.join(slower, loc2);
@@ -164,11 +163,10 @@ impl LocalityLattice {
                                     return None; // Can't go slower than Network
                                 }
                             }
-                        }
                     }
                     LocalityConstraint::Same(l1, l2) => {
-                        if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2)) {
-                            if loc1 != loc2 {
+                        if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2))
+                            && loc1 != loc2 {
                                 // Unify to the slower one
                                 let unified = self.join(loc1, loc2);
                                 let p1 = params.iter().find(|p| &p.name == l1);
@@ -186,11 +184,10 @@ impl LocalityLattice {
                                     }
                                 }
                             }
-                        }
                     }
                     LocalityConstraint::Bound(l, bound) => {
-                        if let Some(&loc) = solution.get(l) {
-                            if !bound.satisfied_by(loc) {
+                        if let Some(&loc) = solution.get(l)
+                            && !bound.satisfied_by(loc) {
                                 // Try to find a valid locality
                                 if loc < bound.fastest {
                                     solution.insert(l.clone(), bound.fastest);
@@ -199,7 +196,6 @@ impl LocalityLattice {
                                     return None; // Already too slow
                                 }
                             }
-                        }
                     }
                 }
             }

@@ -276,8 +276,8 @@ impl DoctestRunner {
         for (code, attrs) in code_blocks {
             let should_test = attrs.get("d").is_some()
                 || attrs.get("demetrios").is_some()
-                || (!attrs.get("text").is_some()
-                    && !attrs.get("ignore").is_some()
+                || (attrs.get("text").is_none()
+                    && attrs.get("ignore").is_none()
                     && !attrs.contains_key("notest"));
 
             if !should_test {
@@ -732,16 +732,14 @@ impl DoctestRunner {
                     println!("    Error: {}", error);
                 }
                 if self.config.show_output {
-                    if let Some(ref compile_output) = result.compile_output {
-                        if !compile_output.is_empty() {
+                    if let Some(ref compile_output) = result.compile_output
+                        && !compile_output.is_empty() {
                             println!("    Compile output:\n{}", indent_lines(compile_output, 8));
                         }
-                    }
-                    if let Some(ref runtime_output) = result.runtime_output {
-                        if !runtime_output.is_empty() {
+                    if let Some(ref runtime_output) = result.runtime_output
+                        && !runtime_output.is_empty() {
                             println!("    Runtime output:\n{}", indent_lines(runtime_output, 8));
                         }
-                    }
                 }
             }
         }

@@ -152,9 +152,9 @@ impl MockSolver {
 
     /// Create a solver initialized from an SMT context
     pub fn from_context(_ctx: &super::formula::SmtContext) -> Self {
-        let solver = Self::new();
+        
         // Context assertions will be checked during check_sat
-        solver
+        Self::new()
     }
 
     /// Set bounds for a variable

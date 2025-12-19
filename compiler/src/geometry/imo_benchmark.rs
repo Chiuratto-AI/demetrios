@@ -731,7 +731,7 @@ pub fn run_benchmark_on_problems<N: GeoNeuralNetwork>(
             time_taken: elapsed,
             simulations: config.mcts_simulations,
             constructions: result.as_ref().map(|e| e.num_constructions).unwrap_or(0),
-            confidence: result.as_ref().and_then(|e| e.goal_confidence.clone()),
+            confidence: result.as_ref().and_then(|e| e.goal_confidence),
             uncertainty: result
                 .as_ref()
                 .map(|e| e.trajectory.last().map(|t| t.uncertainty).unwrap_or(1.0))

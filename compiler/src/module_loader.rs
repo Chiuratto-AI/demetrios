@@ -173,14 +173,13 @@ fn find_stdlib_path() -> PathBuf {
         return PathBuf::from(path);
     }
 
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent() {
             let stdlib = parent.join("stdlib");
             if stdlib.exists() {
                 return stdlib;
             }
         }
-    }
 
     PathBuf::from("/usr/share/demetrios/stdlib")
 }
@@ -926,11 +925,10 @@ fn rewrite_type_expr(ty: &mut TypeExpr, prefixes: &[Vec<String>]) {
             if let Some(validity) = validity {
                 rewrite_expr(&mut validity.condition, prefixes);
             }
-            if let Some(prov) = provenance {
-                if let Some(expr) = &mut prov.source {
+            if let Some(prov) = provenance
+                && let Some(expr) = &mut prov.source {
                     rewrite_expr(expr, prefixes);
                 }
-            }
         }
         TypeExpr::Quantity { numeric_type, .. } => rewrite_type_expr(numeric_type, prefixes),
         TypeExpr::Tensor {
@@ -987,7 +985,7 @@ fn annotate_path(
         for mapping in import_mappings {
             if mapping.prefix == module_part
                 || (mapping.prefix.len() == 1
-                    && module_part.len() >= 1
+                    && !module_part.is_empty()
                     && mapping.prefix[0] == module_part[0])
             {
                 path.resolved_module = Some(mapping.module_id.clone());
@@ -1646,11 +1644,10 @@ fn annotate_type_expr(
             if let Some(v) = validity {
                 annotate_expr(&mut v.condition, prefixes, sm, im);
             }
-            if let Some(p) = provenance {
-                if let Some(src) = &mut p.source {
+            if let Some(p) = provenance
+                && let Some(src) = &mut p.source {
                     annotate_expr(src, prefixes, sm, im);
                 }
-            }
         }
         TypeExpr::Quantity { numeric_type, .. } => {
             annotate_type_expr(numeric_type, prefixes, sm, im)

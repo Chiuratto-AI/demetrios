@@ -300,7 +300,7 @@ impl MerkleProvenanceNode {
     /// Extend this node with a new transformation
     pub fn extend(&self, transformation_name: &str) -> Self {
         Self::derived(
-            vec![self.id.clone()],
+            vec![self.id],
             ProvenanceOperation::transformation(transformation_name, 1.0),
         )
     }
@@ -308,7 +308,7 @@ impl MerkleProvenanceNode {
     /// Merge two provenance nodes with a combining operation
     pub fn merge(&self, other: &Self, operation_name: &str) -> Self {
         Self::derived(
-            vec![self.id.clone(), other.id.clone()],
+            vec![self.id, other.id],
             ProvenanceOperation::new(operation_name, OperationKind::Aggregation),
         )
     }
@@ -889,8 +889,8 @@ impl From<&MerkleProvenanceDAG> for Provenance {
         for head in dag.heads() {
             let path = dag.path_to(&head.id);
             for id in path {
-                if let Some(node) = dag.get(&id) {
-                    if node.operation.kind() == OperationKind::Transformation {
+                if let Some(node) = dag.get(&id)
+                    && node.operation.kind() == OperationKind::Transformation {
                         let transform = Transformation::new(
                             node.operation.name(),
                             TransformationKind::Function,
@@ -898,7 +898,6 @@ impl From<&MerkleProvenanceDAG> for Provenance {
                         .with_confidence(node.operation.confidence_factor());
                         trace = trace.append(transform);
                     }
-                }
             }
         }
 

@@ -234,8 +234,10 @@ impl Default for Confidence {
 
 /// Whether knowledge can be revised
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub enum Revisability {
     /// Cannot be revised (axioms, definitions)
+    #[default]
     NonRevisable,
     /// Can be revised under conditions
     Revisable { conditions: Vec<String> },
@@ -255,14 +257,10 @@ impl Revisability {
     }
 }
 
-impl Default for Revisability {
-    fn default() -> Self {
-        Revisability::NonRevisable
-    }
-}
 
 /// Source of knowledge
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub enum Source {
     /// Axiomatic (by definition)
     Axiom,
@@ -299,14 +297,10 @@ pub enum Source {
     HumanAssertion { asserter: Option<String> },
 
     /// Unknown source (should be rare)
+    #[default]
     Unknown,
 }
 
-impl Default for Source {
-    fn default() -> Self {
-        Source::Unknown
-    }
-}
 
 /// Evidence supporting knowledge
 #[derive(Debug, Clone, PartialEq)]

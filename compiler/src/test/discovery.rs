@@ -314,7 +314,7 @@ pub fn discover_tests(
         let path = path.as_ref();
         if path.is_dir() {
             discover_in_directory(path, &mut suite)?;
-        } else if path.extension().map_or(false, |e| e == "d") {
+        } else if path.extension().is_some_and(|e| e == "d") {
             discover_in_file(path, &mut suite)?;
         }
     }
@@ -330,13 +330,12 @@ fn discover_in_directory(dir: &Path, suite: &mut TestSuite) -> Result<(), Discov
 
         if path.is_dir() {
             // Skip hidden directories and target
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.starts_with('.') || name == "target" {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && (name.starts_with('.') || name == "target") {
                     continue;
                 }
-            }
             discover_in_directory(&path, suite)?;
-        } else if path.extension().map_or(false, |e| e == "d") {
+        } else if path.extension().is_some_and(|e| e == "d") {
             discover_in_file(&path, suite)?;
         }
     }

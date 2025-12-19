@@ -350,7 +350,7 @@ impl XLearner {
     /// Fit propensity model (logistic regression)
     fn fit_propensity(&mut self, features: &[Features], treatment: &[bool]) {
         let n = features.len();
-        let dim = features.get(0).map(|f| f.dim()).unwrap_or(0);
+        let dim = features.first().map(|f| f.dim()).unwrap_or(0);
 
         // Simple logistic regression via gradient descent
         let mut coef = vec![0.0; dim + 1]; // +1 for intercept

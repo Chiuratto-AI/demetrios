@@ -707,12 +707,14 @@ impl OntologyTermRef {
 
 /// ABI specification for FFI
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum Abi {
     /// C ABI (default for extern)
     C,
     /// C ABI with unwind support
     CUnwind,
     /// Rust ABI (default for normal functions)
+    #[default]
     Rust,
     /// System ABI (stdcall on Windows, C elsewhere)
     System,
@@ -740,11 +742,6 @@ pub enum Abi {
     Unknown(String),
 }
 
-impl Default for Abi {
-    fn default() -> Self {
-        Abi::Rust
-    }
-}
 
 impl Abi {
     /// Parse an ABI string
@@ -1668,6 +1665,7 @@ impl std::fmt::Display for ModuleId {
 
 /// Path (e.g., std::io::Write)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Path {
     /// The path segments (e.g., ["std", "io", "Write"])
     pub segments: Vec<String>,
@@ -1738,15 +1736,6 @@ impl Path {
     }
 }
 
-impl Default for Path {
-    fn default() -> Self {
-        Path {
-            segments: vec![],
-            source_module: None,
-            resolved_module: None,
-        }
-    }
-}
 
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

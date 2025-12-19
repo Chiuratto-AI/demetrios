@@ -300,18 +300,16 @@ impl SSSOMIndex {
 
     pub fn find(&self, from: &IRI, to: &IRI) -> Option<&SSSOMMapping> {
         // Check direct mapping
-        if let Some(mappings) = self.by_subject.get(from) {
-            if let Some(m) = mappings.iter().find(|m| &m.object_id == to) {
+        if let Some(mappings) = self.by_subject.get(from)
+            && let Some(m) = mappings.iter().find(|m| &m.object_id == to) {
                 return Some(m);
             }
-        }
 
         // Check reverse mapping
-        if let Some(mappings) = self.by_object.get(from) {
-            if let Some(m) = mappings.iter().find(|m| &m.subject_id == to) {
+        if let Some(mappings) = self.by_object.get(from)
+            && let Some(m) = mappings.iter().find(|m| &m.subject_id == to) {
                 return Some(m);
             }
-        }
 
         None
     }
@@ -459,11 +457,10 @@ impl SemanticDistanceIndex {
     pub fn distance(&self, from: &IRI, to: &IRI) -> SemanticDistance {
         // Check cache first
         {
-            if let Ok(cache) = self.distance_cache.read() {
-                if let Some(d) = cache.peek(&(from.clone(), to.clone())) {
+            if let Ok(cache) = self.distance_cache.read()
+                && let Some(d) = cache.peek(&(from.clone(), to.clone())) {
                     return *d;
                 }
-            }
         }
 
         // Compute distance
@@ -586,15 +583,14 @@ impl SemanticDistanceIndex {
 
     fn compute_cross_ontology_distance(&self, from: &IRI, to: &IRI) -> SemanticDistance {
         // Try unified alignment index first (includes SSSOM, CUI, LOOM)
-        if let Some(ref alignment_index) = self.alignment_index {
-            if let Some(result) = alignment_index.find_alignment(from, to) {
+        if let Some(ref alignment_index) = self.alignment_index
+            && let Some(result) = alignment_index.find_alignment(from, to) {
                 return self.alignment_result_to_distance(&result);
             }
-        }
 
         // Fallback to direct SSSOM mappings
-        if let Some(mapping) = self.sssom_mappings.find(from, to) {
-            if mapping.confidence >= self.config.min_mapping_confidence {
+        if let Some(mapping) = self.sssom_mappings.find(from, to)
+            && mapping.confidence >= self.config.min_mapping_confidence {
                 let conceptual = 1.0 - mapping.confidence;
                 return SemanticDistance {
                     conceptual,
@@ -608,11 +604,10 @@ impl SemanticDistanceIndex {
                     provenance_depth: 1,
                 };
             }
-        }
 
         // Try embedding-based similarity for cross-ontology
-        if let Some(emb_distance) = self.compute_embedding_distance(from, to) {
-            if emb_distance < self.config.unknown_distance {
+        if let Some(emb_distance) = self.compute_embedding_distance(from, to)
+            && emb_distance < self.config.unknown_distance {
                 return SemanticDistance {
                     conceptual: emb_distance,
                     physical_cost: PhysicalCost {
@@ -625,7 +620,6 @@ impl SemanticDistanceIndex {
                     provenance_depth: 1,
                 };
             }
-        }
 
         // No alignment found - high distance
         SemanticDistance {

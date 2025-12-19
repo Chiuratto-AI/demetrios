@@ -66,6 +66,12 @@ pub struct PhaseRecord {
     pub details: HashMap<String, String>,
 }
 
+impl Default for Profiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Profiler {
     /// Create a new profiler (const for static initialization)
     pub const fn new() -> Self {

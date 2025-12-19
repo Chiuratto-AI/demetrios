@@ -156,8 +156,8 @@ impl Formatter {
         let mut chars = source.char_indices().peekable();
 
         while let Some((i, c)) = chars.next() {
-            if c == '/' {
-                if let Some(&(_, next)) = chars.peek() {
+            if c == '/'
+                && let Some(&(_, next)) = chars.peek() {
                     if next == '/' {
                         // Line comment
                         chars.next();
@@ -203,7 +203,7 @@ impl Formatter {
                         }
 
                         let mut prev = ' ';
-                        while let Some((_, c)) = chars.next() {
+                        for (_, c) in chars.by_ref() {
                             if prev == '*' && c == '/' {
                                 content.pop(); // Remove trailing *
                                 break;
@@ -228,7 +228,6 @@ impl Formatter {
                         });
                     }
                 }
-            }
         }
 
         comments

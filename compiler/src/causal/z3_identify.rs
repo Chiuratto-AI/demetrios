@@ -247,7 +247,7 @@ impl Z3CausalIdentifier {
         // Combine: all conditions must hold
         if conjuncts.is_empty() {
             SmtFormula::True
-        } else if conjuncts.iter().any(|c| *c == SmtFormula::False) {
+        } else if conjuncts.contains(&SmtFormula::False) {
             SmtFormula::False
         } else {
             SmtFormula::And(conjuncts)
@@ -352,7 +352,7 @@ impl Z3CausalIdentifier {
             });
         }
 
-        if conjuncts.iter().any(|c| *c == SmtFormula::False) {
+        if conjuncts.contains(&SmtFormula::False) {
             SmtFormula::False
         } else {
             SmtFormula::And(conjuncts)
@@ -464,7 +464,7 @@ impl Z3CausalIdentifier {
                         },
                     );
                 }
-                if conjuncts.iter().any(|c| *c == SmtFormula::False) {
+                if conjuncts.contains(&SmtFormula::False) {
                     return (
                         false,
                         SmtProof {

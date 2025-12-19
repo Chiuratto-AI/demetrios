@@ -350,7 +350,7 @@ pub fn threads_per_tile(m: u32, n: u32) -> u32 {
     let elements = m * n;
 
     // Round up to warp size (32)
-    let warps = (elements + 31) / 32;
+    let warps = elements.div_ceil(32);
     warps * 32
 }
 

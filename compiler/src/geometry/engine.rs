@@ -364,7 +364,7 @@ impl EpistemicPruner {
             return BetaConfidence::uniform_prior();
         }
         if betas.len() == 1 {
-            return (*betas[0]).clone();
+            return *betas[0];
         }
 
         // Product mean = product of means
@@ -656,7 +656,7 @@ impl SymbolicEngine {
                 for pred in &ar_result.derived_predicates {
                     if !state.has_predicate(&pred.key()) {
                         let pred_with_epistemic = pred.clone().with_epistemic(PredicateEpistemic {
-                            confidence: ar_result.confidence.clone(),
+                            confidence: ar_result.confidence,
                             source: crate::epistemic::Source::Derivation("algebraic".to_string()),
                             revisability: crate::epistemic::Revisability::Revisable {
                                 conditions: vec!["new_evidence".to_string()],
@@ -701,10 +701,10 @@ impl SymbolicEngine {
                 .goal
                 .as_ref()
                 .and_then(|g| state.get_predicate(&g.predicate.key()))
-                .map(|p| p.epistemic.confidence.clone())
+                .map(|p| p.epistemic.confidence)
                 .unwrap_or_else(BetaConfidence::uniform_prior)
         } else {
-            state.confidence.clone()
+            state.confidence
         };
 
         DeductionResult {

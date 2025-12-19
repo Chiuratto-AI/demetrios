@@ -279,7 +279,7 @@ impl EpistemicPtxEmitter {
                 "mul.f32 %r_eps_t1, {}, {};",
                 right.epsilon, right.epsilon
             ));
-            self.emit(&format!("add.f32 %r_eps_t2, %r_eps_t0, %r_eps_t1;"));
+            self.emit("add.f32 %r_eps_t2, %r_eps_t0, %r_eps_t1;");
             self.emit(&format!("sqrt.approx.f32 {}, %r_eps_t2;", result.epsilon));
         } else {
             // Simple additive (conservative upper bound)
@@ -367,7 +367,7 @@ impl EpistemicPtxEmitter {
         self.emit(&format!("abs.f32 %r_eps_t1, {};", right.value));
         self.emit(&format!("mul.f32 %r_eps_t2, %r_eps_t0, {};", right.epsilon));
         self.emit(&format!("mul.f32 %r_eps_t3, %r_eps_t1, {};", left.epsilon));
-        self.emit(&format!("add.f32 %r_eps_t0, %r_eps_t2, %r_eps_t3;"));
+        self.emit("add.f32 %r_eps_t0, %r_eps_t2, %r_eps_t3;");
         self.emit(&format!(
             "mul.f32 %r_eps_t1, {}, {};",
             right.value, right.value

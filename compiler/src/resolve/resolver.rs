@@ -116,7 +116,7 @@ impl Resolver {
     fn define_function(&mut self, f: &FnDef) {
         let def_id = self.symbols.fresh_def_id();
 
-        if let Err(_) = self.symbols.define(f.name.clone(), def_id) {
+        if self.symbols.define(f.name.clone(), def_id).is_err() {
             self.errors.push(ResolveError::DuplicateDef {
                 name: f.name.clone(),
                 span: self.span_to_source(f.span),
@@ -137,7 +137,7 @@ impl Resolver {
     fn define_struct(&mut self, s: &StructDef) {
         let def_id = self.symbols.fresh_def_id();
 
-        if let Err(_) = self.symbols.define_type(s.name.clone(), def_id) {
+        if self.symbols.define_type(s.name.clone(), def_id).is_err() {
             self.errors.push(ResolveError::DuplicateDef {
                 name: s.name.clone(),
                 span: self.span_to_source(s.span),

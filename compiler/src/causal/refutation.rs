@@ -591,7 +591,7 @@ impl RefutationHandler for DefaultRefutationHandler {
             self.permutation_test(ate),
         ];
 
-        RefutationReport::from_results(results, ate.identification_confidence.clone())
+        RefutationReport::from_results(results, ate.identification_confidence)
     }
 }
 

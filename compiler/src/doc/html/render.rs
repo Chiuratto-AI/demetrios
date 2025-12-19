@@ -191,7 +191,7 @@ impl HtmlRenderer {
             let relative_path = source_file
                 .path
                 .file_name()
-                .map(|n| PathBuf::from(n))
+                .map(PathBuf::from)
                 .unwrap_or_else(|| source_file.path.clone());
             let out_path = src_dir.join(relative_path.with_extension("html"));
 

@@ -46,7 +46,7 @@ impl CacheKey {
 }
 
 fn sanitize_version(version: &str) -> String {
-    version.replace('.', "_").replace('-', "_")
+    version.replace(['.', '-'], "_")
 }
 
 /// Cached artifact entry

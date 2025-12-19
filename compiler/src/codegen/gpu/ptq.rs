@@ -311,14 +311,14 @@ impl PtqEngine {
         // Create activation calibrators
         if self.config.activation_config.quantize_inputs {
             let collector =
-                CalibrationCollector::new(self.config.activation_config.calibration_method.clone());
+                CalibrationCollector::new(self.config.activation_config.calibration_method);
             self.activation_calibrators
                 .insert(format!("{}_input", name), collector);
         }
 
         if self.config.activation_config.quantize_outputs {
             let collector =
-                CalibrationCollector::new(self.config.activation_config.calibration_method.clone());
+                CalibrationCollector::new(self.config.activation_config.calibration_method);
             self.activation_calibrators
                 .insert(format!("{}_output", name), collector);
         }
@@ -397,7 +397,7 @@ impl PtqEngine {
                 // Activation quantization
                 let params = collector.compute_params(
                     self.config.activation_config.dtype,
-                    self.config.activation_config.scheme.clone(),
+                    self.config.activation_config.scheme,
                 );
                 self.quant_params.insert(key.clone(), params);
             }
@@ -480,7 +480,7 @@ impl PtqEngine {
                 }
                 QuantDtype::Int4 | QuantDtype::UInt4 => {
                     // Pack INT4 values
-                    let mut packed = Vec::with_capacity((weights.len() + 1) / 2);
+                    let mut packed = Vec::with_capacity(weights.len().div_ceil(2));
                     for chunk in weights.chunks(2) {
                         let lo = first_param.quantize(chunk[0]);
                         let hi = if chunk.len() > 1 {

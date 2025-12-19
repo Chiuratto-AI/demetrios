@@ -19,21 +19,16 @@ use demetrios::codegen::gpu::{
     GpuTarget,
     GpuType,
     MemorySpace,
-    MetalBuffer,
     // Metal codegen
     MetalCodegen,
     MetalCodegenConfig,
     MetalDeviceInfo,
     MetalDispatchSize,
-    MetalError,
     MetalGpuFamily,
     // Metal runtime
     MetalRuntime,
     MetalStorageMode,
-    WorldId,
     compile_counterfactual_metal,
-    compile_to_msl,
-    compile_to_msl_epistemic,
     generate_counterfactual_metal_library,
 };
 

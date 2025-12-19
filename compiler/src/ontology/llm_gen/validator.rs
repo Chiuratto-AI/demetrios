@@ -281,8 +281,8 @@ impl OntologyValidator {
 
         // Check property parents
         for prop in &fragment.properties {
-            if let Some(ref ro_parent) = prop.ro_parent {
-                if !self.ro_relations.contains(ro_parent) {
+            if let Some(ref ro_parent) = prop.ro_parent
+                && !self.ro_relations.contains(ro_parent) {
                     issues.push(ValidationIssue {
                         severity: ValidationSeverity::Warning,
                         category: "bfo_alignment".to_string(),
@@ -291,7 +291,6 @@ impl OntologyValidator {
                         suggestion: Some("Use a valid RO relation identifier".to_string()),
                     });
                 }
-            }
         }
 
         issues

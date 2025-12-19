@@ -231,8 +231,8 @@ impl PolicyValue {
         }
 
         for i in 0..G::num_actions() {
-            if let Some(action) = G::index_to_action(i) {
-                if mask[i] > 0.0 {
+            if let Some(action) = G::index_to_action(i)
+                && mask[i] > 0.0 {
                     let prob = (exp_logits[i] / masked_sum.max(1e-8)) as f64;
                     policy.insert(action.clone(), prob);
 
@@ -246,7 +246,6 @@ impl PolicyValue {
                     };
                     policy_epistemic.insert(action, beta_conf);
                 }
-            }
         }
 
         // Value epistemic

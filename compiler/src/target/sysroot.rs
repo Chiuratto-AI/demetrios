@@ -302,11 +302,10 @@ impl Sysroot {
         }
 
         // Verify metadata checksum if available
-        if let Some(ref metadata) = self.metadata {
-            if let Some(ref _checksum) = metadata.checksum {
+        if let Some(ref metadata) = self.metadata
+            && let Some(ref _checksum) = metadata.checksum {
                 // TODO: Implement checksum verification
             }
-        }
 
         Ok(())
     }
@@ -416,11 +415,10 @@ impl SysrootManager {
         let cache_path = self.cache_dir.join(spec.triple.to_string());
         if cache_path.exists() {
             let sysroot = Sysroot::open(&cache_path, &spec.triple)?;
-            if let Some(ref metadata) = sysroot.metadata {
-                if !metadata.is_stale(self.config.max_age) {
+            if let Some(ref metadata) = sysroot.metadata
+                && !metadata.is_stale(self.config.max_age) {
                     return Ok(sysroot);
                 }
-            }
         }
 
         // 3. Search system paths
@@ -451,22 +449,18 @@ impl SysrootManager {
             if let Ok(output) = Command::new("xcrun")
                 .args(["--sdk", "macosx", "--show-sdk-path"])
                 .output()
-            {
-                if output.status.success() {
+                && output.status.success() {
                     let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     search_paths.push(PathBuf::from(path));
                 }
-            }
         }
 
         for path in &search_paths {
-            if path.exists() {
-                if let Ok(sysroot) = Sysroot::open(path, &spec.triple) {
-                    if sysroot.verify().is_ok() {
+            if path.exists()
+                && let Ok(sysroot) = Sysroot::open(path, &spec.triple)
+                    && sysroot.verify().is_ok() {
                         return Ok(Some(sysroot));
                     }
-                }
-            }
         }
 
         Ok(None)
@@ -477,11 +471,10 @@ impl SysrootManager {
         let cache_path = self.cache_dir.join(spec.triple.to_string());
 
         // Try downloading if enabled
-        if self.config.auto_download {
-            if let Some(url) = self.config.download_urls.get(&spec.triple.to_string()) {
+        if self.config.auto_download
+            && let Some(url) = self.config.download_urls.get(&spec.triple.to_string()) {
                 return self.download_sysroot(spec, url, &cache_path);
             }
-        }
 
         // Try building if enabled
         if self.config.auto_build {
@@ -592,12 +585,11 @@ impl SysrootManager {
 
             if path.is_dir() {
                 let metadata_path = path.join("sysroot.json");
-                if metadata_path.exists() {
-                    if let Ok(metadata) = SysrootMetadata::load(&metadata_path) {
+                if metadata_path.exists()
+                    && let Ok(metadata) = SysrootMetadata::load(&metadata_path) {
                         let name = entry.file_name().to_string_lossy().to_string();
                         result.push((name, metadata));
                     }
-                }
             }
         }
 
@@ -728,12 +720,11 @@ pub mod toolchain {
         ];
 
         for pattern in &patterns {
-            if let Ok(output) = Command::new("which").arg(pattern).output() {
-                if output.status.success() {
+            if let Ok(output) = Command::new("which").arg(pattern).output()
+                && output.status.success() {
                     let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     return Some(PathBuf::from(path));
                 }
-            }
         }
 
         None
@@ -750,12 +741,11 @@ pub mod toolchain {
         ];
 
         for pattern in &patterns {
-            if let Ok(output) = Command::new("which").arg(pattern).output() {
-                if output.status.success() {
+            if let Ok(output) = Command::new("which").arg(pattern).output()
+                && output.status.success() {
                     let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     return Some(PathBuf::from(path));
                 }
-            }
         }
 
         None
@@ -763,14 +753,13 @@ pub mod toolchain {
 
     /// Get the sysroot from a cross-compiler.
     pub fn get_compiler_sysroot(compiler: &Path) -> Option<PathBuf> {
-        if let Ok(output) = Command::new(compiler).arg("-print-sysroot").output() {
-            if output.status.success() {
+        if let Ok(output) = Command::new(compiler).arg("-print-sysroot").output()
+            && output.status.success() {
                 let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !path.is_empty() {
                     return Some(PathBuf::from(path));
                 }
             }
-        }
         None
     }
 
@@ -778,8 +767,8 @@ pub mod toolchain {
     pub fn get_compiler_lib_paths(compiler: &Path) -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        if let Ok(output) = Command::new(compiler).args(["-print-search-dirs"]).output() {
-            if output.status.success() {
+        if let Ok(output) = Command::new(compiler).args(["-print-search-dirs"]).output()
+            && output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {
                     if line.starts_with("libraries:") {
@@ -794,7 +783,6 @@ pub mod toolchain {
                     }
                 }
             }
-        }
 
         paths
     }
