@@ -744,8 +744,10 @@ impl<'a> Parser<'a> {
         let mut variants = Vec::new();
         while !self.at(TokenKind::RBrace) {
             variants.push(self.parse_variant()?);
-            if !self.at(TokenKind::RBrace) && self.at(TokenKind::Comma) {
-                self.advance();
+            if !self.at(TokenKind::RBrace) {
+                if self.at(TokenKind::Comma) {
+                    self.advance();
+                }
             }
         }
         self.expect(TokenKind::RBrace)?;
@@ -785,8 +787,10 @@ impl<'a> Parser<'a> {
             let mut fields = Vec::new();
             while !self.at(TokenKind::RBrace) {
                 fields.push(self.parse_field()?);
-                if !self.at(TokenKind::RBrace) && self.at(TokenKind::Comma) {
-                    self.advance();
+                if !self.at(TokenKind::RBrace) {
+                    if self.at(TokenKind::Comma) {
+                        self.advance();
+                    }
                 }
             }
             self.expect(TokenKind::RBrace)?;
@@ -2337,7 +2341,9 @@ impl<'a> Parser<'a> {
                     });
                 }
 
-                let path = self.parse_path()?;
+                // Use parse_type_path to support both :: and . as separators
+                // This enables Darwin Atlas compatibility (e.g., &operators.Sequence)
+                let path = self.parse_type_path()?;
                 let args = if self.at(TokenKind::Lt) {
                     self.parse_type_args()?
                 } else {
@@ -4420,6 +4426,26 @@ impl<'a> Parser<'a> {
         // struct field access (s.field was parsed as path ["s", "field"] instead of
         // Expr::Field). Field access is now handled in parse_postfix via TokenKind::Dot.
         while self.at(TokenKind::ColonColon) {
+            self.advance();
+            segments.push(self.parse_ident()?);
+        }
+
+        Ok(Path {
+            segments,
+            source_module: None,
+            resolved_module: None,
+        })
+    }
+
+    /// Parse a path in type context - accepts both :: and . as separators
+    /// This enables Darwin Atlas compatibility where module.Type syntax is used
+    /// in type positions (e.g., &operators.Sequence)
+    fn parse_type_path(&mut self) -> Result<Path> {
+        let mut segments = vec![self.parse_ident()?];
+
+        // Accept both :: and . as path separators in type context
+        // This is safe because in type context there's no ambiguity with field access
+        while self.at(TokenKind::ColonColon) || self.at(TokenKind::Dot) {
             self.advance();
             segments.push(self.parse_ident()?);
         }
