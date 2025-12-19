@@ -63,10 +63,13 @@ pub struct TypeChecker {
     warnings: Vec<String>,
 }
 
-/// Type environment with scopes
+/// Type environment with scopes and module awareness
 #[derive(Default)]
 pub struct TypeEnv {
     scopes: Vec<Scope>,
+    /// Module-qualified bindings: (module_path, name) -> binding
+    /// Used for resolving qualified paths like `math.sin`
+    module_bindings: HashMap<(Vec<String>, String), TypeBinding>,
 }
 
 #[derive(Default)]
@@ -80,6 +83,8 @@ struct TypeBinding {
     ty: Type,
     mutable: bool,
     used: bool,
+    /// The module this binding originated from (if any)
+    source_module: Option<ModuleId>,
 }
 
 /// Type definition (struct, enum, type alias)
@@ -89,13 +94,17 @@ enum TypeDef {
         fields: Vec<(String, Type)>,
         linear: bool,
         affine: bool,
+        /// The module this type was defined in
+        source_module: Option<ModuleId>,
     },
     Enum {
         variants: Vec<(String, Vec<Type>)>,
         linear: bool,
         affine: bool,
+        /// The module this type was defined in
+        source_module: Option<ModuleId>,
     },
-    Alias(Type, Span),
+    Alias(Type, Span, Option<ModuleId>),
 }
 
 /// Type constraint for unification
@@ -199,7 +208,7 @@ impl TypeChecker {
         match ty {
             Type::Named { name, args } => {
                 // Check if this is a type alias
-                if let Some(TypeDef::Alias(alias_ty, _)) = self.type_defs.get(name) {
+                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name) {
                     // Recursively expand the alias
                     self.expand_type_alias(alias_ty)
                 } else {
@@ -621,6 +630,7 @@ impl TypeChecker {
                         fields,
                         linear: s.modifiers.linear,
                         affine: s.modifiers.affine,
+                        source_module: None, // TODO: extract from struct's module context
                     },
                 );
             }
@@ -647,13 +657,14 @@ impl TypeChecker {
                         variants,
                         linear: e.modifiers.linear,
                         affine: e.modifiers.affine,
+                        source_module: None, // TODO: extract from enum's module context
                     },
                 );
             }
             Item::TypeAlias(t) => {
                 let ty = self.lower_type_expr(&t.ty);
                 self.type_defs
-                    .insert(t.name.clone(), TypeDef::Alias(ty, t.span));
+                    .insert(t.name.clone(), TypeDef::Alias(ty, t.span, None)); // TODO: extract module context
             }
             _ => {}
         }
@@ -742,7 +753,7 @@ impl TypeChecker {
     fn check_undefined_ontology_prefixes(&mut self) {
         for (name, def) in &self.type_defs.clone() {
             match def {
-                TypeDef::Alias(ty, span) => {
+                TypeDef::Alias(ty, span, _) => {
                     self.check_type_for_undefined_ontology(ty, name, *span);
                 }
                 TypeDef::Struct { fields, .. } => {
@@ -820,7 +831,7 @@ impl TypeChecker {
 
         // For each type alias, check if following the chain leads back to itself
         for (name, def) in &self.type_defs.clone() {
-            if let TypeDef::Alias(ty, _) = def {
+            if let TypeDef::Alias(ty, _, _) = def {
                 let mut visited = HashSet::new();
                 visited.insert(name.clone());
 
@@ -845,7 +856,7 @@ impl TypeChecker {
                 if visited.contains(name) {
                     return true;
                 }
-                if let Some(TypeDef::Alias(inner, _)) = self.type_defs.get(name) {
+                if let Some(TypeDef::Alias(inner, _, _)) = self.type_defs.get(name) {
                     visited.insert(name.clone());
                     self.type_creates_cycle(inner, visited)
                 } else {
@@ -911,7 +922,7 @@ impl TypeChecker {
                                 .iter()
                                 .any(|(_, field_ty)| self.type_has_infinite_size(field_ty, visited))
                         }
-                        TypeDef::Alias(inner, _) => {
+                        TypeDef::Alias(inner, _, _) => {
                             visited.insert(name.clone());
                             self.type_has_infinite_size(inner, visited)
                         }
@@ -1026,7 +1037,7 @@ impl TypeChecker {
                 },
             ) => {
                 // Look up if these are type aliases to ontology types
-                if let (Some(TypeDef::Alias(exp_ty, _)), Some(TypeDef::Alias(found_ty, _))) =
+                if let (Some(TypeDef::Alias(exp_ty, _, _)), Some(TypeDef::Alias(found_ty, _, _))) =
                     (self.type_defs.get(exp_name), self.type_defs.get(found_name))
                 {
                     if let (
@@ -1080,6 +1091,7 @@ impl TypeChecker {
                         term: exp_term,
                     },
                     _,
+                    _,
                 )) = self.type_defs.get(name)
                 {
                     match self.check_ontology_compatibility(
@@ -1104,6 +1116,7 @@ impl TypeChecker {
                         namespace: found_ns,
                         term: found_term,
                     },
+                    _,
                     _,
                 )) = self.type_defs.get(name)
                 {
@@ -1509,11 +1522,55 @@ impl TypeChecker {
                         (HirExprKind::Local(name.clone()), HirType::Error)
                     }
                 } else {
-                    // Qualified path - could be enum variant, module path, etc.
-                    (
-                        HirExprKind::Global(path.to_string()),
-                        HirType::Error, // TODO: proper resolution
-                    )
+                    // Qualified path - try module-qualified lookup first
+                    if let Some(binding) = self.env.lookup_qualified(&path.segments) {
+                        let ty = binding.ty.clone();
+                        let full_path = path.to_string();
+                        (HirExprKind::Global(full_path), self.type_to_hir(&ty))
+                    } else {
+                        // Check if it's an enum variant (EnumName::Variant)
+                        let type_name = &path.segments[0];
+                        if let Some(TypeDef::Enum { variants, .. }) = self.type_defs.get(type_name)
+                        {
+                            if path.segments.len() == 2 {
+                                let variant_name = &path.segments[1];
+                                if let Some((_, variant_types)) =
+                                    variants.iter().find(|(n, _)| n == variant_name)
+                                {
+                                    // Found enum variant
+                                    let result_ty = HirType::Named {
+                                        name: type_name.clone(),
+                                        args: vec![],
+                                    };
+                                    (HirExprKind::Global(path.to_string()), result_ty)
+                                } else {
+                                    self.error(
+                                        format!(
+                                            "Unknown variant `{}` in enum `{}`",
+                                            variant_name, type_name
+                                        ),
+                                        Span::dummy(),
+                                    );
+                                    (HirExprKind::Global(path.to_string()), HirType::Error)
+                                }
+                            } else {
+                                (HirExprKind::Global(path.to_string()), HirType::Error)
+                            }
+                        } else {
+                            // Module-qualified path not found - include module info in error if available
+                            let error_msg = if let Some(ref resolved) = path.resolved_module {
+                                format!(
+                                    "Unknown qualified path `{}` (resolved to module {:?})",
+                                    path.to_string(),
+                                    resolved.path
+                                )
+                            } else {
+                                format!("Unknown qualified path `{}`", path.to_string())
+                            };
+                            self.error(error_msg, Span::dummy());
+                            (HirExprKind::Global(path.to_string()), HirType::Error)
+                        }
+                    }
                 }
             }
 
@@ -3903,7 +3960,7 @@ impl TypeChecker {
             }
             // Named type (alias) compared with Ontology type - resolve alias
             (Type::Named { name, .. }, Type::Ontology { namespace, term }) => {
-                if let Some(TypeDef::Alias(alias_ty, _)) = self.type_defs.get(name) {
+                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name) {
                     if let Type::Ontology {
                         namespace: alias_ns,
                         term: alias_term,
@@ -3926,7 +3983,7 @@ impl TypeChecker {
             }
             // Ontology type compared with Named type (alias) - resolve alias
             (Type::Ontology { namespace, term }, Type::Named { name, .. }) => {
-                if let Some(TypeDef::Alias(alias_ty, _)) = self.type_defs.get(name) {
+                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name) {
                     if let Type::Ontology {
                         namespace: alias_ns,
                         term: alias_term,
@@ -3962,6 +4019,17 @@ impl TypeEnv {
     }
 
     fn bind(&mut self, name: String, ty: Type, mutable: bool) {
+        self.bind_with_module(name, ty, mutable, None);
+    }
+
+    /// Bind a name with explicit module origin
+    fn bind_with_module(
+        &mut self,
+        name: String,
+        ty: Type,
+        mutable: bool,
+        source_module: Option<ModuleId>,
+    ) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.bindings.insert(
                 name,
@@ -3969,9 +4037,24 @@ impl TypeEnv {
                     ty,
                     mutable,
                     used: false,
+                    source_module,
                 },
             );
         }
+    }
+
+    /// Bind a module-qualified name (e.g., math.sin)
+    fn bind_qualified(&mut self, module_path: Vec<String>, name: String, ty: Type, mutable: bool) {
+        let module_id = ModuleId::new(module_path.clone());
+        self.module_bindings.insert(
+            (module_path, name),
+            TypeBinding {
+                ty,
+                mutable,
+                used: false,
+                source_module: Some(module_id),
+            },
+        );
     }
 
     fn lookup(&self, name: &str) -> Option<&TypeBinding> {
@@ -3981,6 +4064,28 @@ impl TypeEnv {
             }
         }
         None
+    }
+
+    /// Lookup a qualified path (e.g., ["math", "sin"])
+    fn lookup_qualified(&self, path: &[String]) -> Option<&TypeBinding> {
+        if path.len() <= 1 {
+            return self.lookup(path.first().map(|s| s.as_str()).unwrap_or(""));
+        }
+
+        // Split into module path and name
+        let module_path = &path[..path.len() - 1];
+        let name = &path[path.len() - 1];
+
+        // Try exact module path match
+        if let Some(binding) = self
+            .module_bindings
+            .get(&(module_path.to_vec(), name.clone()))
+        {
+            return Some(binding);
+        }
+
+        // Fall back to unqualified lookup (for local names)
+        self.lookup(name)
     }
 
     fn lookup_mut(&mut self, name: &str) -> Option<&mut TypeBinding> {
