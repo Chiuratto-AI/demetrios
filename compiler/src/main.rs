@@ -2073,7 +2073,7 @@ fn build(
             }
         };
 
-        // Load module graph and flatten into a single AST
+        // Load modules and parse (uses ModuleLoader to handle imports)
         let ast = demetrios::module_loader::load_program_ast(input)?;
 
         // Type check
@@ -2259,7 +2259,7 @@ fn compile(
         opt_level
     );
 
-    // Load module graph and flatten into a single AST
+    // Load modules and parse (uses ModuleLoader to handle imports)
     let ast = demetrios::module_loader::load_program_ast(input)?;
     tracing::debug!("Parsed {} items", ast.items.len());
 
@@ -2332,7 +2332,7 @@ fn check(
     let source_file =
         demetrios::SourceFile::new(input.to_string_lossy().to_string(), source_content.clone());
 
-    // 1. Load modules and parse
+    // 1-2. Load modules and parse (uses ModuleLoader to handle imports)
     let ast = demetrios::module_loader::load_program_ast(input)?;
 
     if show_ast {
@@ -2500,6 +2500,7 @@ fn check(
 fn run(input: &std::path::Path, args: &[String]) -> Result<()> {
     tracing::info!("Running {:?} with args {:?}", input, args);
 
+    // Load modules and parse (uses ModuleLoader to handle imports)
     let ast = demetrios::module_loader::load_program_ast(input)?;
     let hir = demetrios::check::check(&ast)?;
 
@@ -2523,6 +2524,7 @@ fn jit_run(input: &std::path::Path, optimize: bool, _args: &[String]) -> Result<
     {
         tracing::info!("JIT compiling {:?} (optimize={})", input, optimize);
 
+        // Load modules and parse (uses ModuleLoader to handle imports)
         let ast = demetrios::module_loader::load_program_ast(input)?;
         let hir = demetrios::check::check(&ast)?;
         let hlir = demetrios::hlir::lower(&hir);
@@ -2566,7 +2568,11 @@ fn bench(input: &std::path::Path, iterations: u32) -> Result<()> {
     println!("Benchmarking {:?} ({} iterations)", input, iterations);
     println!();
 
-    let ast = demetrios::module_loader::load_program_ast(input)?;
+    let source = std::fs::read_to_string(input)
+        .map_err(|e| miette::miette!("Failed to read input file: {}", e))?;
+
+    let tokens = demetrios::lexer::lex(&source)?;
+    let ast = demetrios::parser::parse(&tokens, &source)?;
     let hir = demetrios::check::check(&ast)?;
 
     // Warm up

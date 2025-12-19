@@ -793,7 +793,7 @@ dependencies = [
 
 [[package]]
 name = "demetrios"
-version = "0.78.0"
+version = "0.78.1"
 dependencies = [
  "async-trait",
  "axum",
