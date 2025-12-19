@@ -132,9 +132,10 @@ impl ConstraintSet {
 
         for constraint in &self.constraints {
             if let LayoutConstraint::Colocate { concepts, .. } = constraint
-                && concepts.iter().any(|c| c == concept) {
-                    partners.extend(concepts.iter().cloned());
-                }
+                && concepts.iter().any(|c| c == concept)
+            {
+                partners.extend(concepts.iter().cloned());
+            }
         }
 
         partners.remove(concept);
@@ -161,9 +162,10 @@ impl ConstraintSet {
             if let LayoutConstraint::ForceRegion {
                 concept: c, region, ..
             } = constraint
-                && c == concept {
-                    return Some(*region);
-                }
+                && c == concept
+            {
+                return Some(*region);
+            }
         }
         None
     }

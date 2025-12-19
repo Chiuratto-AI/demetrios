@@ -201,15 +201,17 @@ impl BuildGraph {
 
         // Add forward edge
         if let Some(unit) = self.units.get_mut(&from)
-            && !unit.dependencies.contains(&to) {
-                unit.dependencies.push(to);
-            }
+            && !unit.dependencies.contains(&to)
+        {
+            unit.dependencies.push(to);
+        }
 
         // Add reverse edge
         if let Some(unit) = self.units.get_mut(&to)
-            && !unit.dependents.contains(&from) {
-                unit.dependents.push(from);
-            }
+            && !unit.dependents.contains(&from)
+        {
+            unit.dependents.push(from);
+        }
 
         self.version += 1;
         Ok(())
@@ -242,11 +244,12 @@ impl BuildGraph {
             }
 
             if visited.insert(current)
-                && let Some(unit) = self.units.get(&current) {
-                    for &dep in &unit.dependencies {
-                        queue.push_back(dep);
-                    }
+                && let Some(unit) = self.units.get(&current)
+            {
+                for &dep in &unit.dependencies {
+                    queue.push_back(dep);
                 }
+            }
         }
 
         false
@@ -352,12 +355,13 @@ impl BuildGraph {
 
         while let Some(current) = to_invalidate.pop_front() {
             if let Some(unit) = self.units.get_mut(&current)
-                && !unit.dirty {
-                    unit.dirty = true;
-                    for &dependent in &unit.dependents {
-                        to_invalidate.push_back(dependent);
-                    }
+                && !unit.dirty
+            {
+                unit.dirty = true;
+                for &dependent in &unit.dependents {
+                    to_invalidate.push_back(dependent);
                 }
+            }
         }
 
         self.version += 1;

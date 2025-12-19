@@ -645,19 +645,30 @@ impl<N: GeoNeuralNetwork + Clone> AlphaGeoZeroSelfPlay<N> {
             }
 
             // --- Evaluation ---
-            if self.stats.iteration.is_multiple_of(self.config.eval_interval) {
+            if self
+                .stats
+                .iteration
+                .is_multiple_of(self.config.eval_interval)
+            {
                 self.evaluate_imo();
             }
 
             // --- Logging ---
-            if self.stats.iteration.is_multiple_of(self.config.log_interval) {
+            if self
+                .stats
+                .iteration
+                .is_multiple_of(self.config.log_interval)
+            {
                 let iter_time = iter_start.elapsed();
                 self.log_progress(iter_time);
             }
 
             // --- Checkpointing ---
             if self.config.checkpoint_interval > 0
-                && self.stats.iteration.is_multiple_of(self.config.checkpoint_interval)
+                && self
+                    .stats
+                    .iteration
+                    .is_multiple_of(self.config.checkpoint_interval)
             {
                 self.save_checkpoint();
             }
@@ -766,9 +777,10 @@ impl<N: GeoNeuralNetwork + Clone> AlphaGeoZeroSelfPlay<N> {
             if let Some(action) = tree.select_action() {
                 let legal = game.legal_actions();
                 if let Some(idx) = legal.iter().position(|a| *a == action)
-                    && let Some(last) = trajectory.last_mut() {
-                        last.action_idx = idx;
-                    }
+                    && let Some(last) = trajectory.last_mut()
+                {
+                    last.action_idx = idx;
+                }
                 game = game.apply_action(&action);
             } else {
                 break;

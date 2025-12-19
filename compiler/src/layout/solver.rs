@@ -281,22 +281,23 @@ fn split_for_separate(
             for concept in concepts_in_cluster.into_iter().skip(1) {
                 // Remove from original cluster
                 if let Some(cluster) = clustering.clusters.get_mut(cluster_idx)
-                    && let Some(pos) = cluster.concepts.iter().position(|c| c == concept) {
-                        cluster.concepts.remove(pos);
-                        // Estimate access split (simple division)
-                        let moved_accesses = cluster.total_accesses / 2;
-                        cluster.total_accesses -= moved_accesses;
+                    && let Some(pos) = cluster.concepts.iter().position(|c| c == concept)
+                {
+                    cluster.concepts.remove(pos);
+                    // Estimate access split (simple division)
+                    let moved_accesses = cluster.total_accesses / 2;
+                    cluster.total_accesses -= moved_accesses;
 
-                        // Create new singleton cluster
-                        let new_id = clustering.clusters.len() + new_clusters.len();
-                        new_clusters.push(Cluster {
-                            id: new_id,
-                            concepts: vec![concept.clone()],
-                            avg_distance: 0.0,
-                            total_accesses: moved_accesses,
-                        });
-                        splits += 1;
-                    }
+                    // Create new singleton cluster
+                    let new_id = clustering.clusters.len() + new_clusters.len();
+                    new_clusters.push(Cluster {
+                        id: new_id,
+                        concepts: vec![concept.clone()],
+                        avg_distance: 0.0,
+                        total_accesses: moved_accesses,
+                    });
+                    splits += 1;
+                }
             }
         }
     }

@@ -519,9 +519,10 @@ impl EpistemicOptimizer {
 
         for (i, stmt) in body.stmts.iter().enumerate() {
             if let HirStmt::Expr(expr) = stmt
-                && let Some(check) = self.is_hoistable_validity_check(expr, ctx) {
-                    hoistable.push((i, check));
-                }
+                && let Some(check) = self.is_hoistable_validity_check(expr, ctx)
+            {
+                hoistable.push((i, check));
+            }
         }
 
         // For now, just count - full implementation would rewrite the HIR
@@ -537,12 +538,13 @@ impl EpistemicOptimizer {
         // Look for patterns like: assert_valid(x) or x.check_validity()
         // In a full implementation, we'd have dedicated nodes for validity checks
         if let HirExprKind::MethodCall { method, .. } = &expr.kind
-            && (method == "check_validity" || method == "assert_valid") {
-                return Some(ValidityCheck {
-                    variable: String::new(), // Would extract from receiver
-                    constraint: TemporalConstraint::MaxAge(3600),
-                });
-            }
+            && (method == "check_validity" || method == "assert_valid")
+        {
+            return Some(ValidityCheck {
+                variable: String::new(), // Would extract from receiver
+                constraint: TemporalConstraint::MaxAge(3600),
+            });
+        }
         None
     }
 
@@ -653,8 +655,7 @@ impl ProvenanceMerger {
 // =============================================================================
 
 /// Epistemic metadata that can be attached to HIR expressions
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct EpistemicMetadata {
     /// Known confidence bound after optimization
     pub confidence: Option<ConfidenceBound>,
@@ -663,7 +664,6 @@ pub struct EpistemicMetadata {
     /// Temporal validity
     pub validity: Option<TemporalConstraint>,
 }
-
 
 // =============================================================================
 // Tests

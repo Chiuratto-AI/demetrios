@@ -469,12 +469,13 @@ impl LeanInterop {
     fn extract_statement(&self, code: &str) -> String {
         for line in code.lines() {
             if line.contains(":=")
-                && let Some(idx) = line.find(':') {
-                    let stmt = &line[idx + 1..];
-                    if let Some(eq_idx) = stmt.find(":=") {
-                        return stmt[..eq_idx].trim().to_string();
-                    }
+                && let Some(idx) = line.find(':')
+            {
+                let stmt = &line[idx + 1..];
+                if let Some(eq_idx) = stmt.find(":=") {
+                    return stmt[..eq_idx].trim().to_string();
                 }
+            }
         }
         "".to_string()
     }

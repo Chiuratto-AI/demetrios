@@ -493,14 +493,15 @@ fn parse_see_also(sections: &mut DocSections, content: &str) {
                 let text = &item[1..close_bracket];
 
                 if item[close_bracket..].starts_with("](")
-                    && let Some(close_paren) = item[close_bracket..].find(')') {
-                        let path = &item[close_bracket + 2..close_bracket + close_paren];
-                        sections.see_also.push(CrossRef {
-                            path: path.to_string(),
-                            text: Some(text.to_string()),
-                        });
-                        continue;
-                    }
+                    && let Some(close_paren) = item[close_bracket..].find(')')
+                {
+                    let path = &item[close_bracket + 2..close_bracket + close_paren];
+                    sections.see_also.push(CrossRef {
+                        path: path.to_string(),
+                        text: Some(text.to_string()),
+                    });
+                    continue;
+                }
 
                 // [`path`] format - path is also the text
                 let path = text.trim_matches('`');

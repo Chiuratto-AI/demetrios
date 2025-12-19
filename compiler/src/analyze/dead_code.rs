@@ -360,17 +360,13 @@ impl DeadCodeAnalyzer {
         match item {
             Item::Function(f) => {
                 let is_public = matches!(f.visibility, Visibility::Public);
-                self.defined_items.insert(
-                    f.name.clone(),
-                    (ItemKind::Function, f.span, is_public),
-                );
+                self.defined_items
+                    .insert(f.name.clone(), (ItemKind::Function, f.span, is_public));
             }
             Item::Struct(s) => {
                 let is_public = matches!(s.visibility, Visibility::Public);
-                self.defined_items.insert(
-                    s.name.clone(),
-                    (ItemKind::Struct, s.span, is_public),
-                );
+                self.defined_items
+                    .insert(s.name.clone(), (ItemKind::Struct, s.span, is_public));
             }
             Item::Enum(e) => {
                 let is_public = matches!(e.visibility, Visibility::Public);
@@ -392,15 +388,12 @@ impl DeadCodeAnalyzer {
                 };
                 // Extract name from pattern
                 let name = extract_pattern_name(&g.pattern);
-                self.defined_items
-                    .insert(name, (kind, g.span, is_public));
+                self.defined_items.insert(name, (kind, g.span, is_public));
             }
             Item::TypeAlias(t) => {
                 let is_public = matches!(t.visibility, Visibility::Public);
-                self.defined_items.insert(
-                    t.name.clone(),
-                    (ItemKind::TypeAlias, t.span, is_public),
-                );
+                self.defined_items
+                    .insert(t.name.clone(), (ItemKind::TypeAlias, t.span, is_public));
             }
             Item::Trait(t) => {
                 let is_public = matches!(t.visibility, Visibility::Public);
@@ -1038,12 +1031,13 @@ impl DeadCodeAnalyzer {
             } => {
                 // Check for constant conditions
                 if let Some(value) = self.is_constant_bool(condition)
-                    && value {
-                        // Else branch is unreachable
-                        if let Some(_else_b) = else_branch {
-                            // Note: would need span for else block
-                        }
+                    && value
+                {
+                    // Else branch is unreachable
+                    if let Some(_else_b) = else_branch {
+                        // Note: would need span for else block
                     }
+                }
 
                 self.find_unreachable_in_expr(condition);
                 self.find_unreachable_in_block(then_branch);
@@ -1103,9 +1097,10 @@ impl DeadCodeAnalyzer {
                 // Check for panic calls
                 if let Expr::Path { path, .. } = callee.as_ref()
                     && let Some(name) = path.segments.last()
-                        && (name == "panic" || name == "unreachable" || name == "todo") {
-                            return Some((UnreachableReason::AfterPanic, Span::dummy()));
-                        }
+                    && (name == "panic" || name == "unreachable" || name == "todo")
+                {
+                    return Some((UnreachableReason::AfterPanic, Span::dummy()));
+                }
                 None
             }
             Expr::Loop { body, .. } => {

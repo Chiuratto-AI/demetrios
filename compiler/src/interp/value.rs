@@ -9,8 +9,7 @@ use crate::hir::HirFn;
 use crate::interp::symbolic::Expr as SymbolicExprType;
 
 /// ODE solver statistics
-#[derive(Clone, Debug)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct SolverStats {
     /// Number of steps taken
     pub steps: usize,
@@ -19,7 +18,6 @@ pub struct SolverStats {
     /// Number of rejected steps
     pub rejected_steps: usize,
 }
-
 
 /// Probabilistic distributions
 #[derive(Clone, Debug)]

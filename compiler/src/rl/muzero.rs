@@ -637,9 +637,10 @@ impl<M: MuZeroModel> LatentMCTSTree<M> {
         }
 
         if let Some((&action, rest)) = path.split_first()
-            && let Some(child) = node.children.get_mut(&action) {
-                Self::backpropagate_node(child, rest, values, depth + 1);
-            }
+            && let Some(child) = node.children.get_mut(&action)
+        {
+            Self::backpropagate_node(child, rest, values, depth + 1);
+        }
     }
 
     /// Get action probabilities (visit counts normalized)

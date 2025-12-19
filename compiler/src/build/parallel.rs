@@ -278,10 +278,7 @@ impl BuildScheduler {
             let priority = task.priority;
             let unit_id = task.unit_id;
 
-            queues
-                .entry(priority)
-                .or_default()
-                .push_back(task.clone());
+            queues.entry(priority).or_default().push_back(task.clone());
 
             all_tasks.insert(unit_id, task);
         }

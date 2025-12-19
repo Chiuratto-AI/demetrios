@@ -41,8 +41,7 @@ use std::collections::HashMap;
 use crate::common::Span;
 
 /// Level of deprecation
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DeprecationLevel {
     /// Just a warning, code still works
     #[default]
@@ -52,7 +51,6 @@ pub enum DeprecationLevel {
     /// Silent deprecation (internal)
     Silent,
 }
-
 
 impl std::fmt::Display for DeprecationLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -395,16 +393,17 @@ impl DeprecationTracker {
 
         // Terms without replacements
         if let Some(no_replacement) = by_replacement.get(&None)
-            && !no_replacement.is_empty() {
-                output.push_str("## No Direct Replacement\n\n");
-                for term in no_replacement {
-                    output.push_str(&format!("- **{}**", term.id));
-                    if let Some(reason) = &term.reason {
-                        output.push_str(&format!(": {}", reason));
-                    }
-                    output.push('\n');
+            && !no_replacement.is_empty()
+        {
+            output.push_str("## No Direct Replacement\n\n");
+            for term in no_replacement {
+                output.push_str(&format!("- **{}**", term.id));
+                if let Some(reason) = &term.reason {
+                    output.push_str(&format!(": {}", reason));
                 }
+                output.push('\n');
             }
+        }
 
         output
     }

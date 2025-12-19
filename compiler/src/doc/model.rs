@@ -511,8 +511,7 @@ pub struct WhereClause {
 }
 
 /// Visibility level
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Visibility {
     Public,
     Crate,
@@ -527,7 +526,6 @@ impl Visibility {
         matches!(self, Visibility::Public)
     }
 }
-
 
 /// Source location
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

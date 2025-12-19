@@ -301,15 +301,17 @@ impl SSSOMIndex {
     pub fn find(&self, from: &IRI, to: &IRI) -> Option<&SSSOMMapping> {
         // Check direct mapping
         if let Some(mappings) = self.by_subject.get(from)
-            && let Some(m) = mappings.iter().find(|m| &m.object_id == to) {
-                return Some(m);
-            }
+            && let Some(m) = mappings.iter().find(|m| &m.object_id == to)
+        {
+            return Some(m);
+        }
 
         // Check reverse mapping
         if let Some(mappings) = self.by_object.get(from)
-            && let Some(m) = mappings.iter().find(|m| &m.subject_id == to) {
-                return Some(m);
-            }
+            && let Some(m) = mappings.iter().find(|m| &m.subject_id == to)
+        {
+            return Some(m);
+        }
 
         None
     }
@@ -458,9 +460,10 @@ impl SemanticDistanceIndex {
         // Check cache first
         {
             if let Ok(cache) = self.distance_cache.read()
-                && let Some(d) = cache.peek(&(from.clone(), to.clone())) {
-                    return *d;
-                }
+                && let Some(d) = cache.peek(&(from.clone(), to.clone()))
+            {
+                return *d;
+            }
         }
 
         // Compute distance
@@ -584,42 +587,45 @@ impl SemanticDistanceIndex {
     fn compute_cross_ontology_distance(&self, from: &IRI, to: &IRI) -> SemanticDistance {
         // Try unified alignment index first (includes SSSOM, CUI, LOOM)
         if let Some(ref alignment_index) = self.alignment_index
-            && let Some(result) = alignment_index.find_alignment(from, to) {
-                return self.alignment_result_to_distance(&result);
-            }
+            && let Some(result) = alignment_index.find_alignment(from, to)
+        {
+            return self.alignment_result_to_distance(&result);
+        }
 
         // Fallback to direct SSSOM mappings
         if let Some(mapping) = self.sssom_mappings.find(from, to)
-            && mapping.confidence >= self.config.min_mapping_confidence {
-                let conceptual = 1.0 - mapping.confidence;
-                return SemanticDistance {
-                    conceptual,
-                    physical_cost: PhysicalCost {
-                        cycles: 50,
-                        memory_tier: 2,
-                        network_hops: 0,
-                        allocation: 0,
-                    },
-                    confidence_retention: mapping.confidence,
-                    provenance_depth: 1,
-                };
-            }
+            && mapping.confidence >= self.config.min_mapping_confidence
+        {
+            let conceptual = 1.0 - mapping.confidence;
+            return SemanticDistance {
+                conceptual,
+                physical_cost: PhysicalCost {
+                    cycles: 50,
+                    memory_tier: 2,
+                    network_hops: 0,
+                    allocation: 0,
+                },
+                confidence_retention: mapping.confidence,
+                provenance_depth: 1,
+            };
+        }
 
         // Try embedding-based similarity for cross-ontology
         if let Some(emb_distance) = self.compute_embedding_distance(from, to)
-            && emb_distance < self.config.unknown_distance {
-                return SemanticDistance {
-                    conceptual: emb_distance,
-                    physical_cost: PhysicalCost {
-                        cycles: 200,
-                        memory_tier: 3,
-                        network_hops: 0,
-                        allocation: 512,
-                    },
-                    confidence_retention: 1.0 - (emb_distance * 0.3),
-                    provenance_depth: 1,
-                };
-            }
+            && emb_distance < self.config.unknown_distance
+        {
+            return SemanticDistance {
+                conceptual: emb_distance,
+                physical_cost: PhysicalCost {
+                    cycles: 200,
+                    memory_tier: 3,
+                    network_hops: 0,
+                    allocation: 512,
+                },
+                confidence_retention: 1.0 - (emb_distance * 0.3),
+                provenance_depth: 1,
+            };
+        }
 
         // No alignment found - high distance
         SemanticDistance {

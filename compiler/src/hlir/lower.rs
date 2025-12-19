@@ -299,11 +299,12 @@ impl<'a> LoweringContext<'a> {
             }
             HirExprKind::Index { base, index } => {
                 if let Some(base_ptr) = self.lower_lvalue(base)
-                    && let Some(idx) = self.lower_expr(index) {
-                        let elem_ty = HlirType::from_hir(&target.ty);
-                        let elem_ptr = self.builder.build_elem_ptr(base_ptr, idx, elem_ty);
-                        self.builder.build_store(elem_ptr, value);
-                    }
+                    && let Some(idx) = self.lower_expr(index)
+                {
+                    let elem_ty = HlirType::from_hir(&target.ty);
+                    let elem_ptr = self.builder.build_elem_ptr(base_ptr, idx, elem_ty);
+                    self.builder.build_store(elem_ptr, value);
+                }
             }
             _ => {}
         }
@@ -331,13 +332,14 @@ impl<'a> LoweringContext<'a> {
 
     fn get_field_index(&self, ty: &HirType, field: &str) -> usize {
         if let HirType::Named { name, .. } = ty
-            && let Some(fields) = self.structs.get(name) {
-                for (i, (f_name, _)) in fields.iter().enumerate() {
-                    if f_name == field {
-                        return i;
-                    }
+            && let Some(fields) = self.structs.get(name)
+        {
+            for (i, (f_name, _)) in fields.iter().enumerate() {
+                if f_name == field {
+                    return i;
                 }
             }
+        }
         0
     }
 
@@ -386,10 +388,11 @@ impl<'a> LoweringContext<'a> {
                 }
                 // Try closure environment
                 if let Some(ref env) = self.closure_env
-                    && let Some(&idx) = env.captures.get(name) {
-                        let field_ptr = self.builder.build_field_ptr(env.env_ptr, idx, ty.clone());
-                        return Some(self.builder.build_load(field_ptr, ty));
-                    }
+                    && let Some(&idx) = env.captures.get(name)
+                {
+                    let field_ptr = self.builder.build_field_ptr(env.env_ptr, idx, ty.clone());
+                    return Some(self.builder.build_load(field_ptr, ty));
+                }
                 // Try function reference
                 if self.functions.contains_key(name) {
                     return Some(self.builder.build_const(
@@ -620,11 +623,10 @@ impl<'a> LoweringContext<'a> {
                 // Do intervention - for now, lower as an assignment side effect
                 // In a full causal inference system, this would modify the causal graph
                 let val = self.lower_expr(value)?;
-                Some(self.builder.build_call(
-                    format!("__epistemic_do_{}", variable),
-                    vec![val],
-                    ty,
-                ))
+                Some(
+                    self.builder
+                        .build_call(format!("__epistemic_do_{}", variable), vec![val], ty),
+                )
             }
 
             HirExprKind::Counterfactual {
@@ -947,18 +949,19 @@ impl<'a> LoweringContext<'a> {
 
         // Build phi if both branches produce values
         if *ty != HlirType::Void
-            && let (Some(tv), Some(ev)) = (then_val, else_val) {
-                let mut incoming = Vec::new();
-                if !then_terminated {
-                    incoming.push((then_exit_block, tv));
-                }
-                if !else_terminated {
-                    incoming.push((else_exit_block, ev));
-                }
-                if !incoming.is_empty() {
-                    return Some(self.builder.build_phi(incoming, ty.clone()));
-                }
+            && let (Some(tv), Some(ev)) = (then_val, else_val)
+        {
+            let mut incoming = Vec::new();
+            if !then_terminated {
+                incoming.push((then_exit_block, tv));
             }
+            if !else_terminated {
+                incoming.push((else_exit_block, ev));
+            }
+            if !incoming.is_empty() {
+                return Some(self.builder.build_phi(incoming, ty.clone()));
+            }
+        }
 
         None
     }
@@ -1086,9 +1089,10 @@ impl<'a> LoweringContext<'a> {
 
         // For enum variant matching, use tag-based switch
         if let HirType::Named { name, .. } = &scrutinee.ty
-            && self.enums.contains_key(name) {
-                return self.lower_match_enum(scrut_val, name, arms, ty);
-            }
+            && self.enums.contains_key(name)
+        {
+            return self.lower_match_enum(scrut_val, name, arms, ty);
+        }
 
         // General case: chain of if-else
         self.lower_match_chain(scrut_val, &scrut_ty, arms, ty)

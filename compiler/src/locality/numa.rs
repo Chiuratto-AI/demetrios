@@ -105,36 +105,37 @@ impl NumaTopology {
                 let name_str = name.to_string_lossy();
 
                 if name_str.starts_with("node")
-                    && let Ok(id) = name_str[4..].parse::<u32>() {
-                        let mut node = NumaNode::new(id);
+                    && let Ok(id) = name_str[4..].parse::<u32>()
+                {
+                    let mut node = NumaNode::new(id);
 
-                        // Read CPUs
-                        let cpu_path = entry.path().join("cpulist");
-                        if let Ok(cpulist) = std::fs::read_to_string(&cpu_path) {
-                            node.cpus = parse_cpu_list(&cpulist);
-                        }
-
-                        // Read memory
-                        let mem_path = entry.path().join("meminfo");
-                        if let Ok(meminfo) = std::fs::read_to_string(&mem_path) {
-                            node.memory = parse_meminfo(&meminfo);
-                        }
-
-                        // Read distances
-                        let dist_path = entry.path().join("distance");
-                        if let Ok(distances) = std::fs::read_to_string(&dist_path) {
-                            let dists: Vec<u32> = distances
-                                .split_whitespace()
-                                .filter_map(|s| s.parse().ok())
-                                .collect();
-
-                            for (other_id, dist) in dists.into_iter().enumerate() {
-                                node.set_distance(other_id as u32, dist);
-                            }
-                        }
-
-                        topo.add_node(node);
+                    // Read CPUs
+                    let cpu_path = entry.path().join("cpulist");
+                    if let Ok(cpulist) = std::fs::read_to_string(&cpu_path) {
+                        node.cpus = parse_cpu_list(&cpulist);
                     }
+
+                    // Read memory
+                    let mem_path = entry.path().join("meminfo");
+                    if let Ok(meminfo) = std::fs::read_to_string(&mem_path) {
+                        node.memory = parse_meminfo(&meminfo);
+                    }
+
+                    // Read distances
+                    let dist_path = entry.path().join("distance");
+                    if let Ok(distances) = std::fs::read_to_string(&dist_path) {
+                        let dists: Vec<u32> = distances
+                            .split_whitespace()
+                            .filter_map(|s| s.parse().ok())
+                            .collect();
+
+                        for (other_id, dist) in dists.into_iter().enumerate() {
+                            node.set_distance(other_id as u32, dist);
+                        }
+                    }
+
+                    topo.add_node(node);
+                }
             }
 
             topo.numa_available = !topo.nodes.is_empty();
@@ -317,11 +318,13 @@ impl NumaTopology {
             // Find related types
             if prefetch_table.has_hints(t) {
                 for hint in prefetch_table.get_type_hints(t) {
-                    if hint.distance.is_prefetchable() && !assigned.contains(hint.target.as_str())
-                        && types.contains(&hint.target.as_str()) {
-                            group.push(hint.target.clone());
-                            assigned.insert(Box::leak(hint.target.clone().into_boxed_str()));
-                        }
+                    if hint.distance.is_prefetchable()
+                        && !assigned.contains(hint.target.as_str())
+                        && types.contains(&hint.target.as_str())
+                    {
+                        group.push(hint.target.clone());
+                        assigned.insert(Box::leak(hint.target.clone().into_boxed_str()));
+                    }
                 }
             }
 
@@ -351,9 +354,10 @@ fn parse_cpu_list(s: &str) -> Vec<u32> {
         if part.contains('-') {
             let bounds: Vec<_> = part.split('-').collect();
             if bounds.len() == 2
-                && let (Ok(start), Ok(end)) = (bounds[0].parse::<u32>(), bounds[1].parse::<u32>()) {
-                    cpus.extend(start..=end);
-                }
+                && let (Ok(start), Ok(end)) = (bounds[0].parse::<u32>(), bounds[1].parse::<u32>())
+            {
+                cpus.extend(start..=end);
+            }
         } else if let Ok(cpu) = part.parse::<u32>() {
             cpus.push(cpu);
         }
@@ -368,9 +372,10 @@ fn parse_meminfo(s: &str) -> u64 {
         if line.starts_with("MemTotal:") || line.contains("MemTotal:") {
             let parts: Vec<_> = line.split_whitespace().collect();
             if parts.len() >= 2
-                && let Ok(kb) = parts[parts.len() - 2].parse::<u64>() {
-                    return kb * 1024; // Convert to bytes
-                }
+                && let Ok(kb) = parts[parts.len() - 2].parse::<u64>()
+            {
+                return kb * 1024; // Convert to bytes
+            }
         }
     }
     0
@@ -440,9 +445,10 @@ impl PlacementStrategy {
     pub fn respects_affinities(&self) -> bool {
         for (t1, t2) in &self.affinities {
             if let (Some(n1), Some(n2)) = (self.placements.get(t1), self.placements.get(t2))
-                && n1 != n2 {
-                    return false;
-                }
+                && n1 != n2
+            {
+                return false;
+            }
         }
         true
     }

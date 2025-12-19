@@ -149,9 +149,10 @@ pub fn parse_obo_file(content: &str) -> Result<Vec<LoadedTerm>, OboParseError> {
         if line == "[Term]" {
             // Save previous term if any
             if let Some(builder) = current_term.take()
-                && (!builder.is_obsolete || builder.replaced_by.is_some()) {
-                    terms.push(builder.build()?);
-                }
+                && (!builder.is_obsolete || builder.replaced_by.is_some())
+            {
+                terms.push(builder.build()?);
+            }
             current_term = Some(TermBuilder::new());
             in_term_stanza = true;
             continue;
@@ -160,26 +161,27 @@ pub fn parse_obo_file(content: &str) -> Result<Vec<LoadedTerm>, OboParseError> {
         if line.starts_with('[') {
             // Other stanza type ([Typedef], [Instance], etc.)
             if let Some(builder) = current_term.take()
-                && (!builder.is_obsolete || builder.replaced_by.is_some()) {
-                    terms.push(builder.build()?);
-                }
+                && (!builder.is_obsolete || builder.replaced_by.is_some())
+            {
+                terms.push(builder.build()?);
+            }
             current_term = None;
             in_term_stanza = false;
             continue;
         }
 
         // Parse tag-value pairs within Term stanza
-        if in_term_stanza
-            && let Some(ref mut builder) = current_term {
-                parse_term_line(line, builder)?;
-            }
+        if in_term_stanza && let Some(ref mut builder) = current_term {
+            parse_term_line(line, builder)?;
+        }
     }
 
     // Don't forget the last term
     if let Some(builder) = current_term
-        && (!builder.is_obsolete || builder.replaced_by.is_some()) {
-            terms.push(builder.build()?);
-        }
+        && (!builder.is_obsolete || builder.replaced_by.is_some())
+    {
+        terms.push(builder.build()?);
+    }
 
     Ok(terms)
 }

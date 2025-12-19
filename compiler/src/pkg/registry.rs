@@ -227,9 +227,10 @@ impl Registry for LocalRegistry {
             let path = entry.path();
             if path.is_dir()
                 && let Some(version_str) = path.file_name().and_then(|n| n.to_str())
-                    && let Ok(version) = Version::parse(version_str) {
-                        versions.push(version);
-                    }
+                && let Ok(version) = Version::parse(version_str)
+            {
+                versions.push(version);
+            }
         }
 
         versions.sort();
@@ -261,18 +262,20 @@ impl Registry for LocalRegistry {
                 let path = entry.path();
                 if path.is_dir()
                     && let Some(name) = path.file_name().and_then(|n| n.to_str())
-                        && name.to_lowercase().contains(&query_lower) {
-                            let versions = self.get_versions(name)?;
-                            if let Some(latest) = versions.last()
-                                && let Ok(manifest) = self.get_manifest(name, latest) {
-                                    results.push(PackageSummary {
-                                        name: name.to_string(),
-                                        version: latest.clone(),
-                                        description: manifest.package.description,
-                                        downloads: 0,
-                                    });
-                                }
-                        }
+                    && name.to_lowercase().contains(&query_lower)
+                {
+                    let versions = self.get_versions(name)?;
+                    if let Some(latest) = versions.last()
+                        && let Ok(manifest) = self.get_manifest(name, latest)
+                    {
+                        results.push(PackageSummary {
+                            name: name.to_string(),
+                            version: latest.clone(),
+                            description: manifest.package.description,
+                            downloads: 0,
+                        });
+                    }
+                }
 
                 if results.len() >= limit {
                     break;

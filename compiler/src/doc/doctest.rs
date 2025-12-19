@@ -733,13 +733,15 @@ impl DoctestRunner {
                 }
                 if self.config.show_output {
                     if let Some(ref compile_output) = result.compile_output
-                        && !compile_output.is_empty() {
-                            println!("    Compile output:\n{}", indent_lines(compile_output, 8));
-                        }
+                        && !compile_output.is_empty()
+                    {
+                        println!("    Compile output:\n{}", indent_lines(compile_output, 8));
+                    }
                     if let Some(ref runtime_output) = result.runtime_output
-                        && !runtime_output.is_empty() {
-                            println!("    Runtime output:\n{}", indent_lines(runtime_output, 8));
-                        }
+                        && !runtime_output.is_empty()
+                    {
+                        println!("    Runtime output:\n{}", indent_lines(runtime_output, 8));
+                    }
                 }
             }
         }

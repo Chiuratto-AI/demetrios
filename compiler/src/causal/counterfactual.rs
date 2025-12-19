@@ -125,26 +125,27 @@ impl<T: Clone> StructuralKnowledge<T> {
         // Find an affected variable with evidence
         for var in affected_vars {
             if let Some(&observed) = evidence.get(*var)
-                && let Some(eq) = self.model.equations.get(*var) {
-                    // Try to invert: if Y = f(PA, U), solve for U given Y and PA
-                    // For linear equations: U = Y - Σ(β_i * PA_i) - intercept
+                && let Some(eq) = self.model.equations.get(*var)
+            {
+                // Try to invert: if Y = f(PA, U), solve for U given Y and PA
+                // For linear equations: U = Y - Σ(β_i * PA_i) - intercept
 
-                    // Get parent values from evidence
-                    let parent_values: HashMap<String, f64> = eq
-                        .parents
-                        .iter()
-                        .filter_map(|p| evidence.get(p).map(|v| (p.clone(), *v)))
-                        .collect();
+                // Get parent values from evidence
+                let parent_values: HashMap<String, f64> = eq
+                    .parents
+                    .iter()
+                    .filter_map(|p| evidence.get(p).map(|v| (p.clone(), *v)))
+                    .collect();
 
-                    // Compute predicted value with U=0
-                    let predicted = eq.evaluate(&parent_values, 0.0);
+                // Compute predicted value with U=0
+                let predicted = eq.evaluate(&parent_values, 0.0);
 
-                    // Inferred U = observed - predicted
-                    let inferred_u = observed - predicted;
+                // Inferred U = observed - predicted
+                let inferred_u = observed - predicted;
 
-                    // Return point mass at inferred U
-                    return Distribution::PointMass { value: inferred_u };
-                }
+                // Return point mass at inferred U
+                return Distribution::PointMass { value: inferred_u };
+            }
         }
 
         // No useful evidence, use prior

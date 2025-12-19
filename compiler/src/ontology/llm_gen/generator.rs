@@ -164,10 +164,11 @@ impl OntologyGenerator {
         if self.config.generate_definitions {
             for class in &mut fragment.classes {
                 if class.definition.is_none()
-                    && let Ok(def) = self.generate_definition(class, domain) {
-                        class.definition = Some(def);
-                        stats.definitions_generated += 1;
-                    }
+                    && let Ok(def) = self.generate_definition(class, domain)
+                {
+                    class.definition = Some(def);
+                    stats.definitions_generated += 1;
+                }
             }
         }
 
@@ -327,9 +328,10 @@ impl OntologyGenerator {
         for i in 0..classes.len() {
             for j in (i + 1)..classes.len() {
                 if let Ok(rel) = self.check_taxonomy_relation(&classes[i], &classes[j], domain)
-                    && let Some(r) = rel {
-                        relations.push(r);
-                    }
+                    && let Some(r) = rel
+                {
+                    relations.push(r);
+                }
             }
         }
 
@@ -532,19 +534,20 @@ fn extract_json_from_response(content: &str) -> GenerationResult<String> {
         && let Some(end) = content[start..]
             .find("```\n")
             .or(content[start..].rfind("```"))
-        {
-            let json_start = start + 7; // Skip "```json"
-            if json_start < start + end {
-                return Ok(content[json_start..start + end].trim().to_string());
-            }
+    {
+        let json_start = start + 7; // Skip "```json"
+        if json_start < start + end {
+            return Ok(content[json_start..start + end].trim().to_string());
         }
+    }
 
     // Try to find raw JSON object
     if let Some(start) = content.find('{')
         && let Some(end) = content.rfind('}')
-            && start < end {
-                return Ok(content[start..=end].to_string());
-            }
+        && start < end
+    {
+        return Ok(content[start..=end].to_string());
+    }
 
     Err(GenerationError::ParseError(
         "Could not find JSON in response".into(),

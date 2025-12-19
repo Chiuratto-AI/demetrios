@@ -144,8 +144,7 @@ impl FixtureAttr {
 }
 
 /// Fixture scope
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum FixtureScope {
     /// Fresh fixture for each test (default)
     #[default]
@@ -155,7 +154,6 @@ pub enum FixtureScope {
     /// Shared across entire test session
     Session,
 }
-
 
 /// Raw attribute as parsed from source
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,8 +165,7 @@ pub struct RawAttribute {
 }
 
 /// Attribute arguments
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum AttributeArgs {
     /// No arguments: `#[test]`
     #[default]
@@ -180,7 +177,6 @@ pub enum AttributeArgs {
     /// List of values: `#[tags("unit", "fast")]`
     List(Vec<AttributeValue>),
 }
-
 
 /// Attribute argument value
 #[derive(Debug, Clone, Serialize, Deserialize)]

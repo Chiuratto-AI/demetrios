@@ -229,9 +229,10 @@ impl CompileResult {
 
         for line in stderr.lines() {
             if line.starts_with('{')
-                && let Ok(diag) = serde_json::from_str::<Diagnostic>(line) {
-                    diagnostics.push(diag);
-                }
+                && let Ok(diag) = serde_json::from_str::<Diagnostic>(line)
+            {
+                diagnostics.push(diag);
+            }
         }
 
         diagnostics
@@ -357,9 +358,9 @@ impl CompileResult {
     pub fn assert_distance_suggestion(&self, from: &str, to: &str) -> &Self {
         let has_suggestion = self.diagnostics.iter().any(|d| {
             d.suggestions.iter().any(|s| {
-                s.semantic_distance.as_ref().is_some_and(|sd| {
-                    sd.from_type.contains(from) && sd.to_type.contains(to)
-                })
+                s.semantic_distance
+                    .as_ref()
+                    .is_some_and(|sd| sd.from_type.contains(from) && sd.to_type.contains(to))
             })
         });
 

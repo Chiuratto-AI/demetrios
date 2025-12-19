@@ -314,11 +314,13 @@ impl OntologyResolver {
         }
 
         // L4: Federated (network)
-        if self.config.enable_federated && !self.config.offline_mode
-            && let Some(term) = self.resolve_federated(parsed)? {
-                self.stats.federated_hits += 1;
-                return Ok(term);
-            }
+        if self.config.enable_federated
+            && !self.config.offline_mode
+            && let Some(term) = self.resolve_federated(parsed)?
+        {
+            self.stats.federated_hits += 1;
+            return Ok(term);
+        }
 
         Err(OntologyError::TermNotFound {
             ontology: parsed.prefix.clone(),
@@ -456,9 +458,10 @@ impl OntologyResolver {
                 let parent_term = PRIMITIVE_BFO.get_by_id(&parent.curie);
 
                 if let (Some(c), Some(p)) = (child_term, parent_term)
-                    && PRIMITIVE_BFO.is_subclass(c.variant, p.variant) {
-                        return Ok(SubsumptionResult::IsSubclass);
-                    }
+                    && PRIMITIVE_BFO.is_subclass(c.variant, p.variant)
+                {
+                    return Ok(SubsumptionResult::IsSubclass);
+                }
                 return Ok(SubsumptionResult::NotSubclass);
             }
             "COB" => {
@@ -466,9 +469,10 @@ impl OntologyResolver {
                 let parent_term = PRIMITIVE_COB.get_by_id(&parent.curie);
 
                 if let (Some(c), Some(p)) = (child_term, parent_term)
-                    && PRIMITIVE_COB.is_subclass(c.variant, p.variant) {
-                        return Ok(SubsumptionResult::IsSubclass);
-                    }
+                    && PRIMITIVE_COB.is_subclass(c.variant, p.variant)
+                {
+                    return Ok(SubsumptionResult::IsSubclass);
+                }
                 return Ok(SubsumptionResult::NotSubclass);
             }
             _ => {}
@@ -491,9 +495,10 @@ impl OntologyResolver {
 
         // Check mappings
         if let Some(mappings) = &self.mappings
-            && let Some(best) = mappings.find_best_mapping(&parsed.curie, Some(to_prefix)) {
-                return Ok(Some(best.object_id.clone()));
-            }
+            && let Some(best) = mappings.find_best_mapping(&parsed.curie, Some(to_prefix))
+        {
+            return Ok(Some(best.object_id.clone()));
+        }
 
         Ok(None)
     }
@@ -539,22 +544,23 @@ impl OntologyResolver {
         // For primitives, compute transitive closure
         let parsed = ParsedTermRef::parse(id)?;
         if parsed.prefix.as_str() == "BFO"
-            && let Some(t) = PRIMITIVE_BFO.get_by_id(&parsed.curie) {
-                let mut ancestors = vec![];
-                let mut stack = vec![t.variant];
-                let mut visited = std::collections::HashSet::new();
+            && let Some(t) = PRIMITIVE_BFO.get_by_id(&parsed.curie)
+        {
+            let mut ancestors = vec![];
+            let mut stack = vec![t.variant];
+            let mut visited = std::collections::HashSet::new();
 
-                while let Some(current) = stack.pop() {
-                    if visited.insert(current) {
-                        for parent in PRIMITIVE_BFO.direct_superclasses(current) {
-                            ancestors.push(parent.id().to_string());
-                            stack.push(parent);
-                        }
+            while let Some(current) = stack.pop() {
+                if visited.insert(current) {
+                    for parent in PRIMITIVE_BFO.direct_superclasses(current) {
+                        ancestors.push(parent.id().to_string());
+                        stack.push(parent);
                     }
                 }
-
-                return Ok(ancestors);
             }
+
+            return Ok(ancestors);
+        }
 
         // For domain ontologies, return direct superclasses
         Ok(term.superclasses)

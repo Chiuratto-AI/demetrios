@@ -233,8 +233,7 @@ impl Default for Confidence {
 }
 
 /// Whether knowledge can be revised
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Revisability {
     /// Cannot be revised (axioms, definitions)
     #[default]
@@ -257,10 +256,8 @@ impl Revisability {
     }
 }
 
-
 /// Source of knowledge
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Source {
     /// Axiomatic (by definition)
     Axiom,
@@ -300,7 +297,6 @@ pub enum Source {
     #[default]
     Unknown,
 }
-
 
 /// Evidence supporting knowledge
 #[derive(Debug, Clone, PartialEq)]

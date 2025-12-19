@@ -49,11 +49,12 @@ impl L1Cache {
     pub fn get(&self, iri: &str) -> Option<Arc<CompactTerm>> {
         // Always use write lock to update access count
         if let Ok(mut entries) = self.entries.write()
-            && let Some(entry) = entries.get_mut(iri) {
-                entry.access_count = entry.access_count.saturating_add(1);
-                entry.last_access = std::time::Instant::now();
-                return Some(Arc::clone(&entry.term));
-            }
+            && let Some(entry) = entries.get_mut(iri)
+        {
+            entry.access_count = entry.access_count.saturating_add(1);
+            entry.last_access = std::time::Instant::now();
+            return Some(Arc::clone(&entry.term));
+        }
 
         None
     }

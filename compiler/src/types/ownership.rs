@@ -8,8 +8,7 @@
 use super::Type;
 
 /// Ownership mode for a type
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Ownership {
     /// Can be freely copied
     Copy,
@@ -19,7 +18,6 @@ pub enum Ownership {
     /// Must be used exactly once (cannot be dropped implicitly)
     Linear,
 }
-
 
 /// Determine the ownership mode of a type
 pub fn ownership_of(ty: &Type) -> Ownership {

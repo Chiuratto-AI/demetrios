@@ -424,13 +424,14 @@ impl Manifest {
         for entry in &self.ontologies {
             if let Some(checksum) = &entry.checksum
                 && let Some(data) = get_data(&entry.name)
-                    && !checksum.verify(&data) {
-                        return Err(ManifestError::ChecksumMismatch {
-                            ontology: entry.name.clone(),
-                            expected: checksum.hash.clone(),
-                            actual: "computed_hash".to_string(), // Would compute actual hash
-                        });
-                    }
+                && !checksum.verify(&data)
+            {
+                return Err(ManifestError::ChecksumMismatch {
+                    ontology: entry.name.clone(),
+                    expected: checksum.hash.clone(),
+                    actual: "computed_hash".to_string(), // Would compute actual hash
+                });
+            }
         }
         Ok(())
     }
@@ -444,9 +445,10 @@ impl Manifest {
 
         for entry in &self.ontologies {
             if let Some(available_version) = available.get(&entry.name)
-                && let Some(std::cmp::Ordering::Less) = entry.version.compare(available_version) {
-                    updates.push((entry, available_version));
-                }
+                && let Some(std::cmp::Ordering::Less) = entry.version.compare(available_version)
+            {
+                updates.push((entry, available_version));
+            }
         }
 
         updates

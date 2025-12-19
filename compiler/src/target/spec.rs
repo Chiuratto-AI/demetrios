@@ -703,7 +703,6 @@ pub enum PanicStrategy {
     Abort,
 }
 
-
 /// Environment-specific settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvSpec {
@@ -754,7 +753,6 @@ pub enum CRuntime {
     None,
 }
 
-
 /// Code relocation model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -777,7 +775,6 @@ pub enum RelocationModel {
     RopiRwpi,
 }
 
-
 /// Code model for code generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -796,7 +793,6 @@ pub enum CodeModel {
     Large,
 }
 
-
 /// Thread-local storage model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -812,7 +808,6 @@ pub enum TlsModel {
     /// Local exec (same module)
     LocalExec,
 }
-
 
 /// Target CPU features configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -950,7 +945,6 @@ pub enum LinkerFlavor {
     Bpf,
 }
 
-
 /// LTO (Link-Time Optimization) mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -964,7 +958,6 @@ pub enum LtoMode {
     /// No LTO
     Off,
 }
-
 
 /// Code generation options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1006,8 +999,7 @@ impl Default for CodegenSpec {
 }
 
 /// Optimization level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum OptLevel {
     /// No optimization
     O0,
@@ -1023,7 +1015,6 @@ pub enum OptLevel {
     /// Aggressively optimize for size
     Oz,
 }
-
 
 /// Debug information level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1041,7 +1032,6 @@ pub enum DebugInfo {
     Full,
 }
 
-
 /// Frame pointer behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1056,7 +1046,6 @@ pub enum FramePointer {
     MayOmit,
 }
 
-
 /// Symbol stripping mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -1070,7 +1059,6 @@ pub enum StripMode {
     /// Strip all symbols
     Symbols,
 }
-
 
 /// Additional target options.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

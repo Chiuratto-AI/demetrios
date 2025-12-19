@@ -744,10 +744,9 @@ impl<'a> Parser<'a> {
         let mut variants = Vec::new();
         while !self.at(TokenKind::RBrace) {
             variants.push(self.parse_variant()?);
-            if !self.at(TokenKind::RBrace)
-                && self.at(TokenKind::Comma) {
-                    self.advance();
-                }
+            if !self.at(TokenKind::RBrace) && self.at(TokenKind::Comma) {
+                self.advance();
+            }
         }
         self.expect(TokenKind::RBrace)?;
 
@@ -786,10 +785,9 @@ impl<'a> Parser<'a> {
             let mut fields = Vec::new();
             while !self.at(TokenKind::RBrace) {
                 fields.push(self.parse_field()?);
-                if !self.at(TokenKind::RBrace)
-                    && self.at(TokenKind::Comma) {
-                        self.advance();
-                    }
+                if !self.at(TokenKind::RBrace) && self.at(TokenKind::Comma) {
+                    self.advance();
+                }
             }
             self.expect(TokenKind::RBrace)?;
             VariantData::Struct(fields)

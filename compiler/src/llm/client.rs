@@ -169,12 +169,13 @@ impl LLMClientRegistry {
 
         // Try default provider first
         if let Some(provider) = &self.default_provider
-            && let Some(client) = self.get(provider) {
-                match client.query(request) {
-                    Ok(response) => return Ok(response),
-                    Err(e) => last_error = e,
-                }
+            && let Some(client) = self.get(provider)
+        {
+            match client.query(request) {
+                Ok(response) => return Ok(response),
+                Err(e) => last_error = e,
             }
+        }
 
         // Try other providers
         for (provider, client) in &self.clients {

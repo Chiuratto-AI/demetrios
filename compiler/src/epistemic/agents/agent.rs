@@ -332,9 +332,8 @@ impl Agent for ReviseAgent {
                 // Simplified: weight by evidence confidence
                 let prior = old_confidence;
                 let likelihood = revise_task.evidence.confidence;
-                
-                (prior * likelihood)
-                    / (prior * likelihood + (1.0 - prior) * (1.0 - likelihood))
+
+                (prior * likelihood) / (prior * likelihood + (1.0 - prior) * (1.0 - likelihood))
             }
             RevisionStrategy::Alternative => {
                 // Keep old, add alternative (not implemented in simple KB)

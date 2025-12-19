@@ -445,9 +445,10 @@ impl AccessAnalyzer {
         self.context.record_access(type_name, field_name);
 
         if let Some(func) = &self.context.current_function.clone()
-            && let Some(pattern) = self.patterns.get_mut(func) {
-                pattern.add_access(access);
-            }
+            && let Some(pattern) = self.patterns.get_mut(func)
+        {
+            pattern.add_access(access);
+        }
     }
 
     /// Record a co-access relationship.
@@ -459,31 +460,33 @@ impl AccessAnalyzer {
         correlation: f64,
     ) {
         if let Some(func) = &self.context.current_function.clone()
-            && let Some(pattern) = self.patterns.get_mut(func) {
-                let co_access = CoAccess::new(
-                    format!("{}.{}", type_name, field_a),
-                    format!("{}.{}", type_name, field_b),
-                    correlation,
-                );
-                pattern.add_co_access(co_access);
-            }
+            && let Some(pattern) = self.patterns.get_mut(func)
+        {
+            let co_access = CoAccess::new(
+                format!("{}.{}", type_name, field_a),
+                format!("{}.{}", type_name, field_b),
+                correlation,
+            );
+            pattern.add_co_access(co_access);
+        }
     }
 
     /// Record a stride pattern.
     pub fn record_stride(&mut self, type_name: &str, field_name: &str, stride: usize) {
         if let Some(func) = &self.context.current_function.clone()
-            && let Some(pattern) = self.patterns.get_mut(func) {
-                let key = format!("{}.{}", type_name, field_name);
+            && let Some(pattern) = self.patterns.get_mut(func)
+        {
+            let key = format!("{}.{}", type_name, field_name);
 
-                if let Some(existing) = pattern.strides.get_mut(&key) {
-                    if existing.stride != stride {
-                        existing.is_constant = false;
-                    }
-                    existing.count += 1;
-                } else {
-                    pattern.add_stride(key, StridePattern::new(stride));
+            if let Some(existing) = pattern.strides.get_mut(&key) {
+                if existing.stride != stride {
+                    existing.is_constant = false;
                 }
+                existing.count += 1;
+            } else {
+                pattern.add_stride(key, StridePattern::new(stride));
             }
+        }
     }
 
     /// Get the access pattern for a function.

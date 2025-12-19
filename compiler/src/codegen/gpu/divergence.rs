@@ -260,10 +260,7 @@ impl WarpDivergenceAnalyzer {
             };
 
             for &succ in &successors {
-                self.reverse_cfg
-                    .entry(succ)
-                    .or_default()
-                    .push(block.id);
+                self.reverse_cfg.entry(succ).or_default().push(block.id);
             }
 
             self.cfg.insert(block.id, successors);
@@ -887,9 +884,10 @@ impl ControlFlowOptimizer {
 
         for block in &kernel.blocks {
             if let GpuTerminator::CondBr(cond, _, _) = &block.terminator
-                && self.analyzer.is_uniform_value(*cond, block, kernel) {
-                    uniform_conditions.push((block.id, *cond));
-                }
+                && self.analyzer.is_uniform_value(*cond, block, kernel)
+            {
+                uniform_conditions.push((block.id, *cond));
+            }
         }
 
         uniform_conditions

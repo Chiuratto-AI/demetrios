@@ -89,7 +89,9 @@ impl L2Cache {
         let store = if path.exists() {
             // Try to load existing cache
             match std::fs::read(path) {
-                Ok(data) => bincode::deserialize::<FxHashMap<String, CachedTerm>>(&data).unwrap_or_default(),
+                Ok(data) => {
+                    bincode::deserialize::<FxHashMap<String, CachedTerm>>(&data).unwrap_or_default()
+                }
                 Err(_) => FxHashMap::default(),
             }
         } else {

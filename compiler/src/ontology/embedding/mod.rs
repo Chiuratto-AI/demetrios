@@ -360,9 +360,10 @@ impl EmbeddingSpace {
         // Check cache first
         {
             if let Ok(cache) = self.cache.read()
-                && let Some(emb) = cache.peek(iri) {
-                    return Ok(emb.clone());
-                }
+                && let Some(emb) = cache.peek(iri)
+            {
+                return Ok(emb.clone());
+            }
         }
 
         // Check storage

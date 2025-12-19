@@ -320,9 +320,10 @@ impl<T: Clone + Default> Tensor<T> {
         let mut flat = 0;
         for (i, &idx) in indices.iter().enumerate() {
             if let Some(Dim::Static(dim)) = self.shape.dim(i)
-                && idx >= *dim {
-                    return None;
-                }
+                && idx >= *dim
+            {
+                return None;
+            }
             flat += idx * self.strides[i];
         }
         Some(flat)
@@ -336,9 +337,10 @@ impl<T: Clone + Default> Tensor<T> {
     /// Set element at multi-index
     pub fn set(&mut self, indices: &[usize], value: T) {
         if let Some(i) = self.flat_index(indices)
-            && i < self.data.len() {
-                self.data[i] = value;
-            }
+            && i < self.data.len()
+        {
+            self.data[i] = value;
+        }
     }
 
     /// Get raw data

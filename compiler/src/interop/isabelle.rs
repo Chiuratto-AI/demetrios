@@ -211,10 +211,12 @@ impl IsabelleServer {
     fn extract_provers_tried(&self, output: &str) -> Vec<String> {
         let mut provers = vec![];
         for line in output.lines() {
-            if line.contains("Trying") && line.contains("...")
-                && let Some(prover) = line.split_whitespace().nth(1) {
-                    provers.push(prover.to_string());
-                }
+            if line.contains("Trying")
+                && line.contains("...")
+                && let Some(prover) = line.split_whitespace().nth(1)
+            {
+                provers.push(prover.to_string());
+            }
         }
         provers
     }

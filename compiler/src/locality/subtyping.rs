@@ -131,71 +131,74 @@ impl LocalityLattice {
                     LocalityConstraint::FasterOrEqual(l1, l2) => {
                         // l1 <= l2, so if l1 is slower, we need to slow down l2
                         if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2))
-                            && loc1 > loc2 {
-                                // Need to make l2 at least as slow as l1
-                                let new_loc2 = self.join(loc1, loc2);
+                            && loc1 > loc2
+                        {
+                            // Need to make l2 at least as slow as l1
+                            let new_loc2 = self.join(loc1, loc2);
+                            if let Some(param) = params.iter().find(|p| &p.name == l2) {
+                                if param.bound.satisfied_by(new_loc2) {
+                                    solution.insert(l2.clone(), new_loc2);
+                                    changed = true;
+                                } else {
+                                    return None; // Constraint unsatisfiable
+                                }
+                            }
+                        }
+                    }
+                    LocalityConstraint::Faster(l1, l2) => {
+                        // l1 < l2 strictly
+                        if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2))
+                            && loc1 >= loc2
+                        {
+                            // Need to make l2 strictly slower
+                            if let Some(slower) = loc1.slower() {
+                                let new_loc2 = self.join(slower, loc2);
                                 if let Some(param) = params.iter().find(|p| &p.name == l2) {
                                     if param.bound.satisfied_by(new_loc2) {
                                         solution.insert(l2.clone(), new_loc2);
                                         changed = true;
                                     } else {
-                                        return None; // Constraint unsatisfiable
-                                    }
-                                }
-                            }
-                    }
-                    LocalityConstraint::Faster(l1, l2) => {
-                        // l1 < l2 strictly
-                        if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2))
-                            && loc1 >= loc2 {
-                                // Need to make l2 strictly slower
-                                if let Some(slower) = loc1.slower() {
-                                    let new_loc2 = self.join(slower, loc2);
-                                    if let Some(param) = params.iter().find(|p| &p.name == l2) {
-                                        if param.bound.satisfied_by(new_loc2) {
-                                            solution.insert(l2.clone(), new_loc2);
-                                            changed = true;
-                                        } else {
-                                            return None;
-                                        }
-                                    }
-                                } else {
-                                    return None; // Can't go slower than Network
-                                }
-                            }
-                    }
-                    LocalityConstraint::Same(l1, l2) => {
-                        if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2))
-                            && loc1 != loc2 {
-                                // Unify to the slower one
-                                let unified = self.join(loc1, loc2);
-                                let p1 = params.iter().find(|p| &p.name == l1);
-                                let p2 = params.iter().find(|p| &p.name == l2);
-
-                                if let (Some(p1), Some(p2)) = (p1, p2) {
-                                    if p1.bound.satisfied_by(unified)
-                                        && p2.bound.satisfied_by(unified)
-                                    {
-                                        solution.insert(l1.clone(), unified);
-                                        solution.insert(l2.clone(), unified);
-                                        changed = true;
-                                    } else {
                                         return None;
                                     }
                                 }
+                            } else {
+                                return None; // Can't go slower than Network
                             }
+                        }
+                    }
+                    LocalityConstraint::Same(l1, l2) => {
+                        if let (Some(&loc1), Some(&loc2)) = (solution.get(l1), solution.get(l2))
+                            && loc1 != loc2
+                        {
+                            // Unify to the slower one
+                            let unified = self.join(loc1, loc2);
+                            let p1 = params.iter().find(|p| &p.name == l1);
+                            let p2 = params.iter().find(|p| &p.name == l2);
+
+                            if let (Some(p1), Some(p2)) = (p1, p2) {
+                                if p1.bound.satisfied_by(unified) && p2.bound.satisfied_by(unified)
+                                {
+                                    solution.insert(l1.clone(), unified);
+                                    solution.insert(l2.clone(), unified);
+                                    changed = true;
+                                } else {
+                                    return None;
+                                }
+                            }
+                        }
                     }
                     LocalityConstraint::Bound(l, bound) => {
                         if let Some(&loc) = solution.get(l)
-                            && !bound.satisfied_by(loc) {
-                                // Try to find a valid locality
-                                if loc < bound.fastest {
-                                    solution.insert(l.clone(), bound.fastest);
-                                    changed = true;
-                                } else if loc > bound.slowest {
-                                    return None; // Already too slow
-                                }
+                            && !bound.satisfied_by(loc)
+                        {
+                            // Try to find a valid locality
+                            if loc < bound.fastest {
+                                solution.insert(l.clone(), bound.fastest);
+                                changed = true;
+                            } else if loc > bound.slowest {
+                                return None; // Already too slow
                             }
+                        }
                     }
                 }
             }

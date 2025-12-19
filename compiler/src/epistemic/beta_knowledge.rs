@@ -144,8 +144,7 @@ impl DecayModel {
 // =============================================================================
 
 /// Prior distribution type for hierarchical combination
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum PriorType {
     /// Uniform prior Beta(1, 1) - maximum ignorance
     #[default]
@@ -248,7 +247,6 @@ impl PriorType {
         self.to_beta().sample_size()
     }
 }
-
 
 // =============================================================================
 // BetaEpistemicStatus - Full Beta posterior epistemic status

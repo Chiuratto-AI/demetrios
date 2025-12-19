@@ -145,10 +145,11 @@ impl DistanceCache {
 
         // First try read lock
         if let Ok(cache) = self.cache.read()
-            && let Some(entry) = cache.get(&key) {
-                self.stats.l1_hits.fetch_add(1, Ordering::Relaxed);
-                return Some(entry.value);
-            }
+            && let Some(entry) = cache.get(&key)
+        {
+            self.stats.l1_hits.fetch_add(1, Ordering::Relaxed);
+            return Some(entry.value);
+        }
 
         self.stats.misses.fetch_add(1, Ordering::Relaxed);
         None
@@ -283,32 +284,34 @@ impl TieredDistanceCache {
 
         // Check L1 first
         if let Ok(mut l1) = self.l1.write()
-            && let Some(entry) = l1.get_mut(&key) {
-                entry.last_access = clock;
-                entry.access_count = entry.access_count.saturating_add(1);
-                self.stats.l1_hits.fetch_add(1, Ordering::Relaxed);
-                return Some(entry.value);
-            }
+            && let Some(entry) = l1.get_mut(&key)
+        {
+            entry.last_access = clock;
+            entry.access_count = entry.access_count.saturating_add(1);
+            self.stats.l1_hits.fetch_add(1, Ordering::Relaxed);
+            return Some(entry.value);
+        }
 
         // Check L2
         if let Ok(mut l2) = self.l2.write()
-            && let Some(entry) = l2.get_mut(&key) {
-                entry.last_access = clock;
-                entry.access_count = entry.access_count.saturating_add(1);
-                let value = entry.value;
-                let count = entry.access_count;
+            && let Some(entry) = l2.get_mut(&key)
+        {
+            entry.last_access = clock;
+            entry.access_count = entry.access_count.saturating_add(1);
+            let value = entry.value;
+            let count = entry.access_count;
 
-                self.stats.l2_hits.fetch_add(1, Ordering::Relaxed);
+            self.stats.l2_hits.fetch_add(1, Ordering::Relaxed);
 
-                // Promote to L1 if hot enough
-                if count >= self.promotion_threshold {
-                    l2.remove(&key);
-                    drop(l2); // Release L2 lock before acquiring L1
-                    self.promote_to_l1(key, value, clock);
-                }
-
-                return Some(value);
+            // Promote to L1 if hot enough
+            if count >= self.promotion_threshold {
+                l2.remove(&key);
+                drop(l2); // Release L2 lock before acquiring L1
+                self.promote_to_l1(key, value, clock);
             }
+
+            return Some(value);
+        }
 
         self.stats.misses.fetch_add(1, Ordering::Relaxed);
         None

@@ -4,8 +4,7 @@
 //! for practical code formatting.
 
 /// Document IR for formatting
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum Doc {
     /// Empty document
     #[default]
@@ -209,7 +208,6 @@ impl Doc {
         }
     }
 }
-
 
 /// Builder for constructing documents
 pub struct DocBuilder {

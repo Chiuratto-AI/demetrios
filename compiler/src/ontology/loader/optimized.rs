@@ -122,9 +122,10 @@ impl IRIInterner {
     pub fn intern(&self, s: &str) -> InternedIRI {
         // Check if already interned
         if let Ok(indices) = self.indices.read()
-            && let Some(&idx) = indices.get(s) {
-                return idx;
-            }
+            && let Some(&idx) = indices.get(s)
+        {
+            return idx;
+        }
 
         // Intern new string
         let mut strings = self.strings.write().unwrap();

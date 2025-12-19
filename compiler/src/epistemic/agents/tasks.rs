@@ -162,8 +162,7 @@ pub enum EvidenceKind {
 }
 
 /// Strategy for revising knowledge
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RevisionStrategy {
     /// Replace old belief with new
     Replace,
@@ -175,7 +174,6 @@ pub enum RevisionStrategy {
     #[default]
     Bayesian,
 }
-
 
 /// An evolution task
 #[derive(Debug, Clone)]
@@ -234,8 +232,7 @@ pub enum GenerationTarget {
 }
 
 /// How to integrate generated content
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum IntegrationMode {
     /// Don't integrate, just return
     Preview,
@@ -246,10 +243,8 @@ pub enum IntegrationMode {
     Automatic { min_confidence: f64 },
 }
 
-
 /// Task priority levels
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Priority {
     /// Background task, run when idle
     Low = 0,
@@ -261,7 +256,6 @@ pub enum Priority {
     /// Critical, run immediately
     Critical = 3,
 }
-
 
 /// Task execution status
 #[derive(Debug, Clone, PartialEq, Eq)]

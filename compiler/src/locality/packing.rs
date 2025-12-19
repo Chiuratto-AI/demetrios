@@ -398,9 +398,10 @@ impl CacheLinePacker {
         // Add correlation info
         for (a, b, corr) in co_accesses {
             if let Some(root) = parent.get(a.as_str())
-                && let Some(group) = group_map.get_mut(*root) {
-                    group.correlation = group.correlation.max(*corr);
-                }
+                && let Some(group) = group_map.get_mut(*root)
+            {
+                group.correlation = group.correlation.max(*corr);
+            }
         }
 
         group_map.into_values().collect()
@@ -481,10 +482,11 @@ impl CacheLinePacker {
                     // Add all group members
                     for member in &group.fields {
                         if let Some(&member_idx) = name_to_idx.get(member.as_str())
-                            && !used.contains(&member_idx) {
-                                result.push(member_idx);
-                                used.insert(member_idx);
-                            }
+                            && !used.contains(&member_idx)
+                        {
+                            result.push(member_idx);
+                            used.insert(member_idx);
+                        }
                     }
                     break;
                 }

@@ -520,10 +520,7 @@ impl MoveRefinement {
             Predicate::and(self.correct_turn.clone(), self.non_terminal.clone()),
         );
 
-        self.custom
-            .iter()
-            .cloned()
-            .fold(base, Predicate::and)
+        self.custom.iter().cloned().fold(base, Predicate::and)
     }
 }
 

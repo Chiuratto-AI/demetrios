@@ -274,9 +274,10 @@ impl Repl {
                             Ok(hir) => {
                                 // Find the type of the last expression
                                 if let Some(item) = hir.items.last()
-                                    && let hir::HirItem::Function(f) = item {
-                                        println!("Type: {:?}", f.body.ty);
-                                    }
+                                    && let hir::HirItem::Function(f) = item
+                                {
+                                    println!("Type: {:?}", f.body.ty);
+                                }
                             }
                             Err(e) => {
                                 eprintln!("Type error: {}", e);
@@ -297,25 +298,28 @@ impl Repl {
     fn eval_input(&mut self, input: &str) {
         // Check if this is a definition
         if input.starts_with("fn ")
-            && let Some(name) = self.extract_fn_name(input) {
-                self.functions.insert(name.clone(), input.to_string());
-                println!("Defined function: {}", name);
-                return;
-            }
+            && let Some(name) = self.extract_fn_name(input)
+        {
+            self.functions.insert(name.clone(), input.to_string());
+            println!("Defined function: {}", name);
+            return;
+        }
 
         if input.starts_with("struct ")
-            && let Some(name) = self.extract_type_name(input) {
-                self.types.insert(name.clone(), input.to_string());
-                println!("Defined struct: {}", name);
-                return;
-            }
+            && let Some(name) = self.extract_type_name(input)
+        {
+            self.types.insert(name.clone(), input.to_string());
+            println!("Defined struct: {}", name);
+            return;
+        }
 
         if input.starts_with("enum ")
-            && let Some(name) = self.extract_type_name(input) {
-                self.types.insert(name.clone(), input.to_string());
-                println!("Defined enum: {}", name);
-                return;
-            }
+            && let Some(name) = self.extract_type_name(input)
+        {
+            self.types.insert(name.clone(), input.to_string());
+            println!("Defined enum: {}", name);
+            return;
+        }
 
         // Check if this is a let binding
         let is_let = input.starts_with("let ");

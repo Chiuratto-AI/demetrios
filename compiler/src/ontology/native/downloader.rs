@@ -346,9 +346,10 @@ impl OntologyDownloader {
 
             // End of class
             if line.contains("</owl:Class>")
-                && let Some(c) = current.take() {
-                    concepts.push(c);
-                }
+                && let Some(c) = current.take()
+            {
+                concepts.push(c);
+            }
         }
 
         // Don't forget last concept
@@ -404,9 +405,10 @@ impl OntologyDownloader {
                 } else if let Some(def) = line.strip_prefix("def: ") {
                     // Definition is in quotes
                     if let Some(start) = def.find('"')
-                        && let Some(end) = def[start + 1..].find('"') {
-                            c.definition = Some(def[start + 1..start + 1 + end].to_string());
-                        }
+                        && let Some(end) = def[start + 1..].find('"')
+                    {
+                        c.definition = Some(def[start + 1..start + 1 + end].to_string());
+                    }
                 } else if let Some(parent) = line.strip_prefix("is_a: ") {
                     // Format: "CHEBI:12345 ! Parent Name"
                     let parent_id = parent.split_whitespace().next().unwrap_or(parent);
@@ -571,15 +573,17 @@ fn iri_to_curie(iri: &str, default_prefix: &str) -> String {
     // OBO format: http://purl.obolibrary.org/obo/CHEBI_15365
     if iri.contains("obolibrary.org/obo/")
         && let Some(term) = iri.rsplit('/').next()
-            && let Some((prefix, local)) = term.split_once('_') {
-                return format!("{}:{}", prefix.to_uppercase(), local);
-            }
+        && let Some((prefix, local)) = term.split_once('_')
+    {
+        return format!("{}:{}", prefix.to_uppercase(), local);
+    }
 
     // Fallback: use default prefix with hash fragment or last path component
     if let Some(fragment) = iri.split('#').next_back()
-        && fragment != iri {
-            return format!("{}:{}", default_prefix.to_uppercase(), fragment);
-        }
+        && fragment != iri
+    {
+        return format!("{}:{}", default_prefix.to_uppercase(), fragment);
+    }
 
     if let Some(last) = iri.rsplit('/').next() {
         return format!("{}:{}", default_prefix.to_uppercase(), last);

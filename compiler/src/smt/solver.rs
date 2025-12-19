@@ -152,7 +152,6 @@ impl MockSolver {
 
     /// Create a solver initialized from an SMT context
     pub fn from_context(_ctx: &super::formula::SmtContext) -> Self {
-        
         // Context assertions will be checked during check_sat
         Self::new()
     }

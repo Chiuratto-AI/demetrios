@@ -359,9 +359,10 @@ impl StringPool {
     pub fn intern(&self, s: &str) -> Arc<str> {
         // Fast path: check if already interned
         if let Ok(strings) = self.strings.read()
-            && let Some(interned) = strings.get(s) {
-                return Arc::clone(interned);
-            }
+            && let Some(interned) = strings.get(s)
+        {
+            return Arc::clone(interned);
+        }
 
         // Slow path: insert new string
         let mut strings = self.strings.write().unwrap();

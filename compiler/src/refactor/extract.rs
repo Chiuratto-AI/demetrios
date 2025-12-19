@@ -217,10 +217,11 @@ impl ExtractFunction {
 
         // Return type
         if let Some(ref ret_type) = analysis.inferred_return_type
-            && ret_type != "()" {
-                result.push_str(" -> ");
-                result.push_str(ret_type);
-            }
+            && ret_type != "()"
+        {
+            result.push_str(" -> ");
+            result.push_str(ret_type);
+        }
 
         // Body
         result.push_str(" {\n");

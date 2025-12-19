@@ -59,8 +59,7 @@ use std::fmt;
 /// - `Unrestricted`: Can be used any number of times (weakening + contraction allowed)
 /// - `Affine`: Can be used at most once (weakening allowed, no contraction)
 /// - `Linear`: Must be used exactly once (no weakening, no contraction)
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum Linearity {
     /// Linear (1): Must be used exactly once
     ///
@@ -232,7 +231,6 @@ impl fmt::Display for Linearity {
         }
     }
 }
-
 
 impl PartialOrd for Linearity {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {

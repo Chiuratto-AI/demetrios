@@ -207,17 +207,18 @@ impl CompatibilityDiagnostic {
 
         // Add note about distance components
         if let Some(details) = &distance_details
-            && !details.breakdown.is_empty() {
-                let components: Vec<String> = details
-                    .breakdown
-                    .iter()
-                    .map(|c| format!("{}: {:.3}", c.name, c.value * c.weight))
-                    .collect();
-                notes.push(DiagnosticNote {
-                    message: format!("distance breakdown: {}", components.join(", ")),
-                    span: None,
-                });
-            }
+            && !details.breakdown.is_empty()
+        {
+            let components: Vec<String> = details
+                .breakdown
+                .iter()
+                .map(|c| format!("{}: {:.3}", c.name, c.value * c.weight))
+                .collect();
+            notes.push(DiagnosticNote {
+                message: format!("distance breakdown: {}", components.join(", ")),
+                span: None,
+            });
+        }
 
         Self {
             severity,
@@ -252,7 +253,8 @@ impl CompatibilityDiagnostic {
         );
 
         let mut notes = vec![DiagnosticNote {
-            message: "this coercion is close to the threshold; consider using explicit conversion".to_string(),
+            message: "this coercion is close to the threshold; consider using explicit conversion"
+                .to_string(),
             span: None,
         }];
 

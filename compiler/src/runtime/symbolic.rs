@@ -363,9 +363,10 @@ pub fn simplify(expr: &Expr) -> Expr {
             }
             // const / const
             if let (Some(ca), Some(cb)) = (a.as_const(), b.as_const())
-                && cb.abs() > 1e-15 {
-                    return Expr::Const(ca / cb);
-                }
+                && cb.abs() > 1e-15
+            {
+                return Expr::Const(ca / cb);
+            }
             Expr::Div(Rc::new(a), Rc::new(b))
         }
 
@@ -417,18 +418,19 @@ pub fn simplify(expr: &Expr) -> Expr {
 
             // Evaluate constant functions
             if args.len() == 1
-                && let Some(x) = args[0].as_const() {
-                    match name.as_str() {
-                        "sin" => return Expr::Const(x.sin()),
-                        "cos" => return Expr::Const(x.cos()),
-                        "tan" => return Expr::Const(x.tan()),
-                        "exp" => return Expr::Const(x.exp()),
-                        "ln" => return Expr::Const(x.ln()),
-                        "abs" => return Expr::Const(x.abs()),
-                        "sqrt" => return Expr::Const(x.sqrt()),
-                        _ => {}
-                    }
+                && let Some(x) = args[0].as_const()
+            {
+                match name.as_str() {
+                    "sin" => return Expr::Const(x.sin()),
+                    "cos" => return Expr::Const(x.cos()),
+                    "tan" => return Expr::Const(x.tan()),
+                    "exp" => return Expr::Const(x.exp()),
+                    "ln" => return Expr::Const(x.ln()),
+                    "abs" => return Expr::Const(x.abs()),
+                    "sqrt" => return Expr::Const(x.sqrt()),
+                    _ => {}
                 }
+            }
 
             Expr::Fn(name.clone(), args)
         }
@@ -484,29 +486,32 @@ pub fn expand(expr: &Expr) -> Expr {
         Expr::Pow(a, b) => {
             let a_exp = expand(a);
             if let Some(n) = b.as_const()
-                && n > 0.0 && n == n.floor() && n <= 5.0 {
-                    let n = n as usize;
-                    if let Expr::Add(x, y) = &a_exp {
-                        // Binomial expansion
-                        let mut result = Expr::zero();
-                        for k in 0..=n {
-                            let coef = binomial(n, k) as f64;
-                            let x_pow = if n - k == 0 {
-                                Expr::one()
-                            } else {
-                                Expr::Pow(x.clone(), Rc::new(Expr::Const((n - k) as f64)))
-                            };
-                            let y_pow = if k == 0 {
-                                Expr::one()
-                            } else {
-                                Expr::Pow(y.clone(), Rc::new(Expr::Const(k as f64)))
-                            };
-                            let term = Expr::Const(coef) * x_pow * y_pow;
-                            result = result + term;
-                        }
-                        return simplify(&result);
+                && n > 0.0
+                && n == n.floor()
+                && n <= 5.0
+            {
+                let n = n as usize;
+                if let Expr::Add(x, y) = &a_exp {
+                    // Binomial expansion
+                    let mut result = Expr::zero();
+                    for k in 0..=n {
+                        let coef = binomial(n, k) as f64;
+                        let x_pow = if n - k == 0 {
+                            Expr::one()
+                        } else {
+                            Expr::Pow(x.clone(), Rc::new(Expr::Const((n - k) as f64)))
+                        };
+                        let y_pow = if k == 0 {
+                            Expr::one()
+                        } else {
+                            Expr::Pow(y.clone(), Rc::new(Expr::Const(k as f64)))
+                        };
+                        let term = Expr::Const(coef) * x_pow * y_pow;
+                        result = result + term;
                     }
+                    return simplify(&result);
                 }
+            }
             Expr::Pow(Rc::new(a_exp), Rc::new(expand(b)))
         }
 
@@ -703,18 +708,20 @@ pub fn integrate(expr: &Expr, var: &str) -> Option<Expr> {
         Expr::Pow(base, exp) => {
             // Only handle x^n where n is constant
             if let Expr::Symbol(s) = base.as_ref()
-                && s == var && !exp.contains_var(var)
-                    && let Some(n) = exp.as_const() {
-                        if (n + 1.0).abs() > 1e-10 {
-                            return Some(
-                                Expr::Symbol(var.to_string()).pow(Expr::Const(n + 1.0))
-                                    / Expr::Const(n + 1.0),
-                            );
-                        } else {
-                            // ∫x^(-1) dx = ln|x|
-                            return Some(Expr::Symbol(var.to_string()).abs().ln());
-                        }
-                    }
+                && s == var
+                && !exp.contains_var(var)
+                && let Some(n) = exp.as_const()
+            {
+                if (n + 1.0).abs() > 1e-10 {
+                    return Some(
+                        Expr::Symbol(var.to_string()).pow(Expr::Const(n + 1.0))
+                            / Expr::Const(n + 1.0),
+                    );
+                } else {
+                    // ∫x^(-1) dx = ln|x|
+                    return Some(Expr::Symbol(var.to_string()).abs().ln());
+                }
+            }
             return None;
         }
 
@@ -729,18 +736,19 @@ pub fn integrate(expr: &Expr, var: &str) -> Option<Expr> {
             let arg = &args[0];
             // Only handle simple case where arg == var
             if let Expr::Symbol(s) = arg.as_ref()
-                && s == var {
-                    match name.as_str() {
-                        // ∫sin(x) dx = -cos(x)
-                        "sin" => return Some(-Expr::Symbol(var.to_string()).cos()),
-                        // ∫cos(x) dx = sin(x)
-                        "cos" => return Some(Expr::Symbol(var.to_string()).sin()),
-                        // ∫exp(x) dx = exp(x)
-                        "exp" => return Some(Expr::Symbol(var.to_string()).exp()),
-                        // ∫1/x dx = ln|x| (but 1/x is represented differently)
-                        _ => return None,
-                    }
+                && s == var
+            {
+                match name.as_str() {
+                    // ∫sin(x) dx = -cos(x)
+                    "sin" => return Some(-Expr::Symbol(var.to_string()).cos()),
+                    // ∫cos(x) dx = sin(x)
+                    "cos" => return Some(Expr::Symbol(var.to_string()).sin()),
+                    // ∫exp(x) dx = exp(x)
+                    "exp" => return Some(Expr::Symbol(var.to_string()).exp()),
+                    // ∫1/x dx = ln|x| (but 1/x is represented differently)
+                    _ => return None,
                 }
+            }
             return None;
         }
 
@@ -904,31 +912,39 @@ fn extract_polynomial_coeffs(expr: &Expr, var: &str) -> Option<Vec<f64>> {
                 // Handle c * x^n
                 if let Some(c) = a.as_const() {
                     if let Expr::Symbol(s) = b.as_ref()
-                        && s == var {
-                            *coeffs.entry(1).or_insert(0.0) += sign * c;
-                            return true;
-                        }
+                        && s == var
+                    {
+                        *coeffs.entry(1).or_insert(0.0) += sign * c;
+                        return true;
+                    }
                     if let Expr::Pow(base, exp) = b.as_ref()
                         && let (Expr::Symbol(s), Some(n)) = (base.as_ref(), exp.as_const())
-                            && s == var && n >= 0.0 && n == n.floor() {
-                                *coeffs.entry(n as usize).or_insert(0.0) += sign * c;
-                                return true;
-                            }
+                        && s == var
+                        && n >= 0.0
+                        && n == n.floor()
+                    {
+                        *coeffs.entry(n as usize).or_insert(0.0) += sign * c;
+                        return true;
+                    }
                 }
                 if let Some(c) = b.as_const()
                     && let Expr::Symbol(s) = a.as_ref()
-                        && s == var {
-                            *coeffs.entry(1).or_insert(0.0) += sign * c;
-                            return true;
-                        }
+                    && s == var
+                {
+                    *coeffs.entry(1).or_insert(0.0) += sign * c;
+                    return true;
+                }
                 false
             }
             Expr::Pow(base, exp) => {
                 if let (Expr::Symbol(s), Some(n)) = (base.as_ref(), exp.as_const())
-                    && s == var && n >= 0.0 && n == n.floor() {
-                        *coeffs.entry(n as usize).or_insert(0.0) += sign;
-                        return true;
-                    }
+                    && s == var
+                    && n >= 0.0
+                    && n == n.floor()
+                {
+                    *coeffs.entry(n as usize).or_insert(0.0) += sign;
+                    return true;
+                }
                 false
             }
             _ => false,

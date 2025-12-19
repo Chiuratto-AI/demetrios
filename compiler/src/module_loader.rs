@@ -174,12 +174,13 @@ fn find_stdlib_path() -> PathBuf {
     }
 
     if let Ok(exe) = std::env::current_exe()
-        && let Some(parent) = exe.parent() {
-            let stdlib = parent.join("stdlib");
-            if stdlib.exists() {
-                return stdlib;
-            }
+        && let Some(parent) = exe.parent()
+    {
+        let stdlib = parent.join("stdlib");
+        if stdlib.exists() {
+            return stdlib;
         }
+    }
 
     PathBuf::from("/usr/share/demetrios/stdlib")
 }
@@ -926,9 +927,10 @@ fn rewrite_type_expr(ty: &mut TypeExpr, prefixes: &[Vec<String>]) {
                 rewrite_expr(&mut validity.condition, prefixes);
             }
             if let Some(prov) = provenance
-                && let Some(expr) = &mut prov.source {
-                    rewrite_expr(expr, prefixes);
-                }
+                && let Some(expr) = &mut prov.source
+            {
+                rewrite_expr(expr, prefixes);
+            }
         }
         TypeExpr::Quantity { numeric_type, .. } => rewrite_type_expr(numeric_type, prefixes),
         TypeExpr::Tensor {
@@ -1645,9 +1647,10 @@ fn annotate_type_expr(
                 annotate_expr(&mut v.condition, prefixes, sm, im);
             }
             if let Some(p) = provenance
-                && let Some(src) = &mut p.source {
-                    annotate_expr(src, prefixes, sm, im);
-                }
+                && let Some(src) = &mut p.source
+            {
+                annotate_expr(src, prefixes, sm, im);
+            }
         }
         TypeExpr::Quantity { numeric_type, .. } => {
             annotate_type_expr(numeric_type, prefixes, sm, im)

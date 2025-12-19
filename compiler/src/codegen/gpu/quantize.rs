@@ -113,8 +113,7 @@ impl fmt::Display for QuantDtype {
 // ============================================================================
 
 /// Quantization scheme determining how scale/zero_point are computed
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum QuantScheme {
     /// Symmetric quantization: zero_point = 0
     /// scale = max(|min|, |max|) / qmax
@@ -168,7 +167,6 @@ impl QuantScheme {
         }
     }
 }
-
 
 impl fmt::Display for QuantScheme {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

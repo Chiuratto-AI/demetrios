@@ -232,20 +232,20 @@ impl PolicyValue {
 
         for i in 0..G::num_actions() {
             if let Some(action) = G::index_to_action(i)
-                && mask[i] > 0.0 {
-                    let prob = (exp_logits[i] / masked_sum.max(1e-8)) as f64;
-                    policy.insert(action.clone(), prob);
+                && mask[i] > 0.0
+            {
+                let prob = (exp_logits[i] / masked_sum.max(1e-8)) as f64;
+                policy.insert(action.clone(), prob);
 
-                    // Create epistemic from alpha/beta if available
-                    let beta_conf = if let (Some(alphas), Some(betas)) =
-                        (&self.policy_alpha, &self.policy_beta)
-                    {
+                // Create epistemic from alpha/beta if available
+                let beta_conf =
+                    if let (Some(alphas), Some(betas)) = (&self.policy_alpha, &self.policy_beta) {
                         BetaConfidence::new(alphas[i] as f64, betas[i] as f64)
                     } else {
                         BetaConfidence::from_confidence(prob, 5.0)
                     };
-                    policy_epistemic.insert(action, beta_conf);
-                }
+                policy_epistemic.insert(action, beta_conf);
+            }
         }
 
         // Value epistemic

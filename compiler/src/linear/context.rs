@@ -12,8 +12,7 @@ use super::linear_types::LinearType;
 use super::modality::Modality;
 
 /// Usage count for tracking how many times a variable has been used
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum UsageCount {
     /// Not yet used
     #[default]
@@ -51,7 +50,6 @@ impl UsageCount {
         }
     }
 }
-
 
 impl fmt::Display for UsageCount {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

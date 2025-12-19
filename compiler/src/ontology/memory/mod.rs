@@ -183,49 +183,55 @@ impl TieredOntologyMemory {
         // Try L1 first (hot cache)
         if let Some(term) = self.l1.get(iri) {
             if self.config.collect_stats
-                && let Ok(mut stats) = self.stats.write() {
-                    stats.l1_hits += 1;
-                }
+                && let Ok(mut stats) = self.stats.write()
+            {
+                stats.l1_hits += 1;
+            }
             return Some(term);
         }
 
         // L1 miss
         if self.config.collect_stats
-            && let Ok(mut stats) = self.stats.write() {
-                stats.l1_misses += 1;
-            }
+            && let Ok(mut stats) = self.stats.write()
+        {
+            stats.l1_misses += 1;
+        }
 
         // Try L2 (warm cache)
         if let Some(term) = self.l2.get(iri) {
             if self.config.collect_stats
-                && let Ok(mut stats) = self.stats.write() {
-                    stats.l2_hits += 1;
-                }
+                && let Ok(mut stats) = self.stats.write()
+            {
+                stats.l2_hits += 1;
+            }
             // Consider promotion to L1
             self.maybe_promote_to_l1(iri, &term);
             return Some(term);
         }
 
         if self.config.collect_stats
-            && let Ok(mut stats) = self.stats.write() {
-                stats.l2_misses += 1;
-            }
+            && let Ok(mut stats) = self.stats.write()
+        {
+            stats.l2_misses += 1;
+        }
 
         // Try L3 (cold store)
         if let Some(term) = self.l3.get(iri) {
             if self.config.collect_stats
-                && let Ok(mut stats) = self.stats.write() {
-                    stats.l3_hits += 1;
-                }
+                && let Ok(mut stats) = self.stats.write()
+            {
+                stats.l3_hits += 1;
+            }
             // Promote to L2
             self.promote_to_l2(iri, &term);
             return Some(term);
         }
 
         if self.config.collect_stats
-            && let Ok(mut stats) = self.stats.write() {
-                stats.l3_misses += 1;
-            }
+            && let Ok(mut stats) = self.stats.write()
+        {
+            stats.l3_misses += 1;
+        }
 
         None
     }
@@ -240,9 +246,10 @@ impl TieredOntologyMemory {
                 // Demote evicted entry to L2
                 self.l2.insert(evicted.0, evicted.1);
                 if self.config.collect_stats
-                    && let Ok(mut stats) = self.stats.write() {
-                        stats.demotions_l1_to_l2 += 1;
-                    }
+                    && let Ok(mut stats) = self.stats.write()
+                {
+                    stats.demotions_l1_to_l2 += 1;
+                }
             }
         } else {
             // Cold terms go to L3
@@ -312,9 +319,10 @@ impl TieredOntologyMemory {
             self.l2.remove(iri);
 
             if self.config.collect_stats
-                && let Ok(mut stats) = self.stats.write() {
-                    stats.promotions_l2_to_l1 += 1;
-                }
+                && let Ok(mut stats) = self.stats.write()
+            {
+                stats.promotions_l2_to_l1 += 1;
+            }
         }
     }
 
@@ -324,25 +332,28 @@ impl TieredOntologyMemory {
             // L2 is full, demote to L3
             self.l3.insert(evicted.0, evicted.1);
             if self.config.collect_stats
-                && let Ok(mut stats) = self.stats.write() {
-                    stats.demotions_l2_to_l3 += 1;
-                }
+                && let Ok(mut stats) = self.stats.write()
+            {
+                stats.demotions_l2_to_l3 += 1;
+            }
         }
 
         if self.config.collect_stats
-            && let Ok(mut stats) = self.stats.write() {
-                stats.promotions_l3_to_l2 += 1;
-            }
+            && let Ok(mut stats) = self.stats.write()
+        {
+            stats.promotions_l3_to_l2 += 1;
+        }
     }
 
     // Internal: update size statistics
     fn update_size_stats(&self) {
         if self.config.collect_stats
-            && let Ok(mut stats) = self.stats.write() {
-                stats.l1_size = self.l1.len();
-                stats.l2_size = self.l2.len();
-                stats.l3_size = self.l3.len();
-            }
+            && let Ok(mut stats) = self.stats.write()
+        {
+            stats.l1_size = self.l1.len();
+            stats.l2_size = self.l2.len();
+            stats.l3_size = self.l3.len();
+        }
     }
 }
 

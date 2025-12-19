@@ -352,17 +352,18 @@ impl WatchMode {
 
             // Try to read without blocking
             if let Ok(n) = stdin.read(&mut buf)
-                && n > 0 {
-                    return Some(match buf[0] {
-                        b'q' | 27 => KeyAction::Quit,    // 27 = ESC
-                        b'r' | 13 => KeyAction::Rebuild, // 13 = Enter
-                        b'p' => KeyAction::Pause,
-                        b'c' => KeyAction::Clear,
-                        b'h' | b'?' => KeyAction::Help,
-                        b's' => KeyAction::Stats,
-                        _ => KeyAction::None,
-                    });
-                }
+                && n > 0
+            {
+                return Some(match buf[0] {
+                    b'q' | 27 => KeyAction::Quit,    // 27 = ESC
+                    b'r' | 13 => KeyAction::Rebuild, // 13 = Enter
+                    b'p' => KeyAction::Pause,
+                    b'c' => KeyAction::Clear,
+                    b'h' | b'?' => KeyAction::Help,
+                    b's' => KeyAction::Stats,
+                    _ => KeyAction::None,
+                });
+            }
         }
 
         None
@@ -427,10 +428,11 @@ impl WatchMode {
 
         // Run command if configured
         if result.success
-            && let Some(ref cmd) = self.config.exec {
-                *self.state.lock().unwrap() = WatchState::Running;
-                self.run_command(cmd)?;
-            }
+            && let Some(ref cmd) = self.config.exec
+        {
+            *self.state.lock().unwrap() = WatchState::Running;
+            self.run_command(cmd)?;
+        }
 
         *self.state.lock().unwrap() = WatchState::Idle;
         self.print_status();

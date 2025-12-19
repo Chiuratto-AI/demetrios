@@ -407,9 +407,10 @@ pub fn cmd_doc_book(output: Option<PathBuf>) -> Result<()> {
             if entry.extension().is_some_and(|e| e == "d") {
                 let content = std::fs::read_to_string(&entry)?;
                 if let Ok(tokens) = crate::lexer::lex(&content)
-                    && let Ok(ast) = crate::parser::parse(&tokens, &content) {
-                        ast_items.push(ast);
-                    }
+                    && let Ok(ast) = crate::parser::parse(&tokens, &content)
+                {
+                    ast_items.push(ast);
+                }
             }
         }
     }
@@ -477,9 +478,10 @@ pub fn cmd_doctest(filter: Option<String>, verbose: bool) -> Result<()> {
             if entry.extension().is_some_and(|e| e == "d") {
                 let content = std::fs::read_to_string(&entry)?;
                 if let Ok(tokens) = crate::lexer::lex(&content)
-                    && let Ok(ast) = crate::parser::parse(&tokens, &content) {
-                        ast_items.push(ast);
-                    }
+                    && let Ok(ast) = crate::parser::parse(&tokens, &content)
+                {
+                    ast_items.push(ast);
+                }
             }
         }
     }
@@ -549,9 +551,10 @@ pub fn cmd_doc_coverage() -> Result<()> {
             if entry.extension().is_some_and(|e| e == "d") {
                 let content = std::fs::read_to_string(&entry)?;
                 if let Ok(tokens) = crate::lexer::lex(&content)
-                    && let Ok(ast) = crate::parser::parse(&tokens, &content) {
-                        ast_items.push(ast);
-                    }
+                    && let Ok(ast) = crate::parser::parse(&tokens, &content)
+                {
+                    ast_items.push(ast);
+                }
             }
         }
     }

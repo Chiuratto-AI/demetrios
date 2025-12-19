@@ -317,24 +317,24 @@ pub fn jordan_wigner_excitation(excitation: &FermionString) -> Vec<PauliString> 
     if excitation.operators.len() == 2
         && let (FermionOp::Create(p), FermionOp::Annihilate(q)) =
             (excitation.operators[0], excitation.operators[1])
-        {
-            let (lo, hi) = if p < q { (p, q) } else { (q, p) };
+    {
+        let (lo, hi) = if p < q { (p, q) } else { (q, p) };
 
-            // T - T† gives: (i/2)(X_p Y_q - Y_p X_q) with Z-string between
-            // After simplification for UCCSD:
-            let mut paulis1: Vec<(usize, PauliType)> =
-                ((lo + 1)..hi).map(|k| (k, PauliType::Z)).collect();
-            paulis1.insert(0, (lo, PauliType::X));
-            paulis1.push((hi, PauliType::Y));
+        // T - T† gives: (i/2)(X_p Y_q - Y_p X_q) with Z-string between
+        // After simplification for UCCSD:
+        let mut paulis1: Vec<(usize, PauliType)> =
+            ((lo + 1)..hi).map(|k| (k, PauliType::Z)).collect();
+        paulis1.insert(0, (lo, PauliType::X));
+        paulis1.push((hi, PauliType::Y));
 
-            let mut paulis2: Vec<(usize, PauliType)> =
-                ((lo + 1)..hi).map(|k| (k, PauliType::Z)).collect();
-            paulis2.insert(0, (lo, PauliType::Y));
-            paulis2.push((hi, PauliType::X));
+        let mut paulis2: Vec<(usize, PauliType)> =
+            ((lo + 1)..hi).map(|k| (k, PauliType::Z)).collect();
+        paulis2.insert(0, (lo, PauliType::Y));
+        paulis2.push((hi, PauliType::X));
 
-            result.push(PauliString::with_imag(paulis1, 0.0, 0.5));
-            result.push(PauliString::with_imag(paulis2, 0.0, -0.5));
-        }
+        result.push(PauliString::with_imag(paulis1, 0.0, 0.5));
+        result.push(PauliString::with_imag(paulis2, 0.0, -0.5));
+    }
 
     // For double excitation (4 operators) - more complex
     if excitation.operators.len() == 4 {

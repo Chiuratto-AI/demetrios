@@ -419,11 +419,12 @@ impl HierarchyGraph {
 
         while let Some(current) = queue.pop_front() {
             if let Some(iri) = self.get_iri(current)
-                && descendants.insert(iri.clone()) {
-                    for child in self.graph.neighbors_directed(current, Direction::Incoming) {
-                        queue.push_back(child);
-                    }
+                && descendants.insert(iri.clone())
+            {
+                for child in self.graph.neighbors_directed(current, Direction::Incoming) {
+                    queue.push_back(child);
                 }
+            }
         }
 
         descendants

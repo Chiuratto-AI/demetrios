@@ -136,9 +136,10 @@ impl CacheInstrumentation {
 
             // Evict if full
             if self.cache.len() >= self.cache_size
-                && let Some(evicted) = self.cache.pop_back() {
-                    self.in_cache.remove(&evicted);
-                }
+                && let Some(evicted) = self.cache.pop_back()
+            {
+                self.in_cache.remove(&evicted);
+            }
 
             // Add to cache
             self.cache.push_front(concept.to_string());
@@ -230,23 +231,25 @@ pub fn simulate_with_clustering(
 
         // Prefetch nearby concepts from same cluster
         if let Some(layout) = plan.get(concept)
-            && let Some(cluster) = cluster_concepts.get(&layout.cluster_id) {
-                // Prefetch concepts near this one in the cluster
-                let idx = cluster.iter().position(|c| c == concept).unwrap_or(0);
-                let start = idx.saturating_sub(prefetch_size / 2);
-                let end = (idx + prefetch_size / 2 + 1).min(cluster.len());
+            && let Some(cluster) = cluster_concepts.get(&layout.cluster_id)
+        {
+            // Prefetch concepts near this one in the cluster
+            let idx = cluster.iter().position(|c| c == concept).unwrap_or(0);
+            let start = idx.saturating_sub(prefetch_size / 2);
+            let end = (idx + prefetch_size / 2 + 1).min(cluster.len());
 
-                for i in start..end {
-                    if cluster[i] != *concept {
-                        // Prefetch doesn't count as access for stats
-                        if !cache.in_cache.contains_key(&cluster[i])
-                            && cache.cache.len() < cache.cache_size {
-                                cache.cache.push_back(cluster[i].clone());
-                                cache.in_cache.insert(cluster[i].clone(), ());
-                            }
+            for i in start..end {
+                if cluster[i] != *concept {
+                    // Prefetch doesn't count as access for stats
+                    if !cache.in_cache.contains_key(&cluster[i])
+                        && cache.cache.len() < cache.cache_size
+                    {
+                        cache.cache.push_back(cluster[i].clone());
+                        cache.in_cache.insert(cluster[i].clone(), ());
                     }
                 }
             }
+        }
     }
 
     cache.finish()

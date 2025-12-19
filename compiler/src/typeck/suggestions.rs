@@ -244,27 +244,29 @@ impl SuggestionEngine {
         if let HirType::Ontology {
             term: found_term, ..
         } = found
-            && let Some(corrections) = self.common_typos.get(found_term) {
-                for correction in corrections {
-                    // Check if correction matches expected
-                    if let HirType::Ontology {
-                        namespace: ns_e,
-                        term: t_e,
-                    } = expected
-                        && t_e == correction {
-                            suggestions.push(ScoredSuggestion {
-                                suggested_type: HirType::Ontology {
-                                    namespace: ns_e.clone(),
-                                    term: correction.clone(),
-                                },
-                                score: 0.95, // High score for typo fix
-                                distance: 0.02,
-                                reason: format!("did you mean `{}`? (typo)", correction),
-                                category: SuggestionCategory::LexicallySimilar,
-                            });
-                        }
+            && let Some(corrections) = self.common_typos.get(found_term)
+        {
+            for correction in corrections {
+                // Check if correction matches expected
+                if let HirType::Ontology {
+                    namespace: ns_e,
+                    term: t_e,
+                } = expected
+                    && t_e == correction
+                {
+                    suggestions.push(ScoredSuggestion {
+                        suggested_type: HirType::Ontology {
+                            namespace: ns_e.clone(),
+                            term: correction.clone(),
+                        },
+                        score: 0.95, // High score for typo fix
+                        distance: 0.02,
+                        reason: format!("did you mean `{}`? (typo)", correction),
+                        category: SuggestionCategory::LexicallySimilar,
+                    });
                 }
             }
+        }
 
         suggestions
     }
@@ -283,27 +285,29 @@ impl SuggestionEngine {
         {
             // Check if found is an alias of expected
             if let Some(canonical) = self.type_aliases.get(t_f)
-                && canonical == t_e {
-                    suggestions.push(ScoredSuggestion {
-                        suggested_type: expected.clone(),
-                        score: 0.90,
-                        distance: 0.05,
-                        reason: format!("`{}` is an alias for `{}`", t_f, t_e),
-                        category: SuggestionCategory::LexicallySimilar,
-                    });
-                }
+                && canonical == t_e
+            {
+                suggestions.push(ScoredSuggestion {
+                    suggested_type: expected.clone(),
+                    score: 0.90,
+                    distance: 0.05,
+                    reason: format!("`{}` is an alias for `{}`", t_f, t_e),
+                    category: SuggestionCategory::LexicallySimilar,
+                });
+            }
 
             // Check reverse: if expected is an alias
             if let Some(canonical) = self.type_aliases.get(t_e)
-                && canonical == t_f {
-                    suggestions.push(ScoredSuggestion {
-                        suggested_type: found.clone(),
-                        score: 0.90,
-                        distance: 0.05,
-                        reason: format!("`{}` is an alias for `{}`", t_e, t_f),
-                        category: SuggestionCategory::LexicallySimilar,
-                    });
-                }
+                && canonical == t_f
+            {
+                suggestions.push(ScoredSuggestion {
+                    suggested_type: found.clone(),
+                    score: 0.90,
+                    distance: 0.05,
+                    reason: format!("`{}` is an alias for `{}`", t_e, t_f),
+                    category: SuggestionCategory::LexicallySimilar,
+                });
+            }
         }
 
         suggestions

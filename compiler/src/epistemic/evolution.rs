@@ -637,10 +637,7 @@ impl EvolutionEngine {
         cumulative += promote_belief;
         if r < cumulative && !state.beliefs.is_empty() {
             // Find high-confidence belief
-            if let Some((id, _)) = state
-                .beliefs
-                .iter().find(|(_, b)| b.confidence > 0.9)
-            {
+            if let Some((id, _)) = state.beliefs.iter().find(|(_, b)| b.confidence > 0.9) {
                 return Some(Mutation {
                     mutation_type: MutationType::PromoteBelief {
                         belief_id: id.clone(),

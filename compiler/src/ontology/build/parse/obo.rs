@@ -181,18 +181,20 @@ impl<'a, R: BufRead> OboIterator<'a, R> {
                     "def" => {
                         // Extract definition from quotes: "definition text" [refs]
                         if let Some(start) = value.find('"')
-                            && let Some(end) = value[start + 1..].find('"') {
-                                stanza.def = Some(value[start + 1..start + 1 + end].to_string());
-                            }
+                            && let Some(end) = value[start + 1..].find('"')
+                        {
+                            stanza.def = Some(value[start + 1..start + 1 + end].to_string());
+                        }
                     }
                     "synonym" => {
                         // Extract synonym from quotes
                         if let Some(start) = value.find('"')
-                            && let Some(end) = value[start + 1..].find('"') {
-                                stanza
-                                    .synonyms
-                                    .push(value[start + 1..start + 1 + end].to_string());
-                            }
+                            && let Some(end) = value[start + 1..].find('"')
+                        {
+                            stanza
+                                .synonyms
+                                .push(value[start + 1..start + 1 + end].to_string());
+                        }
                     }
                     "is_a" => {
                         // is_a: PARENT_ID ! optional comment

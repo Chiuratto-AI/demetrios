@@ -890,14 +890,13 @@ impl From<&MerkleProvenanceDAG> for Provenance {
             let path = dag.path_to(&head.id);
             for id in path {
                 if let Some(node) = dag.get(&id)
-                    && node.operation.kind() == OperationKind::Transformation {
-                        let transform = Transformation::new(
-                            node.operation.name(),
-                            TransformationKind::Function,
-                        )
-                        .with_confidence(node.operation.confidence_factor());
-                        trace = trace.append(transform);
-                    }
+                    && node.operation.kind() == OperationKind::Transformation
+                {
+                    let transform =
+                        Transformation::new(node.operation.name(), TransformationKind::Function)
+                            .with_confidence(node.operation.confidence_factor());
+                    trace = trace.append(transform);
+                }
             }
         }
 

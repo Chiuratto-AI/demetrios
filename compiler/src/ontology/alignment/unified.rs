@@ -181,10 +181,12 @@ impl AlignmentIndex {
         }
 
         // 4. Transitive (if enabled and no direct mapping found)
-        if self.transitive_enabled && results.is_empty()
-            && let Some(alignment) = self.find_transitive_alignment(source, target) {
-                results.push((alignment, AlignmentMethod::Transitive));
-            }
+        if self.transitive_enabled
+            && results.is_empty()
+            && let Some(alignment) = self.find_transitive_alignment(source, target)
+        {
+            results.push((alignment, AlignmentMethod::Transitive));
+        }
 
         if results.is_empty() {
             return None;
@@ -241,29 +243,31 @@ impl AlignmentIndex {
     /// Find CUI-based alignment
     fn find_cui_alignment(&self, source: &IRI, target: &IRI) -> Option<Alignment> {
         if let Some((distance, confidence, cui)) = self.cui_bridge.cui_distance(source, target)
-            && confidence >= MIN_MAPPING_CONFIDENCE {
-                return Some(Alignment::via_cui(
-                    source.clone(),
-                    target.clone(),
-                    cui,
-                    confidence,
-                ));
-            }
+            && confidence >= MIN_MAPPING_CONFIDENCE
+        {
+            return Some(Alignment::via_cui(
+                source.clone(),
+                target.clone(),
+                cui,
+                confidence,
+            ));
+        }
         None
     }
 
     /// Find LOOM-based alignment
     fn find_loom_alignment(&self, source: &IRI, target: &IRI) -> Option<Alignment> {
         if let Some((distance, confidence)) = self.loom.loom_distance(source, target)
-            && confidence >= MIN_MAPPING_CONFIDENCE {
-                return Some(Alignment::direct(
-                    source.clone(),
-                    target.clone(),
-                    MappingPredicate::CloseMatch,
-                    confidence,
-                    AlignmentSource::LOOM,
-                ));
-            }
+            && confidence >= MIN_MAPPING_CONFIDENCE
+        {
+            return Some(Alignment::direct(
+                source.clone(),
+                target.clone(),
+                MappingPredicate::CloseMatch,
+                confidence,
+                AlignmentSource::LOOM,
+            ));
+        }
         None
     }
 

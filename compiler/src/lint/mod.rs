@@ -19,8 +19,7 @@ use crate::ast::{
 use crate::common::Span;
 
 /// Lint level
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum LintLevel {
     /// Lint is allowed (disabled)
     Allow,
@@ -35,7 +34,6 @@ pub enum LintLevel {
     /// Lint produces an error and cannot be overridden
     Forbid,
 }
-
 
 impl std::fmt::Display for LintLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -707,21 +705,22 @@ impl Linter {
             ast::Item::Global(g) if g.is_const => {
                 // Check naming convention (SCREAMING_SNAKE_CASE) for constants
                 if let Pattern::Binding { name, .. } = &g.pattern
-                    && !self.is_screaming_snake_case(name) {
-                        let mut diag = LintDiagnostic::new(
-                            "naming_convention",
-                            self.config
-                                .get_level("naming_convention")
-                                .unwrap_or(LintLevel::Warn),
-                            format!("constant `{}` should be SCREAMING_SNAKE_CASE", name),
-                            g.span,
-                        );
-                        diag.help.push(format!(
-                            "rename to `{}`",
-                            self.to_screaming_snake_case(name)
-                        ));
-                        ctx.diagnostics.push(diag);
-                    }
+                    && !self.is_screaming_snake_case(name)
+                {
+                    let mut diag = LintDiagnostic::new(
+                        "naming_convention",
+                        self.config
+                            .get_level("naming_convention")
+                            .unwrap_or(LintLevel::Warn),
+                        format!("constant `{}` should be SCREAMING_SNAKE_CASE", name),
+                        g.span,
+                    );
+                    diag.help.push(format!(
+                        "rename to `{}`",
+                        self.to_screaming_snake_case(name)
+                    ));
+                    ctx.diagnostics.push(diag);
+                }
             }
             _ => {}
         }

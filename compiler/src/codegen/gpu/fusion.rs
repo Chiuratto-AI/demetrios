@@ -924,9 +924,10 @@ impl FusionAnalysis {
 
         for node in &graph.nodes {
             if let GraphNodeType::Kernel(kernel_node) = &node.node_type
-                && let Some(&kernel_id) = self.kernel_registry.get(&kernel_node.kernel_name) {
-                    node_to_kernel.insert(node.id, kernel_id);
-                }
+                && let Some(&kernel_id) = self.kernel_registry.get(&kernel_node.kernel_name)
+            {
+                node_to_kernel.insert(node.id, kernel_id);
+            }
         }
 
         // Build edges from graph dependencies
@@ -957,20 +958,22 @@ impl FusionAnalysis {
 
         // Check if from_node writes to a buffer that to_node reads
         if let GraphNodeType::Kernel(from_kernel) = &from_node.node_type
-            && let GraphNodeType::Kernel(to_kernel) = &to_node.node_type {
-                // Find common buffer (simplified: check if any buffer is shared)
-                for from_arg in &from_kernel.args {
-                    for to_arg in &to_kernel.args {
-                        if let (
-                            super::graph::GraphKernelArg::Buffer(buf1),
-                            super::graph::GraphKernelArg::Buffer(buf2),
-                        ) = (from_arg, to_arg)
-                            && buf1 == buf2 {
-                                return Some(*buf1);
-                            }
+            && let GraphNodeType::Kernel(to_kernel) = &to_node.node_type
+        {
+            // Find common buffer (simplified: check if any buffer is shared)
+            for from_arg in &from_kernel.args {
+                for to_arg in &to_kernel.args {
+                    if let (
+                        super::graph::GraphKernelArg::Buffer(buf1),
+                        super::graph::GraphKernelArg::Buffer(buf2),
+                    ) = (from_arg, to_arg)
+                        && buf1 == buf2
+                    {
+                        return Some(*buf1);
                     }
                 }
             }
+        }
 
         None
     }
@@ -1319,26 +1322,27 @@ impl FusionAnalysis {
 
         for &kernel_id in &kernels {
             if let Some(name) = self.kernel_names.get(&kernel_id)
-                && let Some(kernel) = module.kernels.get(name) {
-                    // Map all values
-                    for block in &kernel.blocks {
-                        for (vid, _) in &block.instructions {
-                            value_map.insert((kernel_id, *vid), ValueId(next_value_id));
-                            next_value_id += 1;
-                        }
-                    }
-
-                    // Map all blocks
-                    for block in &kernel.blocks {
-                        block_map.insert((kernel_id, block.id), BlockId(next_block_id));
-                        next_block_id += 1;
-                    }
-
-                    // Add barrier point between kernels (except after last)
-                    if Some(kernel_id) != last_kernel {
-                        barrier_points.push(BlockId(next_block_id - 1));
+                && let Some(kernel) = module.kernels.get(name)
+            {
+                // Map all values
+                for block in &kernel.blocks {
+                    for (vid, _) in &block.instructions {
+                        value_map.insert((kernel_id, *vid), ValueId(next_value_id));
+                        next_value_id += 1;
                     }
                 }
+
+                // Map all blocks
+                for block in &kernel.blocks {
+                    block_map.insert((kernel_id, block.id), BlockId(next_block_id));
+                    next_block_id += 1;
+                }
+
+                // Add barrier point between kernels (except after last)
+                if Some(kernel_id) != last_kernel {
+                    barrier_points.push(BlockId(next_block_id - 1));
+                }
+            }
         }
 
         // Update the group
@@ -1374,13 +1378,14 @@ impl FusionAnalysis {
 
         for &kernel_id in kernels {
             if let Some(name) = self.kernel_names.get(&kernel_id)
-                && let Some(kernel) = module.kernels.get(name) {
-                    for decl in &kernel.shared_memory {
-                        let size = decl.elem_type.size_bytes() * decl.size;
-                        let prefix_name = format!("{}_{}", kernel_id.0, decl.name);
-                        layout.add(prefix_name, size, decl.align);
-                    }
+                && let Some(kernel) = module.kernels.get(name)
+            {
+                for decl in &kernel.shared_memory {
+                    let size = decl.elem_type.size_bytes() * decl.size;
+                    let prefix_name = format!("{}_{}", kernel_id.0, decl.name);
+                    layout.add(prefix_name, size, decl.align);
                 }
+            }
         }
 
         layout
@@ -1501,9 +1506,10 @@ impl FusionTransformer {
         // Copy unfused kernels
         for kernel_id in &plan.unfused_kernels {
             if let Some(name) = self.kernel_names.get(kernel_id)
-                && let Some(kernel) = module.kernels.get(name) {
-                    result.add_kernel(kernel.clone());
-                }
+                && let Some(kernel) = module.kernels.get(name)
+            {
+                result.add_kernel(kernel.clone());
+            }
         }
 
         // Copy device functions
@@ -1531,14 +1537,15 @@ impl FusionTransformer {
         let mut param_set: FxHashSet<String> = FxHashSet::default();
         for &kernel_id in &group.kernels {
             if let Some(name) = self.kernel_names.get(&kernel_id)
-                && let Some(kernel) = module.kernels.get(name) {
-                    for param in &kernel.params {
-                        if !param_set.contains(&param.name) {
-                            fused.add_param(param.clone());
-                            param_set.insert(param.name.clone());
-                        }
+                && let Some(kernel) = module.kernels.get(name)
+            {
+                for param in &kernel.params {
+                    if !param_set.contains(&param.name) {
+                        fused.add_param(param.clone());
+                        param_set.insert(param.name.clone());
                     }
                 }
+            }
         }
 
         // Add shared memory from layout
@@ -1555,21 +1562,23 @@ impl FusionTransformer {
         let mut all_blocks = Vec::new();
         for (i, &kernel_id) in group.kernels.iter().enumerate() {
             if let Some(name) = self.kernel_names.get(&kernel_id)
-                && let Some(kernel) = module.kernels.get(name) {
-                    let blocks = self.clone_kernel_blocks(kernel, kernel_id, group)?;
-                    all_blocks.extend(blocks);
+                && let Some(kernel) = module.kernels.get(name)
+            {
+                let blocks = self.clone_kernel_blocks(kernel, kernel_id, group)?;
+                all_blocks.extend(blocks);
 
-                    // Insert barrier between kernels (except after last)
-                    if i < group.kernels.len() - 1
-                        && let Some(&barrier_block) = group.barrier_points.get(i) {
-                            // Add sync instruction to the last block of this kernel
-                            if let Some(last_block) = all_blocks.last_mut() {
-                                // Insert sync before terminator
-                                let sync_id = ValueId(last_block.instructions.len() as u32 + 10000);
-                                last_block.instructions.push((sync_id, GpuOp::SyncThreads));
-                            }
-                        }
+                // Insert barrier between kernels (except after last)
+                if i < group.kernels.len() - 1
+                    && let Some(&barrier_block) = group.barrier_points.get(i)
+                {
+                    // Add sync instruction to the last block of this kernel
+                    if let Some(last_block) = all_blocks.last_mut() {
+                        // Insert sync before terminator
+                        let sync_id = ValueId(last_block.instructions.len() as u32 + 10000);
+                        last_block.instructions.push((sync_id, GpuOp::SyncThreads));
+                    }
                 }
+            }
         }
 
         // Connect control flow between kernel sections
@@ -1778,9 +1787,10 @@ impl FusionTransformer {
         // Replace ReturnVoid with branches to next kernel's entry
         for (exit_idx, entry_block) in kernel_exits.iter().zip(kernel_entries.iter().skip(1)) {
             if let Some(block) = blocks.get_mut(*exit_idx)
-                && matches!(block.terminator, GpuTerminator::ReturnVoid) {
-                    block.terminator = GpuTerminator::Br(*entry_block);
-                }
+                && matches!(block.terminator, GpuTerminator::ReturnVoid)
+            {
+                block.terminator = GpuTerminator::Br(*entry_block);
+            }
         }
 
         Ok(())

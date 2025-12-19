@@ -105,11 +105,7 @@ impl std::fmt::Display for ResolveError {
                 package,
                 requirements,
             } => {
-                writeln!(
-                    f,
-                    "No version of '{}' satisfies all requirements:",
-                    package
-                )?;
+                writeln!(f, "No version of '{}' satisfies all requirements:", package)?;
                 for (from, req) in requirements {
                     writeln!(f, "  {} requires {}", from, req)?;
                 }

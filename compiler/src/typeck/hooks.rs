@@ -110,19 +110,20 @@ impl SemanticTypeChecker {
 
         // Verify return type if block has a final expression
         if let Some(last_stmt) = func.body.stmts.last()
-            && let HirStmt::Expr(return_expr) = last_stmt {
-                let return_threshold = self
-                    .threshold_resolver
-                    .resolve_for_return(&self.current_module, &func_path);
+            && let HirStmt::Expr(return_expr) = last_stmt
+        {
+            let return_threshold = self
+                .threshold_resolver
+                .resolve_for_return(&self.current_module, &func_path);
 
-                self.check_type_compatibility(
-                    &func.ty.return_type,
-                    &return_expr.ty,
-                    get_expr_span(return_expr),
-                    return_threshold.as_f32(),
-                    ThresholdContext::ReturnType,
-                );
-            }
+            self.check_type_compatibility(
+                &func.ty.return_type,
+                &return_expr.ty,
+                get_expr_span(return_expr),
+                return_threshold.as_f32(),
+                ThresholdContext::ReturnType,
+            );
+        }
 
         self.current_function = None;
 

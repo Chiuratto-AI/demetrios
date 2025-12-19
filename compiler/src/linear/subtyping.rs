@@ -104,9 +104,10 @@ impl LinearSubtypeChecker {
     ) -> LinearSubtypeResult {
         // Handle gradual typing
         if self.gradual
-            && (matches!(sub, LinearType::Unknown) || matches!(sup, LinearType::Unknown)) {
-                return Ok(());
-            }
+            && (matches!(sub, LinearType::Unknown) || matches!(sup, LinearType::Unknown))
+        {
+            return Ok(());
+        }
 
         // Handle variance flipping
         let (sub, sup) = match variance {

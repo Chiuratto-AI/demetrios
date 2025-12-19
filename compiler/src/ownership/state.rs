@@ -121,8 +121,7 @@ pub struct BorrowState {
 }
 
 /// Linear/affine tracking
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Linearity {
     /// Normal (unrestricted) type - can be used any number of times
     #[default]
@@ -132,7 +131,6 @@ pub enum Linearity {
     /// Affine (may use at most once)
     Affine,
 }
-
 
 /// Tracked value
 #[derive(Debug, Clone)]

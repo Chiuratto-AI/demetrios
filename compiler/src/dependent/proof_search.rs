@@ -395,38 +395,43 @@ impl<'a> ProofSearcher<'a> {
 
         // 2. Lower bound check
         if let (Some(lb), Some(v2)) = (lhs.lower_bound(self.ctx), rhs.evaluate(self.ctx))
-            && lb >= v2 {
-                return ProofResult::Proven(Proof::arith(
-                    ArithDerivation::lower_bound(lb, v2),
-                    Predicate::confidence_geq(lhs.clone(), rhs.clone()),
-                ));
-            }
+            && lb >= v2
+        {
+            return ProofResult::Proven(Proof::arith(
+                ArithDerivation::lower_bound(lb, v2),
+                Predicate::confidence_geq(lhs.clone(), rhs.clone()),
+            ));
+        }
 
         // 3. Product analysis
         if let ConfidenceType::Product(a, b) = lhs
-            && let (Some(la), Some(lb)) = (a.lower_bound(self.ctx), b.lower_bound(self.ctx)) {
-                let product_lb = la * lb;
-                if let Some(v2) = rhs.evaluate(self.ctx)
-                    && product_lb >= v2 {
-                        return ProofResult::Proven(Proof::arith(
-                            ArithDerivation::product(la, lb, v2),
-                            Predicate::confidence_geq(lhs.clone(), rhs.clone()),
-                        ));
-                    }
+            && let (Some(la), Some(lb)) = (a.lower_bound(self.ctx), b.lower_bound(self.ctx))
+        {
+            let product_lb = la * lb;
+            if let Some(v2) = rhs.evaluate(self.ctx)
+                && product_lb >= v2
+            {
+                return ProofResult::Proven(Proof::arith(
+                    ArithDerivation::product(la, lb, v2),
+                    Predicate::confidence_geq(lhs.clone(), rhs.clone()),
+                ));
             }
+        }
 
         // 4. Dempster-Shafer analysis
         if let ConfidenceType::DempsterShafer(a, b) = lhs
-            && let (Some(la), Some(lb)) = (a.lower_bound(self.ctx), b.lower_bound(self.ctx)) {
-                let ds_lb = 1.0 - (1.0 - la) * (1.0 - lb);
-                if let Some(v2) = rhs.evaluate(self.ctx)
-                    && ds_lb >= v2 {
-                        return ProofResult::Proven(Proof::arith(
-                            ArithDerivation::dempster_shafer(la, lb, v2),
-                            Predicate::confidence_geq(lhs.clone(), rhs.clone()),
-                        ));
-                    }
+            && let (Some(la), Some(lb)) = (a.lower_bound(self.ctx), b.lower_bound(self.ctx))
+        {
+            let ds_lb = 1.0 - (1.0 - la) * (1.0 - lb);
+            if let Some(v2) = rhs.evaluate(self.ctx)
+                && ds_lb >= v2
+            {
+                return ProofResult::Proven(Proof::arith(
+                    ArithDerivation::dempster_shafer(la, lb, v2),
+                    Predicate::confidence_geq(lhs.clone(), rhs.clone()),
+                ));
             }
+        }
 
         // 5. Decay analysis
         if let ConfidenceType::Decay {
@@ -434,17 +439,19 @@ impl<'a> ProofSearcher<'a> {
             lambda,
             elapsed,
         } = lhs
-            && let Some(base_lb) = base.lower_bound(self.ctx) {
-                let t = elapsed.as_secs_f64();
-                let decay_lb = base_lb * (-lambda * t).exp();
-                if let Some(v2) = rhs.evaluate(self.ctx)
-                    && decay_lb >= v2 {
-                        return ProofResult::Proven(Proof::arith(
-                            ArithDerivation::decay(base_lb, *lambda, t, v2),
-                            Predicate::confidence_geq(lhs.clone(), rhs.clone()),
-                        ));
-                    }
+            && let Some(base_lb) = base.lower_bound(self.ctx)
+        {
+            let t = elapsed.as_secs_f64();
+            let decay_lb = base_lb * (-lambda * t).exp();
+            if let Some(v2) = rhs.evaluate(self.ctx)
+                && decay_lb >= v2
+            {
+                return ProofResult::Proven(Proof::arith(
+                    ArithDerivation::decay(base_lb, *lambda, t, v2),
+                    Predicate::confidence_geq(lhs.clone(), rhs.clone()),
+                ));
             }
+        }
 
         // 6. Reflexivity
         if lhs.definitionally_equal(rhs) {

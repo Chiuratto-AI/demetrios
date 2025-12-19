@@ -706,8 +706,7 @@ impl OntologyTermRef {
 }
 
 /// ABI specification for FFI
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Abi {
     /// C ABI (default for extern)
     C,
@@ -741,7 +740,6 @@ pub enum Abi {
     /// Unknown ABI (for forward compatibility)
     Unknown(String),
 }
-
 
 impl Abi {
     /// Parse an ABI string
@@ -1664,8 +1662,7 @@ impl std::fmt::Display for ModuleId {
 }
 
 /// Path (e.g., std::io::Write)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Path {
     /// The path segments (e.g., ["std", "io", "Write"])
     pub segments: Vec<String>,
@@ -1735,7 +1732,6 @@ impl Path {
         self.segments[..prefix.len()] == *prefix
     }
 }
-
 
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

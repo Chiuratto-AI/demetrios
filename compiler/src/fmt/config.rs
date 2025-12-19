@@ -275,30 +275,34 @@ impl FormatConfig {
             // Check for d.toml [format] section
             let d_toml = dir.join("d.toml");
             if d_toml.exists()
-                && let Ok(config) = Self::from_d_toml(&d_toml) {
-                    return Some(config);
-                }
+                && let Ok(config) = Self::from_d_toml(&d_toml)
+            {
+                return Some(config);
+            }
 
             // Check for .dfmt.toml
             let dfmt = dir.join(".dfmt.toml");
             if dfmt.exists()
-                && let Ok(config) = Self::from_file(&dfmt) {
-                    return Some(config);
-                }
+                && let Ok(config) = Self::from_file(&dfmt)
+            {
+                return Some(config);
+            }
 
             // Check for dfmt.toml (without dot)
             let dfmt_nodot = dir.join("dfmt.toml");
             if dfmt_nodot.exists()
-                && let Ok(config) = Self::from_file(&dfmt_nodot) {
-                    return Some(config);
-                }
+                && let Ok(config) = Self::from_file(&dfmt_nodot)
+            {
+                return Some(config);
+            }
 
             // Check for .dfmt.json
             let dfmt_json = dir.join(".dfmt.json");
             if dfmt_json.exists()
-                && let Ok(config) = Self::from_file(&dfmt_json) {
-                    return Some(config);
-                }
+                && let Ok(config) = Self::from_file(&dfmt_json)
+            {
+                return Some(config);
+            }
 
             if !dir.pop() {
                 break;

@@ -168,9 +168,10 @@ impl SyntaxHighlighter {
                             break;
                         }
                         if next == '\\'
-                            && let Some(escaped) = chars.next() {
-                                result.push(self.escape_html_char(escaped));
-                            }
+                            && let Some(escaped) = chars.next()
+                        {
+                            result.push(self.escape_html_char(escaped));
+                        }
                     }
                     result.push_str("</span>");
                 }
@@ -184,9 +185,10 @@ impl SyntaxHighlighter {
                             break;
                         }
                         if next == '\\'
-                            && let Some(escaped) = chars.next() {
-                                result.push(self.escape_html_char(escaped));
-                            }
+                            && let Some(escaped) = chars.next()
+                        {
+                            result.push(self.escape_html_char(escaped));
+                        }
                     }
                     result.push_str("</span>");
                 }

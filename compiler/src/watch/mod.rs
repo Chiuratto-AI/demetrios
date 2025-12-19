@@ -89,11 +89,9 @@ pub fn watch(paths: &[std::path::PathBuf]) -> Result<(), WatchError> {
     };
 
     let mut watch_mode = WatchMode::new(config)?;
-    watch_mode.run().map_err(|e| {
-        WatchError::Io(std::io::Error::other(
-            e.to_string(),
-        ))
-    })
+    watch_mode
+        .run()
+        .map_err(|e| WatchError::Io(std::io::Error::other(e.to_string())))
 }
 
 /// Convenience function to start development server

@@ -233,9 +233,10 @@ impl SemanticAnnotator {
 
         // Explain IC distance
         if let Some(ic) = distance.ic
-            && ic > 0.5 {
-                reasons.push("low shared information content".to_string());
-            }
+            && ic > 0.5
+        {
+            reasons.push("low shared information content".to_string());
+        }
 
         // Explain embedding distance
         if let Some(emb) = distance.embedding {

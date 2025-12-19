@@ -49,8 +49,7 @@ pub struct GPUBuffer {
 }
 
 /// Supported data types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DataType {
     #[default]
     F32,
@@ -1046,7 +1045,6 @@ pub struct KernelParams {
     pub tile_size: usize,
     pub dtype: DataType,
 }
-
 
 impl Default for KernelManager {
     fn default() -> Self {

@@ -249,15 +249,16 @@ fn apply_pipelining(
         let tile_config = tuned_configs.get(name).and_then(|t| t.tile_config.as_ref());
 
         if let Some(tile) = tile_config
-            && tile.pipeline_stages > 1 {
-                let pipeline = create_pipeline_from_tile(tile, arch);
-                let schedule = schedule_pipeline(&pipeline);
+            && tile.pipeline_stages > 1
+        {
+            let pipeline = create_pipeline_from_tile(tile, arch);
+            let schedule = schedule_pipeline(&pipeline);
 
-                // Update kernel shared memory for pipeline buffers
-                kernel.shared_mem_size += pipeline.total_shared_memory();
+            // Update kernel shared memory for pipeline buffers
+            kernel.shared_mem_size += pipeline.total_shared_memory();
 
-                pipelines.insert(name.clone(), (pipeline, schedule));
-            }
+            pipelines.insert(name.clone(), (pipeline, schedule));
+        }
     }
 
     pipelines
@@ -345,14 +346,15 @@ impl HlirToGpuLowering {
         // Lower global constants
         for global in &hlir.globals {
             if global.is_const
-                && let Some(init) = &global.init {
-                    let constant = GpuConstant {
-                        name: global.name.clone(),
-                        ty: self.lower_type(&global.ty),
-                        value: self.lower_const_value(init),
-                    };
-                    self.module.add_constant(constant);
-                }
+                && let Some(init) = &global.init
+            {
+                let constant = GpuConstant {
+                    name: global.name.clone(),
+                    ty: self.lower_type(&global.ty),
+                    value: self.lower_const_value(init),
+                };
+                self.module.add_constant(constant);
+            }
         }
 
         std::mem::replace(

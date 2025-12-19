@@ -390,8 +390,7 @@ impl TransformationMetadata {
 }
 
 /// Origin of a knowledge value
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Origin {
     /// Created as a literal in source code
     #[default]
@@ -407,7 +406,6 @@ pub enum Origin {
     /// From ontology assertion
     OntologyAssertion { ontology: String, term: String },
 }
-
 
 #[cfg(test)]
 mod tests {

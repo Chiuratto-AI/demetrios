@@ -308,11 +308,12 @@ impl TypeDiff {
     /// Extract base type and unit from a type with unit annotation
     fn extract_unit(ty: &str) -> (String, Option<String>) {
         if let Some(open) = ty.find('<')
-            && let Some(close) = ty.rfind('>') {
-                let base = ty[..open].trim().to_string();
-                let unit = ty[open + 1..close].trim().to_string();
-                return (base, Some(unit));
-            }
+            && let Some(close) = ty.rfind('>')
+        {
+            let base = ty[..open].trim().to_string();
+            let unit = ty[open + 1..close].trim().to_string();
+            return (base, Some(unit));
+        }
         (ty.to_string(), None)
     }
 
@@ -639,49 +640,50 @@ impl TypeErrorBuilder {
 
         // Add diff explanation
         if let Some(diff) = &self.diff
-            && !diff.is_same() {
-                let diff_summary = diff.summary();
-                if diff_summary != primary_msg {
-                    diagnostic.notes.push(diff_summary);
-                }
-
-                // Add specific help based on diff type
-                match diff {
-                    TypeDiff::EffectMismatch { missing, extra, .. } => {
-                        if !missing.is_empty() {
-                            diagnostic.help.push(format!(
-                                "add `with {}` to the function signature",
-                                missing.join(", ")
-                            ));
-                        }
-                        if !extra.is_empty() {
-                            diagnostic.help.push(format!(
-                                "the following effects are not handled: {}",
-                                extra.join(", ")
-                            ));
-                        }
-                    }
-                    TypeDiff::LinearityMismatch { expected, found } => {
-                        diagnostic.help.push(format!(
-                            "consider changing the linearity from `{}` to `{}`",
-                            found, expected
-                        ));
-                    }
-                    TypeDiff::UnitMismatch {
-                        expected_unit,
-                        found_unit,
-                        ..
-                    } => {
-                        let exp = expected_unit.as_deref().unwrap_or("dimensionless");
-                        let fnd = found_unit.as_deref().unwrap_or("dimensionless");
-                        diagnostic.help.push(format!(
-                            "units `{}` and `{}` are incompatible; consider a unit conversion",
-                            fnd, exp
-                        ));
-                    }
-                    _ => {}
-                }
+            && !diff.is_same()
+        {
+            let diff_summary = diff.summary();
+            if diff_summary != primary_msg {
+                diagnostic.notes.push(diff_summary);
             }
+
+            // Add specific help based on diff type
+            match diff {
+                TypeDiff::EffectMismatch { missing, extra, .. } => {
+                    if !missing.is_empty() {
+                        diagnostic.help.push(format!(
+                            "add `with {}` to the function signature",
+                            missing.join(", ")
+                        ));
+                    }
+                    if !extra.is_empty() {
+                        diagnostic.help.push(format!(
+                            "the following effects are not handled: {}",
+                            extra.join(", ")
+                        ));
+                    }
+                }
+                TypeDiff::LinearityMismatch { expected, found } => {
+                    diagnostic.help.push(format!(
+                        "consider changing the linearity from `{}` to `{}`",
+                        found, expected
+                    ));
+                }
+                TypeDiff::UnitMismatch {
+                    expected_unit,
+                    found_unit,
+                    ..
+                } => {
+                    let exp = expected_unit.as_deref().unwrap_or("dimensionless");
+                    let fnd = found_unit.as_deref().unwrap_or("dimensionless");
+                    diagnostic.help.push(format!(
+                        "units `{}` and `{}` are incompatible; consider a unit conversion",
+                        fnd, exp
+                    ));
+                }
+                _ => {}
+            }
+        }
 
         // Add unification trace
         if !self.unification_trace.is_empty() {

@@ -444,9 +444,10 @@ impl<R: Read> RdfXmlIterator<R> {
                 // Extract rdf:about
                 if let Some(about) = Self::extract_attribute(line, "rdf:about") {
                     if let Some(term) = current_term.take()
-                        && !term.iri.is_empty() {
-                            terms.push(Ok(term));
-                        }
+                        && !term.iri.is_empty()
+                    {
+                        terms.push(Ok(term));
+                    }
                     current_term = Some(RawTerm {
                         iri: about,
                         ..Default::default()
@@ -457,21 +458,24 @@ impl<R: Read> RdfXmlIterator<R> {
             // Extract label
             if let Some(ref mut term) = current_term {
                 if line.contains("rdfs:label")
-                    && let Some(label) = Self::extract_element_text(line) {
-                        term.label = Some(label);
-                    }
+                    && let Some(label) = Self::extract_element_text(line)
+                {
+                    term.label = Some(label);
+                }
 
                 // Extract definition
                 if (line.contains("obo:IAO_0000115") || line.contains("skos:definition"))
-                    && let Some(def) = Self::extract_element_text(line) {
-                        term.definition = Some(def);
-                    }
+                    && let Some(def) = Self::extract_element_text(line)
+                {
+                    term.definition = Some(def);
+                }
 
                 // Extract parent (subClassOf)
                 if line.contains("rdfs:subClassOf")
-                    && let Some(parent) = Self::extract_attribute(line, "rdf:resource") {
-                        term.parents.push(parent);
-                    }
+                    && let Some(parent) = Self::extract_attribute(line, "rdf:resource")
+                {
+                    term.parents.push(parent);
+                }
 
                 // Extract deprecated status
                 if line.contains("owl:deprecated") && line.contains("true") {
@@ -482,9 +486,10 @@ impl<R: Read> RdfXmlIterator<R> {
 
         // Don't forget the last term
         if let Some(term) = current_term
-            && !term.iri.is_empty() {
-                terms.push(Ok(term));
-            }
+            && !term.iri.is_empty()
+        {
+            terms.push(Ok(term));
+        }
 
         terms
     }
@@ -786,9 +791,10 @@ impl TripleAccumulator {
 
         // Handle quoted literals
         if object.starts_with('"')
-            && let Some(end_quote) = object[1..].find('"') {
-                return object[1..end_quote + 1].to_string();
-            }
+            && let Some(end_quote) = object[1..].find('"')
+        {
+            return object[1..end_quote + 1].to_string();
+        }
 
         // Handle IRIs
         if object.starts_with('<') && object.ends_with('>') {

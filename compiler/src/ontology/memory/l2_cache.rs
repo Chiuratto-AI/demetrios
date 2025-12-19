@@ -56,9 +56,10 @@ impl L2Cache {
 
         // Update access count
         if term.is_some()
-            && let Ok(mut tracker) = self.access_tracker.write() {
-                *tracker.entry(iri.to_string()).or_insert(0) += 1;
-            }
+            && let Ok(mut tracker) = self.access_tracker.write()
+        {
+            *tracker.entry(iri.to_string()).or_insert(0) += 1;
+        }
 
         term
     }
@@ -106,9 +107,10 @@ impl L2Cache {
         let term = self.entries.write().ok()?.remove(iri).map(|e| e.term);
 
         if term.is_some()
-            && let Ok(mut tracker) = self.access_tracker.write() {
-                tracker.remove(iri);
-            }
+            && let Ok(mut tracker) = self.access_tracker.write()
+        {
+            tracker.remove(iri);
+        }
 
         term
     }

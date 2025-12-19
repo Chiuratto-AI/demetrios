@@ -11,8 +11,7 @@ use std::collections::HashMap;
 use crate::common::Span;
 
 /// Named threshold levels
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum ThresholdLevel {
     /// Exact match required (0.0)
     Exact,
@@ -62,7 +61,6 @@ impl ThresholdLevel {
         distance <= self.as_f32()
     }
 }
-
 
 /// Resolved threshold with provenance
 #[derive(Debug, Clone)]
@@ -210,23 +208,25 @@ impl ThresholdResolver {
     ) -> ResolvedThreshold {
         // Check parameter-level override first
         if let (Some(item), Some(idx)) = (item_path, param_index)
-            && let Some(level) = self.param_overrides.get(&(item.to_string(), idx)) {
-                return ResolvedThreshold {
-                    level: *level,
-                    source: ThresholdSource::ParameterAnnotation,
-                    annotation_span: None,
-                };
-            }
+            && let Some(level) = self.param_overrides.get(&(item.to_string(), idx))
+        {
+            return ResolvedThreshold {
+                level: *level,
+                source: ThresholdSource::ParameterAnnotation,
+                annotation_span: None,
+            };
+        }
 
         // Check item-level override
         if let Some(item) = item_path
-            && let Some(level) = self.item_overrides.get(item) {
-                return ResolvedThreshold {
-                    level: *level,
-                    source: ThresholdSource::ItemAnnotation,
-                    annotation_span: None,
-                };
-            }
+            && let Some(level) = self.item_overrides.get(item)
+        {
+            return ResolvedThreshold {
+                level: *level,
+                source: ThresholdSource::ItemAnnotation,
+                annotation_span: None,
+            };
+        }
 
         // Check module-level default
         if let Some(level) = self.module_defaults.get(module_path) {

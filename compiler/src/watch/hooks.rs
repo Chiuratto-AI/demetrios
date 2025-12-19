@@ -441,9 +441,10 @@ impl HookManager {
         for hook in hooks {
             // Check condition
             if let Some(ref condition) = hook.condition
-                && !condition.evaluate() {
-                    continue;
-                }
+                && !condition.evaluate()
+            {
+                continue;
+            }
 
             let result = self.run_hook(hook, context);
             let failed = !result.success;
@@ -807,61 +808,62 @@ impl HookManager {
                 }
                 current_hook = Some(HookConfig::default());
             } else if let Some(ref mut hook) = current_hook
-                && let Some((key, value)) = line.split_once('=') {
-                    let key = key.trim();
-                    let value = value.trim().trim_matches('"');
+                && let Some((key, value)) = line.split_once('=')
+            {
+                let key = key.trim();
+                let value = value.trim().trim_matches('"');
 
-                    match key {
-                        "name" => hook.name = value.to_string(),
-                        "command" => {
-                            if let HookAction::Command {
-                                ref mut command, ..
-                            } = hook.action
-                            {
-                                *command = value.to_string();
-                            }
+                match key {
+                    "name" => hook.name = value.to_string(),
+                    "command" => {
+                        if let HookAction::Command {
+                            ref mut command, ..
+                        } = hook.action
+                        {
+                            *command = value.to_string();
                         }
-                        "timeout" => {
-                            if let Ok(secs) = value.parse::<u64>() {
-                                hook.timeout = Duration::from_secs(secs);
-                            }
-                        }
-                        "priority" => {
-                            if let Ok(p) = value.parse::<i32>() {
-                                hook.priority = p;
-                            }
-                        }
-                        "enabled" => {
-                            hook.enabled = value == "true";
-                        }
-                        "continue_on_failure" => {
-                            hook.continue_on_failure = value == "true";
-                        }
-                        "points" => {
-                            // Parse array: ["pre-build", "post-build"]
-                            let points_str = value.trim_matches(|c| c == '[' || c == ']');
-                            for point_str in points_str.split(',') {
-                                let point_str = point_str.trim().trim_matches('"');
-                                if let Some(point) = HookPoint::from_str(point_str) {
-                                    hook.points.push(point);
-                                }
-                            }
-                        }
-                        "args" => {
-                            // Parse array: ["arg1", "arg2"]
-                            if let HookAction::Command { ref mut args, .. } = hook.action {
-                                let args_str = value.trim_matches(|c| c == '[' || c == ']');
-                                for arg in args_str.split(',') {
-                                    let arg = arg.trim().trim_matches('"');
-                                    if !arg.is_empty() {
-                                        args.push(arg.to_string());
-                                    }
-                                }
-                            }
-                        }
-                        _ => {}
                     }
+                    "timeout" => {
+                        if let Ok(secs) = value.parse::<u64>() {
+                            hook.timeout = Duration::from_secs(secs);
+                        }
+                    }
+                    "priority" => {
+                        if let Ok(p) = value.parse::<i32>() {
+                            hook.priority = p;
+                        }
+                    }
+                    "enabled" => {
+                        hook.enabled = value == "true";
+                    }
+                    "continue_on_failure" => {
+                        hook.continue_on_failure = value == "true";
+                    }
+                    "points" => {
+                        // Parse array: ["pre-build", "post-build"]
+                        let points_str = value.trim_matches(|c| c == '[' || c == ']');
+                        for point_str in points_str.split(',') {
+                            let point_str = point_str.trim().trim_matches('"');
+                            if let Some(point) = HookPoint::from_str(point_str) {
+                                hook.points.push(point);
+                            }
+                        }
+                    }
+                    "args" => {
+                        // Parse array: ["arg1", "arg2"]
+                        if let HookAction::Command { ref mut args, .. } = hook.action {
+                            let args_str = value.trim_matches(|c| c == '[' || c == ']');
+                            for arg in args_str.split(',') {
+                                let arg = arg.trim().trim_matches('"');
+                                if !arg.is_empty() {
+                                    args.push(arg.to_string());
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
+            }
         }
 
         // Don't forget the last hook

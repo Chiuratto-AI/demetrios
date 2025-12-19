@@ -89,11 +89,12 @@ impl IRI {
 
         // Try to extract CURIE from common patterns
         if let Some(rest) = s.strip_prefix("http://purl.obolibrary.org/obo/")
-            && let Some(idx) = rest.find('_') {
-                let prefix = &rest[..idx];
-                let local = &rest[idx + 1..];
-                return Some((prefix.to_string(), local.to_string()));
-            }
+            && let Some(idx) = rest.find('_')
+        {
+            let prefix = &rest[..idx];
+            let local = &rest[idx + 1..];
+            return Some((prefix.to_string(), local.to_string()));
+        }
 
         if s.starts_with("https://schema.org/") {
             return Some(("SCHEMA".to_string(), s[19..].to_string()));
@@ -638,9 +639,10 @@ impl OntologyLoader {
     pub fn resolve(&self, iri: &IRI) -> Result<Arc<LoadedTerm>, ResolutionError> {
         // L1 cache hit?
         if let Ok(cache) = self.l1_cache.read()
-            && let Some(term) = cache.peek(iri) {
-                return Ok(term.clone());
-            }
+            && let Some(term) = cache.peek(iri)
+        {
+            return Ok(term.clone());
+        }
 
         // L2 cache hit?
         if let Some(term) = self.l2_cache.get(iri)? {
@@ -655,13 +657,14 @@ impl OntologyLoader {
         let ontology_id = iri.ontology();
         if let Ok(local) = self.local_ontologies.read()
             && let Some(terms) = local.get(&ontology_id)
-                && let Some(term) = terms.iter().find(|t| &t.iri == iri) {
-                    let term = Arc::new(term.clone());
-                    if let Ok(mut cache) = self.l1_cache.write() {
-                        cache.put(iri.clone(), term.clone());
-                    }
-                    return Ok(term);
-                }
+            && let Some(term) = terms.iter().find(|t| &t.iri == iri)
+        {
+            let term = Arc::new(term.clone());
+            if let Ok(mut cache) = self.l1_cache.write() {
+                cache.put(iri.clone(), term.clone());
+            }
+            return Ok(term);
+        }
 
         // Federated resolution
         if let Some(ref federated) = self.federated {
@@ -717,9 +720,10 @@ impl OntologyLoader {
             }
 
             if visited.insert(parent.clone())
-                && let Ok(parent_term) = self.resolve(&parent) {
-                    queue.extend(parent_term.superclasses.clone());
-                }
+                && let Ok(parent_term) = self.resolve(&parent)
+            {
+                queue.extend(parent_term.superclasses.clone());
+            }
         }
 
         Ok(false)
@@ -733,14 +737,15 @@ impl OntologyLoader {
 
         while let Some(current) = queue.pop() {
             if visited.insert(current.clone())
-                && let Ok(term) = self.resolve(&current) {
-                    for parent in &term.superclasses {
-                        if !visited.contains(parent) {
-                            ancestors.push(parent.clone());
-                            queue.push(parent.clone());
-                        }
+                && let Ok(term) = self.resolve(&current)
+            {
+                for parent in &term.superclasses {
+                    if !visited.contains(parent) {
+                        ancestors.push(parent.clone());
+                        queue.push(parent.clone());
                     }
                 }
+            }
         }
 
         Ok(ancestors)

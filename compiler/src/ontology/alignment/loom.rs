@@ -279,7 +279,10 @@ impl LOOMClient {
         }
 
         // Check reverse mapping
-        self.get_mappings_to(source).iter().find(|&mapping| &mapping.source_class == target).map(|v| v as _)
+        self.get_mappings_to(source)
+            .iter()
+            .find(|&mapping| &mapping.source_class == target)
+            .map(|v| v as _)
     }
 
     /// Compute distance between two IRIs via LOOM mappings

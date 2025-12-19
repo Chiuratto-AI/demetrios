@@ -779,21 +779,25 @@ impl AvailableBackends {
     pub fn best_for(&self, kernel: &UnifiedKernel) -> Option<&BackendCapabilities> {
         // Priority: CUDA > Metal > Vulkan > OpenCL
         if let Some(ref cuda) = self.cuda
-            && kernel.is_compatible_with(cuda) {
-                return Some(cuda);
-            }
+            && kernel.is_compatible_with(cuda)
+        {
+            return Some(cuda);
+        }
         if let Some(ref metal) = self.metal
-            && kernel.is_compatible_with(metal) {
-                return Some(metal);
-            }
+            && kernel.is_compatible_with(metal)
+        {
+            return Some(metal);
+        }
         if let Some(ref vulkan) = self.vulkan
-            && kernel.is_compatible_with(vulkan) {
-                return Some(vulkan);
-            }
+            && kernel.is_compatible_with(vulkan)
+        {
+            return Some(vulkan);
+        }
         if let Some(ref opencl) = self.opencl
-            && kernel.is_compatible_with(opencl) {
-                return Some(opencl);
-            }
+            && kernel.is_compatible_with(opencl)
+        {
+            return Some(opencl);
+        }
         None
     }
 
@@ -801,21 +805,25 @@ impl AvailableBackends {
     pub fn compatible_with(&self, kernel: &UnifiedKernel) -> Vec<&BackendCapabilities> {
         let mut result = Vec::new();
         if let Some(ref cuda) = self.cuda
-            && kernel.is_compatible_with(cuda) {
-                result.push(cuda);
-            }
+            && kernel.is_compatible_with(cuda)
+        {
+            result.push(cuda);
+        }
         if let Some(ref metal) = self.metal
-            && kernel.is_compatible_with(metal) {
-                result.push(metal);
-            }
+            && kernel.is_compatible_with(metal)
+        {
+            result.push(metal);
+        }
         if let Some(ref vulkan) = self.vulkan
-            && kernel.is_compatible_with(vulkan) {
-                result.push(vulkan);
-            }
+            && kernel.is_compatible_with(vulkan)
+        {
+            result.push(vulkan);
+        }
         if let Some(ref opencl) = self.opencl
-            && kernel.is_compatible_with(opencl) {
-                result.push(opencl);
-            }
+            && kernel.is_compatible_with(opencl)
+        {
+            result.push(opencl);
+        }
         result
     }
 }

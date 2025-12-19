@@ -401,8 +401,7 @@ impl MergeOp {
 }
 
 /// Strategy for merging multiple knowledge sources
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum MergeStrategy {
     /// Take the most confident
     MostConfident,
@@ -417,7 +416,6 @@ pub enum MergeStrategy {
     /// Union (keep all)
     Union,
 }
-
 
 /// Inspect epistemic metadata
 #[derive(Debug, Clone)]

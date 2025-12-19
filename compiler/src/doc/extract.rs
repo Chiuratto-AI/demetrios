@@ -677,19 +677,20 @@ impl DocExtractor {
                 // Add methods
                 for impl_item in &impl_def.items {
                     if let ast::ImplItem::Fn(f) = impl_item
-                        && self.should_document_visibility(&f.visibility) {
-                            let method_doc = self.extract_function(f, &type_path);
+                        && self.should_document_visibility(&f.visibility)
+                    {
+                        let method_doc = self.extract_function(f, &type_path);
 
-                            search_index.add(SearchEntry {
-                                path: method_doc.path.clone(),
-                                name: method_doc.name.clone(),
-                                kind: SearchKind::Method,
-                                desc: self.get_summary(&method_doc.doc),
-                                parent: Some(type_path.clone()),
-                            });
+                        search_index.add(SearchEntry {
+                            path: method_doc.path.clone(),
+                            name: method_doc.name.clone(),
+                            kind: SearchKind::Method,
+                            desc: self.get_summary(&method_doc.doc),
+                            parent: Some(type_path.clone()),
+                        });
 
-                            type_doc.methods.push(method_doc);
-                        }
+                        type_doc.methods.push(method_doc);
+                    }
                 }
 
                 break;

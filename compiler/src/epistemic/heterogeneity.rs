@@ -24,8 +24,7 @@ use std::collections::HashMap;
 use super::{Confidence, EpistemicStatus, Evidence, Revisability, Source};
 
 /// Strategy for resolving epistemic heterogeneity
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ResolutionStrategy {
     /// Higher confidence source wins
     Prioritized,
@@ -43,7 +42,6 @@ pub enum ResolutionStrategy {
     /// Weighted average by evidence strength
     WeightedAverage,
 }
-
 
 /// Configuration for heterogeneity resolution
 #[derive(Debug, Clone)]

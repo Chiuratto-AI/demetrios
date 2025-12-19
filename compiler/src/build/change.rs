@@ -184,13 +184,14 @@ impl ChangeDetector {
             if let Some(unit_id) = graph.get_unit_id(path) {
                 // Update content hash
                 if let Some(unit) = graph.get_unit_mut(unit_id)
-                    && let Err(e) = unit.update_hash() {
-                        eprintln!(
-                            "Warning: failed to update hash for {}: {}",
-                            path.display(),
-                            e
-                        );
-                    }
+                    && let Err(e) = unit.update_hash()
+                {
+                    eprintln!(
+                        "Warning: failed to update hash for {}: {}",
+                        path.display(),
+                        e
+                    );
+                }
 
                 // Invalidate this unit and its dependents
                 graph.invalidate(unit_id);

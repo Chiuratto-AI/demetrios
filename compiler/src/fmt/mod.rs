@@ -157,77 +157,78 @@ impl Formatter {
 
         while let Some((i, c)) = chars.next() {
             if c == '/'
-                && let Some(&(_, next)) = chars.peek() {
-                    if next == '/' {
-                        // Line comment
+                && let Some(&(_, next)) = chars.peek()
+            {
+                if next == '/' {
+                    // Line comment
+                    chars.next();
+                    let start = i;
+                    let mut content = String::new();
+                    let is_doc = chars.peek().map(|&(_, c)| c == '/').unwrap_or(false);
+
+                    if is_doc {
                         chars.next();
-                        let start = i;
-                        let mut content = String::new();
-                        let is_doc = chars.peek().map(|&(_, c)| c == '/').unwrap_or(false);
-
-                        if is_doc {
-                            chars.next();
-                        }
-
-                        while let Some(&(_, c)) = chars.peek() {
-                            if c == '\n' {
-                                break;
-                            }
-                            content.push(c);
-                            chars.next();
-                        }
-
-                        let content_len = content.len();
-                        comments.push(Comment {
-                            kind: if is_doc {
-                                CommentKind::DocLine
-                            } else {
-                                CommentKind::Line
-                            },
-                            content,
-                            span: Span {
-                                start,
-                                end: start + content_len + if is_doc { 3 } else { 2 },
-                            },
-                            is_doc,
-                        });
-                    } else if next == '*' {
-                        // Block comment
-                        chars.next();
-                        let start = i;
-                        let mut content = String::new();
-                        let is_doc = chars.peek().map(|&(_, c)| c == '*').unwrap_or(false);
-
-                        if is_doc {
-                            chars.next();
-                        }
-
-                        let mut prev = ' ';
-                        for (_, c) in chars.by_ref() {
-                            if prev == '*' && c == '/' {
-                                content.pop(); // Remove trailing *
-                                break;
-                            }
-                            content.push(c);
-                            prev = c;
-                        }
-
-                        let content_len = content.len();
-                        comments.push(Comment {
-                            kind: if is_doc {
-                                CommentKind::DocBlock
-                            } else {
-                                CommentKind::Block
-                            },
-                            content,
-                            span: Span {
-                                start,
-                                end: start + content_len + if is_doc { 5 } else { 4 },
-                            },
-                            is_doc,
-                        });
                     }
+
+                    while let Some(&(_, c)) = chars.peek() {
+                        if c == '\n' {
+                            break;
+                        }
+                        content.push(c);
+                        chars.next();
+                    }
+
+                    let content_len = content.len();
+                    comments.push(Comment {
+                        kind: if is_doc {
+                            CommentKind::DocLine
+                        } else {
+                            CommentKind::Line
+                        },
+                        content,
+                        span: Span {
+                            start,
+                            end: start + content_len + if is_doc { 3 } else { 2 },
+                        },
+                        is_doc,
+                    });
+                } else if next == '*' {
+                    // Block comment
+                    chars.next();
+                    let start = i;
+                    let mut content = String::new();
+                    let is_doc = chars.peek().map(|&(_, c)| c == '*').unwrap_or(false);
+
+                    if is_doc {
+                        chars.next();
+                    }
+
+                    let mut prev = ' ';
+                    for (_, c) in chars.by_ref() {
+                        if prev == '*' && c == '/' {
+                            content.pop(); // Remove trailing *
+                            break;
+                        }
+                        content.push(c);
+                        prev = c;
+                    }
+
+                    let content_len = content.len();
+                    comments.push(Comment {
+                        kind: if is_doc {
+                            CommentKind::DocBlock
+                        } else {
+                            CommentKind::Block
+                        },
+                        content,
+                        span: Span {
+                            start,
+                            end: start + content_len + if is_doc { 5 } else { 4 },
+                        },
+                        is_doc,
+                    });
                 }
+            }
         }
 
         comments

@@ -245,16 +245,18 @@ impl JsonLdParser {
         for key in keys {
             // Try direct key
             if let Some(value) = obj.get(*key)
-                && let Some(s) = self.value_to_string(value) {
-                    return Some(s);
-                }
+                && let Some(s) = self.value_to_string(value)
+            {
+                return Some(s);
+            }
 
             // Try expanded key
             let expanded = self.expand_iri(key, context);
             if let Some(value) = obj.get(&expanded)
-                && let Some(s) = self.value_to_string(value) {
-                    return Some(s);
-                }
+                && let Some(s) = self.value_to_string(value)
+            {
+                return Some(s);
+            }
         }
         None
     }

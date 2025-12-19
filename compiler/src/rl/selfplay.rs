@@ -259,12 +259,13 @@ where
 
         // Check for resignation
         if let Some(threshold) = config.resign_threshold
-            && result.root_value.mean() < threshold {
-                trajectory.resigned = true;
-                trajectory.resigned_by = Some(state.current_player());
-                trajectory.finalize(GameOutcome::Win(state.current_player().opponent()));
-                return trajectory;
-            }
+            && result.root_value.mean() < threshold
+        {
+            trajectory.resigned = true;
+            trajectory.resigned_by = Some(state.current_player());
+            trajectory.finalize(GameOutcome::Win(state.current_player().opponent()));
+            return trajectory;
+        }
 
         // Select action
         let action = if let Some(action) = result.best_action.clone() {

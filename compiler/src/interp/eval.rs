@@ -194,9 +194,7 @@ impl Interpreter {
                     // Check if it's a builtin function
                     Ok(Value::Builtin(name.clone()))
                 } else {
-                    self.env
-                        .get(name)
-                        .ok_or(ControlFlow::Return(Value::Unit))
+                    self.env.get(name).ok_or(ControlFlow::Return(Value::Unit))
                 }
             }
 
@@ -415,10 +413,7 @@ impl Interpreter {
                 let base_val = self.eval_expr(base)?;
                 let idx_val = self.eval_expr(index)?;
 
-                let idx = idx_val
-                    .as_int()
-                    .ok_or(ControlFlow::Return(Value::Unit))?
-                    as usize;
+                let idx = idx_val.as_int().ok_or(ControlFlow::Return(Value::Unit))? as usize;
 
                 match base_val {
                     Value::Array(arr) => {
@@ -915,16 +910,16 @@ impl Interpreter {
             }
             "assert" => {
                 if let Some(val) = args.first()
-                    && !val.is_truthy() {
-                        return Err(ControlFlow::Return(Value::Unit)); // Assertion failed
-                    }
+                    && !val.is_truthy()
+                {
+                    return Err(ControlFlow::Return(Value::Unit)); // Assertion failed
+                }
                 Ok(Value::Unit)
             }
             "assert_eq" => {
-                if args.len() >= 2
-                    && args[0] != args[1] {
-                        return Err(ControlFlow::Return(Value::Unit)); // Assertion failed
-                    }
+                if args.len() >= 2 && args[0] != args[1] {
+                    return Err(ControlFlow::Return(Value::Unit)); // Assertion failed
+                }
                 Ok(Value::Unit)
             }
             "len" => {
@@ -1197,9 +1192,10 @@ impl Interpreter {
             HirExprKind::Field { base, field } => {
                 let base_val = self.eval_expr(base)?;
                 if let Value::Ref(r) = base_val
-                    && let Value::Struct { ref mut fields, .. } = *r.borrow_mut() {
-                        fields.insert(field.clone(), value);
-                    }
+                    && let Value::Struct { ref mut fields, .. } = *r.borrow_mut()
+                {
+                    fields.insert(field.clone(), value);
+                }
                 Ok(())
             }
             HirExprKind::Index { base, index } => {

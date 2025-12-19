@@ -518,17 +518,18 @@ impl PollBackend {
         if path.is_file() {
             self.add_file(path)?;
         } else if path.is_dir()
-            && let Ok(entries) = std::fs::read_dir(path) {
-                for entry in entries.flatten() {
-                    let entry_path = entry.path();
+            && let Ok(entries) = std::fs::read_dir(path)
+        {
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
 
-                    if entry_path.is_file() {
-                        self.add_file(&entry_path)?;
-                    } else if entry_path.is_dir() && self.recursive {
-                        self.scan_recursive(&entry_path)?;
-                    }
+                if entry_path.is_file() {
+                    self.add_file(&entry_path)?;
+                } else if entry_path.is_dir() && self.recursive {
+                    self.scan_recursive(&entry_path)?;
                 }
             }
+        }
         Ok(())
     }
 
@@ -560,16 +561,17 @@ impl PollBackend {
                     let size = metadata.len();
 
                     if let Some(state) = self.states.get_mut(&file_path)
-                        && (mtime != state.mtime || size != state.size) {
-                            state.mtime = mtime;
-                            state.size = size;
-                            let _ = tx.send(FsEvent {
-                                path: file_path,
-                                kind: FsEventKind::Modify,
-                                timestamp: Instant::now(),
-                                attrs: FsEventAttrs::default(),
-                            });
-                        }
+                        && (mtime != state.mtime || size != state.size)
+                    {
+                        state.mtime = mtime;
+                        state.size = size;
+                        let _ = tx.send(FsEvent {
+                            path: file_path,
+                            kind: FsEventKind::Modify,
+                            timestamp: Instant::now(),
+                            attrs: FsEventAttrs::default(),
+                        });
+                    }
                 }
                 Err(_) => {
                     // File deleted

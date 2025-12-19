@@ -314,9 +314,10 @@ impl NativeStore {
                 curie_index.insert(curie.to_string(), idx);
             }
             if let Some(label_idx) = entry.label_idx
-                && let Some(label) = strings.get(label_idx) {
-                    label_index.push((label.to_lowercase(), idx));
-                }
+                && let Some(label) = strings.get(label_idx)
+            {
+                label_index.push((label.to_lowercase(), idx));
+            }
         }
 
         // Sort label index for binary search
@@ -378,10 +379,11 @@ impl NativeStore {
 
             if let Some(entry) = self.concepts.get(*idx)
                 && let Some(curie) = self.strings.get(entry.curie_idx)
-                    && let Some(label_idx) = entry.label_idx
-                        && let Some(label) = self.strings.get(label_idx) {
-                            results.push((curie, label));
-                        }
+                && let Some(label_idx) = entry.label_idx
+                && let Some(label) = self.strings.get(label_idx)
+            {
+                results.push((curie, label));
+            }
         }
 
         results

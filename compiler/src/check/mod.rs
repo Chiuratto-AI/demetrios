@@ -483,9 +483,10 @@ impl TypeChecker {
 
         // Handle last expression (no trailing comma)
         if !current_tokens.is_empty()
-            && let Some(expr) = self.tokens_to_simple_expr(&current_tokens) {
-                exprs.push(expr);
-            }
+            && let Some(expr) = self.tokens_to_simple_expr(&current_tokens)
+        {
+            exprs.push(expr);
+        }
 
         exprs
     }
@@ -499,9 +500,10 @@ impl TypeChecker {
         //
         // For recursive calls with [Delimited(Bracket, inner)], we need to unwrap.
         if args.len() == 1
-            && let TokenTree::Delimited(Delimiter::Bracket, inner, _) = &args[0] {
-                return inner;
-            }
+            && let TokenTree::Delimited(Delimiter::Bracket, inner, _) = &args[0]
+        {
+            return inner;
+        }
 
         // Otherwise, args are the direct content
         args
@@ -518,17 +520,17 @@ impl TypeChecker {
         // Check for nested vec! macro: [Token("vec"), Token("!"), Delimited(Bracket, ...)]
         if tokens.len() >= 3
             && let (TokenTree::Token(first), TokenTree::Token(second)) = (&tokens[0], &tokens[1])
-                && first.token.kind == TokenKind::Ident
-                    && first.token.text == "vec"
-                    && second.token.kind == TokenKind::Bang
-                {
-                    // This is a nested vec! macro - recursively parse it
-                    let nested_exprs = self.parse_vec_macro_args(&tokens[2..]);
-                    return Some(Expr::Array {
-                        id: NodeId::dummy(),
-                        elements: nested_exprs,
-                    });
-                }
+            && first.token.kind == TokenKind::Ident
+            && first.token.text == "vec"
+            && second.token.kind == TokenKind::Bang
+        {
+            // This is a nested vec! macro - recursively parse it
+            let nested_exprs = self.parse_vec_macro_args(&tokens[2..]);
+            return Some(Expr::Array {
+                id: NodeId::dummy(),
+                elements: nested_exprs,
+            });
+        }
 
         // For single token, convert directly
         if tokens.len() == 1 {
@@ -553,9 +555,10 @@ impl TypeChecker {
                     }
                 }
                 if !current.is_empty()
-                    && let Some(e) = self.tokens_to_simple_expr(&current) {
-                        inner_exprs.push(e);
-                    }
+                    && let Some(e) = self.tokens_to_simple_expr(&current)
+                {
+                    inner_exprs.push(e);
+                }
                 return Some(Expr::Array {
                     id: NodeId::dummy(),
                     elements: inner_exprs,
@@ -686,9 +689,10 @@ impl TypeChecker {
                         AttributeArgs::Named(pairs) => {
                             for (key, value) in pairs {
                                 if key == "threshold"
-                                    && let AttributeValue::Float(threshold) = value {
-                                        self.validate_and_insert_threshold(&f.name, *threshold);
-                                    }
+                                    && let AttributeValue::Float(threshold) = value
+                                {
+                                    self.validate_and_insert_threshold(&f.name, *threshold);
+                                }
                             }
                         }
                         AttributeArgs::Value(AttributeValue::Float(threshold)) => {
@@ -1043,31 +1047,21 @@ impl TypeChecker {
                             term: found_term,
                         },
                     ) = (exp_ty, found_ty)
-                    {
-                        match self.check_ontology_compatibility(
-                            exp_ns,
-                            exp_term,
-                            found_ns,
-                            found_term,
-                            threshold,
-                        ) {
-                            Ok(_) => {}
-                            Err(msg) => {
-                                // Include type alias names in error message
-                                let full_msg = format!(
-                                    "type mismatch: expected `{}` ({}:{}), found `{}` ({}:{}): {}",
-                                    exp_name,
-                                    exp_ns,
-                                    exp_term,
-                                    found_name,
-                                    found_ns,
-                                    found_term,
-                                    msg
-                                );
-                                self.error(full_msg, span);
-                            }
+                {
+                    match self.check_ontology_compatibility(
+                        exp_ns, exp_term, found_ns, found_term, threshold,
+                    ) {
+                        Ok(_) => {}
+                        Err(msg) => {
+                            // Include type alias names in error message
+                            let full_msg = format!(
+                                "type mismatch: expected `{}` ({}:{}), found `{}` ({}:{}): {}",
+                                exp_name, exp_ns, exp_term, found_name, found_ns, found_term, msg
+                            );
+                            self.error(full_msg, span);
                         }
                     }
+                }
             }
             // For mixed cases (named + ontology), also check
             (
@@ -1553,8 +1547,7 @@ impl TypeChecker {
                             let error_msg = if let Some(ref resolved) = path.resolved_module {
                                 format!(
                                     "Unknown qualified path `{}` (resolved to module {:?})",
-                                    path,
-                                    resolved.path
+                                    path, resolved.path
                                 )
                             } else {
                                 format!("Unknown qualified path `{}`", path)
@@ -2645,16 +2638,17 @@ impl TypeChecker {
             | BinaryOp::Gt
             | BinaryOp::Ge => {
                 if let (Some(lu), Some(ru)) = (&left_unit, &right_unit)
-                    && !lu.is_compatible(ru) {
-                        self.error(
-                            format!(
-                                "Unit mismatch in comparison: cannot compare {} and {}",
-                                lu.format(),
-                                ru.format()
-                            ),
-                            Span::dummy(),
-                        );
-                    }
+                    && !lu.is_compatible(ru)
+                {
+                    self.error(
+                        format!(
+                            "Unit mismatch in comparison: cannot compare {} and {}",
+                            lu.format(),
+                            ru.format()
+                        ),
+                        Span::dummy(),
+                    );
+                }
                 HirType::Bool
             }
             // Logical operators
@@ -3217,12 +3211,13 @@ impl TypeChecker {
                     name: type_name,
                     args,
                 }) = expected
-                    && type_name == "Option" {
-                        return HirType::Named {
-                            name: "Option".to_string(),
-                            args: args.iter().map(|t| self.type_to_hir(t)).collect(),
-                        };
-                    }
+                    && type_name == "Option"
+                {
+                    return HirType::Named {
+                        name: "Option".to_string(),
+                        args: args.iter().map(|t| self.type_to_hir(t)).collect(),
+                    };
+                }
                 // Default to Option<()>
                 HirType::Named {
                     name: "Option".to_string(),
@@ -3954,19 +3949,19 @@ impl TypeChecker {
                         namespace: alias_ns,
                         term: alias_term,
                     } = alias_ty
-                    {
-                        // Same namespace = compatible
-                        if alias_ns == namespace {
-                            return true;
-                        }
-                        // Check alignment
-                        let key1 = format!("{}:{}", alias_ns, alias_term);
-                        let key2 = format!("{}:{}", namespace, term);
-                        return self
-                            .get_semantic_distance(&key1, &key2)
-                            .map(|d| d <= self.default_threshold)
-                            .unwrap_or(false);
+                {
+                    // Same namespace = compatible
+                    if alias_ns == namespace {
+                        return true;
                     }
+                    // Check alignment
+                    let key1 = format!("{}:{}", alias_ns, alias_term);
+                    let key2 = format!("{}:{}", namespace, term);
+                    return self
+                        .get_semantic_distance(&key1, &key2)
+                        .map(|d| d <= self.default_threshold)
+                        .unwrap_or(false);
+                }
                 false
             }
             // Ontology type compared with Named type (alias) - resolve alias
@@ -3976,19 +3971,19 @@ impl TypeChecker {
                         namespace: alias_ns,
                         term: alias_term,
                     } = alias_ty
-                    {
-                        // Same namespace = compatible
-                        if alias_ns == namespace {
-                            return true;
-                        }
-                        // Check alignment
-                        let key1 = format!("{}:{}", namespace, term);
-                        let key2 = format!("{}:{}", alias_ns, alias_term);
-                        return self
-                            .get_semantic_distance(&key1, &key2)
-                            .map(|d| d <= self.default_threshold)
-                            .unwrap_or(false);
+                {
+                    // Same namespace = compatible
+                    if alias_ns == namespace {
+                        return true;
                     }
+                    // Check alignment
+                    let key1 = format!("{}:{}", namespace, term);
+                    let key2 = format!("{}:{}", alias_ns, alias_term);
+                    return self
+                        .get_semantic_distance(&key1, &key2)
+                        .map(|d| d <= self.default_threshold)
+                        .unwrap_or(false);
+                }
                 false
             }
             _ => false,

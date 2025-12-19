@@ -76,16 +76,17 @@ impl<'a> OwnershipChecker<'a> {
         // Build linearity cache from struct definitions
         for item in &ast.items {
             if let Item::Struct(s) = item
-                && let Some(def_id) = self.symbols.def_for_node(s.id) {
-                    let linearity = if s.modifiers.linear {
-                        Linearity::Linear
-                    } else if s.modifiers.affine {
-                        Linearity::Affine
-                    } else {
-                        Linearity::Unrestricted
-                    };
-                    self.linearity_cache.insert(def_id, linearity);
-                }
+                && let Some(def_id) = self.symbols.def_for_node(s.id)
+            {
+                let linearity = if s.modifiers.linear {
+                    Linearity::Linear
+                } else if s.modifiers.affine {
+                    Linearity::Affine
+                } else {
+                    Linearity::Unrestricted
+                };
+                self.linearity_cache.insert(def_id, linearity);
+            }
         }
 
         // Check functions
@@ -177,9 +178,10 @@ impl<'a> OwnershipChecker<'a> {
 
             Expr::Path { path, id } => {
                 if path.is_simple()
-                    && let Some(def_id) = self.symbols.ref_for_node(*id) {
-                        self.use_value(def_id, use_kind, expr_span);
-                    }
+                    && let Some(def_id) = self.symbols.ref_for_node(*id)
+                {
+                    self.use_value(def_id, use_kind, expr_span);
+                }
             }
 
             Expr::Binary {
@@ -704,9 +706,10 @@ impl<'a> OwnershipChecker<'a> {
                     // Check if it's a known linear/affine type
                     for (def_id, linearity) in &self.linearity_cache {
                         if let Some(sym) = self.symbols.get(*def_id)
-                            && sym.name == name {
-                                return *linearity;
-                            }
+                            && sym.name == name
+                        {
+                            return *linearity;
+                        }
                     }
                 }
                 Linearity::Unrestricted
@@ -730,9 +733,10 @@ impl<'a> OwnershipChecker<'a> {
         match expr {
             Expr::Path { path, id } => {
                 if path.is_simple()
-                    && let Some(def_id) = self.symbols.ref_for_node(*id) {
-                        return Some(Place::var(def_id));
-                    }
+                    && let Some(def_id) = self.symbols.ref_for_node(*id)
+                {
+                    return Some(Place::var(def_id));
+                }
                 None
             }
             Expr::Field { base, field, .. } => {
@@ -882,24 +886,26 @@ impl<'a> OwnershipChecker<'a> {
         match expr {
             Expr::Path { path, id } => {
                 if path.is_simple()
-                    && let Some(name) = path.name() {
-                        // Check if this is a free variable (not bound locally)
-                        if !bound_vars.contains(name)
-                            && let Some(def_id) = self.symbols.ref_for_node(*id) {
-                                // Check if already captured
-                                if !captures.iter().any(|c| c.def_id == def_id) {
-                                    let span = self.span_for(*id);
-                                    // Default to ByRef capture; a more sophisticated
-                                    // analysis would determine if ByRefMut or ByMove is needed
-                                    captures.push(CapturedVar {
-                                        def_id,
-                                        name: name.to_string(),
-                                        capture_kind: CaptureKind::ByRef,
-                                        span,
-                                    });
-                                }
-                            }
+                    && let Some(name) = path.name()
+                {
+                    // Check if this is a free variable (not bound locally)
+                    if !bound_vars.contains(name)
+                        && let Some(def_id) = self.symbols.ref_for_node(*id)
+                    {
+                        // Check if already captured
+                        if !captures.iter().any(|c| c.def_id == def_id) {
+                            let span = self.span_for(*id);
+                            // Default to ByRef capture; a more sophisticated
+                            // analysis would determine if ByRefMut or ByMove is needed
+                            captures.push(CapturedVar {
+                                def_id,
+                                name: name.to_string(),
+                                capture_kind: CaptureKind::ByRef,
+                                span,
+                            });
+                        }
                     }
+                }
             }
             Expr::Binary { left, right, .. } => {
                 self.find_free_variables(left, bound_vars, captures);

@@ -326,9 +326,10 @@ impl Comparator {
                             return false;
                         }
                         if minor == 0
-                            && let Some(patch) = self.patch {
-                                return version.patch >= patch;
-                            }
+                            && let Some(patch) = self.patch
+                        {
+                            return version.patch >= patch;
+                        }
                     }
                 }
                 true

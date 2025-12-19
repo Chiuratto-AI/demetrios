@@ -56,13 +56,14 @@ impl L3Store {
     /// Batch insert for efficient bulk loading
     pub fn insert_batch(&self, terms: Vec<(String, Arc<CompactTerm>)>) {
         if let Ok(mut entries) = self.entries.write()
-            && let Ok(mut index) = self.index.write() {
-                for (iri, term) in terms {
-                    let hash = Self::hash_iri(&iri);
-                    index.insert(hash, entries.len());
-                    entries.insert(iri, term);
-                }
+            && let Ok(mut index) = self.index.write()
+        {
+            for (iri, term) in terms {
+                let hash = Self::hash_iri(&iri);
+                index.insert(hash, entries.len());
+                entries.insert(iri, term);
             }
+        }
     }
 
     /// Check if IRI exists in store
@@ -70,9 +71,10 @@ impl L3Store {
         // Fast path: check index first
         let hash = Self::hash_iri(iri);
         if let Ok(index) = self.index.read()
-            && !index.contains_key(&hash) {
-                return false;
-            }
+            && !index.contains_key(&hash)
+        {
+            return false;
+        }
 
         // Verify in entries (handles hash collisions)
         self.entries

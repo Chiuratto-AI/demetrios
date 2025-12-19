@@ -271,10 +271,7 @@ pub fn cyclomatic_complexity(block: &Block) -> usize {
 fn count_decision_points_stmt(stmt: &Stmt) -> usize {
     match stmt {
         Stmt::Expr { expr, .. } => count_decision_points_expr(expr),
-        Stmt::Let { value, .. } => value
-            .as_ref()
-            .map(count_decision_points_expr)
-            .unwrap_or(0),
+        Stmt::Let { value, .. } => value.as_ref().map(count_decision_points_expr).unwrap_or(0),
         Stmt::Assign { target, value, .. } => {
             count_decision_points_expr(target) + count_decision_points_expr(value)
         }

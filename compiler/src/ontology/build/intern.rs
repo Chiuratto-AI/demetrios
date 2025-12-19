@@ -111,10 +111,9 @@ impl PrefixTable {
         let mut best: Option<(u16, usize)> = None;
 
         for (prefix, &id) in &self.prefix_to_id {
-            if s.starts_with(prefix)
-                && (best.is_none() || prefix.len() > best.unwrap().1) {
-                    best = Some((id, prefix.len()));
-                }
+            if s.starts_with(prefix) && (best.is_none() || prefix.len() > best.unwrap().1) {
+                best = Some((id, prefix.len()));
+            }
         }
 
         best

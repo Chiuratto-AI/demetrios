@@ -59,9 +59,7 @@
 use std::f64::consts::PI;
 
 use crate::epistemic::bayesian::BetaConfidence;
-use crate::epistemic::beta_knowledge::{
-    ActiveInferenceMetrics, BetaKnowledge,
-};
+use crate::epistemic::beta_knowledge::{ActiveInferenceMetrics, BetaKnowledge};
 use crate::epistemic::merkle::{MerkleProvenanceNode, OperationKind, ProvenanceOperation};
 
 use super::noise::NoiseModel;

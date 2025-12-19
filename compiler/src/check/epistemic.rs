@@ -32,8 +32,7 @@ use crate::ontology::{FoundationOntologies, OntologyResolver, ParsedTermRef, Sub
 ///
 /// Represents a point in time for temporal epistemic constraints.
 /// Supports ISO 8601 timestamps and Unix epoch seconds.
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TemporalIndex {
     /// ISO 8601 timestamp string (e.g., "2024-01-15T10:30:00Z")
     pub timestamp: Option<String>,
@@ -102,7 +101,6 @@ impl TemporalIndex {
         self.age_secs().map(|secs| (secs / 86400) as u32)
     }
 }
-
 
 /// Parse ISO 8601 timestamp to Unix epoch seconds
 ///
@@ -519,9 +517,10 @@ impl EpistemicChecker {
                     (None, _) => most_recent = Some(ts),
                     (Some(current), Some(new_epoch)) => {
                         if let Some(curr_epoch) = current.epoch_secs
-                            && new_epoch > curr_epoch {
-                                most_recent = Some(ts);
-                            }
+                            && new_epoch > curr_epoch
+                        {
+                            most_recent = Some(ts);
+                        }
                     }
                     _ => {}
                 }
@@ -531,9 +530,10 @@ impl EpistemicChecker {
         // Also check the source for timestamp information
         if most_recent.is_none()
             && let Source::Measurement { timestamp, .. } = &status.source
-                && let Some(ts_str) = timestamp {
-                    most_recent = Some(TemporalIndex::from_iso(ts_str));
-                }
+            && let Some(ts_str) = timestamp
+        {
+            most_recent = Some(TemporalIndex::from_iso(ts_str));
+        }
 
         most_recent
     }
@@ -880,10 +880,7 @@ pub fn combine_epistemic_weighted_bayesian(statuses: &[EpistemicStatus]) -> Epis
     }
 
     // Calculate evidence weight for each status
-    let weights: Vec<f64> = statuses
-        .iter()
-        .map(calculate_evidence_weight)
-        .collect();
+    let weights: Vec<f64> = statuses.iter().map(calculate_evidence_weight).collect();
 
     let total_weight: f64 = weights.iter().sum();
 

@@ -715,9 +715,10 @@ fn is_terminal_stderr() -> bool {
 fn terminal_width() -> Option<usize> {
     // Try COLUMNS environment variable first
     if let Ok(cols) = std::env::var("COLUMNS")
-        && let Ok(width) = cols.parse::<usize>() {
-            return Some(width);
-        }
+        && let Ok(width) = cols.parse::<usize>()
+    {
+        return Some(width);
+    }
     // Default fallback
     None
 }

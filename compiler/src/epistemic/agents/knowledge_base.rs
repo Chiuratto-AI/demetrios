@@ -192,15 +192,16 @@ impl KnowledgeBase {
         match &constraint.kind {
             ConstraintKind::MinConfidence { entry_id, min } => {
                 if let Some(belief) = self.beliefs.get(entry_id)
-                    && belief.confidence < *min {
-                        return Some(ConstraintViolation {
-                            constraint: constraint.name.clone(),
-                            message: format!(
-                                "Belief '{}' confidence {} below minimum {}",
-                                entry_id, belief.confidence, min
-                            ),
-                        });
-                    }
+                    && belief.confidence < *min
+                {
+                    return Some(ConstraintViolation {
+                        constraint: constraint.name.clone(),
+                        message: format!(
+                            "Belief '{}' confidence {} below minimum {}",
+                            entry_id, belief.confidence, min
+                        ),
+                    });
+                }
             }
             ConstraintKind::Required { entry_ids } => {
                 for id in entry_ids {

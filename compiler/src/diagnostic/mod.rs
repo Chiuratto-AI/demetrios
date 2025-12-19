@@ -611,9 +611,10 @@ impl DiagnosticHandler {
 
         // Check error limit
         if let Some(max) = self.max_errors
-            && self.error_count >= max {
-                self.emit_too_many_errors();
-            }
+            && self.error_count >= max
+        {
+            self.emit_too_many_errors();
+        }
     }
 
     /// Emit an error

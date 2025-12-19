@@ -190,9 +190,10 @@ impl Linker {
     fn find_linker(spec: &TargetSpec, flavor: LinkerFlavor) -> LinkerResult<PathBuf> {
         // Check if user specified a path
         if let Some(ref path) = spec.linker.path
-            && path.exists() {
-                return Ok(path.clone());
-            }
+            && path.exists()
+        {
+            return Ok(path.clone());
+        }
 
         // Try to find linker based on flavor
         let candidates = match flavor {

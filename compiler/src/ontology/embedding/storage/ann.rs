@@ -250,23 +250,27 @@ impl VpTree {
         if d < self.radius {
             // Query is likely inside
             if d - tau <= self.radius
-                && let Some(ref inside) = self.inside {
-                    inside.search(query, k, vectors, results);
-                }
+                && let Some(ref inside) = self.inside
+            {
+                inside.search(query, k, vectors, results);
+            }
             if d + tau >= self.radius
-                && let Some(ref outside) = self.outside {
-                    outside.search(query, k, vectors, results);
-                }
+                && let Some(ref outside) = self.outside
+            {
+                outside.search(query, k, vectors, results);
+            }
         } else {
             // Query is likely outside
             if d + tau >= self.radius
-                && let Some(ref outside) = self.outside {
-                    outside.search(query, k, vectors, results);
-                }
+                && let Some(ref outside) = self.outside
+            {
+                outside.search(query, k, vectors, results);
+            }
             if d - tau <= self.radius
-                && let Some(ref inside) = self.inside {
-                    inside.search(query, k, vectors, results);
-                }
+                && let Some(ref inside) = self.inside
+            {
+                inside.search(query, k, vectors, results);
+            }
         }
     }
 
@@ -286,15 +290,17 @@ impl VpTree {
 
         // Search inside if query could have results there
         if d - max_distance <= self.radius
-            && let Some(ref inside) = self.inside {
-                inside.search_radius(query, max_distance, vectors, results);
-            }
+            && let Some(ref inside) = self.inside
+        {
+            inside.search_radius(query, max_distance, vectors, results);
+        }
 
         // Search outside if query could have results there
         if d + max_distance >= self.radius
-            && let Some(ref outside) = self.outside {
-                outside.search_radius(query, max_distance, vectors, results);
-            }
+            && let Some(ref outside) = self.outside
+        {
+            outside.search_radius(query, max_distance, vectors, results);
+        }
     }
 }
 

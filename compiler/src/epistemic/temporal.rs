@@ -135,8 +135,7 @@ impl Default for ContextTime {
 }
 
 /// Temporal index component
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum TemporalIndex {
     /// Known at compile time
     #[default]
@@ -238,7 +237,6 @@ impl PartialOrd for TemporalIndex {
         }
     }
 }
-
 
 /// Temporal offset for relative indices
 #[derive(Debug, Clone, PartialEq, Default)]

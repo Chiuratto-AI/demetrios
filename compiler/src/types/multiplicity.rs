@@ -20,8 +20,7 @@ use std::ops::{Add, Mul};
 /// - 0 * m = 0 (zero annihilates)
 /// - ω + m = ω (omega absorbs addition)
 /// - ω * m = ω (omega absorbs multiplication, except 0)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Multiplicity {
     /// Zero uses - erased at runtime (compile-time only)
     /// Used for ontological types, phantom types, type-level computation
@@ -117,7 +116,6 @@ impl Multiplicity {
         }
     }
 }
-
 
 impl fmt::Display for Multiplicity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

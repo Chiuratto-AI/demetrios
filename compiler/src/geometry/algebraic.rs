@@ -793,25 +793,25 @@ impl Equation {
     pub fn solve_for(&self, var: &str) -> Option<Equation> {
         // Simple case: var = rhs
         if let ExprKind::Variable(name) = &self.lhs.kind
-            && name == var {
-                return Some(self.clone());
-            }
+            && name == var
+        {
+            return Some(self.clone());
+        }
 
         // Simple case: lhs = var
         if let ExprKind::Variable(name) = &self.rhs.kind
-            && name == var {
-                return Some(
-                    Equation::new(self.rhs.clone(), self.lhs.clone())
-                        .with_confidence(self.confidence),
-                );
-            }
+            && name == var
+        {
+            return Some(
+                Equation::new(self.rhs.clone(), self.lhs.clone()).with_confidence(self.confidence),
+            );
+        }
 
         // Linear case: a*var + b = c => var = (c - b) / a
         if let Some((coef, rest)) = self.extract_linear_term(&self.lhs, var) {
             let solution = (self.rhs.clone() - rest) / coef;
             return Some(
-                Equation::new(Expression::variable(var), solution)
-                    .with_confidence(self.confidence),
+                Equation::new(Expression::variable(var), solution).with_confidence(self.confidence),
             );
         }
 
@@ -819,8 +819,7 @@ impl Equation {
         if let Some((coef, rest)) = self.extract_linear_term(&self.rhs, var) {
             let solution = (self.lhs.clone() - rest) / coef;
             return Some(
-                Equation::new(Expression::variable(var), solution)
-                    .with_confidence(self.confidence),
+                Equation::new(Expression::variable(var), solution).with_confidence(self.confidence),
             );
         }
 
@@ -839,37 +838,45 @@ impl Equation {
             }
             ExprKind::Mul(a, b) => {
                 if let ExprKind::Variable(name) = &b.kind
-                    && name == var && !a.variables().contains(var) {
-                        return Some(((**a).clone(), Expression::constant(0.0)));
-                    }
+                    && name == var
+                    && !a.variables().contains(var)
+                {
+                    return Some(((**a).clone(), Expression::constant(0.0)));
+                }
                 if let ExprKind::Variable(name) = &a.kind
-                    && name == var && !b.variables().contains(var) {
-                        return Some(((**b).clone(), Expression::constant(0.0)));
-                    }
+                    && name == var
+                    && !b.variables().contains(var)
+                {
+                    return Some(((**b).clone(), Expression::constant(0.0)));
+                }
                 None
             }
             ExprKind::Add(a, b) => {
                 // Try extracting from left
                 if let Some((coef, rest_a)) = self.extract_linear_term(a, var)
-                    && !b.variables().contains(var) {
-                        return Some((coef, rest_a + (**b).clone()));
-                    }
+                    && !b.variables().contains(var)
+                {
+                    return Some((coef, rest_a + (**b).clone()));
+                }
                 // Try extracting from right
                 if let Some((coef, rest_b)) = self.extract_linear_term(b, var)
-                    && !a.variables().contains(var) {
-                        return Some((coef, (**a).clone() + rest_b));
-                    }
+                    && !a.variables().contains(var)
+                {
+                    return Some((coef, (**a).clone() + rest_b));
+                }
                 None
             }
             ExprKind::Sub(a, b) => {
                 if let Some((coef, rest_a)) = self.extract_linear_term(a, var)
-                    && !b.variables().contains(var) {
-                        return Some((coef, rest_a - (**b).clone()));
-                    }
+                    && !b.variables().contains(var)
+                {
+                    return Some((coef, rest_a - (**b).clone()));
+                }
                 if let Some((coef, rest_b)) = self.extract_linear_term(b, var)
-                    && !a.variables().contains(var) {
-                        return Some((-coef, (**a).clone() - rest_b));
-                    }
+                    && !a.variables().contains(var)
+                {
+                    return Some((-coef, (**a).clone() - rest_b));
+                }
                 None
             }
             ExprKind::Neg(a) => {
@@ -1110,29 +1117,29 @@ impl AlgebraicReasoner {
                     }
 
                     // Try to solve
-                    let simplified_eq =
-                        Equation::new(lhs, rhs).with_confidence(eq.confidence);
+                    let simplified_eq = Equation::new(lhs, rhs).with_confidence(eq.confidence);
 
                     if let Some(solution) = simplified_eq.solve_for(var) {
                         // Evaluate RHS
                         if let Some(value) = solution.rhs.evaluate(&self.known_values)
-                            && value.is_finite() {
-                                self.known_values.insert(var.clone(), value);
-                                self.symbolic_values
-                                    .insert(var.clone(), solution.rhs.clone());
+                            && value.is_finite()
+                        {
+                            self.known_values.insert(var.clone(), value);
+                            self.symbolic_values
+                                .insert(var.clone(), solution.rhs.clone());
 
-                                self.trace.push(AlgebraicStep {
-                                    description: format!(
-                                        "Solved: {} = {} = {}",
-                                        var, solution.rhs, value
-                                    ),
-                                    equation: Some(eq.clone()),
-                                    solution: Some((var.clone(), value)),
-                                    confidence: solution.confidence.mean(),
-                                });
+                            self.trace.push(AlgebraicStep {
+                                description: format!(
+                                    "Solved: {} = {} = {}",
+                                    var, solution.rhs, value
+                                ),
+                                equation: Some(eq.clone()),
+                                solution: Some((var.clone(), value)),
+                                confidence: solution.confidence.mean(),
+                            });
 
-                                changed = true;
-                            }
+                            changed = true;
+                        }
                     }
                 }
             }
@@ -1348,13 +1355,14 @@ pub fn simplify(expr: &Expression) -> Expression {
 
             // Constant folding
             if let (Some(av), Some(bv)) = (a_simp.as_constant(), b_simp.as_constant())
-                && bv != 0.0 {
-                    return Expression::constant(av / bv).with_confidence(combine_confidence(
-                        &a_simp.confidence,
-                        &b_simp.confidence,
-                        1.0,
-                    ));
-                }
+                && bv != 0.0
+            {
+                return Expression::constant(av / bv).with_confidence(combine_confidence(
+                    &a_simp.confidence,
+                    &b_simp.confidence,
+                    1.0,
+                ));
+            }
 
             a_simp / b_simp
         }
@@ -1370,8 +1378,7 @@ pub fn simplify(expr: &Expression) -> Expression {
 
             let a_simp = simplify(a);
             if let Some(av) = a_simp.as_constant() {
-                return Expression::constant(av.powi(*n))
-                    .with_confidence(a_simp.confidence);
+                return Expression::constant(av.powi(*n)).with_confidence(a_simp.confidence);
             }
 
             a_simp.pow(*n)
@@ -1393,10 +1400,10 @@ pub fn simplify(expr: &Expression) -> Expression {
         ExprKind::Sqrt(a) => {
             let a_simp = simplify(a);
             if let Some(av) = a_simp.as_constant()
-                && av >= 0.0 {
-                    return Expression::constant(av.sqrt())
-                        .with_confidence(a_simp.confidence);
-                }
+                && av >= 0.0
+            {
+                return Expression::constant(av.sqrt()).with_confidence(a_simp.confidence);
+            }
             a_simp.sqrt()
         }
 

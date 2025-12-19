@@ -511,11 +511,7 @@ impl ProbRuntime {
             // Record after burn-in
             if i >= burn_in {
                 for (name, &value) in &current_params {
-                    trace
-                        .samples
-                        .entry(name.clone())
-                        .or_default()
-                        .push(value);
+                    trace.samples.entry(name.clone()).or_default().push(value);
                 }
                 trace.log_probs.push(current_log_prob);
             }

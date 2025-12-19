@@ -461,7 +461,7 @@ impl EpistemicMCTSTree {
                     child.visits as f64 / total_visits as f64
                 } else {
                     // Temperature-adjusted
-                    
+
                     (child.visits as f64).powf(1.0 / self.config.temperature)
                 };
                 policy.push((action.clone(), prob));

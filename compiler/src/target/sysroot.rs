@@ -303,9 +303,10 @@ impl Sysroot {
 
         // Verify metadata checksum if available
         if let Some(ref metadata) = self.metadata
-            && let Some(ref _checksum) = metadata.checksum {
-                // TODO: Implement checksum verification
-            }
+            && let Some(ref _checksum) = metadata.checksum
+        {
+            // TODO: Implement checksum verification
+        }
 
         Ok(())
     }
@@ -416,9 +417,10 @@ impl SysrootManager {
         if cache_path.exists() {
             let sysroot = Sysroot::open(&cache_path, &spec.triple)?;
             if let Some(ref metadata) = sysroot.metadata
-                && !metadata.is_stale(self.config.max_age) {
-                    return Ok(sysroot);
-                }
+                && !metadata.is_stale(self.config.max_age)
+            {
+                return Ok(sysroot);
+            }
         }
 
         // 3. Search system paths
@@ -449,18 +451,20 @@ impl SysrootManager {
             if let Ok(output) = Command::new("xcrun")
                 .args(["--sdk", "macosx", "--show-sdk-path"])
                 .output()
-                && output.status.success() {
-                    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    search_paths.push(PathBuf::from(path));
-                }
+                && output.status.success()
+            {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                search_paths.push(PathBuf::from(path));
+            }
         }
 
         for path in &search_paths {
             if path.exists()
                 && let Ok(sysroot) = Sysroot::open(path, &spec.triple)
-                    && sysroot.verify().is_ok() {
-                        return Ok(Some(sysroot));
-                    }
+                && sysroot.verify().is_ok()
+            {
+                return Ok(Some(sysroot));
+            }
         }
 
         Ok(None)
@@ -472,9 +476,10 @@ impl SysrootManager {
 
         // Try downloading if enabled
         if self.config.auto_download
-            && let Some(url) = self.config.download_urls.get(&spec.triple.to_string()) {
-                return self.download_sysroot(spec, url, &cache_path);
-            }
+            && let Some(url) = self.config.download_urls.get(&spec.triple.to_string())
+        {
+            return self.download_sysroot(spec, url, &cache_path);
+        }
 
         // Try building if enabled
         if self.config.auto_build {
@@ -586,10 +591,11 @@ impl SysrootManager {
             if path.is_dir() {
                 let metadata_path = path.join("sysroot.json");
                 if metadata_path.exists()
-                    && let Ok(metadata) = SysrootMetadata::load(&metadata_path) {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        result.push((name, metadata));
-                    }
+                    && let Ok(metadata) = SysrootMetadata::load(&metadata_path)
+                {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    result.push((name, metadata));
+                }
             }
         }
 
@@ -721,10 +727,11 @@ pub mod toolchain {
 
         for pattern in &patterns {
             if let Ok(output) = Command::new("which").arg(pattern).output()
-                && output.status.success() {
-                    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    return Some(PathBuf::from(path));
-                }
+                && output.status.success()
+            {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return Some(PathBuf::from(path));
+            }
         }
 
         None
@@ -742,10 +749,11 @@ pub mod toolchain {
 
         for pattern in &patterns {
             if let Ok(output) = Command::new("which").arg(pattern).output()
-                && output.status.success() {
-                    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    return Some(PathBuf::from(path));
-                }
+                && output.status.success()
+            {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return Some(PathBuf::from(path));
+            }
         }
 
         None
@@ -754,12 +762,13 @@ pub mod toolchain {
     /// Get the sysroot from a cross-compiler.
     pub fn get_compiler_sysroot(compiler: &Path) -> Option<PathBuf> {
         if let Ok(output) = Command::new(compiler).arg("-print-sysroot").output()
-            && output.status.success() {
-                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Some(PathBuf::from(path));
-                }
+            && output.status.success()
+        {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Some(PathBuf::from(path));
             }
+        }
         None
     }
 
@@ -768,21 +777,22 @@ pub mod toolchain {
         let mut paths = Vec::new();
 
         if let Ok(output) = Command::new(compiler).args(["-print-search-dirs"]).output()
-            && output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    if line.starts_with("libraries:") {
-                        let dirs = line.trim_start_matches("libraries:");
-                        let dirs = dirs.trim_start_matches(" =");
-                        for dir in dirs.split(':') {
-                            let path = PathBuf::from(dir.trim());
-                            if path.exists() {
-                                paths.push(path);
-                            }
+            && output.status.success()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.starts_with("libraries:") {
+                    let dirs = line.trim_start_matches("libraries:");
+                    let dirs = dirs.trim_start_matches(" =");
+                    for dir in dirs.split(':') {
+                        let path = PathBuf::from(dir.trim());
+                        if path.exists() {
+                            paths.push(path);
                         }
                     }
                 }
             }
+        }
 
         paths
     }

@@ -585,13 +585,15 @@ impl TestRunner {
                 _ => {}
             }
             if let Some(stdout) = &result.stdout
-                && !stdout.is_empty() {
-                    println!("\n  stdout:\n{}", indent(stdout, 4));
-                }
+                && !stdout.is_empty()
+            {
+                println!("\n  stdout:\n{}", indent(stdout, 4));
+            }
             if let Some(stderr) = &result.stderr
-                && !stderr.is_empty() {
-                    println!("\n  stderr:\n{}", indent(stderr, 4));
-                }
+                && !stderr.is_empty()
+            {
+                println!("\n  stderr:\n{}", indent(stderr, 4));
+            }
             println!();
         }
 

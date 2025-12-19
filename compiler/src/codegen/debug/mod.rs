@@ -609,17 +609,19 @@ impl DebugInfoBuilder {
     /// Mark prologue end
     pub fn mark_prologue_end(&mut self, address: u64) {
         if let Some(entry) = self.line_table.last_mut()
-            && entry.address == address {
-                entry.prologue_end = true;
-            }
+            && entry.address == address
+        {
+            entry.prologue_end = true;
+        }
     }
 
     /// Mark epilogue begin
     pub fn mark_epilogue_begin(&mut self, address: u64) {
         if let Some(entry) = self.line_table.last_mut()
-            && entry.address == address {
-                entry.epilogue_begin = true;
-            }
+            && entry.address == address
+        {
+            entry.epilogue_begin = true;
+        }
     }
 
     /// Enter a lexical block

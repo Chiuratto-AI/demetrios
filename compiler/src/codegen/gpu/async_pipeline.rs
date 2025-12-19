@@ -909,10 +909,9 @@ impl DependencyAnalyzer {
         for (id, is_load, is_store) in &ops {
             if *is_load {
                 last_load = Some(*id);
-            } else if *is_store
-                && let Some(load_id) = last_load {
-                    graph.add_dependency(load_id, *id);
-                }
+            } else if *is_store && let Some(load_id) = last_load {
+                graph.add_dependency(load_id, *id);
+            }
         }
     }
 }

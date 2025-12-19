@@ -400,9 +400,10 @@ impl<T: Clone> ValidityConstraint<T> {
 
         // Check deadline
         if let Some(deadline) = self.valid_until
-            && now > deadline {
-                return false;
-            }
+            && now > deadline
+        {
+            return false;
+        }
 
         // Check confidence threshold
         current_conf >= self.min_confidence_threshold

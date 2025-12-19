@@ -110,8 +110,7 @@ impl Lint for UnusedFunction {
             if matches!(f.visibility, Visibility::Public)
                 || f.name == "main"
                 || f.name.starts_with("test_")
-            {
-            }
+            {}
 
             // Would check if function is called anywhere
             // For now, just register it for dead code analysis
@@ -167,9 +166,10 @@ impl Lint for DivisionByZero {
     fn check_expr(&self, expr: &Expr, ctx: &mut LintContext) {
         if let Expr::Binary { op, right, .. } = expr
             && matches!(op, BinaryOp::Div | BinaryOp::Rem)
-                && is_zero(right) {
-                    ctx.report(self, "division by zero", Span::dummy());
-                }
+            && is_zero(right)
+        {
+            ctx.report(self, "division by zero", Span::dummy());
+        }
     }
 }
 
@@ -325,14 +325,15 @@ impl Lint for NamingConvention {
             Item::Global(g) if g.is_const => {
                 // Constants should be SCREAMING_SNAKE_CASE
                 if let Pattern::Binding { name, .. } = &g.pattern
-                    && !is_screaming_snake_case(name) {
-                        ctx.report_with_help(
-                            self,
-                            format!("constant `{}` should be SCREAMING_SNAKE_CASE", name),
-                            g.span,
-                            format!("rename to `{}`", to_screaming_snake_case(name)),
-                        );
-                    }
+                    && !is_screaming_snake_case(name)
+                {
+                    ctx.report_with_help(
+                        self,
+                        format!("constant `{}` should be SCREAMING_SNAKE_CASE", name),
+                        g.span,
+                        format!("rename to `{}`", to_screaming_snake_case(name)),
+                    );
+                }
             }
             Item::Trait(t) => {
                 // Traits should be PascalCase
@@ -812,16 +813,17 @@ impl Lint for UnnecessaryClone {
         if let Expr::MethodCall {
             method, receiver, ..
         } = expr
-            && method == "clone" {
-                // Check if clone result is immediately passed to a function
-                // This is a simplified check - a full check would need type info
-                ctx.report_with_help(
-                    self,
-                    "consider whether this clone is necessary",
-                    Span::dummy(),
-                    "cloning has a runtime cost; use references when possible",
-                );
-            }
+            && method == "clone"
+        {
+            // Check if clone result is immediately passed to a function
+            // This is a simplified check - a full check would need type info
+            ctx.report_with_help(
+                self,
+                "consider whether this clone is necessary",
+                Span::dummy(),
+                "cloning has a runtime cost; use references when possible",
+            );
+        }
     }
 }
 
@@ -891,10 +893,11 @@ impl Lint for UnusedEffect {
 
     fn check_item(&self, item: &Item, ctx: &mut LintContext) {
         if let Item::Function(f) = item
-            && !f.effects.is_empty() {
-                // Would analyze if declared effects are actually performed
-                // For now, just skip
-            }
+            && !f.effects.is_empty()
+        {
+            // Would analyze if declared effects are actually performed
+            // For now, just skip
+        }
     }
 }
 

@@ -136,9 +136,10 @@ impl EpistemicAugmenter {
 
         // Very short labels might be abbreviations (less clear)
         if let Some(label) = &entry.id.label
-            && label.len() < 3 {
-                adjustment *= 0.95;
-            }
+            && label.len() < 3
+        {
+            adjustment *= 0.95;
+        }
 
         adjustment
     }
