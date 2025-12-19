@@ -17,8 +17,8 @@
 
 use std::collections::HashMap;
 
-use crate::ontology::loader::{IRI, LoadedTerm};
 use super::super::{Embedding, EmbeddingError, EmbeddingGenerator, EmbeddingModel};
+use crate::ontology::loader::{IRI, LoadedTerm};
 
 /// OWL2Vec*-style structural embedding generator
 pub struct StructuralGenerator {
@@ -79,7 +79,8 @@ impl StructuralGenerator {
         for term in terms {
             // Add is-a edges (high weight)
             for superclass in &term.superclasses {
-                self.graph.add_edge(&term.iri, superclass, EdgeType::IsA, 1.0);
+                self.graph
+                    .add_edge(&term.iri, superclass, EdgeType::IsA, 1.0);
             }
 
             // Add property edges from restrictions (lower weight)
@@ -97,7 +98,8 @@ impl StructuralGenerator {
     /// Add a single term to the graph
     pub fn add_term(&mut self, term: &LoadedTerm) {
         for superclass in &term.superclasses {
-            self.graph.add_edge(&term.iri, superclass, EdgeType::IsA, 1.0);
+            self.graph
+                .add_edge(&term.iri, superclass, EdgeType::IsA, 1.0);
         }
         for restriction in &term.restrictions {
             self.graph.add_edge(
@@ -282,7 +284,9 @@ impl SkipGramModel {
 
             let emb: Vec<f32> = (0..self.dimensions)
                 .map(|i| {
-                    let x = seed.wrapping_mul(6364136223846793005).wrapping_add(i as u64);
+                    let x = seed
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(i as u64);
                     (((x >> 33) as f32 / u32::MAX as f32) - 0.5) / self.dimensions as f32
                 })
                 .collect();
@@ -395,7 +399,10 @@ impl OntologyGraph {
     }
 
     fn neighbors(&self, node: &IRI) -> &[(IRI, f64)] {
-        self.adjacency.get(node).map(|v| v.as_slice()).unwrap_or(&[])
+        self.adjacency
+            .get(node)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 
     fn is_empty(&self) -> bool {
@@ -487,9 +494,15 @@ mod tests {
         generator.build_graph(&terms);
         generator.train().unwrap();
 
-        let dog = generator.generate(&IRI::new("http://example.org/Dog")).unwrap();
-        let cat = generator.generate(&IRI::new("http://example.org/Cat")).unwrap();
-        let bird = generator.generate(&IRI::new("http://example.org/Bird")).unwrap();
+        let dog = generator
+            .generate(&IRI::new("http://example.org/Dog"))
+            .unwrap();
+        let cat = generator
+            .generate(&IRI::new("http://example.org/Cat"))
+            .unwrap();
+        let bird = generator
+            .generate(&IRI::new("http://example.org/Bird"))
+            .unwrap();
 
         // Dog and Cat (both mammals) should be more similar than Dog and Bird
         let dog_cat_sim = dog.cosine_similarity(&cat);

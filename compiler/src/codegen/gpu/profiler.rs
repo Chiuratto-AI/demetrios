@@ -98,7 +98,10 @@ impl PerfCounters {
 
     /// Calculate total stall cycles
     pub fn total_stalls(&self) -> u64 {
-        self.stall_memory_dependency + self.stall_execution_dependency + self.stall_sync + self.stall_other
+        self.stall_memory_dependency
+            + self.stall_execution_dependency
+            + self.stall_sync
+            + self.stall_other
     }
 
     /// Calculate branch divergence ratio
@@ -127,7 +130,11 @@ impl KernelProfiler {
     pub fn for_arch(arch: CudaArch) -> Self {
         let costs = CostDatabase::for_arch(arch);
         let roofline = RooflineModel::for_arch(arch);
-        Self { costs, roofline, arch }
+        Self {
+            costs,
+            roofline,
+            arch,
+        }
     }
 
     /// Get the architecture this profiler targets
@@ -202,12 +209,21 @@ impl KernelProfiler {
         let overall_score = if kernel_profiles.is_empty() {
             PerfScore::default()
         } else {
-            let avg_compute = kernel_profiles.iter().map(|p| p.score.compute_efficiency).sum::<f64>()
+            let avg_compute = kernel_profiles
+                .iter()
+                .map(|p| p.score.compute_efficiency)
+                .sum::<f64>()
                 / kernel_profiles.len() as f64;
-            let avg_memory = kernel_profiles.iter().map(|p| p.score.memory_efficiency).sum::<f64>()
+            let avg_memory = kernel_profiles
+                .iter()
+                .map(|p| p.score.memory_efficiency)
+                .sum::<f64>()
                 / kernel_profiles.len() as f64;
-            let avg_occupancy =
-                kernel_profiles.iter().map(|p| p.score.occupancy_score).sum::<f64>() / kernel_profiles.len() as f64;
+            let avg_occupancy = kernel_profiles
+                .iter()
+                .map(|p| p.score.occupancy_score)
+                .sum::<f64>()
+                / kernel_profiles.len() as f64;
             let avg_instruction = kernel_profiles
                 .iter()
                 .map(|p| p.score.instruction_efficiency)
@@ -459,7 +475,10 @@ impl KernelProfiler {
             bottlenecks.push(Bottleneck {
                 kind: BottleneckKind::Occupancy,
                 severity: BottleneckSeverity::Medium,
-                description: format!("Low occupancy ({:.0}%)", counters.achieved_occupancy * 100.0),
+                description: format!(
+                    "Low occupancy ({:.0}%)",
+                    counters.achieved_occupancy * 100.0
+                ),
                 location: None,
                 impact_estimate: 0.2,
             });
@@ -495,8 +514,11 @@ impl KernelProfiler {
             bottlenecks.push(Bottleneck {
                 kind: BottleneckKind::SyncOverhead,
                 severity: BottleneckSeverity::Low,
-                description: format!("{} sync cycles ({:.0}% of compute)", cost.sync_cycles,
-                    cost.sync_cycles as f64 / cost.compute_cycles.max(1) as f64 * 100.0),
+                description: format!(
+                    "{} sync cycles ({:.0}% of compute)",
+                    cost.sync_cycles,
+                    cost.sync_cycles as f64 / cost.compute_cycles.max(1) as f64 * 100.0
+                ),
                 location: None,
                 impact_estimate: 0.1,
             });
@@ -542,16 +564,18 @@ impl KernelProfiler {
             (counters.global_load_efficiency + counters.global_store_efficiency) / 2.0;
 
         // Occupancy score (0-1)
-        let occupancy_score = counters.achieved_occupancy / counters.theoretical_occupancy.max(0.01);
+        let occupancy_score =
+            counters.achieved_occupancy / counters.theoretical_occupancy.max(0.01);
 
         // Instruction efficiency (based on bottleneck impact)
         let bottleneck_penalty: f64 = bottlenecks.iter().map(|b| b.impact_estimate).sum();
         let instruction_efficiency = (1.0 - bottleneck_penalty).max(0.0);
 
         // Overall score (0-100)
-        let overall = (compute_efficiency + memory_efficiency + occupancy_score + instruction_efficiency)
-            / 4.0
-            * 100.0;
+        let overall =
+            (compute_efficiency + memory_efficiency + occupancy_score + instruction_efficiency)
+                / 4.0
+                * 100.0;
 
         PerfScore {
             overall: overall.min(100.0),
@@ -564,7 +588,11 @@ impl KernelProfiler {
 
     /// Detect bottlenecks for a kernel profile
     pub fn detect_bottlenecks(&self, profile: &KernelPerfProfile) -> Vec<Bottleneck> {
-        self.detect_bottlenecks_internal(&profile.counters, &profile.cost_estimate, &profile.roofline)
+        self.detect_bottlenecks_internal(
+            &profile.counters,
+            &profile.cost_estimate,
+            &profile.roofline,
+        )
     }
 
     /// Generate optimization recommendations
@@ -618,7 +646,8 @@ impl KernelProfiler {
         };
 
         let memory_reduction = if before.roofline.memory.total_bytes > 0 {
-            1.0 - (after.roofline.memory.total_bytes as f64 / before.roofline.memory.total_bytes as f64)
+            1.0 - (after.roofline.memory.total_bytes as f64
+                / before.roofline.memory.total_bytes as f64)
         } else {
             0.0
         };
@@ -682,7 +711,11 @@ impl KernelPerfProfile {
 
     /// Get optimization priority (0 = highest priority)
     pub fn optimization_priority(&self) -> u32 {
-        let severity_score: u32 = self.bottlenecks.iter().map(|b| b.severity.as_priority()).sum();
+        let severity_score: u32 = self
+            .bottlenecks
+            .iter()
+            .map(|b| b.severity.as_priority())
+            .sum();
         let efficiency_penalty = ((1.0 - self.roofline.efficiency) * 100.0) as u32;
         severity_score + efficiency_penalty
     }
@@ -713,12 +746,19 @@ impl ModulePerfProfile {
 
     /// Get kernels with bottlenecks
     pub fn kernels_with_bottlenecks(&self) -> Vec<&KernelPerfProfile> {
-        self.kernels.iter().filter(|k| !k.bottlenecks.is_empty()).collect()
+        self.kernels
+            .iter()
+            .filter(|k| !k.bottlenecks.is_empty())
+            .collect()
     }
 
     /// Get the top N hotspot kernel names
     pub fn top_hotspots(&self, n: usize) -> Vec<&str> {
-        self.hotspots.iter().take(n).map(|(name, _)| name.as_str()).collect()
+        self.hotspots
+            .iter()
+            .take(n)
+            .map(|(name, _)| name.as_str())
+            .collect()
     }
 }
 

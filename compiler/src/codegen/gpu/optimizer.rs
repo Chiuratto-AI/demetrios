@@ -29,8 +29,8 @@
 
 use super::autotune::{AutoTuneConfig, AutoTuner, TunedConfig};
 use super::fusion::{
-    analyze_and_fuse_kernels, FusionAnalysis, FusionConfig, FusionCostModel, FusionError,
-    FusionPlan,
+    FusionAnalysis, FusionConfig, FusionCostModel, FusionError, FusionPlan,
+    analyze_and_fuse_kernels,
 };
 use super::graph::build_graph_from_module;
 use super::ir::GpuModule;
@@ -139,7 +139,10 @@ impl OptimizationReport {
     /// Get summary string
     pub fn summary(&self) -> String {
         let mut s = String::new();
-        s.push_str(&format!("Total optimization time: {:?}\n", self.total_duration));
+        s.push_str(&format!(
+            "Total optimization time: {:?}\n",
+            self.total_duration
+        ));
 
         if self.fusion.enabled {
             s.push_str(&format!(
@@ -188,7 +191,10 @@ impl GpuOptimizer {
     /// Run the full optimization pipeline on a module
     ///
     /// Returns the optimized module and a report of what was done.
-    pub fn optimize(&self, module: &GpuModule) -> Result<(GpuModule, OptimizationReport), OptimizerError> {
+    pub fn optimize(
+        &self,
+        module: &GpuModule,
+    ) -> Result<(GpuModule, OptimizationReport), OptimizerError> {
         let start = Instant::now();
         let mut report = OptimizationReport::new();
         let mut optimized = module.clone();
@@ -200,7 +206,11 @@ impl GpuOptimizer {
             // Build dependency graph for fusion analysis
             let graph = build_graph_from_module(&optimized);
 
-            match analyze_and_fuse_kernels(&optimized, &graph, Some(self.config.fusion_config.clone())) {
+            match analyze_and_fuse_kernels(
+                &optimized,
+                &graph,
+                Some(self.config.fusion_config.clone()),
+            ) {
                 Ok(fused_module) => {
                     let kernel_count_before = optimized.kernels.len();
                     let kernel_count_after = fused_module.kernels.len();
@@ -282,10 +292,8 @@ impl GpuOptimizer {
     pub fn analyze_fusion(&self, module: &GpuModule) -> FusionPlan {
         let graph = build_graph_from_module(module);
         let cost_model = FusionCostModel::new(module.target);
-        let mut analysis = FusionAnalysis::with_config(
-            self.config.fusion_config.clone(),
-            cost_model,
-        );
+        let mut analysis =
+            FusionAnalysis::with_config(self.config.fusion_config.clone(), cost_model);
         analysis.analyze(module, &graph)
     }
 }
@@ -323,12 +331,16 @@ impl From<FusionError> for OptimizerError {
 }
 
 /// Convenience function: optimize a module with default settings
-pub fn optimize_module(module: &GpuModule) -> Result<(GpuModule, OptimizationReport), OptimizerError> {
+pub fn optimize_module(
+    module: &GpuModule,
+) -> Result<(GpuModule, OptimizationReport), OptimizerError> {
     GpuOptimizer::new().optimize(module)
 }
 
 /// Convenience function: optimize a module with aggressive settings
-pub fn optimize_module_aggressive(module: &GpuModule) -> Result<(GpuModule, OptimizationReport), OptimizerError> {
+pub fn optimize_module_aggressive(
+    module: &GpuModule,
+) -> Result<(GpuModule, OptimizationReport), OptimizerError> {
     GpuOptimizer::with_config(OptimizerConfig::aggressive()).optimize(module)
 }
 
@@ -340,8 +352,7 @@ pub fn optimize_module_aggressive(module: &GpuModule) -> Result<(GpuModule, Opti
 mod tests {
     use super::*;
     use crate::codegen::gpu::ir::{
-        BlockId, GpuBlock, GpuKernel, GpuParam, GpuTarget,
-        GpuTerminator, GpuType, MemorySpace,
+        BlockId, GpuBlock, GpuKernel, GpuParam, GpuTarget, GpuTerminator, GpuType, MemorySpace,
     };
     use rustc_hash::FxHashMap;
 

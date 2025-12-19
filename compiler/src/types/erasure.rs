@@ -229,7 +229,7 @@ impl ErasureAnalyzer {
     pub fn analyze_type_param<T>(&mut self, name: &str, qtype: &QType<T>) -> ErasureInfo {
         if qtype.multiplicity == Multiplicity::Zero {
             self.erasures
-                .erase_type_param(name.to_string(),ErasureCategory::TypeLevel);
+                .erase_type_param(name.to_string(), ErasureCategory::TypeLevel);
             ErasureInfo::erased(
                 ErasureCategory::TypeLevel,
                 format!("type parameter '{}' has multiplicity 0", name),
@@ -243,7 +243,7 @@ impl ErasureAnalyzer {
                 ),
             )
         }
-}
+    }
 
     /// Analyze an ontological type annotation
     pub fn analyze_ontological(&mut self, iri: &str) -> ErasureInfo {
@@ -360,12 +360,12 @@ mod tests {
 
     #[test]
     fn test_erasure_info_creation() {
-        let erased = ErasureInfo::erased(ErasureCategory::Ontological,"test erasure");
+        let erased = ErasureInfo::erased(ErasureCategory::Ontological, "test erasure");
         assert!(erased.erased);
         assert_eq!(erased.multiplicity, Multiplicity::Zero);
         assert_eq!(erased.category, Some(ErasureCategory::Ontological));
 
-        let runtime = ErasureInfo::runtime(Multiplicity::One,"linear value");
+        let runtime = ErasureInfo::runtime(Multiplicity::One, "linear value");
         assert!(!runtime.erased);
         assert_eq!(runtime.multiplicity, Multiplicity::One);
         assert_eq!(runtime.category, None);
@@ -397,7 +397,7 @@ mod tests {
                 .erasures()
                 .is_binding_erased("http://snomed.info/id/73211009")
         );
-}
+    }
 
     #[test]
     fn test_erasure_analyzer_type_params() {

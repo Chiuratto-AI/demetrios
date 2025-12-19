@@ -149,7 +149,10 @@ impl Transmission {
 
     /// Get dominant channel
     pub fn dominant_channel(&self) -> Channel {
-        let max = self.g.abs().max(self.t.abs().max(self.p.abs().max(self.e.abs())));
+        let max = self
+            .g
+            .abs()
+            .max(self.t.abs().max(self.p.abs().max(self.e.abs())));
         if (self.g.abs() - max).abs() < 1e-10 {
             Channel::Genetic
         } else if (self.t.abs() - max).abs() < 1e-10 {
@@ -345,8 +348,10 @@ mod tests {
         let m21 = mixed2.compose(&mixed1);
 
         // Should generally be different (noncommutative)
-        let diff =
-            (m12.g - m21.g).abs() + (m12.t - m21.t).abs() + (m12.p - m21.p).abs() + (m12.e - m21.e).abs();
+        let diff = (m12.g - m21.g).abs()
+            + (m12.t - m21.t).abs()
+            + (m12.p - m21.p).abs()
+            + (m12.e - m21.e).abs();
 
         // Note: The specific values might or might not differ based on quaternion math
         // The test verifies the composition mechanism works

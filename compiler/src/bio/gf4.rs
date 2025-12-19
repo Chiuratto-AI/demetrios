@@ -187,7 +187,11 @@ impl GF4 {
     /// Create from DNA string
     pub fn from_dna(dna: &super::dna::DNAString) -> Self {
         Self {
-            elements: dna.bases.iter().map(|b| GF4Element::from_base(*b)).collect(),
+            elements: dna
+                .bases
+                .iter()
+                .map(|b| GF4Element::from_base(*b))
+                .collect(),
         }
     }
 

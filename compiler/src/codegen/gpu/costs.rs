@@ -341,58 +341,163 @@ impl CostDatabase {
         };
 
         // Integer operations
-        costs.insert(InstructionClass::IntAdd, InstructionCost::compute(4, 64.0 * throughput_mult));
-        costs.insert(InstructionClass::IntMul, InstructionCost::compute(4, 16.0 * throughput_mult));
+        costs.insert(
+            InstructionClass::IntAdd,
+            InstructionCost::compute(4, 64.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::IntMul,
+            InstructionCost::compute(4, 16.0 * throughput_mult),
+        );
         costs.insert(InstructionClass::IntDiv, InstructionCost::compute(32, 2.0));
         costs.insert(InstructionClass::IntMod, InstructionCost::compute(32, 2.0));
-        costs.insert(InstructionClass::IntBitwise, InstructionCost::compute(4, 64.0 * throughput_mult));
-        costs.insert(InstructionClass::IntShift, InstructionCost::compute(4, 32.0 * throughput_mult));
-        costs.insert(InstructionClass::IntCompare, InstructionCost::compute(4, 64.0 * throughput_mult));
+        costs.insert(
+            InstructionClass::IntBitwise,
+            InstructionCost::compute(4, 64.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::IntShift,
+            InstructionCost::compute(4, 32.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::IntCompare,
+            InstructionCost::compute(4, 64.0 * throughput_mult),
+        );
 
         // FP32 operations
-        costs.insert(InstructionClass::Fp32Add, InstructionCost::compute(4, 64.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp32Mul, InstructionCost::compute(4, 64.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp32Fma, InstructionCost::compute(4, 64.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp32Div, InstructionCost::compute(16, 4.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp32Sqrt, InstructionCost::sfu(8, 8.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp32Rsqrt, InstructionCost::sfu(8, 8.0 * throughput_mult));
+        costs.insert(
+            InstructionClass::Fp32Add,
+            InstructionCost::compute(4, 64.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp32Mul,
+            InstructionCost::compute(4, 64.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp32Fma,
+            InstructionCost::compute(4, 64.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp32Div,
+            InstructionCost::compute(16, 4.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp32Sqrt,
+            InstructionCost::sfu(8, 8.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp32Rsqrt,
+            InstructionCost::sfu(8, 8.0 * throughput_mult),
+        );
 
         // FP16 operations (2x throughput of FP32)
-        costs.insert(InstructionClass::Fp16Add, InstructionCost::compute(4, 128.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp16Mul, InstructionCost::compute(4, 128.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp16Fma, InstructionCost::compute(4, 128.0 * throughput_mult));
+        costs.insert(
+            InstructionClass::Fp16Add,
+            InstructionCost::compute(4, 128.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp16Mul,
+            InstructionCost::compute(4, 128.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp16Fma,
+            InstructionCost::compute(4, 128.0 * throughput_mult),
+        );
 
         // BF16 operations (same as FP16 on modern archs)
-        costs.insert(InstructionClass::Bf16Add, InstructionCost::compute(4, 128.0 * throughput_mult));
-        costs.insert(InstructionClass::Bf16Mul, InstructionCost::compute(4, 128.0 * throughput_mult));
-        costs.insert(InstructionClass::Bf16Fma, InstructionCost::compute(4, 128.0 * throughput_mult));
+        costs.insert(
+            InstructionClass::Bf16Add,
+            InstructionCost::compute(4, 128.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Bf16Mul,
+            InstructionCost::compute(4, 128.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Bf16Fma,
+            InstructionCost::compute(4, 128.0 * throughput_mult),
+        );
 
         // FP64 operations (1/2 to 1/32 of FP32 throughput)
         let fp64_mult = match arch {
             CudaArch::Turing | CudaArch::Ada => 0.03125, // 1/32
-            CudaArch::Ampere | CudaArch::Hopper | CudaArch::Blackwell | CudaArch::BlackwellUltra => 0.5,
+            CudaArch::Ampere
+            | CudaArch::Hopper
+            | CudaArch::Blackwell
+            | CudaArch::BlackwellUltra => 0.5,
         };
-        costs.insert(InstructionClass::Fp64Add, InstructionCost::compute(8, 32.0 * fp64_mult * throughput_mult));
-        costs.insert(InstructionClass::Fp64Mul, InstructionCost::compute(8, 32.0 * fp64_mult * throughput_mult));
-        costs.insert(InstructionClass::Fp64Fma, InstructionCost::compute(8, 32.0 * fp64_mult * throughput_mult));
-        costs.insert(InstructionClass::Fp64Div, InstructionCost::compute(32, 2.0 * fp64_mult));
+        costs.insert(
+            InstructionClass::Fp64Add,
+            InstructionCost::compute(8, 32.0 * fp64_mult * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp64Mul,
+            InstructionCost::compute(8, 32.0 * fp64_mult * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp64Fma,
+            InstructionCost::compute(8, 32.0 * fp64_mult * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp64Div,
+            InstructionCost::compute(32, 2.0 * fp64_mult),
+        );
 
         // Special functions (SFU)
-        costs.insert(InstructionClass::Fp32Sin, InstructionCost::sfu(8, 8.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp32Cos, InstructionCost::sfu(8, 8.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp32Exp, InstructionCost::sfu(8, 8.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp32Log, InstructionCost::sfu(8, 8.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp32Pow, InstructionCost::sfu(16, 4.0 * throughput_mult));
-        costs.insert(InstructionClass::Fp32Tanh, InstructionCost::sfu(8, 8.0 * throughput_mult));
+        costs.insert(
+            InstructionClass::Fp32Sin,
+            InstructionCost::sfu(8, 8.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp32Cos,
+            InstructionCost::sfu(8, 8.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp32Exp,
+            InstructionCost::sfu(8, 8.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp32Log,
+            InstructionCost::sfu(8, 8.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp32Pow,
+            InstructionCost::sfu(16, 4.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Fp32Tanh,
+            InstructionCost::sfu(8, 8.0 * throughput_mult),
+        );
 
         // Memory operations (latency varies significantly)
-        costs.insert(InstructionClass::GlobalLoad, InstructionCost::memory(300, 32.0, 4));
-        costs.insert(InstructionClass::GlobalStore, InstructionCost::memory(300, 32.0, 4));
-        costs.insert(InstructionClass::SharedLoad, InstructionCost::memory(25, 128.0, 4));
-        costs.insert(InstructionClass::SharedStore, InstructionCost::memory(25, 128.0, 4));
-        costs.insert(InstructionClass::LocalLoad, InstructionCost::memory(300, 32.0, 4));
-        costs.insert(InstructionClass::LocalStore, InstructionCost::memory(300, 32.0, 4));
-        costs.insert(InstructionClass::ConstantLoad, InstructionCost::memory(4, 128.0, 4));
+        costs.insert(
+            InstructionClass::GlobalLoad,
+            InstructionCost::memory(300, 32.0, 4),
+        );
+        costs.insert(
+            InstructionClass::GlobalStore,
+            InstructionCost::memory(300, 32.0, 4),
+        );
+        costs.insert(
+            InstructionClass::SharedLoad,
+            InstructionCost::memory(25, 128.0, 4),
+        );
+        costs.insert(
+            InstructionClass::SharedStore,
+            InstructionCost::memory(25, 128.0, 4),
+        );
+        costs.insert(
+            InstructionClass::LocalLoad,
+            InstructionCost::memory(300, 32.0, 4),
+        );
+        costs.insert(
+            InstructionClass::LocalStore,
+            InstructionCost::memory(300, 32.0, 4),
+        );
+        costs.insert(
+            InstructionClass::ConstantLoad,
+            InstructionCost::memory(4, 128.0, 4),
+        );
 
         // Tensor Core operations
         let tensor_throughput = match arch {
@@ -402,44 +507,113 @@ impl CostDatabase {
             CudaArch::Hopper => 4096.0,
             CudaArch::Blackwell | CudaArch::BlackwellUltra => 8192.0,
         };
-        costs.insert(InstructionClass::TensorMmaFp16, InstructionCost::tensor_core(8, tensor_throughput));
-        costs.insert(InstructionClass::TensorMmaBf16, InstructionCost::tensor_core(8, tensor_throughput));
-        costs.insert(InstructionClass::TensorMmaFp8, InstructionCost::tensor_core(8, tensor_throughput * 2.0));
-        costs.insert(InstructionClass::TensorMmaInt8, InstructionCost::tensor_core(8, tensor_throughput * 2.0));
-        costs.insert(InstructionClass::TensorMmaFp4, InstructionCost::tensor_core(8, tensor_throughput * 4.0));
+        costs.insert(
+            InstructionClass::TensorMmaFp16,
+            InstructionCost::tensor_core(8, tensor_throughput),
+        );
+        costs.insert(
+            InstructionClass::TensorMmaBf16,
+            InstructionCost::tensor_core(8, tensor_throughput),
+        );
+        costs.insert(
+            InstructionClass::TensorMmaFp8,
+            InstructionCost::tensor_core(8, tensor_throughput * 2.0),
+        );
+        costs.insert(
+            InstructionClass::TensorMmaInt8,
+            InstructionCost::tensor_core(8, tensor_throughput * 2.0),
+        );
+        costs.insert(
+            InstructionClass::TensorMmaFp4,
+            InstructionCost::tensor_core(8, tensor_throughput * 4.0),
+        );
 
         // Quantization operations
-        costs.insert(InstructionClass::Dp4a, InstructionCost::compute(4, 64.0 * throughput_mult));
-        costs.insert(InstructionClass::QuantizeInt8, InstructionCost::compute(8, 32.0 * throughput_mult));
-        costs.insert(InstructionClass::DequantizeInt8, InstructionCost::compute(4, 64.0 * throughput_mult));
-        costs.insert(InstructionClass::QuantizeInt4, InstructionCost::compute(12, 16.0 * throughput_mult));
-        costs.insert(InstructionClass::DequantizeInt4, InstructionCost::compute(8, 32.0 * throughput_mult));
+        costs.insert(
+            InstructionClass::Dp4a,
+            InstructionCost::compute(4, 64.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::QuantizeInt8,
+            InstructionCost::compute(8, 32.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::DequantizeInt8,
+            InstructionCost::compute(4, 64.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::QuantizeInt4,
+            InstructionCost::compute(12, 16.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::DequantizeInt4,
+            InstructionCost::compute(8, 32.0 * throughput_mult),
+        );
 
         // Synchronization
-        costs.insert(InstructionClass::SyncThreads, InstructionCost::compute(20, 1.0));
-        costs.insert(InstructionClass::SyncWarp, InstructionCost::compute(4, 32.0));
-        costs.insert(InstructionClass::MemoryFence, InstructionCost::compute(10, 8.0));
+        costs.insert(
+            InstructionClass::SyncThreads,
+            InstructionCost::compute(20, 1.0),
+        );
+        costs.insert(
+            InstructionClass::SyncWarp,
+            InstructionCost::compute(4, 32.0),
+        );
+        costs.insert(
+            InstructionClass::MemoryFence,
+            InstructionCost::compute(10, 8.0),
+        );
 
         // Atomic operations
-        costs.insert(InstructionClass::AtomicAdd, InstructionCost::memory(100, 4.0, 4));
-        costs.insert(InstructionClass::AtomicMin, InstructionCost::memory(100, 4.0, 4));
-        costs.insert(InstructionClass::AtomicMax, InstructionCost::memory(100, 4.0, 4));
-        costs.insert(InstructionClass::AtomicCas, InstructionCost::memory(100, 4.0, 8));
+        costs.insert(
+            InstructionClass::AtomicAdd,
+            InstructionCost::memory(100, 4.0, 4),
+        );
+        costs.insert(
+            InstructionClass::AtomicMin,
+            InstructionCost::memory(100, 4.0, 4),
+        );
+        costs.insert(
+            InstructionClass::AtomicMax,
+            InstructionCost::memory(100, 4.0, 4),
+        );
+        costs.insert(
+            InstructionClass::AtomicCas,
+            InstructionCost::memory(100, 4.0, 8),
+        );
 
         // Control flow
         costs.insert(InstructionClass::Branch, InstructionCost::compute(4, 32.0));
-        costs.insert(InstructionClass::PredicatedExec, InstructionCost::compute(0, 64.0));
+        costs.insert(
+            InstructionClass::PredicatedExec,
+            InstructionCost::compute(0, 64.0),
+        );
         costs.insert(InstructionClass::Call, InstructionCost::compute(8, 16.0));
         costs.insert(InstructionClass::Return, InstructionCost::compute(4, 32.0));
 
         // Warp operations
-        costs.insert(InstructionClass::WarpShuffle, InstructionCost::compute(4, 32.0 * throughput_mult));
-        costs.insert(InstructionClass::WarpVote, InstructionCost::compute(4, 32.0 * throughput_mult));
-        costs.insert(InstructionClass::WarpReduce, InstructionCost::compute(8, 16.0 * throughput_mult));
+        costs.insert(
+            InstructionClass::WarpShuffle,
+            InstructionCost::compute(4, 32.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::WarpVote,
+            InstructionCost::compute(4, 32.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::WarpReduce,
+            InstructionCost::compute(8, 16.0 * throughput_mult),
+        );
 
         // Miscellaneous
-        costs.insert(InstructionClass::Convert, InstructionCost::compute(4, 32.0 * throughput_mult));
-        costs.insert(InstructionClass::Select, InstructionCost::compute(4, 64.0 * throughput_mult));
+        costs.insert(
+            InstructionClass::Convert,
+            InstructionCost::compute(4, 32.0 * throughput_mult),
+        );
+        costs.insert(
+            InstructionClass::Select,
+            InstructionCost::compute(4, 64.0 * throughput_mult),
+        );
         costs.insert(InstructionClass::Nop, InstructionCost::compute(0, 64.0));
 
         costs
@@ -484,10 +658,18 @@ impl CostDatabase {
             GpuOp::FastRsqrt(_) => InstructionClass::Fp32Rsqrt,
 
             // Comparisons
-            GpuOp::Eq(_, _) | GpuOp::Ne(_, _) | GpuOp::Lt(_, _) | GpuOp::Le(_, _) |
-            GpuOp::Gt(_, _) | GpuOp::Ge(_, _) => InstructionClass::IntCompare,
-            GpuOp::FEq(_, _) | GpuOp::FNe(_, _) | GpuOp::FLt(_, _) | GpuOp::FLe(_, _) |
-            GpuOp::FGt(_, _) | GpuOp::FGe(_, _) => InstructionClass::Fp32Add, // Comparisons are cheap
+            GpuOp::Eq(_, _)
+            | GpuOp::Ne(_, _)
+            | GpuOp::Lt(_, _)
+            | GpuOp::Le(_, _)
+            | GpuOp::Gt(_, _)
+            | GpuOp::Ge(_, _) => InstructionClass::IntCompare,
+            GpuOp::FEq(_, _)
+            | GpuOp::FNe(_, _)
+            | GpuOp::FLt(_, _)
+            | GpuOp::FLe(_, _)
+            | GpuOp::FGt(_, _)
+            | GpuOp::FGe(_, _) => InstructionClass::Fp32Add, // Comparisons are cheap
 
             // Memory operations
             GpuOp::Load(_, space) => match space {
@@ -531,10 +713,10 @@ impl CostDatabase {
             GpuOp::AtomicCas(_, _, _) => InstructionClass::AtomicCas,
 
             // Warp operations
-            GpuOp::WarpShuffle(_, _) |
-            GpuOp::WarpShuffleUp(_, _) |
-            GpuOp::WarpShuffleDown(_, _) |
-            GpuOp::WarpShuffleXor(_, _) => InstructionClass::WarpShuffle,
+            GpuOp::WarpShuffle(_, _)
+            | GpuOp::WarpShuffleUp(_, _)
+            | GpuOp::WarpShuffleDown(_, _)
+            | GpuOp::WarpShuffleXor(_, _) => InstructionClass::WarpShuffle,
             GpuOp::WarpVote(_, _) => InstructionClass::WarpVote,
             GpuOp::WarpReduce(_, _) => InstructionClass::WarpReduce,
             GpuOp::WarpMatch(_) => InstructionClass::WarpVote,
@@ -543,21 +725,31 @@ impl CostDatabase {
             GpuOp::Select(_, _, _) => InstructionClass::Select,
 
             // Type conversions
-            GpuOp::Trunc(_, _) | GpuOp::ZExt(_, _) | GpuOp::SExt(_, _) |
-            GpuOp::FpTrunc(_, _) | GpuOp::FpExt(_, _) |
-            GpuOp::FpToSi(_, _) | GpuOp::FpToUi(_, _) |
-            GpuOp::SiToFp(_, _) | GpuOp::UiToFp(_, _) |
-            GpuOp::Bitcast(_, _) => InstructionClass::Convert,
+            GpuOp::Trunc(_, _)
+            | GpuOp::ZExt(_, _)
+            | GpuOp::SExt(_, _)
+            | GpuOp::FpTrunc(_, _)
+            | GpuOp::FpExt(_, _)
+            | GpuOp::FpToSi(_, _)
+            | GpuOp::FpToUi(_, _)
+            | GpuOp::SiToFp(_, _)
+            | GpuOp::UiToFp(_, _)
+            | GpuOp::Bitcast(_, _) => InstructionClass::Convert,
 
             // BF16/FP8 conversions
-            GpuOp::F32ToBF16(_) | GpuOp::BF16ToF32(_) |
-            GpuOp::F32ToF8E4M3(_) | GpuOp::F8E4M3ToF32(_) |
-            GpuOp::F32ToF8E5M2(_) | GpuOp::F8E5M2ToF32(_) |
-            GpuOp::F32ToF4(_) | GpuOp::F4ToF32(_) => InstructionClass::Convert,
+            GpuOp::F32ToBF16(_)
+            | GpuOp::BF16ToF32(_)
+            | GpuOp::F32ToF8E4M3(_)
+            | GpuOp::F8E4M3ToF32(_)
+            | GpuOp::F32ToF8E5M2(_)
+            | GpuOp::F8E5M2ToF32(_)
+            | GpuOp::F32ToF4(_)
+            | GpuOp::F4ToF32(_) => InstructionClass::Convert,
 
             // Constants (not FLOPS - just loading immediate values)
-            GpuOp::ConstInt(_, _) | GpuOp::ConstFloat(_, _) |
-            GpuOp::ConstBool(_) => InstructionClass::ConstantLoad,
+            GpuOp::ConstInt(_, _) | GpuOp::ConstFloat(_, _) | GpuOp::ConstBool(_) => {
+                InstructionClass::ConstantLoad
+            }
 
             // Default for unclassified operations (not counted as FLOPS)
             _ => InstructionClass::Nop,
@@ -582,7 +774,9 @@ impl CostDatabase {
                     memory_cycles += cost.latency as u64;
                 } else if matches!(
                     class,
-                    InstructionClass::SyncThreads | InstructionClass::SyncWarp | InstructionClass::MemoryFence
+                    InstructionClass::SyncThreads
+                        | InstructionClass::SyncWarp
+                        | InstructionClass::MemoryFence
                 ) {
                     sync_cycles += cost.latency as u64;
                 } else {
@@ -645,9 +839,9 @@ impl CostDatabase {
                     InstructionClass::Bf16Add | InstructionClass::Bf16Mul => fp16_flops += 1,
                     InstructionClass::Bf16Fma => fp16_flops += 2,
 
-                    InstructionClass::Fp64Add | InstructionClass::Fp64Mul | InstructionClass::Fp64Div => {
-                        fp64_flops += 1
-                    }
+                    InstructionClass::Fp64Add
+                    | InstructionClass::Fp64Mul
+                    | InstructionClass::Fp64Div => fp64_flops += 1,
                     InstructionClass::Fp64Fma => fp64_flops += 2,
 
                     InstructionClass::IntAdd
@@ -923,7 +1117,7 @@ mod tests {
         assert_eq!(traffic.shared_traffic(), 3000);
 
         let flops = FlopsCount {
-            fp32_flops: 15000,  // Use fp32_flops so total() returns 15000
+            fp32_flops: 15000, // Use fp32_flops so total() returns 15000
             ..Default::default()
         };
         let intensity = traffic.arithmetic_intensity(&flops);

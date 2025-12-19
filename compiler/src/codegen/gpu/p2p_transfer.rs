@@ -191,13 +191,19 @@ impl P2PManager {
     }
 
     /// Enable P2P access between two devices
-    pub fn enable_peer_access(&mut self, src: DeviceId, dst: DeviceId) -> Result<(), MultiGpuError> {
+    pub fn enable_peer_access(
+        &mut self,
+        src: DeviceId,
+        dst: DeviceId,
+    ) -> Result<(), MultiGpuError> {
         if src == dst {
             return Ok(()); // Same device
         }
 
         // Check if P2P is supported
-        let cap = self.runtime.p2p_capability(src, dst)
+        let cap = self
+            .runtime
+            .p2p_capability(src, dst)
             .ok_or(MultiGpuError::DeviceNotFound(src))?;
 
         if !cap.peer_access {
@@ -238,10 +244,7 @@ impl P2PManager {
     /// In a real implementation, this would use:
     /// - cuMemcpyPeerAsync for CUDA
     /// - Similar APIs for other backends
-    pub fn copy(
-        &mut self,
-        desc: &TransferDescriptor,
-    ) -> Result<(), MultiGpuError> {
+    pub fn copy(&mut self, desc: &TransferDescriptor) -> Result<(), MultiGpuError> {
         // Validate P2P is enabled
         if !self.is_enabled(desc.src_device, desc.dst_device) {
             return Err(MultiGpuError::P2PNotAvailable {
@@ -282,10 +285,7 @@ impl P2PManager {
     }
 
     /// Perform multiple P2P copies in parallel
-    pub fn copy_batch(
-        &mut self,
-        descriptors: &[TransferDescriptor],
-    ) -> Result<(), MultiGpuError> {
+    pub fn copy_batch(&mut self, descriptors: &[TransferDescriptor]) -> Result<(), MultiGpuError> {
         for desc in descriptors {
             self.copy(desc)?;
         }

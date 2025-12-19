@@ -5,9 +5,9 @@
 //! target specifications from files.
 
 use super::spec::{
-    ArchSpec, Architecture, CRuntime, CodeModel, CodegenSpec, EnvSpec, Environment,
-    LinkerFlavor, LinkerSpec, OperatingSystem, OsSpec, PanicStrategy, RelocationModel,
-    TargetFeatures, TargetOptions, TargetResult, TargetSpec, TargetSpecError, TargetTriple,
+    ArchSpec, Architecture, CRuntime, CodeModel, CodegenSpec, EnvSpec, Environment, LinkerFlavor,
+    LinkerSpec, OperatingSystem, OsSpec, PanicStrategy, RelocationModel, TargetFeatures,
+    TargetOptions, TargetResult, TargetSpec, TargetSpecError, TargetTriple,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

@@ -218,18 +218,14 @@ pub enum StabilityRisk {
     /// Operation is numerically stable
     Stable,
     /// Mild instability (amplified error but manageable)
-    MildInstability {
-        condition_number: f64,
-    },
+    MildInstability { condition_number: f64 },
     /// Severe risk of overflow or underflow
     Severe {
         overflow_risk: f64,
         underflow_risk: f64,
     },
     /// Catastrophic cancellation (a - b where a ≈ b)
-    Catastrophic {
-        cancellation_risk: f64,
-    },
+    Catastrophic { cancellation_risk: f64 },
 }
 
 impl StabilityRisk {
@@ -245,12 +241,11 @@ impl StabilityRisk {
             StabilityRisk::MildInstability { condition_number } => {
                 (condition_number.log10() / 16.0).min(0.5) // log10(cond) normalized
             }
-            StabilityRisk::Severe { overflow_risk, underflow_risk } => {
-                0.5 + 0.3 * overflow_risk.max(*underflow_risk)
-            }
-            StabilityRisk::Catastrophic { cancellation_risk } => {
-                0.8 + 0.2 * cancellation_risk
-            }
+            StabilityRisk::Severe {
+                overflow_risk,
+                underflow_risk,
+            } => 0.5 + 0.3 * overflow_risk.max(*underflow_risk),
+            StabilityRisk::Catastrophic { cancellation_risk } => 0.8 + 0.2 * cancellation_risk,
         }
     }
 
@@ -264,9 +259,7 @@ impl StabilityRisk {
             StabilityRisk::Severe { overflow_risk, .. } if *overflow_risk > 0.5 => {
                 Some(MitigationStrategy::Rescaling)
             }
-            StabilityRisk::Catastrophic { .. } => {
-                Some(MitigationStrategy::CompensatedAlgorithm)
-            }
+            StabilityRisk::Catastrophic { .. } => Some(MitigationStrategy::CompensatedAlgorithm),
             _ => Some(MitigationStrategy::UpgradePrecision),
         }
     }
@@ -279,11 +272,22 @@ impl fmt::Display for StabilityRisk {
             StabilityRisk::MildInstability { condition_number } => {
                 write!(f, "Mild instability (κ = {:.2e})", condition_number)
             }
-            StabilityRisk::Severe { overflow_risk, underflow_risk } => {
-                write!(f, "Severe (overflow: {:.2}, underflow: {:.2})", overflow_risk, underflow_risk)
+            StabilityRisk::Severe {
+                overflow_risk,
+                underflow_risk,
+            } => {
+                write!(
+                    f,
+                    "Severe (overflow: {:.2}, underflow: {:.2})",
+                    overflow_risk, underflow_risk
+                )
             }
             StabilityRisk::Catastrophic { cancellation_risk } => {
-                write!(f, "Catastrophic cancellation (risk: {:.2})", cancellation_risk)
+                write!(
+                    f,
+                    "Catastrophic cancellation (risk: {:.2})",
+                    cancellation_risk
+                )
             }
         }
     }
@@ -302,17 +306,17 @@ impl Precision {
     /// Machine epsilon for this precision
     pub fn epsilon(&self) -> f64 {
         match self {
-            Precision::FP8 => 0.125,           // ~1/8
-            Precision::FP16 => 0.0009765625,   // 2^-10
-            Precision::FP32 => 1.1920929e-7,   // 2^-23
-            Precision::FP64 => 2.220446e-16,   // 2^-52
+            Precision::FP8 => 0.125,         // ~1/8
+            Precision::FP16 => 0.0009765625, // 2^-10
+            Precision::FP32 => 1.1920929e-7, // 2^-23
+            Precision::FP64 => 2.220446e-16, // 2^-52
         }
     }
 
     /// Maximum representable value
     pub fn max_value(&self) -> f64 {
         match self {
-            Precision::FP8 => 448.0,           // E4M3 max
+            Precision::FP8 => 448.0, // E4M3 max
             Precision::FP16 => 65504.0,
             Precision::FP32 => 3.4028235e38,
             Precision::FP64 => 1.7976931e308,
@@ -322,10 +326,10 @@ impl Precision {
     /// Minimum normal value
     pub fn min_normal(&self) -> f64 {
         match self {
-            Precision::FP8 => 0.015625,        // 2^-6
-            Precision::FP16 => 6.103515e-5,    // 2^-14
-            Precision::FP32 => 1.1754944e-38,  // 2^-126
-            Precision::FP64 => 2.225074e-308,  // 2^-1022
+            Precision::FP8 => 0.015625,       // 2^-6
+            Precision::FP16 => 6.103515e-5,   // 2^-14
+            Precision::FP32 => 1.1754944e-38, // 2^-126
+            Precision::FP64 => 2.225074e-308, // 2^-1022
         }
     }
 
@@ -463,10 +467,24 @@ impl ErrorPropagator {
     }
 
     /// Propagate error through multiplication: z = x * y
-    pub fn propagate_mul(&mut self, x: ErrorBound, y: ErrorBound, x_val: f64, y_val: f64) -> ErrorBound {
+    pub fn propagate_mul(
+        &mut self,
+        x: ErrorBound,
+        y: ErrorBound,
+        x_val: f64,
+        y_val: f64,
+    ) -> ErrorBound {
         // For multiplication: δz/z ≈ δx/x + δy/y (relative errors add)
-        let x_rel = if x_val != 0.0 { x.expected_error / x_val.abs() } else { x.expected_error };
-        let y_rel = if y_val != 0.0 { y.expected_error / y_val.abs() } else { y.expected_error };
+        let x_rel = if x_val != 0.0 {
+            x.expected_error / x_val.abs()
+        } else {
+            x.expected_error
+        };
+        let y_rel = if y_val != 0.0 {
+            y.expected_error / y_val.abs()
+        } else {
+            y.expected_error
+        };
 
         let z_val = x_val * y_val;
         let expected_rel = (x_rel.powi(2) + y_rel.powi(2)).sqrt();
@@ -484,7 +502,13 @@ impl ErrorPropagator {
     }
 
     /// Propagate error through division: z = x / y
-    pub fn propagate_div(&mut self, x: ErrorBound, y: ErrorBound, x_val: f64, y_val: f64) -> ErrorBound {
+    pub fn propagate_div(
+        &mut self,
+        x: ErrorBound,
+        y: ErrorBound,
+        x_val: f64,
+        y_val: f64,
+    ) -> ErrorBound {
         if y_val.abs() < self.precision.min_normal() {
             // Near-zero divisor: massive error amplification
             return ErrorBound {
@@ -496,15 +520,27 @@ impl ErrorPropagator {
         }
 
         // For division: δz/z ≈ δx/x + δy/y (similar to multiplication)
-        let x_rel = if x_val != 0.0 { x.expected_error / x_val.abs() } else { x.expected_error };
-        let y_rel = if y_val != 0.0 { y.expected_error / y_val.abs() } else { y.expected_error };
+        let x_rel = if x_val != 0.0 {
+            x.expected_error / x_val.abs()
+        } else {
+            x.expected_error
+        };
+        let y_rel = if y_val != 0.0 {
+            y.expected_error / y_val.abs()
+        } else {
+            y.expected_error
+        };
 
         let z_val = x_val / y_val;
         let expected_rel = (x_rel.powi(2) + y_rel.powi(2)).sqrt();
         let expected_abs = z_val.abs() * expected_rel;
 
         // Additional amplification near zero divisor
-        let amplification = if y_val.abs() < 1.0 { 1.0 / y_val.abs() } else { 1.0 };
+        let amplification = if y_val.abs() < 1.0 {
+            1.0 / y_val.abs()
+        } else {
+            1.0
+        };
 
         let result = ErrorBound {
             min_error: 0.0,
@@ -518,8 +554,14 @@ impl ErrorPropagator {
     }
 
     /// Propagate error through FMA: z = a * b + c
-    pub fn propagate_fma(&mut self, a: ErrorBound, b: ErrorBound, c: ErrorBound,
-                         a_val: f64, b_val: f64) -> ErrorBound {
+    pub fn propagate_fma(
+        &mut self,
+        a: ErrorBound,
+        b: ErrorBound,
+        c: ErrorBound,
+        a_val: f64,
+        b_val: f64,
+    ) -> ErrorBound {
         // FMA is exact for the multiply-add, only one rounding error
         let mul_error = self.propagate_mul(a, b, a_val, b_val);
 
@@ -672,7 +714,11 @@ impl ErrorPropagator {
             min_error: 0.0,
             max_error: expected * 2.0 + self.precision.epsilon() * n,
             expected_error: expected,
-            confidence: values.iter().map(|e| e.confidence).product::<f64>().powf(1.0 / n),
+            confidence: values
+                .iter()
+                .map(|e| e.confidence)
+                .product::<f64>()
+                .powf(1.0 / n),
         };
 
         self.record_event("sum", values.to_vec(), result);
@@ -691,7 +737,10 @@ impl ErrorPropagator {
 
     /// Record an error event
     fn record_event(&mut self, operation: &str, inputs: Vec<ErrorBound>, output: ErrorBound) {
-        let max_input_error = inputs.iter().map(|e| e.expected_error).fold(0.0f64, f64::max);
+        let max_input_error = inputs
+            .iter()
+            .map(|e| e.expected_error)
+            .fold(0.0f64, f64::max);
         let amplification = if max_input_error > 0.0 {
             output.expected_error / max_input_error
         } else {
@@ -907,7 +956,11 @@ impl StabilityAnalyzer {
     }
 
     /// Analyze condition number for stability
-    pub fn check_condition_number(&mut self, condition_number: f64, location: &str) -> StabilityRisk {
+    pub fn check_condition_number(
+        &mut self,
+        condition_number: f64,
+        location: &str,
+    ) -> StabilityRisk {
         let risk = if condition_number > 1e12 {
             StabilityRisk::Catastrophic {
                 cancellation_risk: 1.0,
@@ -1008,7 +1061,12 @@ impl PrecisionAdvisor {
     }
 
     /// Recommend precision for an operation based on error analysis
-    pub fn recommend(&mut self, operation: &str, error_bound: ErrorBound, value_range: (f64, f64)) -> Precision {
+    pub fn recommend(
+        &mut self,
+        operation: &str,
+        error_bound: ErrorBound,
+        value_range: (f64, f64),
+    ) -> Precision {
         let (min_val, max_val) = value_range;
 
         // Start with lowest precision and upgrade as needed
@@ -1023,7 +1081,9 @@ impl PrecisionAdvisor {
         if error_bound.expected_error > self.error_tolerance {
             if recommended == Precision::FP16 {
                 recommended = Precision::FP32;
-            } else if recommended == Precision::FP32 && error_bound.expected_error > self.error_tolerance * 10.0 {
+            } else if recommended == Precision::FP32
+                && error_bound.expected_error > self.error_tolerance * 10.0
+            {
                 recommended = Precision::FP64;
             }
         }
@@ -1037,7 +1097,8 @@ impl PrecisionAdvisor {
             };
         }
 
-        self.recommendations.insert(operation.to_string(), recommended);
+        self.recommendations
+            .insert(operation.to_string(), recommended);
         recommended
     }
 
@@ -1079,7 +1140,11 @@ impl PrecisionAdvisor {
         let mut fp64_ops = Vec::new();
 
         for op in operations {
-            match self.recommendations.get(op).unwrap_or(&self.default_precision) {
+            match self
+                .recommendations
+                .get(op)
+                .unwrap_or(&self.default_precision)
+            {
                 Precision::FP8 | Precision::FP16 => fp16_ops.push(op.clone()),
                 Precision::FP32 => fp32_ops.push(op.clone()),
                 Precision::FP64 => fp64_ops.push(op.clone()),
@@ -1103,7 +1168,8 @@ impl PrecisionAdvisor {
         let quantization_error = quantization_step / 2.0;
 
         // Safe if quantization error is within tolerance
-        quantization_error < self.error_tolerance && error_bound.expected_error + quantization_error < self.error_tolerance * 2.0
+        quantization_error < self.error_tolerance
+            && error_bound.expected_error + quantization_error < self.error_tolerance * 2.0
     }
 
     /// Get recommended precision for a specific operation
@@ -1123,7 +1189,9 @@ pub struct MixedPrecisionStrategy {
 impl MixedPrecisionStrategy {
     /// Estimate performance impact (relative to all-FP32)
     pub fn performance_factor(&self) -> f64 {
-        let total = (self.fp16_operations.len() + self.fp32_operations.len() + self.fp64_operations.len()) as f64;
+        let total = (self.fp16_operations.len()
+            + self.fp32_operations.len()
+            + self.fp64_operations.len()) as f64;
         if total == 0.0 {
             return 1.0;
         }
@@ -1221,7 +1289,10 @@ impl StabilityMitigator {
         self.mitigations.push(AppliedMitigation {
             strategy: MitigationStrategy::Rescaling,
             location: location.to_string(),
-            description: format!("Rescale by {:.2e} to prevent overflow/underflow", scale_factor),
+            description: format!(
+                "Rescale by {:.2e} to prevent overflow/underflow",
+                scale_factor
+            ),
         });
     }
 
@@ -1261,7 +1332,10 @@ pub fn synthesize_provenance(events: &[ErrorEvent]) -> u64 {
     let mut provenance = 0u64;
     for (i, event) in events.iter().enumerate() {
         // Each operation contributes to provenance
-        let op_hash = event.operation.bytes().fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+        let op_hash = event
+            .operation
+            .bytes()
+            .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
         provenance ^= op_hash << (i % 8);
     }
     provenance

@@ -685,7 +685,7 @@ mod tests {
             MappingPredicate::from_str("owl:equivalentClass"),
             MappingPredicate::ExactMatch
         );
-}
+    }
 
     #[test]
     fn test_sssom_index() {

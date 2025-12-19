@@ -815,7 +815,12 @@ impl<'a> OwnershipChecker<'a> {
                 .rev()
                 .find_map(|scope| scope.get(capture.def_id).map(|value| value.linearity))
                 .unwrap_or(Linearity::Unrestricted);
-            self.track_value(capture.def_id, capture.name.clone(), linearity, capture.span);
+            self.track_value(
+                capture.def_id,
+                capture.name.clone(),
+                linearity,
+                capture.span,
+            );
         }
     }
 

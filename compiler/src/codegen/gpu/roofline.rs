@@ -157,7 +157,8 @@ impl RooflineModel {
         let achieved_gflops = peak_gflops * efficiency;
 
         let boundedness = self.classify_boundedness(arithmetic_intensity);
-        let recommendations = self.generate_recommendations(&flops, &memory, &boundedness, uses_tensor_cores);
+        let recommendations =
+            self.generate_recommendations(&flops, &memory, &boundedness, uses_tensor_cores);
 
         RooflineAnalysis {
             kernel_name: kernel.name.clone(),
@@ -434,7 +435,10 @@ impl RooflinePlot {
     /// Find kernels below a certain efficiency threshold
     pub fn low_efficiency_kernels(&self, threshold: f64) -> Vec<&str> {
         // This would need the efficiency data, simplified for now
-        self.kernels.iter().map(|(name, _, _)| name.as_str()).collect()
+        self.kernels
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect()
     }
 }
 
@@ -446,48 +450,28 @@ impl RooflinePlot {
 #[derive(Debug, Clone, PartialEq)]
 pub enum OptimizationHint {
     /// Increase arithmetic intensity to move toward compute-bound
-    IncreaseArithmeticIntensity {
-        current: f64,
-        target: f64,
-    },
+    IncreaseArithmeticIntensity { current: f64, target: f64 },
     /// Improve memory coalescing for better bandwidth utilization
-    ImproveMemoryCoalescing {
-        efficiency: f64,
-    },
+    ImproveMemoryCoalescing { efficiency: f64 },
     /// Use Tensor Cores for matrix operations
-    UseTensorCores {
-        speedup_estimate: f64,
-    },
+    UseTensorCores { speedup_estimate: f64 },
     /// Increase occupancy for better latency hiding
-    IncreaseOccupancy {
-        current: f64,
-        target: f64,
-    },
+    IncreaseOccupancy { current: f64, target: f64 },
     /// Reduce shared memory usage to increase occupancy
-    ReduceSharedMemory {
-        current: u32,
-        limit: u32,
-    },
+    ReduceSharedMemory { current: u32, limit: u32 },
     /// Use quantization for reduced precision
-    UseQuantization {
-        precision: &'static str,
-    },
+    UseQuantization { precision: &'static str },
     /// Enable async memory pipeline
     EnableAsyncPipeline,
     /// Fuse kernels to reduce memory traffic
-    FuseKernels {
-        candidates: Vec<String>,
-    },
+    FuseKernels { candidates: Vec<String> },
     /// Use vectorized loads/stores
     UseVectorizedAccess {
         current_width: u32,
         target_width: u32,
     },
     /// Reduce register pressure
-    ReduceRegisterPressure {
-        current: u32,
-        target: u32,
-    },
+    ReduceRegisterPressure { current: u32, target: u32 },
 }
 
 impl OptimizationHint {
@@ -520,13 +504,13 @@ impl OptimizationHint {
                 )
             }
             OptimizationHint::ReduceSharedMemory { current, limit } => {
-                format!(
-                    "Reduce shared memory from {} to {} bytes",
-                    current, limit
-                )
+                format!("Reduce shared memory from {} to {} bytes", current, limit)
             }
             OptimizationHint::UseQuantization { precision } => {
-                format!("Consider {} quantization for compute-bound sections", precision)
+                format!(
+                    "Consider {} quantization for compute-bound sections",
+                    precision
+                )
             }
             OptimizationHint::EnableAsyncPipeline => {
                 "Enable async memory pipeline for better latency hiding".to_string()
@@ -560,7 +544,7 @@ impl OptimizationHint {
             OptimizationHint::EnableAsyncPipeline => 1.3, // ~30% improvement typical
             OptimizationHint::FuseKernels { .. } => 1.5,  // ~50% improvement typical
             OptimizationHint::UseQuantization { .. } => 2.0, // 2x for INT8
-            _ => 1.2, // Default ~20% improvement
+            _ => 1.2,                                     // Default ~20% improvement
         }
     }
 }

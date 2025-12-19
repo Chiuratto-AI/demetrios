@@ -41,7 +41,6 @@ pub mod report;
 pub mod solver;
 pub mod visualize;
 
-
 pub use cluster::{Cluster, ClusteringResult, cluster_concepts};
 pub use constraint::{ConstraintSet, ConstraintSource, ForcedRegion, LayoutConstraint};
 pub use diagnostics::{

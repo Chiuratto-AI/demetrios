@@ -4,18 +4,44 @@
 
 use demetrios::codegen::gpu::{
     // Cost database
-    ArchPeakPerf, CostDatabase, FlopsCount, InstructionClass, InstructionCost,
-    KernelCostEstimate, LimitingResource, MemoryTraffic,
-    // Roofline model
-    Boundedness, OptimizationHint, RooflineAnalysis, RooflineModel, RooflinePlot, RooflinePoint,
-    // Profiler
-    Bottleneck, BottleneckKind, BottleneckSeverity, KernelPerfProfile, KernelProfiler,
-    ModulePerfProfile, PerfComparison, PerfCounters, PerfScore,
+    ArchPeakPerf,
     // IR types
-    BlockId, GpuBlock, GpuKernel, GpuModule, GpuOp, GpuTarget, GpuTerminator, GpuType,
-    MemorySpace, ValueId,
+    BlockId,
+    // Profiler
+    Bottleneck,
+    BottleneckKind,
+    BottleneckSeverity,
+    // Roofline model
+    Boundedness,
+    CostDatabase,
     // Arch types
     CudaArch,
+    FlopsCount,
+    GpuBlock,
+    GpuKernel,
+    GpuModule,
+    GpuOp,
+    GpuTarget,
+    GpuTerminator,
+    GpuType,
+    InstructionClass,
+    InstructionCost,
+    KernelCostEstimate,
+    KernelPerfProfile,
+    KernelProfiler,
+    LimitingResource,
+    MemorySpace,
+    MemoryTraffic,
+    ModulePerfProfile,
+    OptimizationHint,
+    PerfComparison,
+    PerfCounters,
+    PerfScore,
+    RooflineAnalysis,
+    RooflineModel,
+    RooflinePlot,
+    RooflinePoint,
+    ValueId,
 };
 
 // ============================================================================
@@ -38,9 +64,21 @@ fn test_cost_database_creation() {
         let perf = ArchPeakPerf::for_arch(arch);
 
         // All architectures should have positive peak performance
-        assert!(perf.fp32_tflops > 0.0, "{:?} should have fp32 performance", arch);
-        assert!(perf.fp16_tflops > 0.0, "{:?} should have fp16 performance", arch);
-        assert!(perf.memory_bandwidth_gbs > 0.0, "{:?} should have memory bandwidth", arch);
+        assert!(
+            perf.fp32_tflops > 0.0,
+            "{:?} should have fp32 performance",
+            arch
+        );
+        assert!(
+            perf.fp16_tflops > 0.0,
+            "{:?} should have fp16 performance",
+            arch
+        );
+        assert!(
+            perf.memory_bandwidth_gbs > 0.0,
+            "{:?} should have memory bandwidth",
+            arch
+        );
     }
 }
 
@@ -73,9 +111,12 @@ fn test_instruction_cost_memory() {
     let shared_load = db.get_cost(InstructionClass::SharedLoad);
 
     // Global memory should have higher latency than shared memory
-    assert!(global_load.latency > shared_load.latency,
-            "Global load latency {} should be > shared load latency {}",
-            global_load.latency, shared_load.latency);
+    assert!(
+        global_load.latency > shared_load.latency,
+        "Global load latency {} should be > shared load latency {}",
+        global_load.latency,
+        shared_load.latency
+    );
 
     // Memory operations should have memory_bytes > 0
     assert!(global_load.memory_bytes > 0);
@@ -113,7 +154,8 @@ fn test_op_classification() {
     let load_class = CostDatabase::classify_op(&GpuOp::Load(ValueId(0), MemorySpace::Global));
     assert_eq!(load_class, InstructionClass::GlobalLoad);
 
-    let shared_load_class = CostDatabase::classify_op(&GpuOp::Load(ValueId(0), MemorySpace::Shared));
+    let shared_load_class =
+        CostDatabase::classify_op(&GpuOp::Load(ValueId(0), MemorySpace::Shared));
     assert_eq!(shared_load_class, InstructionClass::SharedLoad);
 
     // Sync
@@ -126,7 +168,9 @@ fn test_kernel_cost_estimate() {
     let db = CostDatabase::for_arch(CudaArch::Ampere);
 
     // Create a simple test kernel
-    let target = GpuTarget::Cuda { compute_capability: (8, 0) };
+    let target = GpuTarget::Cuda {
+        compute_capability: (8, 0),
+    };
     let mut module = GpuModule::new("test_module", target);
     let mut kernel = GpuKernel::new("test_kernel");
 
@@ -160,9 +204,9 @@ fn test_flops_count() {
     // 3 FP32 operations
     block.add_instruction(ValueId(0), GpuOp::ConstFloat(1.0, GpuType::F32));
     block.add_instruction(ValueId(1), GpuOp::ConstFloat(2.0, GpuType::F32));
-    block.add_instruction(ValueId(2), GpuOp::FAdd(ValueId(0), ValueId(1)));  // 1 FLOP
-    block.add_instruction(ValueId(3), GpuOp::FMul(ValueId(2), ValueId(1)));  // 1 FLOP
-    block.add_instruction(ValueId(4), GpuOp::FSub(ValueId(3), ValueId(0)));  // 1 FLOP
+    block.add_instruction(ValueId(2), GpuOp::FAdd(ValueId(0), ValueId(1))); // 1 FLOP
+    block.add_instruction(ValueId(3), GpuOp::FMul(ValueId(2), ValueId(1))); // 1 FLOP
+    block.add_instruction(ValueId(4), GpuOp::FSub(ValueId(3), ValueId(0))); // 1 FLOP
     block.set_terminator(GpuTerminator::ReturnVoid);
 
     kernel.add_block(block);
@@ -181,10 +225,13 @@ fn test_memory_traffic() {
     let mut block = GpuBlock::new(BlockId(0), "entry");
 
     // Add loads and stores
-    block.add_instruction(ValueId(0), GpuOp::ConstInt(0, GpuType::I64));  // pointer
-    block.add_instruction(ValueId(1), GpuOp::Load(ValueId(0), MemorySpace::Global));  // global load
-    block.add_instruction(ValueId(2), GpuOp::Load(ValueId(0), MemorySpace::Shared));  // shared load
-    block.add_instruction(ValueId(3), GpuOp::Store(ValueId(0), ValueId(1), MemorySpace::Global));  // global store
+    block.add_instruction(ValueId(0), GpuOp::ConstInt(0, GpuType::I64)); // pointer
+    block.add_instruction(ValueId(1), GpuOp::Load(ValueId(0), MemorySpace::Global)); // global load
+    block.add_instruction(ValueId(2), GpuOp::Load(ValueId(0), MemorySpace::Shared)); // shared load
+    block.add_instruction(
+        ValueId(3),
+        GpuOp::Store(ValueId(0), ValueId(1), MemorySpace::Global),
+    ); // global store
     block.set_terminator(GpuTerminator::ReturnVoid);
 
     kernel.add_block(block);
@@ -206,8 +253,14 @@ fn test_roofline_model_creation() {
     let model = RooflineModel::for_arch(CudaArch::Ampere);
 
     // Ampere A100 specs
-    assert!(model.peak_compute() > 10000.0, "A100 should have >10 TFLOPS");
-    assert!(model.peak_bandwidth() > 1000.0, "A100 should have >1 TB/s bandwidth");
+    assert!(
+        model.peak_compute() > 10000.0,
+        "A100 should have >10 TFLOPS"
+    );
+    assert!(
+        model.peak_bandwidth() > 1000.0,
+        "A100 should have >1 TB/s bandwidth"
+    );
     assert!(model.ridge_point() > 0.0, "Ridge point should be positive");
 }
 
@@ -230,23 +283,26 @@ fn test_boundedness_classification() {
 
     // Low arithmetic intensity = memory bound
     let memory_bound = model.classify_boundedness(1.0);
-    assert!(matches!(memory_bound, Boundedness::MemoryBound { .. }),
-            "AI=1 should be memory bound");
+    assert!(
+        matches!(memory_bound, Boundedness::MemoryBound { .. }),
+        "AI=1 should be memory bound"
+    );
 
     // High arithmetic intensity = compute bound
     let compute_bound = model.classify_boundedness(100.0);
-    assert!(matches!(compute_bound, Boundedness::ComputeBound { .. }),
-            "AI=100 should be compute bound");
+    assert!(
+        matches!(compute_bound, Boundedness::ComputeBound { .. }),
+        "AI=100 should be compute bound"
+    );
 
     // Near ridge = balanced
     let _balanced = model.classify_boundedness(ridge);
     // Within 10% of ridge should be balanced
     let near_ridge = model.classify_boundedness(ridge * 0.95);
     // Could be balanced or memory bound, just verify it runs
-    assert!(matches!(near_ridge,
-        Boundedness::Balanced |
-        Boundedness::MemoryBound { .. } |
-        Boundedness::ComputeBound { .. }
+    assert!(matches!(
+        near_ridge,
+        Boundedness::Balanced | Boundedness::MemoryBound { .. } | Boundedness::ComputeBound { .. }
     ));
 }
 
@@ -258,14 +314,18 @@ fn test_peak_at_intensity() {
     // Below ridge: limited by bandwidth
     let low_ai_peak = model.peak_at_intensity(1.0);
     // At AI=1, peak = bandwidth * AI = ~1.5 TFLOPS
-    assert!(low_ai_peak < model.peak_compute(),
-            "Below ridge should be memory limited");
+    assert!(
+        low_ai_peak < model.peak_compute(),
+        "Below ridge should be memory limited"
+    );
 
     // Above ridge: limited by compute
     let high_ai_peak = model.peak_at_intensity(ridge * 10.0);
     // Should be near peak compute
-    assert!((high_ai_peak - model.peak_compute()).abs() < 100.0,
-            "Above ridge should hit compute ceiling");
+    assert!(
+        (high_ai_peak - model.peak_compute()).abs() < 100.0,
+        "Above ridge should hit compute ceiling"
+    );
 }
 
 #[test]
@@ -295,7 +355,10 @@ fn test_roofline_analysis() {
         block.add_instruction(ValueId(i as u32), GpuOp::ConstFloat(1.0, GpuType::F32));
     }
     for i in 100..200 {
-        block.add_instruction(ValueId(i as u32), GpuOp::FAdd(ValueId((i - 100) as u32), ValueId((i - 99) as u32)));
+        block.add_instruction(
+            ValueId(i as u32),
+            GpuOp::FAdd(ValueId((i - 100) as u32), ValueId((i - 99) as u32)),
+        );
     }
     block.set_terminator(GpuTerminator::ReturnVoid);
     kernel.add_block(block);
@@ -352,7 +415,9 @@ fn test_kernel_profiling() {
 fn test_module_profiling() {
     let profiler = KernelProfiler::for_arch(CudaArch::Ampere);
 
-    let target = GpuTarget::Cuda { compute_capability: (8, 0) };
+    let target = GpuTarget::Cuda {
+        compute_capability: (8, 0),
+    };
     let mut module = GpuModule::new("module_test", target);
 
     // Add multiple kernels
@@ -383,7 +448,10 @@ fn test_bottleneck_detection() {
     // Many memory operations
     for i in 0..50 {
         block.add_instruction(ValueId(i as u32), GpuOp::ConstInt(i as i64, GpuType::I64));
-        block.add_instruction(ValueId((50 + i) as u32), GpuOp::Load(ValueId(i as u32), MemorySpace::Global));
+        block.add_instruction(
+            ValueId((50 + i) as u32),
+            GpuOp::Load(ValueId(i as u32), MemorySpace::Global),
+        );
     }
     // Few compute operations
     block.add_instruction(ValueId(100), GpuOp::FAdd(ValueId(50), ValueId(51)));
@@ -394,9 +462,12 @@ fn test_bottleneck_detection() {
     let _bottlenecks = profiler.detect_bottlenecks(&profile);
 
     // Should detect memory-related bottleneck
-    let _has_memory_bottleneck = _bottlenecks.iter().any(|b|
-        matches!(b.kind, BottleneckKind::MemoryBandwidth | BottleneckKind::MemoryLatency)
-    );
+    let _has_memory_bottleneck = _bottlenecks.iter().any(|b| {
+        matches!(
+            b.kind,
+            BottleneckKind::MemoryBandwidth | BottleneckKind::MemoryLatency
+        )
+    });
     // Memory-heavy kernel should have some memory-related observations
     assert!(profile.counters.global_load_transactions > 0);
 }
@@ -432,7 +503,10 @@ fn test_perf_comparison() {
     let mut block = GpuBlock::new(BlockId(0), "entry");
     for i in 0..10 {
         block.add_instruction(ValueId(i as u32), GpuOp::ConstInt(i as i64, GpuType::I64));
-        block.add_instruction(ValueId((10 + i) as u32), GpuOp::Load(ValueId(i as u32), MemorySpace::Global));
+        block.add_instruction(
+            ValueId((10 + i) as u32),
+            GpuOp::Load(ValueId(i as u32), MemorySpace::Global),
+        );
     }
     block.set_terminator(GpuTerminator::ReturnVoid);
     before_kernel.add_block(block);
@@ -442,7 +516,10 @@ fn test_perf_comparison() {
     let mut block = GpuBlock::new(BlockId(0), "entry");
     for i in 0..5 {
         block.add_instruction(ValueId(i as u32), GpuOp::ConstInt(i as i64, GpuType::I64));
-        block.add_instruction(ValueId((5 + i) as u32), GpuOp::Load(ValueId(i as u32), MemorySpace::Shared));
+        block.add_instruction(
+            ValueId((5 + i) as u32),
+            GpuOp::Load(ValueId(i as u32), MemorySpace::Shared),
+        );
     }
     block.set_terminator(GpuTerminator::ReturnVoid);
     after_kernel.add_block(block);
@@ -453,8 +530,10 @@ fn test_perf_comparison() {
     let comparison = profiler.compare(&before_profile, &after_profile);
 
     // After should have less memory traffic
-    assert!(comparison.memory_reduction >= 0.0 || comparison.memory_reduction < 0.0,
-            "Comparison should produce a numeric result");
+    assert!(
+        comparison.memory_reduction >= 0.0 || comparison.memory_reduction < 0.0,
+        "Comparison should produce a numeric result"
+    );
 }
 
 // ============================================================================
@@ -466,9 +545,18 @@ fn test_blackwell_specs() {
     let perf = ArchPeakPerf::for_arch(CudaArch::Blackwell);
 
     // Blackwell B200 should have highest performance
-    assert!(perf.fp32_tflops > 50.0, "Blackwell should have >50 FP32 TFLOPS");
-    assert!(perf.tensor_fp16_tflops > 1000.0, "Blackwell should have >1000 Tensor TFLOPS");
-    assert!(perf.memory_bandwidth_gbs > 5000.0, "Blackwell should have >5 TB/s bandwidth");
+    assert!(
+        perf.fp32_tflops > 50.0,
+        "Blackwell should have >50 FP32 TFLOPS"
+    );
+    assert!(
+        perf.tensor_fp16_tflops > 1000.0,
+        "Blackwell should have >1000 Tensor TFLOPS"
+    );
+    assert!(
+        perf.memory_bandwidth_gbs > 5000.0,
+        "Blackwell should have >5 TB/s bandwidth"
+    );
 }
 
 #[test]
@@ -491,10 +579,14 @@ fn test_turing_vs_ampere() {
     let ampere_perf = ArchPeakPerf::for_arch(CudaArch::Ampere);
 
     // Ampere should be faster than Turing
-    assert!(ampere_perf.fp32_tflops > turing_perf.fp32_tflops,
-            "Ampere should be faster than Turing");
-    assert!(ampere_perf.memory_bandwidth_gbs > turing_perf.memory_bandwidth_gbs,
-            "Ampere should have more bandwidth than Turing");
+    assert!(
+        ampere_perf.fp32_tflops > turing_perf.fp32_tflops,
+        "Ampere should be faster than Turing"
+    );
+    assert!(
+        ampere_perf.memory_bandwidth_gbs > turing_perf.memory_bandwidth_gbs,
+        "Ampere should have more bandwidth than Turing"
+    );
 }
 
 // ============================================================================
@@ -505,7 +597,9 @@ fn test_turing_vs_ampere() {
 fn test_full_profiling_workflow() {
     // Complete workflow: create module -> profile -> analyze bottlenecks -> get recommendations
 
-    let target = GpuTarget::Cuda { compute_capability: (8, 0) };
+    let target = GpuTarget::Cuda {
+        compute_capability: (8, 0),
+    };
     let mut module = GpuModule::new("workflow_test", target);
 
     // Create a realistic kernel (matrix multiply pattern)
@@ -515,7 +609,10 @@ fn test_full_profiling_workflow() {
     // Load A, B tiles
     for i in 0..16 {
         block.add_instruction(ValueId(i as u32), GpuOp::ConstInt(i as i64, GpuType::I64));
-        block.add_instruction(ValueId((16 + i) as u32), GpuOp::Load(ValueId(i as u32), MemorySpace::Shared));
+        block.add_instruction(
+            ValueId((16 + i) as u32),
+            GpuOp::Load(ValueId(i as u32), MemorySpace::Shared),
+        );
     }
     // Compute: use FMulAdd (FMA) for matrix multiply
     for i in 0..64 {
@@ -524,10 +621,13 @@ fn test_full_profiling_workflow() {
         let c = ValueId((160 + i) as u32);
         block.add_instruction(a, GpuOp::ConstFloat(1.0, GpuType::F32));
         block.add_instruction(b, GpuOp::ConstFloat(1.0, GpuType::F32));
-        block.add_instruction(c, GpuOp::FMulAdd(a, b, ValueId(16)));  // FMA
+        block.add_instruction(c, GpuOp::FMulAdd(a, b, ValueId(16))); // FMA
     }
     // Store result
-    block.add_instruction(ValueId(300), GpuOp::Store(ValueId(0), ValueId(160), MemorySpace::Global));
+    block.add_instruction(
+        ValueId(300),
+        GpuOp::Store(ValueId(0), ValueId(160), MemorySpace::Global),
+    );
     block.set_terminator(GpuTerminator::ReturnVoid);
     matmul.add_block(block);
     module.add_kernel(matmul);
@@ -632,22 +732,37 @@ fn test_very_high_arithmetic_intensity() {
     let compute_peak = model.peak_compute();
 
     // Should be at or very close to compute ceiling
-    assert!((peak - compute_peak).abs() < 1.0,
-            "AI=1000 should hit compute ceiling");
+    assert!(
+        (peak - compute_peak).abs() < 1.0,
+        "AI=1000 should hit compute ceiling"
+    );
 }
 
 #[test]
 fn test_optimization_hint_types() {
     // Verify all hint types can be created
     let hints: Vec<OptimizationHint> = vec![
-        OptimizationHint::IncreaseArithmeticIntensity { current: 1.0, target: 10.0 },
+        OptimizationHint::IncreaseArithmeticIntensity {
+            current: 1.0,
+            target: 10.0,
+        },
         OptimizationHint::ImproveMemoryCoalescing { efficiency: 0.5 },
-        OptimizationHint::UseTensorCores { speedup_estimate: 4.0 },
-        OptimizationHint::IncreaseOccupancy { current: 0.3, target: 0.7 },
-        OptimizationHint::ReduceSharedMemory { current: 48000, limit: 48000 },
+        OptimizationHint::UseTensorCores {
+            speedup_estimate: 4.0,
+        },
+        OptimizationHint::IncreaseOccupancy {
+            current: 0.3,
+            target: 0.7,
+        },
+        OptimizationHint::ReduceSharedMemory {
+            current: 48000,
+            limit: 48000,
+        },
         OptimizationHint::UseQuantization { precision: "INT8" },
         OptimizationHint::EnableAsyncPipeline,
-        OptimizationHint::FuseKernels { candidates: vec!["kernel_a".to_string()] },
+        OptimizationHint::FuseKernels {
+            candidates: vec!["kernel_a".to_string()],
+        },
     ];
 
     assert_eq!(hints.len(), 8, "Should have 8 hint types");

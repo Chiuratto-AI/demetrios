@@ -79,7 +79,7 @@ pub fn validate_tile_dims(m: u32, n: u32, k: u32, dtype: &GpuType) -> Result<(),
             return Err(format!(
                 "Unsupported element type for WMMA: {:?}. Use F16, BF16, F8, F4, or F32.",
                 dtype
-            ))
+            ));
         }
     };
 
@@ -110,7 +110,11 @@ pub fn validate_tile_dims_2d(m: u32, n: u32, dtype: &GpuType) -> Result<(), Stri
 
     // Verify element type is supported
     match dtype {
-        GpuType::F16 | GpuType::BF16 | GpuType::F32 | GpuType::F8E4M3 | GpuType::F8E5M2
+        GpuType::F16
+        | GpuType::BF16
+        | GpuType::F32
+        | GpuType::F8E4M3
+        | GpuType::F8E5M2
         | GpuType::F4 => Ok(()),
         _ => Err(format!(
             "Unsupported element type for tile: {:?}. Use F16, BF16, F8, F4, or F32.",
@@ -330,11 +334,11 @@ pub fn recommended_tile_size(dtype: &GpuType, sm_version: (u32, u32)) -> (u32, u
     let sm = sm_version.0 * 10 + sm_version.1;
 
     match dtype {
-        GpuType::F4 if sm >= 100 => (16, 16, 64),  // Blackwell FP4
+        GpuType::F4 if sm >= 100 => (16, 16, 64), // Blackwell FP4
         GpuType::F8E4M3 | GpuType::F8E5M2 if sm >= 89 => (16, 16, 32), // Ada/Hopper FP8
         GpuType::BF16 | GpuType::F16 => (16, 16, 16), // Standard WMMA shape
-        GpuType::F32 => (16, 16, 8),               // TF32 mode
-        _ => (16, 16, 16),                         // Default
+        GpuType::F32 => (16, 16, 8),              // TF32 mode
+        _ => (16, 16, 16),                        // Default
     }
 }
 
@@ -497,7 +501,10 @@ mod tests {
         assert_eq!(recommended_tile_size(&GpuType::F32, (8, 0)), (16, 16, 8));
 
         // FP8 on Ada/Hopper
-        assert_eq!(recommended_tile_size(&GpuType::F8E4M3, (9, 0)), (16, 16, 32));
+        assert_eq!(
+            recommended_tile_size(&GpuType::F8E4M3, (9, 0)),
+            (16, 16, 32)
+        );
 
         // FP4 on Blackwell
         assert_eq!(recommended_tile_size(&GpuType::F4, (10, 0)), (16, 16, 64));

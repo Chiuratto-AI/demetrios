@@ -188,7 +188,7 @@ impl<T> QType<T> {
             ty,
             multiplicity: Multiplicity::Zero,
         }
-}
+    }
 
     /// Create a linear type (multiplicity 1)
     pub fn linear(ty: T) -> Self {
@@ -196,7 +196,7 @@ impl<T> QType<T> {
             ty,
             multiplicity: Multiplicity::One,
         }
-}
+    }
 
     /// Create an unrestricted type (multiplicity ω)
     pub fn unrestricted(ty: T) -> Self {
@@ -204,7 +204,7 @@ impl<T> QType<T> {
             ty,
             multiplicity: Multiplicity::Many,
         }
-}
+    }
 
     /// Check if this type exists at runtime
     pub fn is_runtime_relevant(&self) -> bool {

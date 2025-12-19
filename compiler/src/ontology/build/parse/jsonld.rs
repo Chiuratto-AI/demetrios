@@ -51,7 +51,7 @@ impl JsonLdParser {
         context.insert(
             "skos".to_string(),
             "http://www.w3.org/2004/02/skos/core#".to_string(),
-);
+        );
 
         Self { context }
     }
@@ -155,7 +155,7 @@ impl JsonLdParser {
             obj,
             &["rdfs:label", "schema:name", "name", "label"],
             context,
-);
+        );
 
         // Extract definition
         term.definition = self.extract_string_property(
@@ -167,7 +167,7 @@ impl JsonLdParser {
                 "comment",
             ],
             context,
-);
+        );
 
         // Extract synonyms
         if let Some(synonyms) =

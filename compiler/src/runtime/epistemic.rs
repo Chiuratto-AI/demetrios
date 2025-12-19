@@ -326,7 +326,7 @@ impl<T> FullKnowledge<T> {
         provenance.add_step(
             operation,
             Some(&format!("combined with {}", other.provenance.hash())),
-);
+        );
 
         FullKnowledge {
             value: f(self.value, other.value),
@@ -444,7 +444,7 @@ impl<T> ErasedKnowledge<T> {
         ErasedKnowledge {
             value: f(self.value),
         }
-}
+    }
 
     /// Combine with another erased knowledge
     pub fn combine<U, V, F: FnOnce(T, U) -> V>(
@@ -455,7 +455,7 @@ impl<T> ErasedKnowledge<T> {
         ErasedKnowledge {
             value: f(self.value, other.value),
         }
-}
+    }
 
     /// Get the inner value
     pub fn into_inner(self) -> T {
@@ -616,7 +616,7 @@ mod tests {
             std::mem::size_of::<ErasedKnowledge<i32>>(),
             std::mem::size_of::<i32>()
         );
-}
+    }
 
     #[test]
     fn test_epistemic_runtime() {

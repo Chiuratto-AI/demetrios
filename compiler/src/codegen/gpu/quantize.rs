@@ -53,7 +53,7 @@ impl QuantDtype {
             QuantDtype::UInt8 => (0, 255),
             QuantDtype::Int4 => (-8, 7),
             QuantDtype::UInt4 => (0, 15),
-            QuantDtype::FP8E4M3 => (-448, 448),  // Approximate max for E4M3
+            QuantDtype::FP8E4M3 => (-448, 448), // Approximate max for E4M3
             QuantDtype::FP8E5M2 => (-57344, 57344), // Approximate max for E5M2
         }
     }
@@ -69,7 +69,10 @@ impl QuantDtype {
 
     /// Check if this is a signed type
     pub fn is_signed(&self) -> bool {
-        matches!(self, QuantDtype::Int8 | QuantDtype::Int4 | QuantDtype::FP8E4M3 | QuantDtype::FP8E5M2)
+        matches!(
+            self,
+            QuantDtype::Int8 | QuantDtype::Int4 | QuantDtype::FP8E4M3 | QuantDtype::FP8E5M2
+        )
     }
 
     /// Check if this is a packed type (multiple values per byte)
@@ -666,7 +669,11 @@ pub fn quantize_tensor_int8(
 
     // Quantize
     let quantized: Vec<u8> = if symmetric {
-        params.quantize_to_i8(data).into_iter().map(|v| v as u8).collect()
+        params
+            .quantize_to_i8(data)
+            .into_iter()
+            .map(|v| v as u8)
+            .collect()
     } else {
         params.quantize_to_u8(data)
     };
@@ -675,11 +682,7 @@ pub fn quantize_tensor_int8(
 }
 
 /// Quantize a f32 tensor to INT4 (packed)
-pub fn quantize_tensor_int4(
-    data: &[f32],
-    shape: Vec<usize>,
-    name: String,
-) -> QuantizedTensor {
+pub fn quantize_tensor_int4(data: &[f32], shape: Vec<usize>, name: String) -> QuantizedTensor {
     // Find min/max
     let min_val = data.iter().cloned().fold(f32::INFINITY, f32::min);
     let max_val = data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
@@ -811,11 +814,8 @@ mod tests {
     #[test]
     fn test_per_channel_params() {
         let max_per_channel = vec![1.0, 2.0, 0.5, 1.5];
-        let params = PerChannelQuantParams::from_channel_maxes(
-            &max_per_channel,
-            0,
-            QuantDtype::Int8,
-        );
+        let params =
+            PerChannelQuantParams::from_channel_maxes(&max_per_channel, 0, QuantDtype::Int8);
 
         assert_eq!(params.num_channels, 4);
         assert_eq!(params.scales.len(), 4);

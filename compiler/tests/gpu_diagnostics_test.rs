@@ -4,17 +4,30 @@
 //! across the GPU optimization pipeline.
 
 use demetrios::codegen::gpu::{
-    // Diagnostics
-    DiagnosticConfig, DiagnosticContext, GpuDiagnostic, GpuDiagnosticKind, GpuIrLocation,
-    RecoveryGenerator,
-    // Source mapping
-    GpuSourceMapper, PtxDebugEmitter, PtxLocation, SpanTracker,
-    // Validation
-    CorrectnessValidator, ToleranceConfig, ValidationConfig, ValidationError, ValidationIssue,
     // GPU IR types
-    BlockId, ValueId,
+    BlockId,
+    // Validation
+    CorrectnessValidator,
+    // Diagnostics
+    DiagnosticConfig,
+    DiagnosticContext,
     // Optimizer
-    FusionError, OptimizerError,
+    FusionError,
+    GpuDiagnostic,
+    GpuDiagnosticKind,
+    GpuIrLocation,
+    // Source mapping
+    GpuSourceMapper,
+    OptimizerError,
+    PtxDebugEmitter,
+    PtxLocation,
+    RecoveryGenerator,
+    SpanTracker,
+    ToleranceConfig,
+    ValidationConfig,
+    ValidationError,
+    ValidationIssue,
+    ValueId,
 };
 use demetrios::common::Span;
 
@@ -52,7 +65,9 @@ fn test_diagnostic_with_source_location() {
 
     // Create diagnostic with location info using builder pattern
     let diag = GpuDiagnostic::error(
-        GpuDiagnosticKind::Optimizer(Box::new(OptimizerError::InvalidModule("Bad structure".to_string()))),
+        GpuDiagnosticKind::Optimizer(Box::new(OptimizerError::InvalidModule(
+            "Bad structure".to_string(),
+        ))),
         "Invalid module structure",
     )
     .with_span(span)
@@ -64,7 +79,10 @@ fn test_diagnostic_with_source_location() {
     let report = ctx.build_report();
     assert_eq!(report.errors.len(), 1);
     assert_eq!(report.errors[0].hlir_span, Some(span));
-    assert_eq!(report.errors[0].gpu_location.as_ref().map(|l| &l.kernel), Some(&"my_kernel".to_string()));
+    assert_eq!(
+        report.errors[0].gpu_location.as_ref().map(|l| &l.kernel),
+        Some(&"my_kernel".to_string())
+    );
     assert_eq!(report.errors[0].ptx_line, Some(25));
 }
 
@@ -101,19 +119,25 @@ fn test_recovery_hints_for_fusion_error() {
     assert!(!report.errors[0].hints.is_empty());
 
     // Check hint content mentions the kernel name
-    let hint_messages: Vec<_> = report.errors[0].hints.iter().map(|h| h.title.as_str()).collect();
+    let hint_messages: Vec<_> = report.errors[0]
+        .hints
+        .iter()
+        .map(|h| h.title.as_str())
+        .collect();
     assert!(hint_messages.iter().any(|m| m.contains("test_kernel")));
 }
 
 #[test]
 fn test_recovery_hints_generator() {
     // Test direct hint generation
-    let hints = RecoveryGenerator::for_fusion_error(&FusionError::InvalidTransformation("cannot fuse".to_string()));
+    let hints = RecoveryGenerator::for_fusion_error(&FusionError::InvalidTransformation(
+        "cannot fuse".to_string(),
+    ));
     assert!(!hints.is_empty());
 
     let hints = RecoveryGenerator::for_validation_error(&ValidationError::SizeMismatch {
         expected: 100,
-        actual: 50
+        actual: 50,
     });
     assert!(!hints.is_empty());
 }
@@ -252,9 +276,10 @@ fn test_validation_f32_mismatch() {
     assert!(!result.issues.is_empty());
 
     // Check that the mismatch is reported
-    let has_mismatch = result.issues.iter().any(|issue| {
-        matches!(issue, ValidationIssue::ValueMismatch { index: 2, .. })
-    });
+    let has_mismatch = result
+        .issues
+        .iter()
+        .any(|issue| matches!(issue, ValidationIssue::ValueMismatch { index: 2, .. }));
     assert!(has_mismatch);
 }
 
@@ -268,9 +293,10 @@ fn test_validation_nan_detection() {
     let result = validator.validate_f32("output", &baseline, &optimized);
     assert!(!result.passed());
 
-    let has_nan_issue = result.issues.iter().any(|issue| {
-        matches!(issue, ValidationIssue::NaNDetected { .. })
-    });
+    let has_nan_issue = result
+        .issues
+        .iter()
+        .any(|issue| matches!(issue, ValidationIssue::NaNDetected { .. }));
     assert!(has_nan_issue);
 }
 
@@ -284,9 +310,10 @@ fn test_validation_inf_detection() {
     let result = validator.validate_f32("output", &baseline, &optimized);
     assert!(!result.passed());
 
-    let has_inf_issue = result.issues.iter().any(|issue| {
-        matches!(issue, ValidationIssue::InfDetected { .. })
-    });
+    let has_inf_issue = result
+        .issues
+        .iter()
+        .any(|issue| matches!(issue, ValidationIssue::InfDetected { .. }));
     assert!(has_inf_issue);
 }
 
@@ -381,7 +408,9 @@ fn test_full_pipeline_diagnostic_flow() {
 
     // Step 2: Optimization encounters an error
     let diag = GpuDiagnostic::error(
-        GpuDiagnosticKind::Fusion(FusionError::InvalidTransformation("Cannot fuse kernels".to_string())),
+        GpuDiagnosticKind::Fusion(FusionError::InvalidTransformation(
+            "Cannot fuse kernels".to_string(),
+        )),
         "Fusion transformation failed",
     )
     .with_span(hlir_span)

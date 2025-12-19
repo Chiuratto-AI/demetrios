@@ -3,10 +3,7 @@
 //! This module provides platform-specific linker integration, including linker
 //! discovery, invocation, and linker script generation.
 
-use super::spec::{
-    LinkerFlavor, LtoMode, OperatingSystem, RelocationModel,
-    TargetSpec,
-};
+use super::spec::{LinkerFlavor, LtoMode, OperatingSystem, RelocationModel, TargetSpec};
 use super::sysroot::Sysroot;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

@@ -224,9 +224,7 @@ impl CalibrationCollector {
 
     /// Update histogram with new values
     fn update_histogram(&mut self, values: &[f32]) {
-        if let (Some(histogram), Some(edges)) =
-            (&mut self.stats.histogram, &self.stats.bin_edges)
-        {
+        if let (Some(histogram), Some(edges)) = (&mut self.stats.histogram, &self.stats.bin_edges) {
             let num_bins = histogram.len();
             for &val in values {
                 if !val.is_finite() {
@@ -299,7 +297,9 @@ impl CalibrationCollector {
         for threshold_pct in 50..=100 {
             let threshold_bin = (num_bins * threshold_pct) / 100;
             let threshold = if threshold_bin < edges.len() {
-                edges[threshold_bin].abs().max(edges[num_bins - threshold_bin].abs())
+                edges[threshold_bin]
+                    .abs()
+                    .max(edges[num_bins - threshold_bin].abs())
             } else {
                 continue;
             };
@@ -496,9 +496,7 @@ impl CalibrationCollector {
             QuantScheme::Symmetric | QuantScheme::PerTensor => {
                 QuantParams::from_minmax_symmetric(min_val, max_val, dtype)
             }
-            QuantScheme::Asymmetric => {
-                QuantParams::from_minmax_asymmetric(min_val, max_val, dtype)
-            }
+            QuantScheme::Asymmetric => QuantParams::from_minmax_asymmetric(min_val, max_val, dtype),
             _ => QuantParams::from_minmax_symmetric(min_val, max_val, dtype),
         }
     }
@@ -694,7 +692,8 @@ mod tests {
 
     #[test]
     fn test_histogram_calibration() {
-        let mut collector = CalibrationCollector::new(CalibrationMethod::Histogram { num_bins: 256 });
+        let mut collector =
+            CalibrationCollector::new(CalibrationMethod::Histogram { num_bins: 256 });
 
         // Generate normal-ish distribution
         let values: Vec<f32> = (-100..=100).map(|i| i as f32 * 0.01).collect();
@@ -742,7 +741,9 @@ mod tests {
 
     #[test]
     fn test_mse_calibration() {
-        let mut collector = CalibrationCollector::new(CalibrationMethod::Mse { num_candidates: 100 });
+        let mut collector = CalibrationCollector::new(CalibrationMethod::Mse {
+            num_candidates: 100,
+        });
 
         let values: Vec<f32> = (-100..=100).map(|i| i as f32 * 0.01).collect();
         collector.collect(&values);

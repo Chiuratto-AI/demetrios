@@ -445,7 +445,7 @@ impl CounterfactualPtxEmitter {
         self.emit(&format!(
             "xor.b64 %r_world_id, %r_world_id, 0x{:016X};",
             marker
-));
+        ));
 
         // Increment causal depth
         if self.config.track_depth {
@@ -473,7 +473,7 @@ impl CounterfactualPtxEmitter {
             "selp.f32 {}, %r_cf_ftemp0, {}, %p_is_cf;",
             factual_reg, factual_reg
         ));
-}
+    }
 
     /// Emit parallel world execution setup
     pub fn emit_parallel_worlds(&mut self, ctx: &CounterfactualContext) {
@@ -497,14 +497,14 @@ impl CounterfactualPtxEmitter {
         self.emit(&format!(
             "shfl.sync.xor.b32 %r_cf_ftemp0, {}, 1, 0xFFFFFFFF;",
             outcome_reg
-));
+        ));
 
         // Compute Individual Treatment Effect (ITE)
         self.emit("// ITE = outcome_cf - outcome_factual");
         self.emit(&format!(
             "sub.f32 {}, {}, %r_cf_ftemp0;",
             divergence_reg, outcome_reg
-));
+        ));
 
         // For factual threads, negate to get correct sign
         self.emit("@%p_is_factual neg.f32 {}, {};");
@@ -512,7 +512,7 @@ impl CounterfactualPtxEmitter {
             "@%p_is_factual neg.f32 {}, {};",
             divergence_reg, divergence_reg
         ));
-}
+    }
 
     /// Emit Average Treatment Effect computation (warp-level)
     pub fn emit_ate_compute(&mut self, ite_reg: &str, ate_reg: &str) {
@@ -554,14 +554,14 @@ impl CounterfactualPtxEmitter {
         self.emit(&format!(
             "shfl.sync.xor.b32 %r_cf_ftemp0, {}, 1, 0xFFFFFFFF;",
             factual_reg
-));
+        ));
 
         // Factual threads get counterfactual result, vice versa
         self.emit(&format!(
             "selp.f32 {}, %r_cf_ftemp0, {}, %p_is_factual;",
             result_reg, cf_reg
         ));
-}
+    }
 
     /// Emit probability of causation computation
     /// P(Y_x=1 | X=0, Y=0) - probability that X caused Y
@@ -614,7 +614,7 @@ impl CounterfactualPtxEmitter {
         self.emit_comment(&format!(
             "Nested intervention: do({} = {}) then do({} = {})",
             var1, val1, var2, val2
-));
+        ));
 
         // Check if we're already at max depth
         if self.config.track_depth {
@@ -630,7 +630,7 @@ impl CounterfactualPtxEmitter {
         self.emit(&format!(
             "selp.f32 {}, %r_cf_ftemp0, {}, %p_is_cf;",
             reg1, reg1
-));
+        ));
 
         // Second intervention (deeper nesting)
         // Use different bits of lane ID for second level
@@ -646,7 +646,7 @@ impl CounterfactualPtxEmitter {
         self.emit(&format!(
             "selp.f32 {}, %r_cf_ftemp0, {}, %p_nested_cf;",
             reg2, reg2
-));
+        ));
 
         if self.config.track_depth {
             self.emit("add.u32 %r_causal_depth, %r_causal_depth, 2;");
@@ -672,7 +672,7 @@ impl CounterfactualPtxEmitter {
                         "mov.f32 {}, 0F{:08X};",
                         result_reg,
                         params[0].to_bits()
-));
+                    ));
 
                     for (i, input) in inputs.iter().enumerate() {
                         if i + 1 < params.len() {
@@ -687,7 +687,7 @@ impl CounterfactualPtxEmitter {
                         }
                     }
                 }
-}
+            }
 
             StructuralEqType::Logistic => {
                 // Y = sigmoid(β₀ + β₁X₁ + ...)
@@ -697,7 +697,7 @@ impl CounterfactualPtxEmitter {
                         "mov.f32 {}, 0F{:08X};",
                         result_reg,
                         params[0].to_bits()
-));
+                    ));
 
                     for (i, input) in inputs.iter().enumerate() {
                         if i + 1 < params.len() {
@@ -711,7 +711,7 @@ impl CounterfactualPtxEmitter {
                             ));
                         }
                     }
-}
+                }
 
                 // Sigmoid: 1 / (1 + exp(-x))
                 self.emit(&format!("neg.f32 %r_cf_ftemp0, {};", result_reg));
@@ -740,7 +740,7 @@ impl CounterfactualPtxEmitter {
                         ));
                     }
                 }
-}
+            }
 
             StructuralEqType::Threshold => {
                 // Y = 1 if X > θ else 0

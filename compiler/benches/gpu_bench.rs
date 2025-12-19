@@ -5,7 +5,7 @@
 //! 2. PTX String Generation - Basic PTX emission
 //! 3. Architecture Queries - CudaArch method performance
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use demetrios::codegen::gpu::autotune::OccupancyCalculator;
 use demetrios::codegen::gpu::ir::CudaArch;
 use demetrios::codegen::gpu::ptx::PtxCodegen;
@@ -81,9 +81,7 @@ fn bench_arch_queries(c: &mut Criterion) {
 
     for (name, arch) in archs {
         group.bench_function(format!("{}_compute_cap", name), |b| {
-            b.iter(|| {
-                black_box(arch.compute_capability())
-            });
+            b.iter(|| black_box(arch.compute_capability()));
         });
     }
     group.finish();
@@ -119,15 +117,9 @@ criterion_group!(
     bench_occupancy_create,
 );
 
-criterion_group!(
-    ptx_benches,
-    bench_ptx_codegen,
-);
+criterion_group!(ptx_benches, bench_ptx_codegen,);
 
-criterion_group!(
-    arch_benches,
-    bench_arch_queries,
-);
+criterion_group!(arch_benches, bench_arch_queries,);
 
 // Main benchmark runner
 criterion_main!(occupancy_benches, ptx_benches, arch_benches);

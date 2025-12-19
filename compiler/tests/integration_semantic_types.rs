@@ -1251,7 +1251,9 @@ fn test_embedding_captures_synonymy() {
     let sim_synonyms = space
         .cosine_similarity(&iri("Heart"), &iri("CardiacOrgan"))
         .unwrap();
-    let sim_different = space.cosine_similarity(&iri("Heart"), &iri("Liver")).unwrap();
+    let sim_different = space
+        .cosine_similarity(&iri("Heart"), &iri("Liver"))
+        .unwrap();
 
     assert!(
         sim_synonyms > 0.95,

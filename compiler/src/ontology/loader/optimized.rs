@@ -6,7 +6,7 @@
 //! 3. Pre-computed subsumption index
 //! 4. SIMD-accelerated embedding distance (see embedding/simd.rs)
 
-use super::{LoadedTerm, IRI};
+use super::{IRI, LoadedTerm};
 use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 
@@ -469,8 +469,8 @@ impl OptimizedTermCache {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::OntologyId;
+    use super::*;
 
     #[test]
     fn test_bloom_filter() {

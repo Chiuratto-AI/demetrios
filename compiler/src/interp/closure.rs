@@ -13,7 +13,7 @@ use miette::{Result, miette};
 use crate::hir::HirFn;
 
 use super::eval::Interpreter;
-use super::value::{Value, ControlFlow};
+use super::value::{ControlFlow, Value};
 
 /// A D closure adapted for use in Rust code
 ///
@@ -72,10 +72,7 @@ impl InterpreterClosure {
     /// Vector of f64 results from the closure
     pub fn call_with_floats(&self, args: &[f64]) -> Result<Vec<f64>> {
         // Convert f64 arguments to Values
-        let values: Vec<Value> = args
-            .iter()
-            .map(|&f| Value::Float(f))
-            .collect();
+        let values: Vec<Value> = args.iter().map(|&f| Value::Float(f)).collect();
 
         // Call the function
         let result = {
@@ -93,7 +90,9 @@ impl InterpreterClosure {
                     match v {
                         Value::Float(f) => floats.push(*f),
                         Value::Int(n) => floats.push(*n as f64),
-                        _ => return Err(miette!("Expected numeric array, got {:?}", v.type_name())),
+                        _ => {
+                            return Err(miette!("Expected numeric array, got {:?}", v.type_name()));
+                        }
                     }
                 }
                 Ok(floats)
@@ -104,12 +103,17 @@ impl InterpreterClosure {
                     match v {
                         Value::Float(f) => floats.push(*f),
                         Value::Int(n) => floats.push(*n as f64),
-                        _ => return Err(miette!("Expected numeric tuple, got {:?}", v.type_name())),
+                        _ => {
+                            return Err(miette!("Expected numeric tuple, got {:?}", v.type_name()));
+                        }
                     }
                 }
                 Ok(floats)
             }
-            _ => Err(miette!("Closure must return float or array, got {}", result.type_name())),
+            _ => Err(miette!(
+                "Closure must return float or array, got {}",
+                result.type_name()
+            )),
         }
     }
 
@@ -181,13 +185,11 @@ pub fn extract_closure(
     interpreter: Rc<RefCell<Interpreter>>,
 ) -> Result<InterpreterClosure> {
     match value {
-        Value::Function { func, captures } => {
-            Ok(InterpreterClosure::new(
-                func.clone(),
-                captures.clone(),
-                interpreter,
-            ))
-        }
+        Value::Function { func, captures } => Ok(InterpreterClosure::new(
+            func.clone(),
+            captures.clone(),
+            interpreter,
+        )),
         _ => Err(miette!("Expected function, got {}", value.type_name())),
     }
 }

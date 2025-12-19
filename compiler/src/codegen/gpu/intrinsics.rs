@@ -702,7 +702,7 @@ pub fn all_intrinsics() -> Vec<GpuIntrinsic> {
         GpuIntrinsic {
             name: "gpu.quantize_block",
             short_name: "quantize_block",
-            param_count: 3, // ptr to f32[], size, ptr to f8[]
+            param_count: 3,                  // ptr to f32[], size, ptr to f8[]
             return_type: IntrinsicType::F32, // Returns scale factor
             description: "Quantize F32 block to F8 with per-block scaling",
             category: IntrinsicCategory::Quantization,

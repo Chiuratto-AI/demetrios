@@ -138,17 +138,44 @@ impl<'a> Tokenizer<'a> {
             None => Token::Eof,
             Some(c) => {
                 match c {
-                    '+' => { self.advance(); Token::Plus }
-                    '-' => { self.advance(); Token::Minus }
-                    '*' => { self.advance(); Token::Star }
-                    '/' => { self.advance(); Token::Slash }
-                    '^' => { self.advance(); Token::Caret }
-                    '(' => { self.advance(); Token::LParen }
-                    ')' => { self.advance(); Token::RParen }
-                    ',' => { self.advance(); Token::Comma }
+                    '+' => {
+                        self.advance();
+                        Token::Plus
+                    }
+                    '-' => {
+                        self.advance();
+                        Token::Minus
+                    }
+                    '*' => {
+                        self.advance();
+                        Token::Star
+                    }
+                    '/' => {
+                        self.advance();
+                        Token::Slash
+                    }
+                    '^' => {
+                        self.advance();
+                        Token::Caret
+                    }
+                    '(' => {
+                        self.advance();
+                        Token::LParen
+                    }
+                    ')' => {
+                        self.advance();
+                        Token::RParen
+                    }
+                    ',' => {
+                        self.advance();
+                        Token::Comma
+                    }
                     _ if c.is_ascii_digit() || c == '.' => Token::Number(self.read_number()),
                     _ if c.is_alphabetic() || c == '_' => Token::Ident(self.read_ident()),
-                    _ => { self.advance(); self.next_token() } // Skip unknown chars
+                    _ => {
+                        self.advance();
+                        self.next_token()
+                    } // Skip unknown chars
                 }
             }
         }
@@ -180,7 +207,11 @@ impl<'a> Parser<'a> {
             self.advance();
             Ok(())
         } else {
-            Err(miette::miette!("Expected {:?}, got {:?}", expected, self.current))
+            Err(miette::miette!(
+                "Expected {:?}, got {:?}",
+                expected,
+                self.current
+            ))
         }
     }
 
@@ -338,7 +369,10 @@ impl Expr {
 
         // Ensure we consumed all input
         if !matches!(parser.current, Token::Eof) {
-            return Err(miette::miette!("Unexpected token after expression: {:?}", parser.current));
+            return Err(miette::miette!(
+                "Unexpected token after expression: {:?}",
+                parser.current
+            ));
         }
 
         Ok(expr)
@@ -435,10 +469,8 @@ impl Expr {
             // d/dx(sqrt(f)) = (1/(2*sqrt(f))) * df/dx (chain rule)
             Expr::Sqrt(f) => {
                 let df = f.differentiate(var);
-                let two_sqrt_f = Expr::Mul(
-                    Box::new(Expr::Const(2.0)),
-                    Box::new(Expr::Sqrt(f.clone())),
-                );
+                let two_sqrt_f =
+                    Expr::Mul(Box::new(Expr::Const(2.0)), Box::new(Expr::Sqrt(f.clone())));
                 let inv = Expr::Div(Box::new(Expr::Const(1.0)), Box::new(two_sqrt_f));
                 Expr::Mul(Box::new(inv), Box::new(df))
             }
@@ -463,11 +495,10 @@ impl Expr {
     pub fn evaluate(&self, vars: &HashMap<String, f64>) -> Result<f64> {
         match self {
             Expr::Const(c) => Ok(*c),
-            Expr::Var(v) => {
-                vars.get(v)
-                    .copied()
-                    .ok_or_else(|| miette::miette!("Unknown variable: {}", v))
-            }
+            Expr::Var(v) => vars
+                .get(v)
+                .copied()
+                .ok_or_else(|| miette::miette!("Unknown variable: {}", v)),
             Expr::Add(a, b) => {
                 let av = a.evaluate(vars)?;
                 let bv = b.evaluate(vars)?;
@@ -613,7 +644,7 @@ impl Expr {
                 let sa = a.simplify();
                 match sa {
                     Expr::Const(c) => Expr::Const(-c),
-                    Expr::Neg(b) => *b,  // Double negation
+                    Expr::Neg(b) => *b, // Double negation
                     _ => Expr::Neg(Box::new(sa)),
                 }
             }
@@ -636,13 +667,21 @@ impl Expr {
         match self {
             Expr::Const(_) => {}
             Expr::Var(v) => vars.push(v.clone()),
-            Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b)
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
             | Expr::Pow(a, b) => {
                 a.collect_variables(vars);
                 b.collect_variables(vars);
             }
-            Expr::Sin(a) | Expr::Cos(a) | Expr::Exp(a) | Expr::Ln(a) | Expr::Sqrt(a)
-            | Expr::Abs(a) | Expr::Neg(a) => a.collect_variables(vars),
+            Expr::Sin(a)
+            | Expr::Cos(a)
+            | Expr::Exp(a)
+            | Expr::Ln(a)
+            | Expr::Sqrt(a)
+            | Expr::Abs(a)
+            | Expr::Neg(a) => a.collect_variables(vars),
         }
     }
 }
@@ -707,7 +746,7 @@ mod tests {
         vars.insert("y".to_string(), 3.0);
 
         let result = expr.evaluate(&vars).unwrap();
-        assert_eq!(result, 7.0);  // 4 + 3
+        assert_eq!(result, 7.0); // 4 + 3
     }
 
     #[test]
@@ -803,7 +842,7 @@ mod tests {
         let mut vars = HashMap::new();
         vars.insert("x".to_string(), 1.0);
         let result = expr.evaluate(&vars).unwrap();
-        assert_eq!(result, 7.0);  // 1 + 6 = 7
+        assert_eq!(result, 7.0); // 1 + 6 = 7
     }
 
     #[test]

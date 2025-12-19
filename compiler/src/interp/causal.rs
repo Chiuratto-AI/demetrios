@@ -149,7 +149,10 @@ impl CausalModel {
 
         // Remove all edges pointing TO the intervened variable
         // (cut backdoor paths)
-        new_model.dag.edges.retain(|(_, target)| target != &intervention.variable);
+        new_model
+            .dag
+            .edges
+            .retain(|(_, target)| target != &intervention.variable);
 
         // Set the equation for the intervened variable to its constant value
         new_model.equations.insert(
@@ -166,13 +169,19 @@ impl CausalModel {
     /// Uses the backdoor adjustment formula when confounders are present:
     /// E[Y | do(X=x)] = Σ_z P(z) * E[Y | X=x, Z=z]
     pub fn estimate_ate(&self, treatment: &str, outcome: &str) -> Result<f64> {
-        let treatment_data = self.data.get(treatment)
+        let treatment_data = self
+            .data
+            .get(treatment)
             .ok_or_else(|| miette::miette!("No data for treatment variable: {}", treatment))?;
-        let outcome_data = self.data.get(outcome)
+        let outcome_data = self
+            .data
+            .get(outcome)
             .ok_or_else(|| miette::miette!("No data for outcome variable: {}", outcome))?;
 
         if treatment_data.len() != outcome_data.len() {
-            return Err(miette::miette!("Treatment and outcome data must have same length"));
+            return Err(miette::miette!(
+                "Treatment and outcome data must have same length"
+            ));
         }
 
         if treatment_data.is_empty() {
@@ -207,18 +216,27 @@ impl CausalModel {
         }
 
         if treated_outcomes.is_empty() || control_outcomes.is_empty() {
-            return Err(miette::miette!("Need both treated and control observations"));
+            return Err(miette::miette!(
+                "Need both treated and control observations"
+            ));
         }
 
-        let mean_treated: f64 = treated_outcomes.iter().sum::<f64>() / treated_outcomes.len() as f64;
-        let mean_control: f64 = control_outcomes.iter().sum::<f64>() / control_outcomes.len() as f64;
+        let mean_treated: f64 =
+            treated_outcomes.iter().sum::<f64>() / treated_outcomes.len() as f64;
+        let mean_control: f64 =
+            control_outcomes.iter().sum::<f64>() / control_outcomes.len() as f64;
 
         Ok(mean_treated - mean_control)
     }
 
     /// ATE estimation with backdoor adjustment
     /// Uses stratification over confounder values
-    fn estimate_ate_adjusted(&self, treatment: &str, outcome: &str, confounders: &[String]) -> Result<f64> {
+    fn estimate_ate_adjusted(
+        &self,
+        treatment: &str,
+        outcome: &str,
+        confounders: &[String],
+    ) -> Result<f64> {
         let treatment_data = self.data.get(treatment).unwrap();
         let outcome_data = self.data.get(outcome).unwrap();
         let n = treatment_data.len();
@@ -226,7 +244,9 @@ impl CausalModel {
         // For simplicity, we use a single confounder (the first one)
         // A full implementation would handle multiple confounders
         let confounder = &confounders[0];
-        let confounder_data = self.data.get(confounder)
+        let confounder_data = self
+            .data
+            .get(confounder)
             .ok_or_else(|| miette::miette!("No data for confounder: {}", confounder))?;
 
         if confounder_data.len() != n {
@@ -235,8 +255,14 @@ impl CausalModel {
 
         // Discretize confounder into bins (low, medium, high)
         // Find min and max of confounder
-        let min_z = confounder_data.iter().cloned().fold(f64::INFINITY, f64::min);
-        let max_z = confounder_data.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let min_z = confounder_data
+            .iter()
+            .cloned()
+            .fold(f64::INFINITY, f64::min);
+        let max_z = confounder_data
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
         let range = max_z - min_z;
 
         if range <= 0.0 {
@@ -255,7 +281,7 @@ impl CausalModel {
         for stratum in 0..num_strata {
             let lower = min_z + stratum as f64 * bin_width;
             let upper = if stratum == num_strata - 1 {
-                max_z + 0.001  // Include max value in last stratum
+                max_z + 0.001 // Include max value in last stratum
             } else {
                 min_z + (stratum + 1) as f64 * bin_width
             };
@@ -283,8 +309,10 @@ impl CausalModel {
             }
 
             // Compute stratum-specific effect
-            let mean_treated: f64 = treated_outcomes.iter().sum::<f64>() / treated_outcomes.len() as f64;
-            let mean_control: f64 = control_outcomes.iter().sum::<f64>() / control_outcomes.len() as f64;
+            let mean_treated: f64 =
+                treated_outcomes.iter().sum::<f64>() / treated_outcomes.len() as f64;
+            let mean_control: f64 =
+                control_outcomes.iter().sum::<f64>() / control_outcomes.len() as f64;
             let stratum_effect = mean_treated - mean_control;
 
             // Weight by stratum size P(Z=z)
@@ -321,9 +349,9 @@ impl CausalModel {
 /// Causal query result
 #[derive(Clone, Debug)]
 pub struct CausalQuery {
-    pub query_type: String,  // "ate", "counterfactual", "prob"
+    pub query_type: String, // "ate", "counterfactual", "prob"
     pub result: f64,
-    pub confidence: f64,  // 0-1 confidence level
+    pub confidence: f64, // 0-1 confidence level
 }
 
 #[cfg(test)]
@@ -332,11 +360,7 @@ mod tests {
 
     #[test]
     fn test_causal_dag_creation() {
-        let mut dag = CausalDAG::new(vec![
-            "X".to_string(),
-            "Y".to_string(),
-            "Z".to_string(),
-        ]);
+        let mut dag = CausalDAG::new(vec!["X".to_string(), "Y".to_string(), "Z".to_string()]);
         dag.add_edge("X", "Y");
         dag.add_edge("Z", "X");
         dag.add_edge("Z", "Y");
@@ -347,11 +371,7 @@ mod tests {
 
     #[test]
     fn test_backdoor_criterion() {
-        let mut dag = CausalDAG::new(vec![
-            "X".to_string(),
-            "Y".to_string(),
-            "Z".to_string(),
-        ]);
+        let mut dag = CausalDAG::new(vec!["X".to_string(), "Y".to_string(), "Z".to_string()]);
         dag.add_edge("Z", "X");
         dag.add_edge("Z", "Y");
         dag.add_edge("X", "Y");
@@ -398,7 +418,11 @@ mod tests {
         model.add_data("Y".to_string(), outcome);
 
         let ate = model.estimate_ate("X", "Y").unwrap();
-        assert!((ate - 2.0).abs() < 0.1, "ATE should be approximately 2.0, got {}", ate);
+        assert!(
+            (ate - 2.0).abs() < 0.1,
+            "ATE should be approximately 2.0, got {}",
+            ate
+        );
     }
 
     #[test]
@@ -406,11 +430,7 @@ mod tests {
         // Classic confounding: Z -> X, Z -> Y
         // True causal effect of X on Y is 1.0
         // But marginal association is confounded
-        let mut dag = CausalDAG::new(vec![
-            "X".to_string(),
-            "Y".to_string(),
-            "Z".to_string(),
-        ]);
+        let mut dag = CausalDAG::new(vec!["X".to_string(), "Y".to_string(), "Z".to_string()]);
         dag.add_edge("Z", "X");
         dag.add_edge("Z", "Y");
         dag.add_edge("X", "Y");
@@ -432,7 +452,11 @@ mod tests {
 
         let ate = model.estimate_ate("X", "Y").unwrap();
         // After adjusting for Z, the true causal effect should be close to 1.0
-        assert!((ate - 1.0).abs() < 0.5, "Adjusted ATE should be approximately 1.0, got {}", ate);
+        assert!(
+            (ate - 1.0).abs() < 0.5,
+            "Adjusted ATE should be approximately 1.0, got {}",
+            ate
+        );
     }
 
     #[test]

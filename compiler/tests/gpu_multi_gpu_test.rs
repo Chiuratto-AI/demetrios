@@ -9,14 +9,22 @@
 use std::sync::Arc;
 
 use demetrios::codegen::gpu::{
-    // Multi-GPU core
-    DeviceId, MultiGpuRuntime,
-    // P2P transfers
-    P2PManager, ReduceOp, TransferDescriptor,
-    generate_allgather_steps, generate_reduce_scatter_steps, split_into_chunks,
     // Collective operations
-    AlgorithmSelector, CollectiveAlgorithm, CollectiveManager, CollectiveOp,
+    AlgorithmSelector,
+    CollectiveAlgorithm,
+    CollectiveManager,
+    CollectiveOp,
+    // Multi-GPU core
+    DeviceId,
+    MultiGpuRuntime,
+    // P2P transfers
+    P2PManager,
+    ReduceOp,
     SimulatedBuffer,
+    TransferDescriptor,
+    generate_allgather_steps,
+    generate_reduce_scatter_steps,
+    split_into_chunks,
 };
 
 // ============================================================================
@@ -44,7 +52,8 @@ fn test_simulated_8gpu_topology() {
                 assert!(
                     runtime.p2p_capability(src, dst).is_some(),
                     "P2P capability should exist between {:?} and {:?}",
-                    src, dst
+                    src,
+                    dst
                 );
             }
         }
@@ -297,7 +306,11 @@ fn test_reduce_to_root() {
 
     // Only root should have the reduced value
     for &val in &buffers[0].data {
-        assert!((val - 10.0).abs() < 0.001, "Root expected 10.0, got {}", val);
+        assert!(
+            (val - 10.0).abs() < 0.001,
+            "Root expected 10.0, got {}",
+            val
+        );
     }
 }
 
@@ -415,7 +428,10 @@ fn test_complete_allreduce_workflow() {
             assert!(
                 (val - reference[j]).abs() < 0.001,
                 "Device {} differs at index {}: {} vs {}",
-                i, j, val, reference[j]
+                i,
+                j,
+                val,
+                reference[j]
             );
         }
     }
@@ -461,7 +477,8 @@ fn test_hierarchical_broadcast_workflow() {
             assert!(
                 (val - reference[j]).abs() < 0.001,
                 "Device {} differs at index {}",
-                i, j
+                i,
+                j
             );
         }
     }
@@ -482,7 +499,8 @@ fn test_p2p_transfer_time_estimation() {
 
     // Larger transfers should take longer
     let time_small = manager.estimate_transfer_time_us(DeviceId(0), DeviceId(1), 1024 * 1024);
-    let time_large = manager.estimate_transfer_time_us(DeviceId(0), DeviceId(1), 1024 * 1024 * 1024);
+    let time_large =
+        manager.estimate_transfer_time_us(DeviceId(0), DeviceId(1), 1024 * 1024 * 1024);
     assert!(
         time_large > time_small,
         "Larger transfers should take longer"

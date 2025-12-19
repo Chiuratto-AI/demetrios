@@ -473,7 +473,7 @@ impl PrefetchCodegen {
                         inst.address.to_asm()
                     )
                 }
-};
+            };
 
             if !inst.reason.is_empty() {
                 output.push_str(&format!("; {}\n", inst.reason));

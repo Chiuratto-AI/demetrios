@@ -20,19 +20,39 @@ pub enum TapeOp {
     Const { output_id: usize, value: f64 },
 
     /// Addition: z = x + y
-    Add { output_id: usize, left_id: usize, right_id: usize },
+    Add {
+        output_id: usize,
+        left_id: usize,
+        right_id: usize,
+    },
 
     /// Subtraction: z = x - y
-    Sub { output_id: usize, left_id: usize, right_id: usize },
+    Sub {
+        output_id: usize,
+        left_id: usize,
+        right_id: usize,
+    },
 
     /// Multiplication: z = x * y
-    Mul { output_id: usize, left_id: usize, right_id: usize },
+    Mul {
+        output_id: usize,
+        left_id: usize,
+        right_id: usize,
+    },
 
     /// Division: z = x / y
-    Div { output_id: usize, left_id: usize, right_id: usize },
+    Div {
+        output_id: usize,
+        left_id: usize,
+        right_id: usize,
+    },
 
     /// Power: z = x ^ y (y must be constant)
-    Pow { output_id: usize, base_id: usize, exponent: f64 },
+    Pow {
+        output_id: usize,
+        base_id: usize,
+        exponent: f64,
+    },
 
     /// Sine: z = sin(x)
     Sin { output_id: usize, input_id: usize },
@@ -81,7 +101,7 @@ impl Tape {
     fn allocate(&mut self) -> usize {
         let id = self.next_id;
         self.next_id += 1;
-        self.values.push(0.0);  // Placeholder
+        self.values.push(0.0); // Placeholder
         id
     }
 
@@ -111,7 +131,7 @@ impl Tape {
     /// Backpropagate from output node to compute gradients
     pub fn backward(&mut self, output_id: usize) -> Result<HashMap<usize, f64>> {
         let mut gradients = HashMap::new();
-        gradients.insert(output_id, 1.0);  // dL/dL = 1
+        gradients.insert(output_id, 1.0); // dL/dL = 1
 
         // Iterate operations in reverse order
         for op in self.operations.iter().rev() {
@@ -120,7 +140,11 @@ impl Tape {
                     // Constants have no upstream gradients
                 }
 
-                TapeOp::Add { output_id, left_id, right_id } => {
+                TapeOp::Add {
+                    output_id,
+                    left_id,
+                    right_id,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         // dL/dx = dL/dz * dz/dx = dL/dz * 1
@@ -130,7 +154,11 @@ impl Tape {
                     }
                 }
 
-                TapeOp::Sub { output_id, left_id, right_id } => {
+                TapeOp::Sub {
+                    output_id,
+                    left_id,
+                    right_id,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         // dL/dx = dL/dz * dz/dx = dL/dz * 1
@@ -140,7 +168,11 @@ impl Tape {
                     }
                 }
 
-                TapeOp::Mul { output_id, left_id, right_id } => {
+                TapeOp::Mul {
+                    output_id,
+                    left_id,
+                    right_id,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         let x = self.values[*left_id];
@@ -152,7 +184,11 @@ impl Tape {
                     }
                 }
 
-                TapeOp::Div { output_id, left_id, right_id } => {
+                TapeOp::Div {
+                    output_id,
+                    left_id,
+                    right_id,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         let x = self.values[*left_id];
@@ -165,7 +201,11 @@ impl Tape {
                     }
                 }
 
-                TapeOp::Pow { output_id, base_id, exponent } => {
+                TapeOp::Pow {
+                    output_id,
+                    base_id,
+                    exponent,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         let x = self.values[*base_id];
@@ -175,7 +215,10 @@ impl Tape {
                     }
                 }
 
-                TapeOp::Sin { output_id, input_id } => {
+                TapeOp::Sin {
+                    output_id,
+                    input_id,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         let x = self.values[*input_id];
@@ -185,7 +228,10 @@ impl Tape {
                     }
                 }
 
-                TapeOp::Cos { output_id, input_id } => {
+                TapeOp::Cos {
+                    output_id,
+                    input_id,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         let x = self.values[*input_id];
@@ -195,7 +241,10 @@ impl Tape {
                     }
                 }
 
-                TapeOp::Exp { output_id, input_id } => {
+                TapeOp::Exp {
+                    output_id,
+                    input_id,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         let z = self.values[*output_id];
@@ -205,7 +254,10 @@ impl Tape {
                     }
                 }
 
-                TapeOp::Ln { output_id, input_id } => {
+                TapeOp::Ln {
+                    output_id,
+                    input_id,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         let x = self.values[*input_id];
@@ -215,7 +267,10 @@ impl Tape {
                     }
                 }
 
-                TapeOp::Sqrt { output_id, input_id } => {
+                TapeOp::Sqrt {
+                    output_id,
+                    input_id,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         let x = self.values[*input_id];
@@ -225,12 +280,21 @@ impl Tape {
                     }
                 }
 
-                TapeOp::Abs { output_id, input_id } => {
+                TapeOp::Abs {
+                    output_id,
+                    input_id,
+                } => {
                     let grad_output = gradients.get(output_id).copied().unwrap_or(0.0);
                     if grad_output != 0.0 {
                         let x = self.values[*input_id];
                         // dL/dx = dL/dz * dz/dx = dL/dz * sign(x)
-                        let sign = if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { 0.0 };
+                        let sign = if x > 0.0 {
+                            1.0
+                        } else if x < 0.0 {
+                            -1.0
+                        } else {
+                            0.0
+                        };
                         let grad = grad_output * sign;
                         *gradients.entry(*input_id).or_insert(0.0) += grad;
                     }
@@ -263,7 +327,10 @@ impl TapeNode {
             left_id: self.id,
             right_id: other.id,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Multiply two tape nodes
@@ -277,7 +344,10 @@ impl TapeNode {
             left_id: self.id,
             right_id: other.id,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Subtract two tape nodes: self - other
@@ -291,7 +361,10 @@ impl TapeNode {
             left_id: self.id,
             right_id: other.id,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Divide two tape nodes: self / other
@@ -305,7 +378,10 @@ impl TapeNode {
             left_id: self.id,
             right_id: other.id,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Raise to a power: self ^ exponent (constant exponent)
@@ -318,7 +394,10 @@ impl TapeNode {
             base_id: self.id,
             exponent,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Sine: sin(self)
@@ -330,7 +409,10 @@ impl TapeNode {
             output_id,
             input_id: self.id,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Cosine: cos(self)
@@ -342,7 +424,10 @@ impl TapeNode {
             output_id,
             input_id: self.id,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Exponential: exp(self)
@@ -354,7 +439,10 @@ impl TapeNode {
             output_id,
             input_id: self.id,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Natural logarithm: ln(self)
@@ -366,7 +454,10 @@ impl TapeNode {
             output_id,
             input_id: self.id,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Square root: sqrt(self)
@@ -378,7 +469,10 @@ impl TapeNode {
             output_id,
             input_id: self.id,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Absolute value: abs(self)
@@ -390,7 +484,10 @@ impl TapeNode {
             output_id,
             input_id: self.id,
         });
-        TapeNode { tape: None, id: output_id }
+        TapeNode {
+            tape: None,
+            id: output_id,
+        }
     }
 
     /// Negation: -self
@@ -491,7 +588,7 @@ mod tests {
     #[test]
     fn test_sin() {
         let mut tape = Tape::new();
-        let x = tape.variable(std::f64::consts::PI / 6.0);  // 30 degrees
+        let x = tape.variable(std::f64::consts::PI / 6.0); // 30 degrees
         let z = x.sin(&mut tape);
 
         // z = sin(π/6) = 0.5
@@ -506,7 +603,7 @@ mod tests {
     #[test]
     fn test_cos() {
         let mut tape = Tape::new();
-        let x = tape.variable(std::f64::consts::PI / 3.0);  // 60 degrees
+        let x = tape.variable(std::f64::consts::PI / 3.0); // 60 degrees
         let z = x.cos(&mut tape);
 
         // z = cos(π/3) = 0.5
@@ -652,10 +749,10 @@ mod tests {
         let z = x.div(&denom, &mut tape);
 
         // z = 2/3 ≈ 0.667
-        assert!((tape.get_value(z.id) - 2.0/3.0).abs() < 1e-10);
+        assert!((tape.get_value(z.id) - 2.0 / 3.0).abs() < 1e-10);
 
         // Gradient: 1/(3)² = 1/9 ≈ 0.111
         let grads = tape.backward(z.id).unwrap();
-        assert!((grads.get(&x.id).copied().unwrap_or(0.0) - 1.0/9.0).abs() < 1e-10);
+        assert!((grads.get(&x.id).copied().unwrap_or(0.0) - 1.0 / 9.0).abs() < 1e-10);
     }
 }

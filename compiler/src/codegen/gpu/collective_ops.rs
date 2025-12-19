@@ -34,7 +34,7 @@ use std::sync::Arc;
 
 use super::multi_gpu::{DeviceId, MultiGpuError, MultiGpuRuntime};
 use super::p2p_transfer::{
-    generate_allgather_steps, generate_reduce_scatter_steps, P2PManager, ReduceOp,
+    P2PManager, ReduceOp, generate_allgather_steps, generate_reduce_scatter_steps,
 };
 
 // ============================================================================
@@ -102,8 +102,8 @@ pub struct AlgorithmSelector {
 impl Default for AlgorithmSelector {
     fn default() -> Self {
         Self {
-            tree_to_ring_threshold: 256 * 1024,      // 256 KB
-            direct_to_ring_threshold: 64 * 1024,     // 64 KB
+            tree_to_ring_threshold: 256 * 1024,  // 256 KB
+            direct_to_ring_threshold: 64 * 1024, // 64 KB
             max_direct_devices: 4,
         }
     }
@@ -535,10 +535,8 @@ impl CollectiveManager {
         for i in 0..n {
             if i != root_idx {
                 for j in 0..size {
-                    buffers[root_idx].data[j] = reduce_op.apply_f32(
-                        buffers[root_idx].data[j],
-                        buffers[i].data[j],
-                    );
+                    buffers[root_idx].data[j] =
+                        reduce_op.apply_f32(buffers[root_idx].data[j], buffers[i].data[j]);
                 }
                 self.stats.bytes_transferred += (size * 4) as u64;
             }
@@ -678,7 +676,11 @@ impl CollectiveManager {
 mod tests {
     use super::*;
 
-    fn create_test_buffers(n: usize, size: usize, init: impl Fn(usize) -> f32) -> Vec<SimulatedBuffer> {
+    fn create_test_buffers(
+        n: usize,
+        size: usize,
+        init: impl Fn(usize) -> f32,
+    ) -> Vec<SimulatedBuffer> {
         (0..n)
             .map(|i| SimulatedBuffer::filled(DeviceId(i as u32), size, init(i)))
             .collect()
@@ -689,16 +691,10 @@ mod tests {
         let selector = AlgorithmSelector::default();
 
         // Small message, few devices -> direct
-        assert_eq!(
-            selector.select(1024, 2),
-            CollectiveAlgorithm::Direct
-        );
+        assert_eq!(selector.select(1024, 2), CollectiveAlgorithm::Direct);
 
         // Medium message -> tree
-        assert_eq!(
-            selector.select(100 * 1024, 8),
-            CollectiveAlgorithm::Tree
-        );
+        assert_eq!(selector.select(100 * 1024, 8), CollectiveAlgorithm::Tree);
 
         // Large message -> ring
         assert_eq!(
@@ -715,7 +711,9 @@ mod tests {
         // Each device has [i, i, i, i] where i is device index
         let mut buffers = create_test_buffers(4, 4, |i| i as f32);
 
-        manager.allreduce(&mut buffers, CollectiveOp::Sum, CollectiveAlgorithm::Direct).unwrap();
+        manager
+            .allreduce(&mut buffers, CollectiveOp::Sum, CollectiveAlgorithm::Direct)
+            .unwrap();
 
         // Result should be [0+1+2+3, ...] = [6, 6, 6, 6]
         for buf in &buffers {
@@ -730,7 +728,9 @@ mod tests {
 
         let mut buffers = create_test_buffers(4, 8, |i| i as f32);
 
-        manager.allreduce(&mut buffers, CollectiveOp::Sum, CollectiveAlgorithm::Ring).unwrap();
+        manager
+            .allreduce(&mut buffers, CollectiveOp::Sum, CollectiveAlgorithm::Ring)
+            .unwrap();
 
         // All buffers should have the same sum
         for buf in &buffers {
@@ -747,7 +747,13 @@ mod tests {
 
         let mut buffers = create_test_buffers(4, 4, |i| (i + 1) as f32);
 
-        manager.allreduce(&mut buffers, CollectiveOp::Average, CollectiveAlgorithm::Direct).unwrap();
+        manager
+            .allreduce(
+                &mut buffers,
+                CollectiveOp::Average,
+                CollectiveAlgorithm::Direct,
+            )
+            .unwrap();
 
         // Average of [1, 2, 3, 4] = 2.5
         for buf in &buffers {
@@ -763,7 +769,9 @@ mod tests {
         let mut buffers = create_test_buffers(4, 4, |i| i as f32);
         // Root (device 0) has [0, 0, 0, 0]
 
-        manager.broadcast(&mut buffers, DeviceId(0), CollectiveAlgorithm::Tree).unwrap();
+        manager
+            .broadcast(&mut buffers, DeviceId(0), CollectiveAlgorithm::Tree)
+            .unwrap();
 
         // All should have root's data
         for buf in &buffers {
@@ -778,7 +786,9 @@ mod tests {
 
         let mut buffers = create_test_buffers(4, 4, |i| i as f32);
 
-        manager.reduce(&mut buffers, CollectiveOp::Sum, DeviceId(0)).unwrap();
+        manager
+            .reduce(&mut buffers, CollectiveOp::Sum, DeviceId(0))
+            .unwrap();
 
         // Only root should have the sum
         assert_eq!(buffers[0].data, vec![6.0, 6.0, 6.0, 6.0]);
@@ -821,7 +831,9 @@ mod tests {
             .map(|i| SimulatedBuffer::new(DeviceId(i), 1))
             .collect();
 
-        manager.reduce_scatter(&send_buffers, &mut recv_buffers, CollectiveOp::Sum).unwrap();
+        manager
+            .reduce_scatter(&send_buffers, &mut recv_buffers, CollectiveOp::Sum)
+            .unwrap();
 
         // Each device should have the sum of its chunk
         // Device i gets chunk i, which is the sum of send_buffers[*][i]
@@ -839,7 +851,9 @@ mod tests {
 
         let mut buffers = create_test_buffers(4, 4, |i| i as f32);
 
-        manager.allreduce(&mut buffers, CollectiveOp::Sum, CollectiveAlgorithm::Direct).unwrap();
+        manager
+            .allreduce(&mut buffers, CollectiveOp::Sum, CollectiveAlgorithm::Direct)
+            .unwrap();
 
         let stats = manager.stats();
         assert_eq!(stats.operation_count, 1);

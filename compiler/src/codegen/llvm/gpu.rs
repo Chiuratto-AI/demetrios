@@ -275,7 +275,9 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
 
         let existing = self.module.get_global_metadata("nvvm.annotations");
         if existing.is_empty() {
-            let _ = self.module.add_global_metadata("nvvm.annotations", &kernel_md);
+            let _ = self
+                .module
+                .add_global_metadata("nvvm.annotations", &kernel_md);
         }
     }
 

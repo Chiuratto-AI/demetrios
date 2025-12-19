@@ -4,9 +4,7 @@
 //! from natural language text using LLM-based analysis.
 
 use super::{GenerationError, GenerationResult};
-use crate::llm::{
-    LLMClientRegistry, OntologyTask,
-};
+use crate::llm::{LLMClientRegistry, OntologyTask};
 use std::collections::HashMap;
 
 /// Configuration for ontology generation

@@ -5,9 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::epistemic::{
-    Confidence, EpistemicStatus, Evidence, EvidenceKind, Revisability, Source,
-};
+use crate::epistemic::{Confidence, EpistemicStatus, Evidence, EvidenceKind, Revisability, Source};
 use crate::ontology::OntologyError;
 
 use super::{DomainIndex, OntologyMetadata};

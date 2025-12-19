@@ -75,8 +75,8 @@ pub fn gen_quaternion_mul_kernel() -> GpuKernel {
             (ValueId(3), GpuOp::Mul(ValueId(1), ValueId(2))),
             (ValueId(4), GpuOp::Add(ValueId(0), ValueId(3))), // i = threadIdx.x + blockIdx.x * blockDim.x
             // Bounds check
-            (ValueId(5), GpuOp::Param(3)),                    // n
-            (ValueId(6), GpuOp::Lt(ValueId(4), ValueId(5))),  // i < n
+            (ValueId(5), GpuOp::Param(3)),                   // n
+            (ValueId(6), GpuOp::Lt(ValueId(4), ValueId(5))), // i < n
         ],
         terminator: GpuTerminator::CondBr(ValueId(6), BlockId(1), BlockId(2)),
     };
@@ -87,17 +87,29 @@ pub fn gen_quaternion_mul_kernel() -> GpuKernel {
         instructions: vec![
             // Load q1[i] and q2[i]
             (ValueId(10), GpuOp::Param(0)), // q1 ptr
-            (ValueId(11), GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)])),
+            (
+                ValueId(11),
+                GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)]),
+            ),
             (ValueId(12), GpuOp::Load(ValueId(11), MemorySpace::Global)),
             (ValueId(20), GpuOp::Param(1)), // q2 ptr
-            (ValueId(21), GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)])),
+            (
+                ValueId(21),
+                GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)]),
+            ),
             (ValueId(22), GpuOp::Load(ValueId(21), MemorySpace::Global)),
             // Quaternion multiply using our bio op
             (ValueId(30), GpuOp::QuatMul(ValueId(12), ValueId(22))),
             // Store result
             (ValueId(40), GpuOp::Param(2)), // out ptr
-            (ValueId(41), GpuOp::GetElementPtr(ValueId(40), vec![ValueId(4)])),
-            (ValueId(42), GpuOp::Store(ValueId(41), ValueId(30), MemorySpace::Global)),
+            (
+                ValueId(41),
+                GpuOp::GetElementPtr(ValueId(40), vec![ValueId(4)]),
+            ),
+            (
+                ValueId(42),
+                GpuOp::Store(ValueId(41), ValueId(30), MemorySpace::Global),
+            ),
         ],
         terminator: GpuTerminator::Br(BlockId(2)),
     };
@@ -145,12 +157,21 @@ pub fn gen_quaternion_normalize_kernel() -> GpuKernel {
         label: "compute".into(),
         instructions: vec![
             (ValueId(10), GpuOp::Param(0)),
-            (ValueId(11), GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)])),
+            (
+                ValueId(11),
+                GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)]),
+            ),
             (ValueId(12), GpuOp::Load(ValueId(11), MemorySpace::Global)),
             (ValueId(13), GpuOp::QuatNormalize(ValueId(12))),
             (ValueId(20), GpuOp::Param(1)),
-            (ValueId(21), GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)])),
-            (ValueId(22), GpuOp::Store(ValueId(21), ValueId(13), MemorySpace::Global)),
+            (
+                ValueId(21),
+                GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)]),
+            ),
+            (
+                ValueId(22),
+                GpuOp::Store(ValueId(21), ValueId(13), MemorySpace::Global),
+            ),
         ],
         terminator: GpuTerminator::Br(BlockId(2)),
     };
@@ -201,12 +222,21 @@ pub fn gen_dna_complement_kernel() -> GpuKernel {
         label: "compute".into(),
         instructions: vec![
             (ValueId(10), GpuOp::Param(0)),
-            (ValueId(11), GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)])),
+            (
+                ValueId(11),
+                GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)]),
+            ),
             (ValueId(12), GpuOp::Load(ValueId(11), MemorySpace::Global)),
             (ValueId(13), GpuOp::DnaComplement(ValueId(12))),
             (ValueId(20), GpuOp::Param(1)),
-            (ValueId(21), GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)])),
-            (ValueId(22), GpuOp::Store(ValueId(21), ValueId(13), MemorySpace::Global)),
+            (
+                ValueId(21),
+                GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)]),
+            ),
+            (
+                ValueId(22),
+                GpuOp::Store(ValueId(21), ValueId(13), MemorySpace::Global),
+            ),
         ],
         terminator: GpuTerminator::Br(BlockId(2)),
     };
@@ -255,15 +285,27 @@ pub fn gen_gf4_add_kernel() -> GpuKernel {
         label: "compute".into(),
         instructions: vec![
             (ValueId(10), GpuOp::Param(0)),
-            (ValueId(11), GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)])),
+            (
+                ValueId(11),
+                GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)]),
+            ),
             (ValueId(12), GpuOp::Load(ValueId(11), MemorySpace::Global)),
             (ValueId(20), GpuOp::Param(1)),
-            (ValueId(21), GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)])),
+            (
+                ValueId(21),
+                GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)]),
+            ),
             (ValueId(22), GpuOp::Load(ValueId(21), MemorySpace::Global)),
             (ValueId(30), GpuOp::Gf4Add(ValueId(12), ValueId(22))),
             (ValueId(40), GpuOp::Param(2)),
-            (ValueId(41), GpuOp::GetElementPtr(ValueId(40), vec![ValueId(4)])),
-            (ValueId(42), GpuOp::Store(ValueId(41), ValueId(30), MemorySpace::Global)),
+            (
+                ValueId(41),
+                GpuOp::GetElementPtr(ValueId(40), vec![ValueId(4)]),
+            ),
+            (
+                ValueId(42),
+                GpuOp::Store(ValueId(41), ValueId(30), MemorySpace::Global),
+            ),
         ],
         terminator: GpuTerminator::Br(BlockId(2)),
     };
@@ -313,16 +355,31 @@ pub fn gen_transmission_compose_kernel() -> GpuKernel {
         label: "compute".into(),
         instructions: vec![
             (ValueId(10), GpuOp::Param(0)),
-            (ValueId(11), GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)])),
+            (
+                ValueId(11),
+                GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)]),
+            ),
             (ValueId(12), GpuOp::Load(ValueId(11), MemorySpace::Global)),
             (ValueId(20), GpuOp::Param(1)),
-            (ValueId(21), GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)])),
+            (
+                ValueId(21),
+                GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)]),
+            ),
             (ValueId(22), GpuOp::Load(ValueId(21), MemorySpace::Global)),
             // Use transmission compose (quaternion product + renormalize)
-            (ValueId(30), GpuOp::TransmissionCompose(ValueId(12), ValueId(22))),
+            (
+                ValueId(30),
+                GpuOp::TransmissionCompose(ValueId(12), ValueId(22)),
+            ),
             (ValueId(40), GpuOp::Param(2)),
-            (ValueId(41), GpuOp::GetElementPtr(ValueId(40), vec![ValueId(4)])),
-            (ValueId(42), GpuOp::Store(ValueId(41), ValueId(30), MemorySpace::Global)),
+            (
+                ValueId(41),
+                GpuOp::GetElementPtr(ValueId(40), vec![ValueId(4)]),
+            ),
+            (
+                ValueId(42),
+                GpuOp::Store(ValueId(41), ValueId(30), MemorySpace::Global),
+            ),
         ],
         terminator: GpuTerminator::Br(BlockId(2)),
     };
@@ -373,22 +430,40 @@ pub fn gen_quaternion_slerp_kernel() -> GpuKernel {
         instructions: vec![
             // Load q1[i]
             (ValueId(10), GpuOp::Param(0)),
-            (ValueId(11), GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)])),
+            (
+                ValueId(11),
+                GpuOp::GetElementPtr(ValueId(10), vec![ValueId(4)]),
+            ),
             (ValueId(12), GpuOp::Load(ValueId(11), MemorySpace::Global)),
             // Load q2[i]
             (ValueId(20), GpuOp::Param(1)),
-            (ValueId(21), GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)])),
+            (
+                ValueId(21),
+                GpuOp::GetElementPtr(ValueId(20), vec![ValueId(4)]),
+            ),
             (ValueId(22), GpuOp::Load(ValueId(21), MemorySpace::Global)),
             // Load t[i]
             (ValueId(30), GpuOp::Param(2)),
-            (ValueId(31), GpuOp::GetElementPtr(ValueId(30), vec![ValueId(4)])),
+            (
+                ValueId(31),
+                GpuOp::GetElementPtr(ValueId(30), vec![ValueId(4)]),
+            ),
             (ValueId(32), GpuOp::Load(ValueId(31), MemorySpace::Global)),
             // SLERP
-            (ValueId(40), GpuOp::QuatSlerp(ValueId(12), ValueId(22), ValueId(32))),
+            (
+                ValueId(40),
+                GpuOp::QuatSlerp(ValueId(12), ValueId(22), ValueId(32)),
+            ),
             // Store
             (ValueId(50), GpuOp::Param(3)),
-            (ValueId(51), GpuOp::GetElementPtr(ValueId(50), vec![ValueId(4)])),
-            (ValueId(52), GpuOp::Store(ValueId(51), ValueId(40), MemorySpace::Global)),
+            (
+                ValueId(51),
+                GpuOp::GetElementPtr(ValueId(50), vec![ValueId(4)]),
+            ),
+            (
+                ValueId(52),
+                GpuOp::Store(ValueId(51), ValueId(40), MemorySpace::Global),
+            ),
         ],
         terminator: GpuTerminator::Br(BlockId(2)),
     };

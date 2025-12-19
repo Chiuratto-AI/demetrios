@@ -260,7 +260,10 @@ impl WarpDivergenceAnalyzer {
             };
 
             for &succ in &successors {
-                self.reverse_cfg.entry(succ).or_insert_with(Vec::new).push(block.id);
+                self.reverse_cfg
+                    .entry(succ)
+                    .or_insert_with(Vec::new)
+                    .push(block.id);
             }
 
             self.cfg.insert(block.id, successors);
@@ -297,10 +300,8 @@ impl WarpDivergenceAnalyzer {
                 }
 
                 // New dominators = {block} ∪ (∩ dom(pred) for pred in preds)
-                let mut new_dom: FxHashSet<BlockId> = dom
-                    .get(&preds[0])
-                    .cloned()
-                    .unwrap_or_default();
+                let mut new_dom: FxHashSet<BlockId> =
+                    dom.get(&preds[0]).cloned().unwrap_or_default();
 
                 for &pred in &preds[1..] {
                     if let Some(pred_dom) = dom.get(&pred) {
@@ -356,10 +357,8 @@ impl WarpDivergenceAnalyzer {
                     continue;
                 }
 
-                let mut new_postdom: FxHashSet<BlockId> = reverse_analysis
-                    .get(&succs[0])
-                    .cloned()
-                    .unwrap_or_default();
+                let mut new_postdom: FxHashSet<BlockId> =
+                    reverse_analysis.get(&succs[0]).cloned().unwrap_or_default();
 
                 for &succ in &succs[1..] {
                     if let Some(succ_postdom) = reverse_analysis.get(&succ) {
@@ -413,7 +412,12 @@ impl WarpDivergenceAnalyzer {
     }
 
     /// Check if a value is uniform across the warp
-    fn is_uniform_value(&self, _value: ValueId, block: &super::ir::GpuBlock, _kernel: &GpuKernel) -> bool {
+    fn is_uniform_value(
+        &self,
+        _value: ValueId,
+        block: &super::ir::GpuBlock,
+        _kernel: &GpuKernel,
+    ) -> bool {
         // Look for the instruction that produces this value
         for (vid, op) in &block.instructions {
             if *vid == _value {
@@ -460,7 +464,12 @@ impl WarpDivergenceAnalyzer {
     }
 
     /// Find the reconvergence point for divergent branches
-    fn find_reconvergence_point(&self, branch_block: BlockId, true_bb: BlockId, false_bb: BlockId) -> Option<BlockId> {
+    fn find_reconvergence_point(
+        &self,
+        branch_block: BlockId,
+        true_bb: BlockId,
+        false_bb: BlockId,
+    ) -> Option<BlockId> {
         // Find the immediate post-dominator of both branches
         let true_postdom = self.post_dominators.get(&true_bb)?;
         let false_postdom = self.post_dominators.get(&false_bb)?;
@@ -492,7 +501,11 @@ impl WarpDivergenceAnalyzer {
 
     /// Get maximum divergence depth
     fn max_depth(&self, block_info: &FxHashMap<BlockId, DivergenceInfo>) -> u32 {
-        block_info.values().map(|info| info.divergence_depth).max().unwrap_or(0)
+        block_info
+            .values()
+            .map(|info| info.divergence_depth)
+            .max()
+            .unwrap_or(0)
     }
 
     /// Estimate total overhead from divergence
@@ -599,8 +612,12 @@ impl PredicateCompiler {
         true_bb: BlockId,
         false_bb: BlockId,
     ) -> PredicateMask {
-        let true_pred = self.allocate_predicate().expect("Out of predicate registers");
-        let false_pred = self.allocate_predicate().expect("Out of predicate registers");
+        let true_pred = self
+            .allocate_predicate()
+            .expect("Out of predicate registers");
+        let false_pred = self
+            .allocate_predicate()
+            .expect("Out of predicate registers");
 
         self.block_predicates.insert(true_bb, true_pred);
         self.block_predicates.insert(false_bb, false_pred);
@@ -704,7 +721,8 @@ impl BranchCostEstimator {
         // Total cost includes instruction execution under divergence
         let instruction_cost = branch_size as f64 * info.cost_multiplier;
 
-        let total_cost = base_cost + serialization_penalty + reconvergence_overhead + instruction_cost;
+        let total_cost =
+            base_cost + serialization_penalty + reconvergence_overhead + instruction_cost;
 
         BranchCost {
             base_cost,

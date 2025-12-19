@@ -165,7 +165,7 @@ impl EpistemicProperty {
                             Box::new(SmtTerm::Provenance(kind.clone())),
                         )
                     })
-    .collect();
+                    .collect();
 
                 if kind_constraints.is_empty() {
                     SmtFormula::True
@@ -221,7 +221,7 @@ impl EpistemicProperty {
                             ),
                         ])
                     })
-    .collect();
+                    .collect();
 
                 // Sum = 1
                 if !vars.is_empty() {
@@ -434,7 +434,7 @@ impl EpistemicVerifier {
     pub fn verify_property(
         &mut self,
         property: &EpistemicProperty,
-    ) -> Result<VerificationResult, SolverError>{
+    ) -> Result<VerificationResult, SolverError> {
         let mut ctx = SmtContext::new();
         let formula = property.to_formula(&mut ctx);
         self.solver.check_valid(&formula)

@@ -330,11 +330,15 @@ impl PortableGpuOp {
                 // Abs needs to be implemented via select
                 todo!("Abs requires lowering")
             }
-            PortableGpuOp::MinF32(a, b) | PortableGpuOp::MinI32(a, b) | PortableGpuOp::MinU32(a, b) => {
+            PortableGpuOp::MinF32(a, b)
+            | PortableGpuOp::MinI32(a, b)
+            | PortableGpuOp::MinU32(a, b) => {
                 // Min needs select-based lowering for portability
                 todo!("Min requires lowering")
             }
-            PortableGpuOp::MaxF32(a, b) | PortableGpuOp::MaxI32(a, b) | PortableGpuOp::MaxU32(a, b) => {
+            PortableGpuOp::MaxF32(a, b)
+            | PortableGpuOp::MaxI32(a, b)
+            | PortableGpuOp::MaxU32(a, b) => {
                 todo!("Max requires lowering")
             }
 
@@ -697,7 +701,12 @@ impl UnifiedKernel {
     }
 
     /// Add shared memory
-    pub fn add_shared_mem(&mut self, name: &str, elem_type: PortableType, size: usize) -> &mut Self {
+    pub fn add_shared_mem(
+        &mut self,
+        name: &str,
+        elem_type: PortableType,
+        size: usize,
+    ) -> &mut Self {
         self.shared_memory.push(UnifiedSharedMem {
             name: name.into(),
             elem_type,
@@ -966,9 +975,7 @@ impl UnifiedCompiler {
             GpuTarget::Cuda { compute_capability } => {
                 self.compile_to_ptx(&gpu_kernel, *compute_capability)
             }
-            GpuTarget::Metal { gpu_family } => {
-                self.compile_to_metal(&gpu_kernel, *gpu_family)
-            }
+            GpuTarget::Metal { gpu_family } => self.compile_to_metal(&gpu_kernel, *gpu_family),
             GpuTarget::Vulkan { .. } => self.compile_to_spirv(&gpu_kernel),
             GpuTarget::OpenCL { .. } => self.compile_to_opencl(&gpu_kernel),
             _ => Err(CompileError::BackendError("Unsupported backend".into())),
@@ -1082,25 +1089,28 @@ impl UnifiedCompiler {
         #[cfg(feature = "gpu")]
         {
             // Would use SpirvCodegen here
-            Err(CompileError::BackendError("SPIR-V compilation not yet implemented in portable API".into()))
+            Err(CompileError::BackendError(
+                "SPIR-V compilation not yet implemented in portable API".into(),
+            ))
         }
         #[cfg(not(feature = "gpu"))]
         {
-            Err(CompileError::BackendError("SPIR-V requires 'gpu' feature".into()))
+            Err(CompileError::BackendError(
+                "SPIR-V requires 'gpu' feature".into(),
+            ))
         }
     }
 
     /// Compile to OpenCL C (placeholder)
     fn compile_to_opencl(&self, _kernel: &GpuKernel) -> CompileResult<CompiledKernel> {
-        Err(CompileError::BackendError("OpenCL compilation not yet implemented".into()))
+        Err(CompileError::BackendError(
+            "OpenCL compilation not yet implemented".into(),
+        ))
     }
 }
 
 /// Convenience function to compile a kernel
-pub fn compile_kernel(
-    kernel: &UnifiedKernel,
-    target: &GpuTarget,
-) -> CompileResult<CompiledKernel> {
+pub fn compile_kernel(kernel: &UnifiedKernel, target: &GpuTarget) -> CompileResult<CompiledKernel> {
     let capabilities = match target {
         GpuTarget::Cuda { compute_capability } => BackendCapabilities::cuda(*compute_capability),
         GpuTarget::Metal { gpu_family } => BackendCapabilities::metal(*gpu_family),
@@ -1375,7 +1385,10 @@ mod tests {
         );
         assert!(metal_result.is_ok());
         let msl = metal_result.unwrap().as_metal().unwrap().to_string();
-        assert!(msl.contains("thread_position_in_grid") || msl.contains("thread_position_in_threadgroup"));
+        assert!(
+            msl.contains("thread_position_in_grid")
+                || msl.contains("thread_position_in_threadgroup")
+        );
     }
 
     #[test]
@@ -1445,10 +1458,7 @@ mod tests {
 
     #[test]
     fn test_compiled_kernel_backend_name() {
-        assert_eq!(
-            CompiledKernel::Ptx("".into()).backend_name(),
-            "CUDA (PTX)"
-        );
+        assert_eq!(CompiledKernel::Ptx("".into()).backend_name(), "CUDA (PTX)");
         assert_eq!(
             CompiledKernel::Metal("".into()).backend_name(),
             "Metal (MSL)"
@@ -1457,9 +1467,6 @@ mod tests {
             CompiledKernel::SpirV(vec![]).backend_name(),
             "Vulkan (SPIR-V)"
         );
-        assert_eq!(
-            CompiledKernel::OpenCL("".into()).backend_name(),
-            "OpenCL"
-        );
+        assert_eq!(CompiledKernel::OpenCL("".into()).backend_name(), "OpenCL");
     }
 }

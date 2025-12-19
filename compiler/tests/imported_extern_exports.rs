@@ -21,7 +21,10 @@ fn extern_c_fn_from_imported_module_is_included() {
         demetrios::ast::Item::Function(f) => f.name == "test" && f.modifiers.abi == Some(Abi::C),
         _ => false,
     });
-    assert!(has_ffi_fn, "expected imported extern \"C\" fn in merged AST");
+    assert!(
+        has_ffi_fn,
+        "expected imported extern \"C\" fn in merged AST"
+    );
 
     let hir = check::check(&ast).expect("type check");
     let hlir = hlir::lower(&hir);

@@ -300,15 +300,24 @@ impl RecoveryGenerator {
                     expected, actual
                 ),
             )],
-            ValidationError::ValueMismatch { index, expected, actual } => vec![RecoveryHint::new(
-                format!("Value mismatch at index {}", index),
-                format!(
-                    "Expected {} but got {}. This may indicate an optimization bug.",
-                    expected, actual
-                ),
-            )
-            .with_confidence(HintConfidence::High)],
-            ValidationError::PrecisionLoss { max_error, threshold } => vec![RecoveryHint::new(
+            ValidationError::ValueMismatch {
+                index,
+                expected,
+                actual,
+            } => vec![
+                RecoveryHint::new(
+                    format!("Value mismatch at index {}", index),
+                    format!(
+                        "Expected {} but got {}. This may indicate an optimization bug.",
+                        expected, actual
+                    ),
+                )
+                .with_confidence(HintConfidence::High),
+            ],
+            ValidationError::PrecisionLoss {
+                max_error,
+                threshold,
+            } => vec![RecoveryHint::new(
                 "Numerical precision degraded",
                 format!(
                     "Maximum error {} exceeds threshold {}. Consider using higher precision or adjusting tolerance.",
@@ -337,16 +346,20 @@ impl RecoveryGenerator {
                     expected, actual
                 ),
             )],
-            ValidationIssue::NaNDetected { index, .. } => vec![RecoveryHint::new(
-                format!("NaN at element {}", index),
-                "Output contains NaN. Check for division by zero or invalid operations.",
-            )
-            .with_confidence(HintConfidence::High)],
-            ValidationIssue::InfDetected { index, .. } => vec![RecoveryHint::new(
-                format!("Infinity at element {}", index),
-                "Output contains infinity. Check for overflow or unbounded operations.",
-            )
-            .with_confidence(HintConfidence::High)],
+            ValidationIssue::NaNDetected { index, .. } => vec![
+                RecoveryHint::new(
+                    format!("NaN at element {}", index),
+                    "Output contains NaN. Check for division by zero or invalid operations.",
+                )
+                .with_confidence(HintConfidence::High),
+            ],
+            ValidationIssue::InfDetected { index, .. } => vec![
+                RecoveryHint::new(
+                    format!("Infinity at element {}", index),
+                    "Output contains infinity. Check for overflow or unbounded operations.",
+                )
+                .with_confidence(HintConfidence::High),
+            ],
             ValidationIssue::PrecisionLoss {
                 max_error,
                 mean_error,
@@ -520,7 +533,8 @@ impl DiagnosticContext {
 
     /// Report a codegen error
     pub fn report_codegen_error(&mut self, msg: impl Into<String>) {
-        let diagnostic = GpuDiagnostic::error(GpuDiagnosticKind::Codegen(msg.into()), "PTX codegen failed");
+        let diagnostic =
+            GpuDiagnostic::error(GpuDiagnosticKind::Codegen(msg.into()), "PTX codegen failed");
         self.report(diagnostic);
     }
 
@@ -696,8 +710,8 @@ impl From<ValidationError> for GpuDiagnostic {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::ir::{BlockId, ValueId};
+    use super::*;
 
     #[test]
     fn test_diagnostic_severity_ordering() {
@@ -734,7 +748,8 @@ mod tests {
 
     #[test]
     fn test_recovery_hints_generated() {
-        let hints = RecoveryGenerator::for_fusion_error(&FusionError::KernelNotFound("test".into()));
+        let hints =
+            RecoveryGenerator::for_fusion_error(&FusionError::KernelNotFound("test".into()));
         assert!(!hints.is_empty());
         assert!(hints[0].title.contains("test"));
     }

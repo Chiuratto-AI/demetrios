@@ -31,7 +31,12 @@ pub struct GpuIrLocation {
 
 impl GpuIrLocation {
     /// Create a new GPU IR location
-    pub fn new(kernel: impl Into<String>, block: BlockId, instruction: usize, value: ValueId) -> Self {
+    pub fn new(
+        kernel: impl Into<String>,
+        block: BlockId,
+        instruction: usize,
+        value: ValueId,
+    ) -> Self {
         Self {
             kernel: kernel.into(),
             block,
@@ -147,7 +152,8 @@ impl GpuSourceMapper {
 
     /// Record the codegen from GPU IR to PTX
     pub fn record_codegen(&mut self, gpu_location: GpuIrLocation, ptx_location: PtxLocation) {
-        self.ptx_to_gpu.insert(ptx_location.line, gpu_location.clone());
+        self.ptx_to_gpu
+            .insert(ptx_location.line, gpu_location.clone());
         self.gpu_to_ptx.insert(gpu_location, ptx_location);
     }
 

@@ -16,7 +16,9 @@ use std::ptr;
 use std::sync::Arc;
 
 #[cfg(feature = "cuda")]
-use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, DevicePtr, LaunchAsync, LaunchConfig as CudarcLaunchConfig};
+use cudarc::driver::{
+    CudaDevice, CudaFunction, CudaSlice, DevicePtr, LaunchAsync, LaunchConfig as CudarcLaunchConfig,
+};
 
 #[cfg(feature = "cuda")]
 use cudarc::nvrtc::Ptx;
@@ -404,8 +406,12 @@ impl GpuRuntime {
     #[cfg(feature = "cuda")]
     fn init_cuda(device_id: u32) -> Result<Self, GpuError> {
         // CudaDevice::new() returns Arc<CudaDevice>
-        let device = CudaDevice::new(device_id as usize)
-            .map_err(|e| GpuError::DriverError(format!("Failed to initialize CUDA device {}: {}", device_id, e)))?;
+        let device = CudaDevice::new(device_id as usize).map_err(|e| {
+            GpuError::DriverError(format!(
+                "Failed to initialize CUDA device {}: {}",
+                device_id, e
+            ))
+        })?;
 
         // Query device info from cudarc
         let device_info = DeviceInfo::from_cuda_device(&device, device_id);
@@ -434,10 +440,13 @@ impl GpuRuntime {
     /// Allocate device memory with cudarc
     #[cfg(feature = "cuda")]
     fn cuda_alloc(&self, size: usize) -> Result<DeviceBuffer, GpuError> {
-        let device = self.cuda_device.as_ref()
+        let device = self
+            .cuda_device
+            .as_ref()
             .ok_or_else(|| GpuError::DriverError("CUDA device not initialized".into()))?;
 
-        let slice: CudaSlice<u8> = device.alloc_zeros(size)
+        let slice: CudaSlice<u8> = device
+            .alloc_zeros(size)
             .map_err(|_| GpuError::AllocationFailed)?;
 
         // Get device pointer using DevicePtr trait
@@ -488,7 +497,9 @@ impl GpuRuntime {
         src: *const c_void,
         size: usize,
     ) -> Result<(), GpuError> {
-        let device = self.cuda_device.as_ref()
+        let device = self
+            .cuda_device
+            .as_ref()
             .ok_or_else(|| GpuError::DriverError("CUDA device not initialized".into()))?;
 
         // Create a slice from the source pointer
@@ -496,9 +507,11 @@ impl GpuRuntime {
 
         // Allocate temporary device buffer and copy
         // Note: This is inefficient - better to use the CudaSlice stored in DeviceBuffer
-        let mut dev_buf: CudaSlice<u8> = device.alloc_zeros(size)
+        let mut dev_buf: CudaSlice<u8> = device
+            .alloc_zeros(size)
             .map_err(|_| GpuError::AllocationFailed)?;
-        device.htod_sync_copy_into(src_slice, &mut dev_buf)
+        device
+            .htod_sync_copy_into(src_slice, &mut dev_buf)
             .map_err(|_| GpuError::CopyFailed)?;
 
         Ok(())
@@ -523,7 +536,9 @@ impl GpuRuntime {
         _src: *mut c_void,
         size: usize,
     ) -> Result<(), GpuError> {
-        let device = self.cuda_device.as_ref()
+        let device = self
+            .cuda_device
+            .as_ref()
             .ok_or_else(|| GpuError::DriverError("CUDA device not initialized".into()))?;
 
         // Create destination slice
@@ -532,9 +547,11 @@ impl GpuRuntime {
         // Note: In a real implementation, we'd need to track which CudaSlice corresponds
         // to which raw pointer. For now, this is a placeholder.
         // The proper way is to use copy_to_host with DeviceBuffer.
-        let dev_buf: CudaSlice<u8> = device.alloc_zeros(size)
+        let dev_buf: CudaSlice<u8> = device
+            .alloc_zeros(size)
             .map_err(|_| GpuError::AllocationFailed)?;
-        device.dtoh_sync_copy_into(&dev_buf, dst_slice)
+        device
+            .dtoh_sync_copy_into(&dev_buf, dst_slice)
             .map_err(|_| GpuError::CopyFailed)?;
 
         Ok(())
@@ -554,7 +571,9 @@ impl GpuRuntime {
     /// Load PTX kernel with cudarc
     #[cfg(feature = "cuda")]
     fn cuda_load_ptx(&self, ptx: &str, kernel_name: &str) -> Result<Kernel, GpuError> {
-        let device = self.cuda_device.as_ref()
+        let device = self
+            .cuda_device
+            .as_ref()
             .ok_or_else(|| GpuError::DriverError("CUDA device not initialized".into()))?;
 
         // Convert to owned strings for cudarc which requires 'static lifetime
@@ -562,14 +581,13 @@ impl GpuRuntime {
         let func_name: &'static str = Box::leak(kernel_name.to_string().into_boxed_str());
 
         // Use cudarc to load PTX and get the kernel function
-        device.load_ptx(
-            Ptx::from_src(ptx),
-            module_name,
-            &[func_name],
-        ).map_err(|e| GpuError::KernelLoadFailed(format!("Failed to load PTX: {}", e)))?;
+        device
+            .load_ptx(Ptx::from_src(ptx), module_name, &[func_name])
+            .map_err(|e| GpuError::KernelLoadFailed(format!("Failed to load PTX: {}", e)))?;
 
-        let func = device.get_func(module_name, func_name)
-            .ok_or_else(|| GpuError::KernelLoadFailed(format!("Function '{}' not found in module", kernel_name)))?;
+        let func = device.get_func(module_name, func_name).ok_or_else(|| {
+            GpuError::KernelLoadFailed(format!("Function '{}' not found in module", kernel_name))
+        })?;
 
         Ok(Kernel {
             name: kernel_name.to_string(),
@@ -601,10 +619,14 @@ impl GpuRuntime {
         config: &LaunchConfig,
         args: &[KernelArg],
     ) -> Result<(), GpuError> {
-        let _device = self.cuda_device.as_ref()
+        let _device = self
+            .cuda_device
+            .as_ref()
             .ok_or_else(|| GpuError::DriverError("CUDA device not initialized".into()))?;
 
-        let func = kernel.cuda_function.as_ref()
+        let func = kernel
+            .cuda_function
+            .as_ref()
             .ok_or_else(|| GpuError::InvalidKernel)?;
 
         // Convert launch config
@@ -653,7 +675,8 @@ impl GpuRuntime {
 
         // Launch kernel with arguments
         unsafe {
-            func.clone().launch(launch_cfg, &mut arg_ptrs)
+            func.clone()
+                .launch(launch_cfg, &mut arg_ptrs)
                 .map_err(|e| GpuError::DriverError(format!("Kernel launch failed: {}", e)))?;
         }
 
@@ -677,11 +700,12 @@ impl GpuRuntime {
     /// Synchronize device with cudarc
     #[cfg(feature = "cuda")]
     fn cuda_synchronize(&self) -> Result<(), GpuError> {
-        let device = self.cuda_device.as_ref()
+        let device = self
+            .cuda_device
+            .as_ref()
             .ok_or_else(|| GpuError::DriverError("CUDA device not initialized".into()))?;
 
-        device.synchronize()
-            .map_err(|e| GpuError::SyncFailed)?;
+        device.synchronize().map_err(|e| GpuError::SyncFailed)?;
 
         Ok(())
     }
@@ -1037,7 +1061,7 @@ impl DeviceInfo {
         // Use default values for now - can be enhanced in future versions
         Self {
             name: format!("CUDA Device {}", device_id),
-            compute_capability: (7, 5), // Default to SM 7.5
+            compute_capability: (7, 5),           // Default to SM 7.5
             total_memory: 8 * 1024 * 1024 * 1024, // 8 GB default
             multiprocessors: 48,
             max_threads_per_block: 1024,

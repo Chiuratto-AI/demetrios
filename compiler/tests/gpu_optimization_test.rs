@@ -85,10 +85,7 @@ fn make_reduction_kernel(name: &str) -> GpuKernel {
         (ValueId(1), GpuOp::BlockIdX),
         (ValueId(2), GpuOp::BlockDimX),
         // Simplified reduction - actual impl would have more ops
-        (
-            ValueId(3),
-            GpuOp::Load(ValueId(0), MemorySpace::Global),
-        ),
+        (ValueId(3), GpuOp::Load(ValueId(0), MemorySpace::Global)),
         (ValueId(4), GpuOp::FAdd(ValueId(3), ValueId(3))),
         (
             ValueId(5),
@@ -322,10 +319,7 @@ fn test_end_to_end_optimization_pipeline() {
         "preprocess".to_string(),
         make_elementwise_kernel("preprocess", 4),
     );
-    kernels.insert(
-        "compute".to_string(),
-        make_elementwise_kernel("compute", 8),
-    );
+    kernels.insert("compute".to_string(), make_elementwise_kernel("compute", 8));
     kernels.insert("reduce".to_string(), make_reduction_kernel("reduce"));
 
     let module = GpuModule {

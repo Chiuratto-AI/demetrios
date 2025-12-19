@@ -39,9 +39,7 @@
 use std::path::PathBuf;
 
 use super::cache::{CacheConfig, CachedTermData, OntologyCache, SubsumptionCache};
-use super::primitive::{
-    PRIMITIVE_BFO, PRIMITIVE_COB, PRIMITIVE_RO,
-};
+use super::primitive::{PRIMITIVE_BFO, PRIMITIVE_COB, PRIMITIVE_RO};
 use super::sssom::SssomMappingSet;
 use super::{OntologyError, OntologyLayer, OntologyResult, OntologyStats, ParsedTermRef};
 

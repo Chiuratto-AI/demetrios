@@ -243,7 +243,9 @@ fn main() {
     if !result.success() {
         // If it fails, should mention the types
         assert!(
-            stderr.contains("Protein") || stderr.contains("SmallMolecule") || stderr.contains("mismatch"),
+            stderr.contains("Protein")
+                || stderr.contains("SmallMolecule")
+                || stderr.contains("mismatch"),
             "Expected type names in error message"
         );
     }

@@ -229,14 +229,14 @@ impl<T> AoSKnowledge<T> {
         AoSKnowledge {
             elements: Vec::new(),
         }
-}
+    }
 
     /// Create with capacity
     pub fn with_capacity(capacity: usize) -> Self {
         AoSKnowledge {
             elements: Vec::with_capacity(capacity),
         }
-}
+    }
 
     /// Get length
     pub fn len(&self) -> usize {

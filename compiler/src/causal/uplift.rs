@@ -44,7 +44,6 @@
 //! }
 //! ```
 
-
 use crate::epistemic::bayesian::BetaConfidence;
 
 // ============================================================================
@@ -900,7 +899,7 @@ fn normal_quantile(p: f64) -> f64 {
     }
     if p == 0.5 {
         return 0.0;
-}
+    }
 
     let p = if p > 0.5 { 1.0 - p } else { p };
     let t = (-2.0 * p.ln()).sqrt();

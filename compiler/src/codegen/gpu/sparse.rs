@@ -30,8 +30,8 @@ use std::fmt;
 
 use super::costs::{CostDatabase, InstructionClass};
 use super::ir::{
-    BlockId, CudaArch, GpuBlock, GpuKernel, GpuModule, GpuOp, GpuParam,
-    GpuTerminator, GpuType, MemorySpace, ValueId,
+    BlockId, CudaArch, GpuBlock, GpuKernel, GpuModule, GpuOp, GpuParam, GpuTerminator, GpuType,
+    MemorySpace, ValueId,
 };
 
 // ============================================================================
@@ -90,9 +90,7 @@ pub enum SparseFormat {
 
     /// Block sparse with arbitrary block size
     /// More flexible than BCSR
-    BlockSparse {
-        block_size: (usize, usize),
-    },
+    BlockSparse { block_size: (usize, usize) },
 }
 
 impl SparseFormat {
@@ -115,7 +113,7 @@ impl SparseFormat {
         match self {
             SparseFormat::Dense => (0, dtype_bytes),
             SparseFormat::CSR | SparseFormat::CSC => (4, dtype_bytes), // 1 index per nnz
-            SparseFormat::COO => (8, dtype_bytes), // 2 indices per nnz
+            SparseFormat::COO => (8, dtype_bytes),                     // 2 indices per nnz
             SparseFormat::BCSR { block_size } => {
                 let block_elems = block_size.0 * block_size.1;
                 (4 / block_elems.max(1), dtype_bytes) // Amortized index cost
@@ -299,8 +297,7 @@ impl SparsityAnalyzer {
 
     /// Detect if tensor should be stored as sparse
     pub fn should_use_sparse(&self, density: f64) -> bool {
-        density >= self.config.min_density_threshold
-            && density <= self.config.max_density_threshold
+        density >= self.config.min_density_threshold && density <= self.config.max_density_threshold
     }
 
     /// Detect optimal sparse format based on sparsity pattern
@@ -339,8 +336,7 @@ impl SparsityAnalyzer {
         // 2:4 means exactly 50% sparsity
         let expected_nnz = total / 2;
         let tolerance = total / 100; // 1% tolerance
-        nnz >= expected_nnz.saturating_sub(tolerance)
-            && nnz <= expected_nnz + tolerance
+        nnz >= expected_nnz.saturating_sub(tolerance) && nnz <= expected_nnz + tolerance
     }
 
     /// Detect structure in sparsity pattern
@@ -416,12 +412,7 @@ impl SparsityAnalyzer {
     }
 
     /// Estimate cost for sparse operation
-    fn estimate_sparse_cost(
-        &self,
-        format: SparseFormat,
-        nnz: usize,
-        op_type: SparseOpType,
-    ) -> f64 {
+    fn estimate_sparse_cost(&self, format: SparseFormat, nnz: usize, op_type: SparseOpType) -> f64 {
         let base_cost = match op_type {
             SparseOpType::MatVec => {
                 // Sparse SpMV: O(nnz) FMAs
@@ -447,12 +438,12 @@ impl SparsityAnalyzer {
         let format_overhead = match format {
             SparseFormat::Dense => 1.0,
             SparseFormat::CSR | SparseFormat::CSC => 1.2, // Index lookup overhead
-            SparseFormat::COO => 1.5, // More irregular access
-            SparseFormat::BCSR { .. } => 0.9, // Better locality
-            SparseFormat::ELL { .. } => 1.1, // Padding overhead
-            SparseFormat::Hybrid { .. } => 1.15, // Mixed overhead
-            SparseFormat::Structured2x4 => 0.5, // 2x Tensor Core speedup
-            SparseFormat::BlockSparse { .. } => 0.95, // Good GPU utilization
+            SparseFormat::COO => 1.5,                     // More irregular access
+            SparseFormat::BCSR { .. } => 0.9,             // Better locality
+            SparseFormat::ELL { .. } => 1.1,              // Padding overhead
+            SparseFormat::Hybrid { .. } => 1.15,          // Mixed overhead
+            SparseFormat::Structured2x4 => 0.5,           // 2x Tensor Core speedup
+            SparseFormat::BlockSparse { .. } => 0.95,     // Good GPU utilization
         };
 
         base_cost * format_overhead
@@ -625,7 +616,12 @@ impl SparseConvKernel {
         Self { format }
     }
 
-    pub fn generate(&self, in_channels: usize, out_channels: usize, kernel_size: (usize, usize)) -> GpuKernel {
+    pub fn generate(
+        &self,
+        in_channels: usize,
+        out_channels: usize,
+        kernel_size: (usize, usize),
+    ) -> GpuKernel {
         let kernel_name = format!(
             "sparse_conv_{}_{}_{}x{}x{}",
             self.format, in_channels, out_channels, kernel_size.0, kernel_size.1
@@ -761,7 +757,8 @@ pub fn add_sparse_kernels(module: &mut GpuModule, arch: CudaArch, tensors: &[Spa
 
                 let spmv = SparseMVKernel::new(SparseFormat::CSR);
                 if tensor.shape.len() >= 2 {
-                    let kernel = spmv.generate(tensor.shape[0], tensor.shape[1], tensor.dtype.clone());
+                    let kernel =
+                        spmv.generate(tensor.shape[0], tensor.shape[1], tensor.dtype.clone());
                     module.add_kernel(kernel);
                 }
             }
@@ -816,12 +813,7 @@ mod tests {
 
     #[test]
     fn test_sparse_tensor_density() {
-        let tensor = SparseTensor::new(
-            SparseFormat::CSR,
-            vec![1000, 1000],
-            50000,
-            GpuType::F32,
-        );
+        let tensor = SparseTensor::new(SparseFormat::CSR, vec![1000, 1000], 50000, GpuType::F32);
 
         assert_eq!(tensor.total_elements(), 1_000_000);
         assert_eq!(tensor.density, 0.05);
@@ -943,10 +935,9 @@ mod tests {
 
         assert!(analyzer.formats_compatible(SparseFormat::CSR, SparseFormat::CSR));
         assert!(!analyzer.formats_compatible(SparseFormat::CSR, SparseFormat::CSC));
-        assert!(analyzer.formats_compatible(
-            SparseFormat::Structured2x4,
-            SparseFormat::Structured2x4
-        ));
+        assert!(
+            analyzer.formats_compatible(SparseFormat::Structured2x4, SparseFormat::Structured2x4)
+        );
     }
 
     #[test]

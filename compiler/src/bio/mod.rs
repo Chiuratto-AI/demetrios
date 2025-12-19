@@ -39,7 +39,7 @@ pub mod gf4;
 pub mod quaternion;
 pub mod transmission;
 
-pub use dna::{Base, DNAString, DNAOperator};
+pub use dna::{Base, DNAOperator, DNAString};
 pub use gf4::{GF4, GF4Element};
-pub use quaternion::{UnitQuat, QuatOps};
-pub use transmission::{Transmission, Channel};
+pub use quaternion::{QuatOps, UnitQuat};
+pub use transmission::{Channel, Transmission};

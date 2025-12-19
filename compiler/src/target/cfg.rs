@@ -4,9 +4,7 @@
 //! similar to Rust's #[cfg] attributes. It allows code to be conditionally compiled
 //! based on target platform, features, and custom predicates.
 
-use super::spec::{
-    Architecture, Environment, OperatingSystem, TargetSpec,
-};
+use super::spec::{Architecture, Environment, OperatingSystem, TargetSpec};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt;

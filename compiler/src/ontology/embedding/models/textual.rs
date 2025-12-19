@@ -17,8 +17,8 @@
 
 use std::collections::HashMap;
 
-use crate::ontology::loader::{IRI, LoadedTerm};
 use super::super::{Embedding, EmbeddingError, EmbeddingGenerator, EmbeddingModel};
+use crate::ontology::loader::{IRI, LoadedTerm};
 
 /// Textual embedding generator
 pub struct TextualGenerator {
@@ -101,7 +101,11 @@ impl TextualGenerator {
             // Spread the word's contribution across dimensions
             for j in 0..self.dimensions {
                 let idx = (hash.wrapping_add(j as u64) as usize) % self.dimensions;
-                let sign = if (hash >> (j % 64)) & 1 == 0 { 1.0 } else { -1.0 };
+                let sign = if (hash >> (j % 64)) & 1 == 0 {
+                    1.0
+                } else {
+                    -1.0
+                };
                 let magnitude = 1.0 / (word_idx as f32 + 1.0).sqrt();
 
                 vector[idx] += sign * magnitude;
@@ -185,8 +189,12 @@ mod tests {
 
         generator.embed_terms(&terms).unwrap();
 
-        let heart = generator.generate(&IRI::new("http://example.org/Heart")).unwrap();
-        let cardiac = generator.generate(&IRI::new("http://example.org/Cardiac")).unwrap();
+        let heart = generator
+            .generate(&IRI::new("http://example.org/Heart"))
+            .unwrap();
+        let cardiac = generator
+            .generate(&IRI::new("http://example.org/Cardiac"))
+            .unwrap();
 
         // Both should have embeddings
         assert_eq!(heart.dimensions(), 128);
@@ -230,12 +238,10 @@ mod tests {
             restrictions: vec![],
             xrefs: vec![],
             definition: Some("A pain reliever and fever reducer".to_string()),
-            synonyms: vec![
-                Synonym {
-                    text: "acetylsalicylic acid".to_string(),
-                    scope: SynonymScope::Exact,
-                },
-            ],
+            synonyms: vec![Synonym {
+                text: "acetylsalicylic acid".to_string(),
+                scope: SynonymScope::Exact,
+            }],
             hierarchy_depth: 0,
             information_content: 0.0,
             is_obsolete: false,
@@ -244,7 +250,9 @@ mod tests {
 
         generator.add_term(&term);
 
-        let emb = generator.generate(&IRI::new("http://example.org/Aspirin")).unwrap();
+        let emb = generator
+            .generate(&IRI::new("http://example.org/Aspirin"))
+            .unwrap();
         assert_eq!(emb.dimensions(), 128);
     }
 }

@@ -3,17 +3,36 @@
 //! Tests INT8/INT4 quantization, calibration algorithms, and PTQ workflow.
 
 use demetrios::codegen::gpu::{
-    // Quantization types
-    QuantDtype, QuantErrorAnalyzer, QuantParams, QuantScheme,
-    pack_int4, quantize_tensor_int8, unpack_int4,
-    // Calibration
-    CalibrationCollector, CalibrationMethod, PerChannelCalibrator,
     // PTQ
-    ActivationQuantConfig, LayerInfo, PtqConfig, PtqEngine, WeightQuantConfig,
+    ActivationQuantConfig,
+    BlockId,
+    // Calibration
+    CalibrationCollector,
+    CalibrationMethod,
+    GpuBlock,
+    GpuKernel,
     // IR
-    GpuModule, GpuKernel, GpuBlock, GpuOp, GpuTarget, GpuType, BlockId, ValueId, GpuTerminator,
+    GpuModule,
+    GpuOp,
+    GpuTarget,
+    GpuTerminator,
+    GpuType,
+    LayerInfo,
+    PerChannelCalibrator,
+    PtqConfig,
+    PtqEngine,
     // PTX
     PtxCodegen,
+    // Quantization types
+    QuantDtype,
+    QuantErrorAnalyzer,
+    QuantParams,
+    QuantScheme,
+    ValueId,
+    WeightQuantConfig,
+    pack_int4,
+    quantize_tensor_int8,
+    unpack_int4,
 };
 
 // ============================================================================
@@ -35,8 +54,12 @@ fn test_symmetric_int8_quantization() {
     let dequantized = params.dequantize(quantized);
 
     // Should be close to original
-    assert!((value - dequantized).abs() < 0.02,
-            "Expected ~{}, got {}", value, dequantized);
+    assert!(
+        (value - dequantized).abs() < 0.02,
+        "Expected ~{}, got {}",
+        value,
+        dequantized
+    );
 }
 
 #[test]
@@ -151,13 +174,11 @@ fn test_minmax_calibration() {
 
 #[test]
 fn test_histogram_calibration() {
-    let mut collector = CalibrationCollector::new(
-        CalibrationMethod::Histogram { num_bins: 256 }
-    );
+    let mut collector = CalibrationCollector::new(CalibrationMethod::Histogram { num_bins: 256 });
 
     // Collect samples with outliers
     let mut samples: Vec<f32> = (-100..=100).map(|i| i as f32 * 0.01).collect();
-    samples.push(10.0);  // Outlier
+    samples.push(10.0); // Outlier
     samples.push(-10.0); // Outlier
 
     collector.collect(&samples);
@@ -179,9 +200,7 @@ fn test_per_channel_calibration() {
     // Collect per-channel data
     for ch in 0..4 {
         let scale = (ch + 1) as f32;
-        let samples: Vec<f32> = (-10..=10)
-            .map(|i| i as f32 * 0.1 * scale)
-            .collect();
+        let samples: Vec<f32> = (-10..=10).map(|i| i as f32 * 0.1 * scale).collect();
         calibrator.collect_channel(ch, &samples);
     }
 
@@ -233,9 +252,7 @@ fn test_ptq_engine_workflow() {
     engine.register_layer(layer);
 
     // Simulate calibration
-    let activations: Vec<f32> = (0..1000)
-        .map(|i| (i as f32 / 500.0) - 1.0)
-        .collect();
+    let activations: Vec<f32> = (0..1000).map(|i| (i as f32 / 500.0) - 1.0).collect();
 
     for _ in 0..100 {
         engine.calibrate_input("conv1", &activations);
@@ -294,7 +311,9 @@ fn test_ptq_layer_status() {
 
 #[test]
 fn test_ptx_quantize_int8() {
-    let target = GpuTarget::Cuda { compute_capability: (7, 5) };
+    let target = GpuTarget::Cuda {
+        compute_capability: (7, 5),
+    };
     let mut module = GpuModule::new("quantize_test", target);
 
     let mut kernel = GpuKernel::new("quantize_kernel");
@@ -305,12 +324,15 @@ fn test_ptx_quantize_int8() {
     block.add_instruction(ValueId(0), GpuOp::ConstFloat(1.5, GpuType::F32));
     block.add_instruction(ValueId(1), GpuOp::ConstFloat(0.01, GpuType::F32)); // scale
     block.add_instruction(ValueId(2), GpuOp::ConstInt(0, GpuType::I32)); // zero_point
-    block.add_instruction(ValueId(3), GpuOp::QuantizeF32ToInt8 {
-        value: ValueId(0),
-        scale: ValueId(1),
-        zero_point: ValueId(2),
-        symmetric: true,
-    });
+    block.add_instruction(
+        ValueId(3),
+        GpuOp::QuantizeF32ToInt8 {
+            value: ValueId(0),
+            scale: ValueId(1),
+            zero_point: ValueId(2),
+            symmetric: true,
+        },
+    );
 
     block.set_terminator(GpuTerminator::ReturnVoid);
     kernel.add_block(block);
@@ -321,14 +343,19 @@ fn test_ptx_quantize_int8() {
     let ptx = codegen.generate(&module);
 
     // Verify PTX contains INT8 quantization instructions
-    assert!(ptx.contains("Quantize F32 to INT8"), "Missing quantize comment");
+    assert!(
+        ptx.contains("Quantize F32 to INT8"),
+        "Missing quantize comment"
+    );
     assert!(ptx.contains("div.rn.f32"), "Missing scale division");
 }
 
 #[test]
 fn test_ptx_dp4a() {
     // dp4a requires sm_61+ (Pascal)
-    let target = GpuTarget::Cuda { compute_capability: (6, 1) };
+    let target = GpuTarget::Cuda {
+        compute_capability: (6, 1),
+    };
     let mut module = GpuModule::new("dp4a_test", target);
 
     let mut kernel = GpuKernel::new("dp4a_kernel");
@@ -339,11 +366,14 @@ fn test_ptx_dp4a() {
     block.add_instruction(ValueId(0), GpuOp::ConstInt(0x01020304, GpuType::U32)); // a packed
     block.add_instruction(ValueId(1), GpuOp::ConstInt(0x05060708, GpuType::U32)); // b packed
     block.add_instruction(ValueId(2), GpuOp::ConstInt(0, GpuType::I32)); // accumulator
-    block.add_instruction(ValueId(3), GpuOp::Dp4a {
-        a: ValueId(0),
-        b: ValueId(1),
-        c: ValueId(2),
-    });
+    block.add_instruction(
+        ValueId(3),
+        GpuOp::Dp4a {
+            a: ValueId(0),
+            b: ValueId(1),
+            c: ValueId(2),
+        },
+    );
 
     block.set_terminator(GpuTerminator::ReturnVoid);
     kernel.add_block(block);
@@ -370,7 +400,10 @@ fn test_quantize_edge_values() {
 
     assert!(q_min < q_zero, "Min should be less than zero");
     assert!(q_max > q_zero, "Max should be greater than zero");
-    assert!(q_zero == 0 || q_zero.abs() <= 1, "Zero should quantize near 0");
+    assert!(
+        q_zero == 0 || q_zero.abs() <= 1,
+        "Zero should quantize near 0"
+    );
 }
 
 #[test]
@@ -442,9 +475,7 @@ fn test_full_ptq_pipeline() {
     // Simulate calibration pass
     for _ in 0..10 {
         for i in 0..3 {
-            let activations: Vec<f32> = (0..64)
-                .map(|j| ((j as f32) - 32.0) / 32.0)
-                .collect();
+            let activations: Vec<f32> = (0..64).map(|j| ((j as f32) - 32.0) / 32.0).collect();
             engine.calibrate_input(&format!("layer{}", i), &activations);
             engine.calibrate_output(&format!("layer{}", i), &activations);
         }
@@ -457,10 +488,16 @@ fn test_full_ptq_pipeline() {
     // Verify all layers have params
     for i in 0..3 {
         let name = format!("layer{}", i);
-        assert!(engine.get_input_params(&name).is_some(),
-                "Missing input params for {}", name);
-        assert!(engine.get_output_params(&name).is_some(),
-                "Missing output params for {}", name);
+        assert!(
+            engine.get_input_params(&name).is_some(),
+            "Missing input params for {}",
+            name
+        );
+        assert!(
+            engine.get_output_params(&name).is_some(),
+            "Missing output params for {}",
+            name
+        );
     }
 
     // Get error summary

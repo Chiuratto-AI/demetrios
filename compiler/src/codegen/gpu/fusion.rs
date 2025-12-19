@@ -37,10 +37,10 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt;
 
-use super::graph::{BufferId, GraphNodeId, GpuGraph, GraphNodeType};
+use super::graph::{BufferId, GpuGraph, GraphNodeId, GraphNodeType};
 use super::ir::{
-    BlockId, CudaArch, GpuBlock, GpuKernel, GpuModule, GpuOp, GpuTarget, GpuTerminator,
-    GpuType, MemorySpace, SharedMemDecl, ValueId,
+    BlockId, CudaArch, GpuBlock, GpuKernel, GpuModule, GpuOp, GpuTarget, GpuTerminator, GpuType,
+    MemorySpace, SharedMemDecl, ValueId,
 };
 
 // ============================================================================
@@ -383,7 +383,8 @@ impl SharedMemLayout {
     pub fn add(&mut self, name: String, size: u32, alignment: u32) -> u32 {
         // Align current offset
         let aligned_offset = align_to(self.total_size, alignment);
-        self.allocations.push((name, aligned_offset, size, alignment));
+        self.allocations
+            .push((name, aligned_offset, size, alignment));
         self.total_size = aligned_offset + size;
         aligned_offset
     }
@@ -436,7 +437,11 @@ impl FusionGroup {
     pub fn new(id: FusionGroupId, kernels: Vec<KernelId>) -> Self {
         let fused_name = format!(
             "fused_{}",
-            kernels.iter().map(|k| k.0.to_string()).collect::<Vec<_>>().join("_")
+            kernels
+                .iter()
+                .map(|k| k.0.to_string())
+                .collect::<Vec<_>>()
+                .join("_")
         );
 
         Self {
@@ -557,7 +562,11 @@ impl FusionCostModel {
     ///       + W_occupancy * occupancy_delta
     ///       - W_sync * barrier_count
     ///       - W_register * register_increase
-    pub fn evaluate(&self, candidate: &FusionCandidate, original_estimates: &[ResourceEstimate]) -> f64 {
+    pub fn evaluate(
+        &self,
+        candidate: &FusionCandidate,
+        original_estimates: &[ResourceEstimate],
+    ) -> f64 {
         let kernel_count = candidate.kernels.len() as f64;
         let estimate = &candidate.resource_estimate;
 
@@ -579,21 +588,22 @@ impl FusionCostModel {
         };
 
         // Occupancy impact
-        let avg_original_occupancy: f64 = original_estimates
-            .iter()
-            .map(|e| e.occupancy)
-            .sum::<f64>()
-            / kernel_count;
-        let occupancy_delta = (estimate.occupancy - avg_original_occupancy) * self.weights.occupancy;
+        let avg_original_occupancy: f64 =
+            original_estimates.iter().map(|e| e.occupancy).sum::<f64>() / kernel_count;
+        let occupancy_delta =
+            (estimate.occupancy - avg_original_occupancy) * self.weights.occupancy;
 
         // Synchronization overhead
         let sync_cost = estimate.barrier_count as f64 * self.weights.sync_overhead;
 
         // Register pressure
-        let avg_original_regs: u32 =
-            original_estimates.iter().map(|e| e.registers_per_thread).sum::<u32>()
-                / original_estimates.len() as u32;
-        let reg_increase = (estimate.registers_per_thread as i32 - avg_original_regs as i32).max(0) as f64;
+        let avg_original_regs: u32 = original_estimates
+            .iter()
+            .map(|e| e.registers_per_thread)
+            .sum::<u32>()
+            / original_estimates.len() as u32;
+        let reg_increase =
+            (estimate.registers_per_thread as i32 - avg_original_regs as i32).max(0) as f64;
         let reg_cost = reg_increase * self.weights.register_pressure;
 
         launch_savings + memory_savings + occupancy_delta + sync_cost + reg_cost
@@ -659,7 +669,10 @@ impl KernelDependencyGraph {
     }
 
     /// Get successors of a kernel
-    pub fn successors(&self, kernel: KernelId) -> impl Iterator<Item = (KernelId, DependencyType)> + '_ {
+    pub fn successors(
+        &self,
+        kernel: KernelId,
+    ) -> impl Iterator<Item = (KernelId, DependencyType)> + '_ {
         self.forward
             .get(&kernel)
             .into_iter()
@@ -667,7 +680,10 @@ impl KernelDependencyGraph {
     }
 
     /// Get predecessors of a kernel
-    pub fn predecessors(&self, kernel: KernelId) -> impl Iterator<Item = (KernelId, DependencyType)> + '_ {
+    pub fn predecessors(
+        &self,
+        kernel: KernelId,
+    ) -> impl Iterator<Item = (KernelId, DependencyType)> + '_ {
         self.backward
             .get(&kernel)
             .into_iter()
@@ -931,7 +947,12 @@ impl FusionAnalysis {
     }
 
     /// Find data dependency between two graph nodes
-    fn find_data_dependency(&self, graph: &GpuGraph, from: GraphNodeId, to: GraphNodeId) -> Option<BufferId> {
+    fn find_data_dependency(
+        &self,
+        graph: &GpuGraph,
+        from: GraphNodeId,
+        to: GraphNodeId,
+    ) -> Option<BufferId> {
         let from_node = graph.get_node(from)?;
         let to_node = graph.get_node(to)?;
 
@@ -986,7 +1007,9 @@ impl FusionAnalysis {
                             vec![kernel, successor],
                             FusionType::Vertical,
                         );
-                        candidate.producer_consumer_edges.push((kernel, successor, buffer));
+                        candidate
+                            .producer_consumer_edges
+                            .push((kernel, successor, buffer));
 
                         // Combine resource estimates
                         if let (Some(est1), Some(est2)) = (
@@ -1051,8 +1074,10 @@ impl FusionAnalysis {
                     .filter_map(|k| self.kernel_estimates.get(k).cloned())
                     .collect();
                 if !estimates.is_empty() {
-                    candidate.resource_estimate =
-                        estimates.iter().skip(1).fold(estimates[0].clone(), |acc, e| acc.combine(e));
+                    candidate.resource_estimate = estimates
+                        .iter()
+                        .skip(1)
+                        .fold(estimates[0].clone(), |acc, e| acc.combine(e));
                 }
 
                 self.candidates.push(candidate);
@@ -1076,9 +1101,10 @@ impl FusionAnalysis {
                         FusionCandidate::new(candidate_id, vec![k1, k2], FusionType::Horizontal);
 
                     // Combine resource estimates
-                    if let (Some(est1), Some(est2)) =
-                        (self.kernel_estimates.get(&k1), self.kernel_estimates.get(&k2))
-                    {
+                    if let (Some(est1), Some(est2)) = (
+                        self.kernel_estimates.get(&k1),
+                        self.kernel_estimates.get(&k2),
+                    ) {
                         candidate.resource_estimate = est1.combine(est2);
                     }
 
@@ -1093,11 +1119,8 @@ impl FusionAnalysis {
         let kernels: Vec<KernelId> = self.dep_graph.kernels.iter().copied().collect();
 
         for &root in &kernels {
-            let successors: Vec<KernelId> = self
-                .dep_graph
-                .successors(root)
-                .map(|(k, _)| k)
-                .collect();
+            let successors: Vec<KernelId> =
+                self.dep_graph.successors(root).map(|(k, _)| k).collect();
 
             if successors.len() >= 2 {
                 // Look for common successor of the branches
@@ -1154,9 +1177,10 @@ impl FusionAnalysis {
     fn have_compatible_configs(&self, k1: KernelId, k2: KernelId) -> bool {
         // For now, assume compatible if both have similar thread counts
         // In a full implementation, we'd check grid/block dims from kernel metadata
-        if let (Some(est1), Some(est2)) =
-            (self.kernel_estimates.get(&k1), self.kernel_estimates.get(&k2))
-        {
+        if let (Some(est1), Some(est2)) = (
+            self.kernel_estimates.get(&k1),
+            self.kernel_estimates.get(&k2),
+        ) {
             est1.max_threads_per_block == est2.max_threads_per_block
         } else {
             true // Assume compatible if no estimates
@@ -1170,7 +1194,10 @@ impl FusionAnalysis {
         }
 
         let first = kernels[0];
-        kernels.iter().skip(1).all(|&k| self.have_compatible_configs(first, k))
+        kernels
+            .iter()
+            .skip(1)
+            .all(|&k| self.have_compatible_configs(first, k))
     }
 
     /// Allocate a new candidate ID
@@ -1300,20 +1327,14 @@ impl FusionAnalysis {
                     // Map all values
                     for block in &kernel.blocks {
                         for (vid, _) in &block.instructions {
-                            value_map.insert(
-                                (kernel_id, *vid),
-                                ValueId(next_value_id),
-                            );
+                            value_map.insert((kernel_id, *vid), ValueId(next_value_id));
                             next_value_id += 1;
                         }
                     }
 
                     // Map all blocks
                     for block in &kernel.blocks {
-                        block_map.insert(
-                            (kernel_id, block.id),
-                            BlockId(next_block_id),
-                        );
+                        block_map.insert((kernel_id, block.id), BlockId(next_block_id));
                         next_block_id += 1;
                     }
 
@@ -1346,7 +1367,7 @@ impl FusionAnalysis {
         let threads = threads.min(self.cost_model.constraints.max_threads_per_block);
 
         LaunchConfig {
-            grid: (1, 1, 1),   // Will be determined at runtime
+            grid: (1, 1, 1), // Will be determined at runtime
             block: (threads, 1, 1),
             dynamic_shared_mem: 0,
         }
@@ -1390,21 +1411,13 @@ impl FusionAnalysis {
         let total_benefit: f64 = self
             .candidates
             .iter()
-            .filter(|c| {
-                self.fusion_groups
-                    .iter()
-                    .any(|g| g.kernels == c.kernels)
-            })
+            .filter(|c| self.fusion_groups.iter().any(|g| g.kernels == c.kernels))
             .map(|c| c.benefit_score)
             .sum();
 
         let stats = FusionStats {
             candidates_found: self.candidates.len(),
-            candidates_rejected: self
-                .candidates
-                .iter()
-                .filter(|c| !c.valid)
-                .count(),
+            candidates_rejected: self.candidates.iter().filter(|c| !c.valid).count(),
             candidates_below_threshold: self
                 .candidates
                 .iter()
@@ -1471,7 +1484,11 @@ impl FusionTransformer {
     }
 
     /// Apply a fusion plan to a GPU module
-    pub fn apply(&mut self, module: &GpuModule, plan: &FusionPlan) -> Result<GpuModule, FusionError> {
+    pub fn apply(
+        &mut self,
+        module: &GpuModule,
+        plan: &FusionPlan,
+    ) -> Result<GpuModule, FusionError> {
         let mut result = GpuModule::new(module.name.clone(), module.target);
 
         // Build kernel name registry
@@ -1510,7 +1527,11 @@ impl FusionTransformer {
     }
 
     /// Fuse a group of kernels into a single kernel
-    fn fuse_group(&mut self, module: &GpuModule, group: &FusionGroup) -> Result<GpuKernel, FusionError> {
+    fn fuse_group(
+        &mut self,
+        module: &GpuModule,
+        group: &FusionGroup,
+    ) -> Result<GpuKernel, FusionError> {
         let mut fused = GpuKernel::new(&group.fused_name);
 
         // Collect and deduplicate parameters
@@ -1594,7 +1615,8 @@ impl FusionTransformer {
                 .copied()
                 .unwrap_or(block.id);
 
-            let mut new_block = GpuBlock::new(new_block_id, format!("{}_{}", kernel_id.0, block.label));
+            let mut new_block =
+                GpuBlock::new(new_block_id, format!("{}_{}", kernel_id.0, block.label));
 
             // Clone and remap instructions
             for (value_id, op) in &block.instructions {
@@ -1620,13 +1642,7 @@ impl FusionTransformer {
 
     /// Remap an operation's value references
     fn remap_op(&self, op: &GpuOp, kernel_id: KernelId, group: &FusionGroup) -> GpuOp {
-        let remap = |v: ValueId| {
-            group
-                .value_map
-                .get(&(kernel_id, v))
-                .copied()
-                .unwrap_or(v)
-        };
+        let remap = |v: ValueId| group.value_map.get(&(kernel_id, v)).copied().unwrap_or(v);
 
         match op {
             // Binary ops
@@ -1721,27 +1737,17 @@ impl FusionTransformer {
         kernel_id: KernelId,
         group: &FusionGroup,
     ) -> GpuTerminator {
-        let remap_block = |b: BlockId| {
-            group
-                .block_map
-                .get(&(kernel_id, b))
-                .copied()
-                .unwrap_or(b)
-        };
+        let remap_block = |b: BlockId| group.block_map.get(&(kernel_id, b)).copied().unwrap_or(b);
 
-        let remap_value = |v: ValueId| {
-            group
-                .value_map
-                .get(&(kernel_id, v))
-                .copied()
-                .unwrap_or(v)
-        };
+        let remap_value = |v: ValueId| group.value_map.get(&(kernel_id, v)).copied().unwrap_or(v);
 
         match term {
             GpuTerminator::Br(target) => GpuTerminator::Br(remap_block(*target)),
-            GpuTerminator::CondBr(cond, then_block, else_block) => {
-                GpuTerminator::CondBr(remap_value(*cond), remap_block(*then_block), remap_block(*else_block))
-            }
+            GpuTerminator::CondBr(cond, then_block, else_block) => GpuTerminator::CondBr(
+                remap_value(*cond),
+                remap_block(*then_block),
+                remap_block(*else_block),
+            ),
             GpuTerminator::Return(val) => GpuTerminator::Return(remap_value(*val)),
             GpuTerminator::ReturnVoid => GpuTerminator::ReturnVoid,
             GpuTerminator::Unreachable => GpuTerminator::Unreachable,
@@ -1982,11 +1988,17 @@ mod tests {
             vec![KernelId(0), KernelId(1)],
             FusionType::Vertical,
         );
-        vertical.producer_consumer_edges.push((KernelId(0), KernelId(1), BufferId(0)));
+        vertical
+            .producer_consumer_edges
+            .push((KernelId(0), KernelId(1), BufferId(0)));
         vertical.resource_estimate = original_estimates[0].combine(&original_estimates[1]);
 
         let score = cost_model.evaluate(&vertical, &original_estimates);
-        assert!(score > 0.0, "Vertical fusion should have positive score, got {}", score);
+        assert!(
+            score > 0.0,
+            "Vertical fusion should have positive score, got {}",
+            score
+        );
 
         // Horizontal fusion should have lower score (no memory savings)
         // Score = 1.0 (launch) - 0.3 (sync) - 1.6 (regs) = -0.9 (negative)
@@ -1998,7 +2010,10 @@ mod tests {
         horizontal.resource_estimate = original_estimates[0].combine(&original_estimates[1]);
 
         let h_score = cost_model.evaluate(&horizontal, &original_estimates);
-        assert!(h_score < score, "Horizontal fusion should have lower score than vertical");
+        assert!(
+            h_score < score,
+            "Horizontal fusion should have lower score than vertical"
+        );
     }
 
     #[test]
@@ -2010,8 +2025,16 @@ mod tests {
         graph.add_kernel(KernelId(2));
 
         // 0 → 1 → 2
-        graph.add_edge(KernelId(0), KernelId(1), DependencyType::DataFlow(BufferId(0)));
-        graph.add_edge(KernelId(1), KernelId(2), DependencyType::DataFlow(BufferId(1)));
+        graph.add_edge(
+            KernelId(0),
+            KernelId(1),
+            DependencyType::DataFlow(BufferId(0)),
+        );
+        graph.add_edge(
+            KernelId(1),
+            KernelId(2),
+            DependencyType::DataFlow(BufferId(1)),
+        );
 
         // Check paths
         assert!(graph.has_path(KernelId(0), KernelId(1)));
@@ -2052,7 +2075,10 @@ mod tests {
 
     #[test]
     fn test_fusion_group_creation() {
-        let group = FusionGroup::new(FusionGroupId(0), vec![KernelId(0), KernelId(1), KernelId(2)]);
+        let group = FusionGroup::new(
+            FusionGroupId(0),
+            vec![KernelId(0), KernelId(1), KernelId(2)],
+        );
 
         assert_eq!(group.id, FusionGroupId(0));
         assert_eq!(group.kernels.len(), 3);

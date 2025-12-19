@@ -152,11 +152,11 @@ impl CudaArch {
     /// L2 cache size (bytes)
     pub fn l2_cache_size(&self) -> u32 {
         match self {
-            CudaArch::Turing => 6 * 1024 * 1024,       // 6 MB
-            CudaArch::Ampere => 40 * 1024 * 1024,      // 40 MB (A100)
-            CudaArch::Ada => 72 * 1024 * 1024,         // 72 MB (RTX 4090)
-            CudaArch::Hopper => 50 * 1024 * 1024,      // 50 MB (H100)
-            CudaArch::Blackwell => 96 * 1024 * 1024,   // 96 MB (estimated B100)
+            CudaArch::Turing => 6 * 1024 * 1024,           // 6 MB
+            CudaArch::Ampere => 40 * 1024 * 1024,          // 40 MB (A100)
+            CudaArch::Ada => 72 * 1024 * 1024,             // 72 MB (RTX 4090)
+            CudaArch::Hopper => 50 * 1024 * 1024,          // 50 MB (H100)
+            CudaArch::Blackwell => 96 * 1024 * 1024,       // 96 MB (estimated B100)
             CudaArch::BlackwellUltra => 128 * 1024 * 1024, // 128 MB (estimated)
         }
     }
@@ -700,7 +700,10 @@ impl TileLayout {
     pub fn from_string(s: &str) -> Self {
         match s {
             "col_major" => TileLayout::ColMajor,
-            "swizzled" => TileLayout::Swizzled { block_m: 8, block_n: 64 },
+            "swizzled" => TileLayout::Swizzled {
+                block_m: 8,
+                block_n: 64,
+            },
             _ => TileLayout::RowMajor, // Default
         }
     }
@@ -983,12 +986,12 @@ pub enum GpuOp {
     /// INT8 matrix multiply with tensor cores (sm_75+)
     /// Performs C = A * B + C where A and B are INT8, C is INT32
     Int8MatMul {
-        a: ValueId,      // INT8 matrix A
-        b: ValueId,      // INT8 matrix B
-        c: ValueId,      // INT32 accumulator
-        m: u32,          // M dimension
-        n: u32,          // N dimension
-        k: u32,          // K dimension
+        a: ValueId,       // INT8 matrix A
+        b: ValueId,       // INT8 matrix B
+        c: ValueId,       // INT32 accumulator
+        m: u32,           // M dimension
+        n: u32,           // N dimension
+        k: u32,           // K dimension
         a_scale: ValueId, // Scale for dequantizing A
         b_scale: ValueId, // Scale for dequantizing B
     },
@@ -1018,7 +1021,7 @@ pub enum GpuOp {
     ComputeQuantScale {
         min_val: ValueId,
         max_val: ValueId,
-        num_bits: u32,  // 8 for INT8, 4 for INT4
+        num_bits: u32, // 8 for INT8, 4 for INT4
         symmetric: bool,
     },
 
@@ -1081,12 +1084,12 @@ pub enum GpuOp {
     // 5th-gen Tensor Core Operations (sm_100+)
     /// WGMMA (Warpgroup Matrix Multiply-Accumulate) with FP4
     WgmmaFp4 {
-        a: ValueId,      // FP4 matrix A
-        b: ValueId,      // FP4 matrix B
-        c: ValueId,      // Accumulator (FP32)
-        m: u32,          // M dimension
-        n: u32,          // N dimension
-        k: u32,          // K dimension
+        a: ValueId,       // FP4 matrix A
+        b: ValueId,       // FP4 matrix B
+        c: ValueId,       // Accumulator (FP32)
+        m: u32,           // M dimension
+        n: u32,           // N dimension
+        k: u32,           // K dimension
         scale_a: ValueId, // Scale for A
         scale_b: ValueId, // Scale for B
     },
@@ -1113,11 +1116,11 @@ pub enum GpuOp {
     // Transformer Engine v2 (sm_100+)
     /// Fused attention with FP8 quantization
     TransformerEngineFusedAttention {
-        q: ValueId,       // Query tensor
-        k: ValueId,       // Key tensor
-        v: ValueId,       // Value tensor
-        scale: ValueId,   // Softmax scale
-        output: ValueId,  // Output tensor
+        q: ValueId,      // Query tensor
+        k: ValueId,      // Key tensor
+        v: ValueId,      // Value tensor
+        scale: ValueId,  // Softmax scale
+        output: ValueId, // Output tensor
         format: Fp8Format,
     },
     /// FP8 GEMM with amax tracking for dynamic scaling
@@ -1125,7 +1128,7 @@ pub enum GpuOp {
         a: ValueId,
         b: ValueId,
         c: ValueId,
-        amax_out: ValueId,  // Track max for scaling
+        amax_out: ValueId, // Track max for scaling
         format: Fp8Format,
     },
 
@@ -1162,9 +1165,9 @@ pub enum GpuOp {
     /// Cluster-wide barrier
     ClusterBarrier,
     /// Cluster-wide arrive (non-blocking)
-    ClusterArrive(ValueId),  // barrier
+    ClusterArrive(ValueId), // barrier
     /// Cluster-wide wait
-    ClusterWait(ValueId),    // barrier
+    ClusterWait(ValueId), // barrier
 
     // NVLink 5.0 Operations (sm_100+)
     /// Remote direct memory access read
@@ -1365,7 +1368,6 @@ pub enum GpuOp {
     TransmissionDistort(ValueId, ValueId, ValueId, ValueId, ValueId), // trans, dg, dt, dp, de
 
     // === Cooperative Groups (CUDA 9.0+ / PTX 6.0+) ===
-
     /// Get this thread's cooperative group at specified scope
     /// Returns a group handle for subsequent operations
     CoopThisGroup(CooperativeScope),
@@ -1435,7 +1437,6 @@ pub enum GpuOp {
     CoopMemoryFence(ValueId), // group
 
     // === Debug/Profiling Operations ===
-
     /// Printf from GPU (CUDA vprintf)
     /// Format string is stored in constant memory, args are passed via buffer
     /// Printf(format_string_id, args_buffer_ptr)

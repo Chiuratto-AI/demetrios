@@ -301,8 +301,7 @@ impl PtqEngine {
                     self.weight_calibrators.insert(name.clone(), calibrator);
                 }
                 _ => {
-                    let collector =
-                        CalibrationCollector::new(CalibrationMethod::MinMax);
+                    let collector = CalibrationCollector::new(CalibrationMethod::MinMax);
                     self.activation_calibrators
                         .insert(format!("{}_weight", name), collector);
                 }
@@ -391,10 +390,8 @@ impl PtqEngine {
         for (key, collector) in &self.activation_calibrators {
             if key.ends_with("_weight") {
                 // Per-tensor weight quantization
-                let params = collector.compute_params(
-                    self.config.weight_config.dtype,
-                    QuantScheme::PerTensor,
-                );
+                let params = collector
+                    .compute_params(self.config.weight_config.dtype, QuantScheme::PerTensor);
                 self.quant_params.insert(key.clone(), params);
             } else {
                 // Activation quantization
@@ -528,11 +525,7 @@ impl PtqEngine {
             .iter()
             .map(|info| {
                 let name = &info.name;
-                let excluded = self
-                    .config
-                    .weight_config
-                    .excluded_layers
-                    .contains(name);
+                let excluded = self.config.weight_config.excluded_layers.contains(name);
 
                 let per_channel = self.per_channel_params.get(name).cloned();
                 let weight_params = per_channel.as_ref().map(|p| p.params_for_channel(0));
@@ -560,10 +553,7 @@ impl PtqEngine {
 
         let total_mse: f64 = errors.iter().map(|e| e.mse).sum();
         let total_mae: f64 = errors.iter().map(|e| e.mae).sum();
-        let max_error = errors
-            .iter()
-            .map(|e| e.max_error)
-            .fold(0.0, f64::max);
+        let max_error = errors.iter().map(|e| e.max_error).fold(0.0, f64::max);
         let avg_snr = errors.iter().map(|e| e.snr_db).sum::<f64>() / errors.len() as f64;
 
         PtqErrorSummary {

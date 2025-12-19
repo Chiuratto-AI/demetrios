@@ -280,15 +280,24 @@ impl GpuGraph {
     }
 
     /// Allocate a new buffer ID
-    pub fn alloc_buffer(&mut self, name: &str, elem_type: GpuType, size: usize, location: BufferLocation) -> BufferId {
+    pub fn alloc_buffer(
+        &mut self,
+        name: &str,
+        elem_type: GpuType,
+        size: usize,
+        location: BufferLocation,
+    ) -> BufferId {
         let id = BufferId(self.next_buffer_id);
         self.next_buffer_id += 1;
-        self.buffers.insert(id, BufferInfo {
-            name: name.into(),
-            elem_type,
-            size,
-            location,
-        });
+        self.buffers.insert(
+            id,
+            BufferInfo {
+                name: name.into(),
+                elem_type,
+                size,
+                location,
+            },
+        );
         id
     }
 
@@ -477,13 +486,15 @@ impl GpuGraph {
             has_outgoing.insert(*from, true);
         }
 
-        self.entry_nodes = self.nodes
+        self.entry_nodes = self
+            .nodes
             .iter()
             .filter(|n| !has_incoming.get(&n.id).copied().unwrap_or(false))
             .map(|n| n.id)
             .collect();
 
-        self.exit_nodes = self.nodes
+        self.exit_nodes = self
+            .nodes
             .iter()
             .filter(|n| !has_outgoing.get(&n.id).copied().unwrap_or(false))
             .map(|n| n.id)
@@ -571,7 +582,7 @@ pub fn build_graph_from_module(module: &GpuModule) -> GpuGraph {
             name: name.clone(),
             node_type: GraphNodeType::Kernel(KernelNode {
                 kernel_name: name.clone(),
-                grid: (1, 1, 1),   // Placeholder
+                grid: (1, 1, 1),    // Placeholder
                 block: (256, 1, 1), // Default block size
                 shared_mem: 0,
                 args: Vec::new(),
@@ -682,9 +693,30 @@ mod tests {
         let mut graph = GpuGraph::new("pipeline");
         let buf = graph.alloc_buffer("data", GpuType::F32, 1024, BufferLocation::Device);
 
-        let n1 = graph.add_kernel("step1", "kernel1", (1, 1, 1), (1, 1, 1), vec![GraphKernelArg::Buffer(buf)], &[]);
-        let n2 = graph.add_kernel("step2", "kernel2", (1, 1, 1), (1, 1, 1), vec![GraphKernelArg::Buffer(buf)], &[n1]);
-        let n3 = graph.add_kernel("step3", "kernel3", (1, 1, 1), (1, 1, 1), vec![GraphKernelArg::Buffer(buf)], &[n2]);
+        let n1 = graph.add_kernel(
+            "step1",
+            "kernel1",
+            (1, 1, 1),
+            (1, 1, 1),
+            vec![GraphKernelArg::Buffer(buf)],
+            &[],
+        );
+        let n2 = graph.add_kernel(
+            "step2",
+            "kernel2",
+            (1, 1, 1),
+            (1, 1, 1),
+            vec![GraphKernelArg::Buffer(buf)],
+            &[n1],
+        );
+        let n3 = graph.add_kernel(
+            "step3",
+            "kernel3",
+            (1, 1, 1),
+            (1, 1, 1),
+            vec![GraphKernelArg::Buffer(buf)],
+            &[n2],
+        );
 
         assert_eq!(graph.edges.len(), 2);
 
@@ -698,8 +730,22 @@ mod tests {
         let buf = graph.alloc_buffer("data", GpuType::F32, 1024, BufferLocation::Device);
 
         // Two parallel kernels, then sync
-        let n1 = graph.add_kernel("branch1", "kernel1", (1, 1, 1), (1, 1, 1), vec![GraphKernelArg::Buffer(buf)], &[]);
-        let n2 = graph.add_kernel("branch2", "kernel2", (1, 1, 1), (1, 1, 1), vec![GraphKernelArg::Buffer(buf)], &[]);
+        let n1 = graph.add_kernel(
+            "branch1",
+            "kernel1",
+            (1, 1, 1),
+            (1, 1, 1),
+            vec![GraphKernelArg::Buffer(buf)],
+            &[],
+        );
+        let n2 = graph.add_kernel(
+            "branch2",
+            "kernel2",
+            (1, 1, 1),
+            (1, 1, 1),
+            vec![GraphKernelArg::Buffer(buf)],
+            &[],
+        );
         let _n3 = graph.add_sync_point("join", &[n1, n2]);
 
         graph.finalize();
@@ -716,13 +762,8 @@ mod tests {
         let then_graph = GpuGraph::new("then_branch");
         let else_graph = GpuGraph::new("else_branch");
 
-        let _cond = graph.add_conditional(
-            "if_check",
-            ValueId(0),
-            then_graph,
-            Some(else_graph),
-            &[],
-        );
+        let _cond =
+            graph.add_conditional("if_check", ValueId(0), then_graph, Some(else_graph), &[]);
 
         assert_eq!(graph.node_count(), 1);
     }
@@ -755,9 +796,12 @@ mod tests {
         // Buffers
         let host_input = graph.alloc_buffer("host_input", GpuType::F32, 4096, BufferLocation::Host);
         let dev_input = graph.alloc_buffer("dev_input", GpuType::F32, 4096, BufferLocation::Device);
-        let dev_hidden = graph.alloc_buffer("dev_hidden", GpuType::F32, 2048, BufferLocation::Device);
-        let dev_output = graph.alloc_buffer("dev_output", GpuType::F32, 1024, BufferLocation::Device);
-        let host_output = graph.alloc_buffer("host_output", GpuType::F32, 1024, BufferLocation::Host);
+        let dev_hidden =
+            graph.alloc_buffer("dev_hidden", GpuType::F32, 2048, BufferLocation::Device);
+        let dev_output =
+            graph.alloc_buffer("dev_output", GpuType::F32, 1024, BufferLocation::Device);
+        let host_output =
+            graph.alloc_buffer("host_output", GpuType::F32, 1024, BufferLocation::Host);
 
         // Pipeline
         let upload = graph.add_memcpy_h2d("upload_input", host_input, dev_input, &[]);
@@ -766,7 +810,10 @@ mod tests {
             "dense_layer",
             (16, 1, 1),
             (256, 1, 1),
-            vec![GraphKernelArg::Buffer(dev_input), GraphKernelArg::Buffer(dev_hidden)],
+            vec![
+                GraphKernelArg::Buffer(dev_input),
+                GraphKernelArg::Buffer(dev_hidden),
+            ],
             &[upload],
         );
         let layer2 = graph.add_kernel(
@@ -774,7 +821,10 @@ mod tests {
             "dense_layer",
             (8, 1, 1),
             (256, 1, 1),
-            vec![GraphKernelArg::Buffer(dev_hidden), GraphKernelArg::Buffer(dev_output)],
+            vec![
+                GraphKernelArg::Buffer(dev_hidden),
+                GraphKernelArg::Buffer(dev_output),
+            ],
             &[layer1],
         );
         let download = graph.add_memcpy_d2h("download_output", dev_output, host_output, &[layer2]);

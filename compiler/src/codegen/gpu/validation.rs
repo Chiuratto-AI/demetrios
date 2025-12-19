@@ -23,10 +23,7 @@ use super::ir::GpuType;
 #[derive(Debug, Clone)]
 pub enum ValidationError {
     /// Output buffer sizes don't match
-    SizeMismatch {
-        expected: usize,
-        actual: usize,
-    },
+    SizeMismatch { expected: usize, actual: usize },
     /// Values don't match within tolerance
     ValueMismatch {
         index: usize,
@@ -34,30 +31,36 @@ pub enum ValidationError {
         actual: f64,
     },
     /// Numerical precision degraded beyond threshold
-    PrecisionLoss {
-        max_error: f64,
-        threshold: f64,
-    },
+    PrecisionLoss { max_error: f64, threshold: f64 },
     /// Output contains invalid values (NaN, Inf)
-    InvalidOutput {
-        description: String,
-    },
+    InvalidOutput { description: String },
 }
 
 impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ValidationError::SizeMismatch { expected, actual } => {
-                write!(f, "Size mismatch: expected {} bytes, got {}", expected, actual)
+                write!(
+                    f,
+                    "Size mismatch: expected {} bytes, got {}",
+                    expected, actual
+                )
             }
-            ValidationError::ValueMismatch { index, expected, actual } => {
+            ValidationError::ValueMismatch {
+                index,
+                expected,
+                actual,
+            } => {
                 write!(
                     f,
                     "Value mismatch at index {}: expected {}, got {}",
                     index, expected, actual
                 )
             }
-            ValidationError::PrecisionLoss { max_error, threshold } => {
+            ValidationError::PrecisionLoss {
+                max_error,
+                threshold,
+            } => {
                 write!(
                     f,
                     "Precision loss: max error {} exceeds threshold {}",
@@ -89,10 +92,7 @@ pub enum ValidationIssue {
         relative_error: f64,
     },
     /// NaN detected in output
-    NaNDetected {
-        index: usize,
-        buffer: String,
-    },
+    NaNDetected { index: usize, buffer: String },
     /// Infinity detected in output
     InfDetected {
         index: usize,
@@ -100,10 +100,7 @@ pub enum ValidationIssue {
         positive: bool,
     },
     /// Accumulated precision loss
-    PrecisionLoss {
-        max_error: f64,
-        mean_error: f64,
-    },
+    PrecisionLoss { max_error: f64, mean_error: f64 },
 }
 
 // ============================================================================
@@ -423,12 +420,7 @@ impl CorrectnessValidator {
     }
 
     /// Validate f32 buffers
-    pub fn validate_f32(
-        &self,
-        name: &str,
-        expected: &[f32],
-        actual: &[f32],
-    ) -> BufferComparison {
+    pub fn validate_f32(&self, name: &str, expected: &[f32], actual: &[f32]) -> BufferComparison {
         let mut issues = Vec::new();
         let mut matching = 0usize;
         let mut sum_abs_error = 0.0f64;
@@ -524,12 +516,7 @@ impl CorrectnessValidator {
     }
 
     /// Validate f64 buffers
-    pub fn validate_f64(
-        &self,
-        name: &str,
-        expected: &[f64],
-        actual: &[f64],
-    ) -> BufferComparison {
+    pub fn validate_f64(&self, name: &str, expected: &[f64], actual: &[f64]) -> BufferComparison {
         let mut issues = Vec::new();
         let mut matching = 0usize;
         let mut sum_abs_error = 0.0f64;
@@ -577,7 +564,11 @@ impl CorrectnessValidator {
                 matching += 1;
             } else {
                 let abs_error = (exp - act).abs();
-                let rel_error = if exp != 0.0 { abs_error / exp.abs() } else { abs_error };
+                let rel_error = if exp != 0.0 {
+                    abs_error / exp.abs()
+                } else {
+                    abs_error
+                };
 
                 issues.push(ValidationIssue::ValueMismatch {
                     index: i,
@@ -621,12 +612,7 @@ impl CorrectnessValidator {
     }
 
     /// Validate i32 buffers (exact comparison)
-    pub fn validate_i32(
-        &self,
-        name: &str,
-        expected: &[i32],
-        actual: &[i32],
-    ) -> BufferComparison {
+    pub fn validate_i32(&self, name: &str, expected: &[i32], actual: &[i32]) -> BufferComparison {
         let mut issues = Vec::new();
         let mut matching = 0usize;
 
@@ -689,10 +675,7 @@ impl CorrectnessValidator {
     }
 
     /// Validate and produce a full result
-    pub fn validate_result(
-        &self,
-        comparisons: Vec<BufferComparison>,
-    ) -> ValidationResult {
+    pub fn validate_result(&self, comparisons: Vec<BufferComparison>) -> ValidationResult {
         let mut all_issues = Vec::new();
         let mut passed = true;
 

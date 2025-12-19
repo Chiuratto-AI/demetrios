@@ -129,7 +129,12 @@ pub struct StageBuffer {
 impl StageBuffer {
     /// Create a new stage buffer
     pub fn new(name: String, size_bytes: u32, element_type: GpuType, buffer_index: u32) -> Self {
-        Self { name, size_bytes, element_type, buffer_index }
+        Self {
+            name,
+            size_bytes,
+            element_type,
+            buffer_index,
+        }
     }
 }
 
@@ -178,7 +183,10 @@ pub enum AsyncOpKind {
 impl AsyncOpKind {
     /// Check if this is a load operation
     pub fn is_load(&self) -> bool {
-        matches!(self, Self::TmaLoad { .. } | Self::TmaMulticast { .. } | Self::CpAsync { .. })
+        matches!(
+            self,
+            Self::TmaLoad { .. } | Self::TmaMulticast { .. } | Self::CpAsync { .. }
+        )
     }
 
     /// Check if this is a store operation
@@ -195,7 +203,10 @@ impl AsyncOpKind {
     pub fn requires_tma(&self) -> bool {
         matches!(
             self,
-            Self::TmaLoad { .. } | Self::TmaStore { .. } | Self::TmaMulticast { .. } | Self::TmaReduce { .. }
+            Self::TmaLoad { .. }
+                | Self::TmaStore { .. }
+                | Self::TmaMulticast { .. }
+                | Self::TmaReduce { .. }
         )
     }
 }
@@ -218,7 +229,13 @@ pub struct AsyncOp {
 impl AsyncOp {
     /// Create a new async operation
     pub fn new(id: AsyncOpId, kind: AsyncOpKind, stage: StageId) -> Self {
-        Self { id, kind, stage, depends_on: Vec::new(), blocks: Vec::new() }
+        Self {
+            id,
+            kind,
+            stage,
+            depends_on: Vec::new(),
+            blocks: Vec::new(),
+        }
     }
 
     /// Add a dependency
@@ -268,7 +285,10 @@ impl AsyncOpGraph {
 
     /// Get a mutable operation by ID
     pub fn get_op_mut(&mut self, id: AsyncOpId) -> Option<&mut AsyncOp> {
-        self.id_to_index.get(&id).copied().map(|idx| &mut self.ops[idx])
+        self.id_to_index
+            .get(&id)
+            .copied()
+            .map(|idx| &mut self.ops[idx])
     }
 
     /// Add a dependency between operations
@@ -283,17 +303,27 @@ impl AsyncOpGraph {
 
     /// Find all operations with no dependencies (roots)
     pub fn find_roots(&self) -> Vec<AsyncOpId> {
-        self.ops.iter().filter(|op| op.depends_on.is_empty()).map(|op| op.id).collect()
+        self.ops
+            .iter()
+            .filter(|op| op.depends_on.is_empty())
+            .map(|op| op.id)
+            .collect()
     }
 
     /// Topologically sort operations
     pub fn topological_sort(&self) -> Vec<AsyncOpId> {
         let mut result = Vec::with_capacity(self.ops.len());
-        let mut in_degree: HashMap<AsyncOpId, usize> =
-            self.ops.iter().map(|op| (op.id, op.depends_on.len())).collect();
+        let mut in_degree: HashMap<AsyncOpId, usize> = self
+            .ops
+            .iter()
+            .map(|op| (op.id, op.depends_on.len()))
+            .collect();
 
-        let mut queue: VecDeque<AsyncOpId> =
-            in_degree.iter().filter(|&(_, d)| *d == 0).map(|(&id, _)| id).collect();
+        let mut queue: VecDeque<AsyncOpId> = in_degree
+            .iter()
+            .filter(|&(_, d)| *d == 0)
+            .map(|(&id, _)| id)
+            .collect();
 
         while let Some(id) = queue.pop_front() {
             result.push(id);
@@ -381,7 +411,13 @@ pub struct Barrier {
 impl Barrier {
     /// Create a new barrier
     pub fn new(id: BarrierId, kind: BarrierKind, arrive_count: u32) -> Self {
-        Self { id, kind, arrive_count, phase: 0, name: format!("mbar{}", id.0) }
+        Self {
+            id,
+            kind,
+            arrive_count,
+            phase: 0,
+            name: format!("mbar{}", id.0),
+        }
     }
 
     /// Advance to next phase
@@ -414,7 +450,11 @@ impl BarrierPool {
             CudaArch::Ampere | CudaArch::Ada => 16,
             CudaArch::Hopper | CudaArch::Blackwell | CudaArch::BlackwellUltra => 32,
         };
-        Self { barriers: Vec::new(), next_id: 0, max_barriers }
+        Self {
+            barriers: Vec::new(),
+            next_id: 0,
+            max_barriers,
+        }
     }
 
     /// Allocate a new barrier
@@ -616,12 +656,20 @@ pub struct BufferConfig {
 impl BufferConfig {
     /// Create a new buffer configuration
     pub fn new(size: u32, elem_type: GpuType) -> Self {
-        Self { size, elem_type, name_prefix: None }
+        Self {
+            size,
+            elem_type,
+            name_prefix: None,
+        }
     }
 
     /// Create with a name prefix
     pub fn with_name(size: u32, elem_type: GpuType, name: &str) -> Self {
-        Self { size, elem_type, name_prefix: Some(name.to_string()) }
+        Self {
+            size,
+            elem_type,
+            name_prefix: Some(name.to_string()),
+        }
     }
 }
 
@@ -640,7 +688,12 @@ pub struct PipelineBuilder {
 impl PipelineBuilder {
     /// Create a new pipeline builder
     pub fn new(target: CudaArch) -> Self {
-        Self { target, depth: 2, buffer_configs: Vec::new(), warp_count: 1 }
+        Self {
+            target,
+            depth: 2,
+            buffer_configs: Vec::new(),
+            warp_count: 1,
+        }
     }
 
     /// Set pipeline depth
@@ -699,7 +752,10 @@ impl PipelineBuilder {
 
             // Allocate buffers for this stage
             for (buf_idx, config) in self.buffer_configs.iter().enumerate() {
-                let name = config.name_prefix.clone().unwrap_or_else(|| "buf".to_string());
+                let name = config
+                    .name_prefix
+                    .clone()
+                    .unwrap_or_else(|| "buf".to_string());
                 let buffer = StageBuffer::new(
                     format!("{}_{}_s{}", name, buf_idx, stage_idx),
                     config.size,
@@ -712,14 +768,20 @@ impl PipelineBuilder {
             // Allocate barriers for stage transitions
             if stage_idx > 0 {
                 // Entry barrier: wait for previous stage to complete
-                if let Some(barrier_id) = pipeline.barriers.allocate(barrier_kind, self.warp_count * 32) {
+                if let Some(barrier_id) = pipeline
+                    .barriers
+                    .allocate(barrier_kind, self.warp_count * 32)
+                {
                     stage.entry_barrier = Some(barrier_id);
                 }
             }
 
             if stage_idx < self.depth - 1 {
                 // Exit barrier: signal completion to next stage
-                if let Some(barrier_id) = pipeline.barriers.allocate(barrier_kind, self.warp_count * 32) {
+                if let Some(barrier_id) = pipeline
+                    .barriers
+                    .allocate(barrier_kind, self.warp_count * 32)
+                {
                     stage.exit_barrier = Some(barrier_id);
                 }
             }
@@ -781,26 +843,46 @@ impl DependencyAnalyzer {
     /// Classify a GpuOp as an async operation kind (if applicable)
     fn classify_op(&self, op: &GpuOp) -> Option<AsyncOpKind> {
         match op {
-            GpuOp::TmaLoadAsync { dst_shared, src_global, size, barrier: _ } => {
-                Some(AsyncOpKind::TmaLoad { src: *src_global, dst: *dst_shared, size: *size })
-            }
-            GpuOp::TmaStoreAsync { dst_global, src_shared, size } => {
-                Some(AsyncOpKind::TmaStore { src: *src_shared, dst: *dst_global, size: *size })
-            }
-            GpuOp::TmaMulticastLoad { dst_shared, src_global, size: _, cluster_mask, barrier: _ } => {
-                Some(AsyncOpKind::TmaMulticast {
-                    src: *src_global,
-                    dst: *dst_shared,
-                    multicast_mask: *cluster_mask,
-                })
-            }
-            GpuOp::TmaReduceAsync { dst_global, src_shared, size: _, reduce_op } => {
-                Some(AsyncOpKind::TmaReduce {
-                    src: *src_shared,
-                    dst: *dst_global,
-                    op: *reduce_op,
-                })
-            }
+            GpuOp::TmaLoadAsync {
+                dst_shared,
+                src_global,
+                size,
+                barrier: _,
+            } => Some(AsyncOpKind::TmaLoad {
+                src: *src_global,
+                dst: *dst_shared,
+                size: *size,
+            }),
+            GpuOp::TmaStoreAsync {
+                dst_global,
+                src_shared,
+                size,
+            } => Some(AsyncOpKind::TmaStore {
+                src: *src_shared,
+                dst: *dst_global,
+                size: *size,
+            }),
+            GpuOp::TmaMulticastLoad {
+                dst_shared,
+                src_global,
+                size: _,
+                cluster_mask,
+                barrier: _,
+            } => Some(AsyncOpKind::TmaMulticast {
+                src: *src_global,
+                dst: *dst_shared,
+                multicast_mask: *cluster_mask,
+            }),
+            GpuOp::TmaReduceAsync {
+                dst_global,
+                src_shared,
+                size: _,
+                reduce_op,
+            } => Some(AsyncOpKind::TmaReduce {
+                src: *src_shared,
+                dst: *dst_global,
+                op: *reduce_op,
+            }),
             _ => None,
         }
     }
@@ -977,7 +1059,9 @@ pub struct BarrierScheduler {
 impl BarrierScheduler {
     /// Create a new barrier scheduler
     pub fn new() -> Self {
-        Self { minimize_stalls: true }
+        Self {
+            minimize_stalls: true,
+        }
     }
 
     /// Enable/disable stall minimization
@@ -1101,13 +1185,19 @@ impl PipelineCodegen {
                     barrier.name,
                     barrier.parity()
                 ));
-                lines.push(format!("@!pred_{} bra.uni wait_{};", barrier.name, barrier.name));
+                lines.push(format!(
+                    "@!pred_{} bra.uni wait_{};",
+                    barrier.name, barrier.name
+                ));
             }
             BarrierKind::CpAsyncGroup => {
                 lines.push("cp.async.wait_group 0;".to_string());
             }
             BarrierKind::NamedBarrier => {
-                lines.push(format!("bar.sync {}, {};", barrier.id.0, barrier.arrive_count));
+                lines.push(format!(
+                    "bar.sync {}, {};",
+                    barrier.id.0, barrier.arrive_count
+                ));
             }
         }
 
@@ -1115,7 +1205,13 @@ impl PipelineCodegen {
     }
 
     /// Emit TMA load PTX (Hopper+)
-    pub fn emit_tma_load(&self, dst_smem: &str, tensor_map: &str, coords: &str, barrier: &str) -> String {
+    pub fn emit_tma_load(
+        &self,
+        dst_smem: &str,
+        tensor_map: &str,
+        coords: &str,
+        barrier: &str,
+    ) -> String {
         format!(
             "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes \
              [{dst_smem}], [{tensor_map}, {{{coords}}}], [{barrier}];"
@@ -1123,7 +1219,13 @@ impl PipelineCodegen {
     }
 
     /// Emit TMA store PTX (Hopper+)
-    pub fn emit_tma_store(&self, dst_global: &str, src_smem: &str, tensor_map: &str, coords: &str) -> String {
+    pub fn emit_tma_store(
+        &self,
+        dst_global: &str,
+        src_smem: &str,
+        tensor_map: &str,
+        coords: &str,
+    ) -> String {
         format!(
             "cp.async.bulk.tensor.2d.global.shared::cta [{dst_global}, [{tensor_map}, {{{coords}}}]], [{src_smem}];"
         )
@@ -1153,7 +1255,11 @@ impl PipelineCodegen {
     }
 
     /// Emit full prologue code
-    pub fn emit_prologue(&self, schedule: &PipelineSchedule, pipeline: &AsyncPipeline) -> Vec<String> {
+    pub fn emit_prologue(
+        &self,
+        schedule: &PipelineSchedule,
+        pipeline: &AsyncPipeline,
+    ) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push("// Pipeline prologue: initial prefetches".to_string());
 
@@ -1180,7 +1286,11 @@ impl PipelineCodegen {
     }
 
     /// Emit full main loop code
-    pub fn emit_main_loop(&self, schedule: &PipelineSchedule, pipeline: &AsyncPipeline) -> Vec<String> {
+    pub fn emit_main_loop(
+        &self,
+        schedule: &PipelineSchedule,
+        pipeline: &AsyncPipeline,
+    ) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push("// Pipeline main loop: steady state".to_string());
 
@@ -1226,7 +1336,11 @@ impl PipelineCodegen {
     }
 
     /// Emit full epilogue code
-    pub fn emit_epilogue(&self, schedule: &PipelineSchedule, pipeline: &AsyncPipeline) -> Vec<String> {
+    pub fn emit_epilogue(
+        &self,
+        schedule: &PipelineSchedule,
+        pipeline: &AsyncPipeline,
+    ) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push("// Pipeline epilogue: drain".to_string());
 
@@ -1262,7 +1376,8 @@ impl PipelineCodegen {
                 // TMA load for Hopper+ (sm_90+)
                 if self.target.compute_capability() >= (9, 0) {
                     // Find the barrier for this stage
-                    let barrier_name = pipeline.stages
+                    let barrier_name = pipeline
+                        .stages
                         .iter()
                         .find(|s| s.id == op.stage)
                         .and_then(|s| s.exit_barrier)
@@ -1291,7 +1406,11 @@ impl PipelineCodegen {
                     dst.0, src.0, size
                 ));
             }
-            AsyncOpKind::TmaMulticast { src, dst, multicast_mask } => {
+            AsyncOpKind::TmaMulticast {
+                src,
+                dst,
+                multicast_mask,
+            } => {
                 // TMA multicast for Hopper+ cluster operations
                 lines.push(format!(
                     "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes.multicast::cluster \
@@ -1306,7 +1425,11 @@ impl PipelineCodegen {
                     dst.0, src.0
                 ));
             }
-            AsyncOpKind::TmaReduce { src, dst, op: reduce_op } => {
+            AsyncOpKind::TmaReduce {
+                src,
+                dst,
+                op: reduce_op,
+            } => {
                 // TMA reduction (Hopper+)
                 let op_str = match reduce_op {
                     TmaReduceOp::Add => "add",
@@ -1384,7 +1507,11 @@ pub fn schedule_pipeline(pipeline: &AsyncPipeline) -> PipelineSchedule {
 }
 
 /// Analyze and apply async pipelining to a kernel
-pub fn apply_pipeline(kernel: &GpuKernel, pipeline_stages: u32, target: CudaArch) -> (AsyncPipeline, PipelineSchedule) {
+pub fn apply_pipeline(
+    kernel: &GpuKernel,
+    pipeline_stages: u32,
+    target: CudaArch,
+) -> (AsyncPipeline, PipelineSchedule) {
     // Create pipeline from kernel analysis
     let mut analyzer = DependencyAnalyzer::new();
     let _op_graph = analyzer.analyze_kernel(kernel);
@@ -1447,7 +1574,13 @@ mod tests {
 
     #[test]
     fn test_tile_config_pipeline() {
-        let tile = TileConfig { tile_m: 16, tile_n: 16, tile_k: 16, pipeline_stages: 3, swizzled: false };
+        let tile = TileConfig {
+            tile_m: 16,
+            tile_n: 16,
+            tile_k: 16,
+            pipeline_stages: 3,
+            swizzled: false,
+        };
 
         let pipeline = PipelineBuilder::from_tile_config(&tile, CudaArch::Hopper);
 
@@ -1499,7 +1632,11 @@ mod tests {
 
         let op1 = AsyncOp::new(
             AsyncOpId(0),
-            AsyncOpKind::TmaLoad { src: ValueId(0), dst: ValueId(1), size: 1024 },
+            AsyncOpKind::TmaLoad {
+                src: ValueId(0),
+                dst: ValueId(1),
+                size: 1024,
+            },
             StageId(0),
         );
         let op2 = AsyncOp::new(AsyncOpId(1), AsyncOpKind::CpAsyncCommit, StageId(0));

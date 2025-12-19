@@ -101,7 +101,9 @@ impl InterconnectType {
             InterconnectType::SameDevice => f64::INFINITY,
             InterconnectType::NVLink { bandwidth_gbps, .. } => *bandwidth_gbps,
             InterconnectType::NVSwitch { bandwidth_gbps, .. } => *bandwidth_gbps,
-            InterconnectType::PCIe { pcie_gen, lanes, .. } => {
+            InterconnectType::PCIe {
+                pcie_gen, lanes, ..
+            } => {
                 // PCIe bandwidth calculation (GB/s, bidirectional)
                 let lane_speed = match pcie_gen {
                     3 => 0.985, // ~1 GB/s per lane
@@ -120,10 +122,14 @@ impl InterconnectType {
     pub fn latency_us(&self) -> f64 {
         match self {
             InterconnectType::SameDevice => 0.0,
-            InterconnectType::NVLink { .. } => 1.0,      // ~1us
-            InterconnectType::NVSwitch { .. } => 2.0,    // ~2us
+            InterconnectType::NVLink { .. } => 1.0,   // ~1us
+            InterconnectType::NVSwitch { .. } => 2.0, // ~2us
             InterconnectType::PCIe { through_cpu, .. } => {
-                if *through_cpu { 5.0 } else { 2.0 }
+                if *through_cpu {
+                    5.0
+                } else {
+                    2.0
+                }
             }
             InterconnectType::Network { latency_us, .. } => *latency_us,
             InterconnectType::None => f64::INFINITY,
@@ -132,7 +138,10 @@ impl InterconnectType {
 
     /// Check if this is a high-bandwidth interconnect (NVLink/NVSwitch)
     pub fn is_high_bandwidth(&self) -> bool {
-        matches!(self, InterconnectType::NVLink { .. } | InterconnectType::NVSwitch { .. })
+        matches!(
+            self,
+            InterconnectType::NVLink { .. } | InterconnectType::NVSwitch { .. }
+        )
     }
 }
 
@@ -140,13 +149,28 @@ impl fmt::Display for InterconnectType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             InterconnectType::SameDevice => write!(f, "SameDevice"),
-            InterconnectType::NVLink { version, links, bandwidth_gbps } => {
-                write!(f, "NVLink{} x{} ({:.0} GB/s)", version, links, bandwidth_gbps)
+            InterconnectType::NVLink {
+                version,
+                links,
+                bandwidth_gbps,
+            } => {
+                write!(
+                    f,
+                    "NVLink{} x{} ({:.0} GB/s)",
+                    version, links, bandwidth_gbps
+                )
             }
-            InterconnectType::NVSwitch { generation, bandwidth_gbps } => {
+            InterconnectType::NVSwitch {
+                generation,
+                bandwidth_gbps,
+            } => {
                 write!(f, "NVSwitch Gen{} ({:.0} GB/s)", generation, bandwidth_gbps)
             }
-            InterconnectType::PCIe { pcie_gen, lanes, through_cpu } => {
+            InterconnectType::PCIe {
+                pcie_gen,
+                lanes,
+                through_cpu,
+            } => {
                 let via = if *through_cpu { " via CPU" } else { "" };
                 write!(f, "PCIe Gen{} x{}{}", pcie_gen, lanes, via)
             }
@@ -318,7 +342,11 @@ pub struct DeviceGroup {
 
 impl DeviceGroup {
     /// Create a new device group
-    pub fn new(name: impl Into<String>, devices: Vec<DeviceId>, interconnect: InterconnectType) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        devices: Vec<DeviceId>,
+        interconnect: InterconnectType,
+    ) -> Self {
         let leader = devices.first().copied().unwrap_or(DeviceId(0));
         Self {
             name: name.into(),
@@ -391,7 +419,9 @@ impl GpuTopology {
                         bandwidth_gbps: 450.0,
                     }
                 };
-                topology.interconnects.insert((DeviceId(i), DeviceId(j)), interconnect);
+                topology
+                    .interconnects
+                    .insert((DeviceId(i), DeviceId(j)), interconnect);
             }
         }
 
@@ -400,7 +430,11 @@ impl GpuTopology {
         topology.groups.push(DeviceGroup::new(
             "all",
             all_devices,
-            InterconnectType::NVLink { version: 4, links: 12, bandwidth_gbps: 450.0 },
+            InterconnectType::NVLink {
+                version: 4,
+                links: 12,
+                bandwidth_gbps: 450.0,
+            },
         ));
 
         topology
@@ -411,11 +445,17 @@ impl GpuTopology {
         let id = info.id;
         self.devices.insert(id, info);
         // Add self-connection
-        self.interconnects.insert((id, id), InterconnectType::SameDevice);
+        self.interconnects
+            .insert((id, id), InterconnectType::SameDevice);
     }
 
     /// Set interconnect between two devices
-    pub fn set_interconnect(&mut self, src: DeviceId, dst: DeviceId, interconnect: InterconnectType) {
+    pub fn set_interconnect(
+        &mut self,
+        src: DeviceId,
+        dst: DeviceId,
+        interconnect: InterconnectType,
+    ) {
         self.interconnects.insert((src, dst), interconnect);
     }
 
@@ -562,10 +602,18 @@ impl fmt::Display for MultiGpuError {
                 write!(f, "P2P access not available: {} -> {}", src, dst)
             }
             MultiGpuError::BufferSizeMismatch { expected, actual } => {
-                write!(f, "Buffer size mismatch: expected {}, got {}", expected, actual)
+                write!(
+                    f,
+                    "Buffer size mismatch: expected {}, got {}",
+                    expected, actual
+                )
             }
             MultiGpuError::DeviceCountMismatch { expected, actual } => {
-                write!(f, "Device count mismatch: expected {}, got {}", expected, actual)
+                write!(
+                    f,
+                    "Device count mismatch: expected {}, got {}",
+                    expected, actual
+                )
             }
             MultiGpuError::InvalidGroup(name) => write!(f, "Invalid device group: {}", name),
             MultiGpuError::BackendError(msg) => write!(f, "Backend error: {}", msg),
@@ -670,7 +718,9 @@ impl MultiGpuRuntime {
 
     /// Get device info
     pub fn device_info(&self, id: DeviceId) -> Result<&DeviceInfo, MultiGpuError> {
-        self.topology.device(id).ok_or(MultiGpuError::DeviceNotFound(id))
+        self.topology
+            .device(id)
+            .ok_or(MultiGpuError::DeviceNotFound(id))
     }
 
     /// Get the topology
@@ -694,7 +744,8 @@ impl MultiGpuRuntime {
             return Ok(()); // Same device, always enabled
         }
 
-        let cap = self.p2p_capabilities
+        let cap = self
+            .p2p_capabilities
             .get(&(src, dst))
             .ok_or(MultiGpuError::DeviceNotFound(src))?;
 
@@ -818,7 +869,9 @@ impl MultiGpuEvent {
     /// Wait for the event (simulated)
     pub fn wait(&self) -> Result<(), MultiGpuError> {
         if !self.recorded {
-            return Err(MultiGpuError::NotSupported("Event not recorded".to_string()));
+            return Err(MultiGpuError::NotSupported(
+                "Event not recorded".to_string(),
+            ));
         }
         Ok(())
     }
@@ -891,7 +944,10 @@ mod tests {
         let runtime = MultiGpuRuntime::simulated(4);
         let ring = runtime.build_ring();
         assert_eq!(ring.len(), 4);
-        assert_eq!(ring, vec![DeviceId(0), DeviceId(1), DeviceId(2), DeviceId(3)]);
+        assert_eq!(
+            ring,
+            vec![DeviceId(0), DeviceId(1), DeviceId(2), DeviceId(3)]
+        );
     }
 
     #[test]
@@ -907,7 +963,11 @@ mod tests {
         let group = DeviceGroup::new(
             "node0",
             vec![DeviceId(0), DeviceId(1)],
-            InterconnectType::NVLink { version: 4, links: 12, bandwidth_gbps: 450.0 },
+            InterconnectType::NVLink {
+                version: 4,
+                links: 12,
+                bandwidth_gbps: 450.0,
+            },
         );
         assert!(group.contains(DeviceId(0)));
         assert!(!group.contains(DeviceId(2)));

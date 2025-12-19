@@ -77,7 +77,8 @@ impl L3Store {
         }
 
         // Verify in entries (handles hash collisions)
-        self.entries.read()
+        self.entries
+            .read()
             .map(|e| e.contains_key(iri))
             .unwrap_or(false)
     }
@@ -150,7 +151,8 @@ impl L3Store {
 
     /// Iterate over all IRIs (for diagnostics)
     pub fn iris(&self) -> Vec<String> {
-        self.entries.read()
+        self.entries
+            .read()
             .map(|e| e.keys().cloned().collect())
             .unwrap_or_default()
     }
@@ -191,9 +193,20 @@ impl std::fmt::Display for L3StoreStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "L3 Store Statistics:")?;
         writeln!(f, "  Entries: {}", self.entries)?;
-        writeln!(f, "  MMap: {}", if self.mmap_enabled { "enabled" } else { "disabled" })?;
-        writeln!(f, "  Memory: {:.1} MB",
-                 self.estimated_memory_bytes as f64 / (1024.0 * 1024.0))?;
+        writeln!(
+            f,
+            "  MMap: {}",
+            if self.mmap_enabled {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        )?;
+        writeln!(
+            f,
+            "  Memory: {:.1} MB",
+            self.estimated_memory_bytes as f64 / (1024.0 * 1024.0)
+        )?;
         Ok(())
     }
 }
@@ -239,7 +252,9 @@ impl L3StoreBuilder {
         let store = L3Store::new();
 
         // Batch insert all terms
-        let terms: Vec<_> = self.terms.into_iter()
+        let terms: Vec<_> = self
+            .terms
+            .into_iter()
             .map(|(iri, term)| (iri, Arc::new(term)))
             .collect();
 
@@ -261,8 +276,8 @@ impl Default for L3StoreBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::compact::CompactTermBuilder;
+    use super::*;
 
     #[test]
     fn test_l3_basic_operations() {
@@ -328,8 +343,14 @@ mod tests {
     #[test]
     fn test_l3_builder() {
         let store = L3StoreBuilder::new()
-            .add_term("test:1".to_string(), CompactTermBuilder::new("test:1").build())
-            .add_term("test:2".to_string(), CompactTermBuilder::new("test:2").build())
+            .add_term(
+                "test:1".to_string(),
+                CompactTermBuilder::new("test:1").build(),
+            )
+            .add_term(
+                "test:2".to_string(),
+                CompactTermBuilder::new("test:2").build(),
+            )
             .build();
 
         assert_eq!(store.len(), 2);

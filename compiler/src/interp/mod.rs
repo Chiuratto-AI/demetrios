@@ -14,7 +14,7 @@ pub mod value;
 pub use autodiff::Tape;
 pub use builtins::BuiltinRegistry;
 pub use causal::{CausalDAG, CausalModel};
-pub use closure::{InterpreterClosure, DCallable, extract_closure};
+pub use closure::{DCallable, InterpreterClosure, extract_closure};
 pub use env::Environment;
 pub use eval::Interpreter;
 pub use symbolic::Expr as SymbolicExpr;

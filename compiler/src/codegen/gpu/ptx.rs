@@ -64,16 +64,16 @@ impl PtxCodegen {
         let (major, minor) = sm_version;
         let sm = major * 10 + minor;
         match sm {
-            ..=69 => (6, 0),       // sm_60-69: Volta and older
-            70..=74 => (6, 3),     // sm_70-74: Volta
-            75 => (6, 4),          // sm_75: Turing
-            80..=86 => (7, 1),     // sm_80-86: Ampere
-            87 => (7, 4),          // sm_87: Ampere (Jetson)
-            89 => (8, 1),          // sm_89: Ada Lovelace
-            90 => (8, 3),          // sm_90: Hopper
-            100 => (8, 5),         // sm_100: Blackwell
-            120 => (8, 6),         // sm_120: Blackwell Ultra
-            _ => (8, 5),           // Future architectures
+            ..=69 => (6, 0),   // sm_60-69: Volta and older
+            70..=74 => (6, 3), // sm_70-74: Volta
+            75 => (6, 4),      // sm_75: Turing
+            80..=86 => (7, 1), // sm_80-86: Ampere
+            87 => (7, 4),      // sm_87: Ampere (Jetson)
+            89 => (8, 1),      // sm_89: Ada Lovelace
+            90 => (8, 3),      // sm_90: Hopper
+            100 => (8, 5),     // sm_100: Blackwell
+            120 => (8, 6),     // sm_120: Blackwell Ultra
+            _ => (8, 5),       // Future architectures
         }
     }
 
@@ -1112,7 +1112,12 @@ impl PtxCodegen {
                 // PTX 8.1+ (sm_89+): cvt.rn.satfinite.e4m3x2.f32
                 // Single value version via packed conversion
                 let tmp = self.alloc_register(&GpuType::U16);
-                writeln!(self.output, "{}cvt.rn.satfinite.e4m3x2.f32 {}, {}, 0f00000000;", indent, tmp, v).unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rn.satfinite.e4m3x2.f32 {}, {}, 0f00000000;",
+                    indent, tmp, v
+                )
+                .unwrap();
                 writeln!(self.output, "{}and.b16 {}, {}, 0x00FF;", indent, reg, tmp).unwrap();
             }
 
@@ -1125,7 +1130,12 @@ impl PtxCodegen {
                 // Extend to 16-bit, then convert
                 let tmp = self.alloc_register(&GpuType::U16);
                 writeln!(self.output, "{}cvt.u16.u8 {}, {};", indent, tmp, v).unwrap();
-                writeln!(self.output, "{}cvt.f32.e4m3x2 {}, {{_, {}}};", indent, reg, tmp).unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.f32.e4m3x2 {}, {{_, {}}};",
+                    indent, reg, tmp
+                )
+                .unwrap();
             }
 
             GpuOp::F32ToF8E5M2(val) => {
@@ -1135,7 +1145,12 @@ impl PtxCodegen {
                 self.value_types.push(GpuType::F8E5M2);
                 // PTX 8.1+ (sm_89+): cvt.rn.satfinite.e5m2x2.f32
                 let tmp = self.alloc_register(&GpuType::U16);
-                writeln!(self.output, "{}cvt.rn.satfinite.e5m2x2.f32 {}, {}, 0f00000000;", indent, tmp, v).unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rn.satfinite.e5m2x2.f32 {}, {}, 0f00000000;",
+                    indent, tmp, v
+                )
+                .unwrap();
                 writeln!(self.output, "{}and.b16 {}, {}, 0x00FF;", indent, reg, tmp).unwrap();
             }
 
@@ -1147,7 +1162,12 @@ impl PtxCodegen {
                 // PTX 8.1+ (sm_89+): cvt.f32.e5m2
                 let tmp = self.alloc_register(&GpuType::U16);
                 writeln!(self.output, "{}cvt.u16.u8 {}, {};", indent, tmp, v).unwrap();
-                writeln!(self.output, "{}cvt.f32.e5m2x2 {}, {{_, {}}};", indent, reg, tmp).unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.f32.e5m2x2 {}, {{_, {}}};",
+                    indent, reg, tmp
+                )
+                .unwrap();
             }
 
             GpuOp::F32ToF4(val) => {
@@ -1158,7 +1178,12 @@ impl PtxCodegen {
                 // F4 requires software emulation - no native PTX support
                 // Simplified: quantize to 4-bit via truncation
                 // Format: 1 sign, 2 exp, 1 mantissa (similar to FP8 E4M3 but half precision)
-                writeln!(self.output, "{}// F4 quantization (software emulation)", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// F4 quantization (software emulation)",
+                    indent
+                )
+                .unwrap();
                 let tmp = self.alloc_register(&GpuType::U32);
                 writeln!(self.output, "{}mov.b32 {}, {};", indent, tmp, v).unwrap();
                 // Extract sign (bit 31), exp (bits 30-23), mantissa (bit 22)
@@ -1172,7 +1197,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::F32);
                 // F4 dequantization (software emulation)
-                writeln!(self.output, "{}// F4 dequantization (software emulation)", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// F4 dequantization (software emulation)",
+                    indent
+                )
+                .unwrap();
                 let tmp = self.alloc_register(&GpuType::U32);
                 writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, tmp, v).unwrap();
                 writeln!(self.output, "{}shl.b32 {}, {}, 28;", indent, tmp, tmp).unwrap();
@@ -1263,7 +1293,12 @@ impl PtxCodegen {
                     QuantizeMode::Stochastic => "rn", // Fallback to RNE for stochastic
                 };
                 let tmp = self.alloc_register(&GpuType::U16);
-                writeln!(self.output, "{}cvt.{}.satfinite.e4m3x2.f32 {}, {}, 0f00000000;", indent, rnd, tmp, v).unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.{}.satfinite.e4m3x2.f32 {}, {}, 0f00000000;",
+                    indent, rnd, tmp, v
+                )
+                .unwrap();
                 writeln!(self.output, "{}and.b16 {}, {}, 0x00FF;", indent, reg, tmp).unwrap();
             }
 
@@ -1275,7 +1310,12 @@ impl PtxCodegen {
                 // Convert F8 to F32
                 let tmp = self.alloc_register(&GpuType::U16);
                 writeln!(self.output, "{}cvt.u16.u8 {}, {};", indent, tmp, v).unwrap();
-                writeln!(self.output, "{}cvt.f32.e4m3x2 {}, {{_, {}}};", indent, reg, tmp).unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.f32.e4m3x2 {}, {{_, {}}};",
+                    indent, reg, tmp
+                )
+                .unwrap();
                 // Apply optional scale factor
                 if let Some(scale_val) = scale {
                     let s = self.get_register(*scale_val);
@@ -1284,7 +1324,12 @@ impl PtxCodegen {
             }
 
             // === INT8/INT4 Quantization (Phase 11) ===
-            GpuOp::QuantizeF32ToInt8 { value, scale, zero_point, symmetric } => {
+            GpuOp::QuantizeF32ToInt8 {
+                value,
+                scale,
+                zero_point,
+                symmetric,
+            } => {
                 let v = self.get_register(*value);
                 let s = self.get_register(*scale);
                 let zp = self.get_register(*zero_point);
@@ -1297,19 +1342,48 @@ impl PtxCodegen {
                 let tmp_i32 = self.alloc_register(&GpuType::I32);
 
                 writeln!(self.output, "{}// Quantize F32 to INT8", indent).unwrap();
-                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32, v, s).unwrap();
-                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, tmp_i32, tmp_f32).unwrap();
+                writeln!(
+                    self.output,
+                    "{}div.rn.f32 {}, {}, {};",
+                    indent, tmp_f32, v, s
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rni.s32.f32 {}, {};",
+                    indent, tmp_i32, tmp_f32
+                )
+                .unwrap();
                 if !symmetric {
                     // Add zero_point for asymmetric quantization
-                    writeln!(self.output, "{}add.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}add.s32 {}, {}, {};",
+                        indent, tmp_i32, tmp_i32, zp
+                    )
+                    .unwrap();
                 }
                 // Clamp to [-128, 127]
-                writeln!(self.output, "{}max.s32 {}, {}, -128;", indent, tmp_i32, tmp_i32).unwrap();
-                writeln!(self.output, "{}min.s32 {}, {}, 127;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(
+                    self.output,
+                    "{}max.s32 {}, {}, -128;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}min.s32 {}, {}, 127;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
                 writeln!(self.output, "{}cvt.s8.s32 {}, {};", indent, reg, tmp_i32).unwrap();
             }
 
-            GpuOp::DequantizeInt8ToF32 { value, scale, zero_point } => {
+            GpuOp::DequantizeInt8ToF32 {
+                value,
+                scale,
+                zero_point,
+            } => {
                 let v = self.get_register(*value);
                 let s = self.get_register(*scale);
                 let zp = self.get_register(*zero_point);
@@ -1323,12 +1397,31 @@ impl PtxCodegen {
 
                 writeln!(self.output, "{}// Dequantize INT8 to F32", indent).unwrap();
                 writeln!(self.output, "{}cvt.s32.s8 {}, {};", indent, tmp_i32, v).unwrap();
-                writeln!(self.output, "{}sub.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
-                writeln!(self.output, "{}cvt.rn.f32.s32 {}, {};", indent, tmp_f32, tmp_i32).unwrap();
-                writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, reg, tmp_f32, s).unwrap();
+                writeln!(
+                    self.output,
+                    "{}sub.s32 {}, {}, {};",
+                    indent, tmp_i32, tmp_i32, zp
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rn.f32.s32 {}, {};",
+                    indent, tmp_f32, tmp_i32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}mul.f32 {}, {}, {};",
+                    indent, reg, tmp_f32, s
+                )
+                .unwrap();
             }
 
-            GpuOp::QuantizeF32ToUint8 { value, scale, zero_point } => {
+            GpuOp::QuantizeF32ToUint8 {
+                value,
+                scale,
+                zero_point,
+            } => {
                 let v = self.get_register(*value);
                 let s = self.get_register(*scale);
                 let zp = self.get_register(*zero_point);
@@ -1341,16 +1434,45 @@ impl PtxCodegen {
                 let tmp_i32 = self.alloc_register(&GpuType::I32);
 
                 writeln!(self.output, "{}// Quantize F32 to UINT8", indent).unwrap();
-                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32, v, s).unwrap();
-                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, tmp_i32, tmp_f32).unwrap();
-                writeln!(self.output, "{}add.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
+                writeln!(
+                    self.output,
+                    "{}div.rn.f32 {}, {}, {};",
+                    indent, tmp_f32, v, s
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rni.s32.f32 {}, {};",
+                    indent, tmp_i32, tmp_f32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}add.s32 {}, {}, {};",
+                    indent, tmp_i32, tmp_i32, zp
+                )
+                .unwrap();
                 // Clamp to [0, 255]
-                writeln!(self.output, "{}max.s32 {}, {}, 0;", indent, tmp_i32, tmp_i32).unwrap();
-                writeln!(self.output, "{}min.s32 {}, {}, 255;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(
+                    self.output,
+                    "{}max.s32 {}, {}, 0;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}min.s32 {}, {}, 255;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
                 writeln!(self.output, "{}cvt.u8.s32 {}, {};", indent, reg, tmp_i32).unwrap();
             }
 
-            GpuOp::DequantizeUint8ToF32 { value, scale, zero_point } => {
+            GpuOp::DequantizeUint8ToF32 {
+                value,
+                scale,
+                zero_point,
+            } => {
                 let v = self.get_register(*value);
                 let s = self.get_register(*scale);
                 let zp = self.get_register(*zero_point);
@@ -1364,12 +1486,32 @@ impl PtxCodegen {
 
                 writeln!(self.output, "{}// Dequantize UINT8 to F32", indent).unwrap();
                 writeln!(self.output, "{}cvt.s32.u8 {}, {};", indent, tmp_i32, v).unwrap();
-                writeln!(self.output, "{}sub.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
-                writeln!(self.output, "{}cvt.rn.f32.s32 {}, {};", indent, tmp_f32, tmp_i32).unwrap();
-                writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, reg, tmp_f32, s).unwrap();
+                writeln!(
+                    self.output,
+                    "{}sub.s32 {}, {}, {};",
+                    indent, tmp_i32, tmp_i32, zp
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rn.f32.s32 {}, {};",
+                    indent, tmp_f32, tmp_i32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}mul.f32 {}, {}, {};",
+                    indent, reg, tmp_f32, s
+                )
+                .unwrap();
             }
 
-            GpuOp::QuantizeF32ToInt4 { value_lo, value_hi, scale, zero_point } => {
+            GpuOp::QuantizeF32ToInt4 {
+                value_lo,
+                value_hi,
+                scale,
+                zero_point,
+            } => {
                 let v_lo = self.get_register(*value_lo);
                 let v_hi = self.get_register(*value_hi);
                 let s = self.get_register(*scale);
@@ -1385,27 +1527,96 @@ impl PtxCodegen {
 
                 writeln!(self.output, "{}// Quantize F32 to INT4 (packed)", indent).unwrap();
                 // Quantize low nibble
-                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32, v_lo, s).unwrap();
-                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, tmp_i32_lo, tmp_f32).unwrap();
-                writeln!(self.output, "{}add.s32 {}, {}, {};", indent, tmp_i32_lo, tmp_i32_lo, zp).unwrap();
-                writeln!(self.output, "{}max.s32 {}, {}, -8;", indent, tmp_i32_lo, tmp_i32_lo).unwrap();
-                writeln!(self.output, "{}min.s32 {}, {}, 7;", indent, tmp_i32_lo, tmp_i32_lo).unwrap();
-                writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, tmp_i32_lo, tmp_i32_lo).unwrap();
+                writeln!(
+                    self.output,
+                    "{}div.rn.f32 {}, {}, {};",
+                    indent, tmp_f32, v_lo, s
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rni.s32.f32 {}, {};",
+                    indent, tmp_i32_lo, tmp_f32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}add.s32 {}, {}, {};",
+                    indent, tmp_i32_lo, tmp_i32_lo, zp
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}max.s32 {}, {}, -8;",
+                    indent, tmp_i32_lo, tmp_i32_lo
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}min.s32 {}, {}, 7;",
+                    indent, tmp_i32_lo, tmp_i32_lo
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}and.b32 {}, {}, 0x0F;",
+                    indent, tmp_i32_lo, tmp_i32_lo
+                )
+                .unwrap();
 
                 // Quantize high nibble
-                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32, v_hi, s).unwrap();
-                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, tmp_i32_hi, tmp_f32).unwrap();
-                writeln!(self.output, "{}add.s32 {}, {}, {};", indent, tmp_i32_hi, tmp_i32_hi, zp).unwrap();
-                writeln!(self.output, "{}max.s32 {}, {}, -8;", indent, tmp_i32_hi, tmp_i32_hi).unwrap();
-                writeln!(self.output, "{}min.s32 {}, {}, 7;", indent, tmp_i32_hi, tmp_i32_hi).unwrap();
-                writeln!(self.output, "{}shl.b32 {}, {}, 4;", indent, tmp_i32_hi, tmp_i32_hi).unwrap();
+                writeln!(
+                    self.output,
+                    "{}div.rn.f32 {}, {}, {};",
+                    indent, tmp_f32, v_hi, s
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rni.s32.f32 {}, {};",
+                    indent, tmp_i32_hi, tmp_f32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}add.s32 {}, {}, {};",
+                    indent, tmp_i32_hi, tmp_i32_hi, zp
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}max.s32 {}, {}, -8;",
+                    indent, tmp_i32_hi, tmp_i32_hi
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}min.s32 {}, {}, 7;",
+                    indent, tmp_i32_hi, tmp_i32_hi
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}shl.b32 {}, {}, 4;",
+                    indent, tmp_i32_hi, tmp_i32_hi
+                )
+                .unwrap();
 
                 // Pack into single byte
-                writeln!(self.output, "{}or.b32 {}, {}, {};", indent, tmp_i32_lo, tmp_i32_lo, tmp_i32_hi).unwrap();
+                writeln!(
+                    self.output,
+                    "{}or.b32 {}, {}, {};",
+                    indent, tmp_i32_lo, tmp_i32_lo, tmp_i32_hi
+                )
+                .unwrap();
                 writeln!(self.output, "{}cvt.u8.s32 {}, {};", indent, reg, tmp_i32_lo).unwrap();
             }
 
-            GpuOp::DequantizeInt4ToF32Lo { packed, scale, zero_point } => {
+            GpuOp::DequantizeInt4ToF32Lo {
+                packed,
+                scale,
+                zero_point,
+            } => {
                 let p = self.get_register(*packed);
                 let s = self.get_register(*scale);
                 let zp = self.get_register(*zero_point);
@@ -1416,20 +1627,59 @@ impl PtxCodegen {
                 let tmp_i32 = self.alloc_register(&GpuType::I32);
                 let tmp_f32 = self.alloc_register(&GpuType::F32);
 
-                writeln!(self.output, "{}// Dequantize INT4 (low nibble) to F32", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Dequantize INT4 (low nibble) to F32",
+                    indent
+                )
+                .unwrap();
                 // Extract low nibble and sign-extend
                 writeln!(self.output, "{}cvt.s32.u8 {}, {};", indent, tmp_i32, p).unwrap();
-                writeln!(self.output, "{}and.b32 {}, {}, 0x0F;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(
+                    self.output,
+                    "{}and.b32 {}, {}, 0x0F;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
                 // Sign extend from 4-bit
-                writeln!(self.output, "{}shl.b32 {}, {}, 28;", indent, tmp_i32, tmp_i32).unwrap();
-                writeln!(self.output, "{}shr.s32 {}, {}, 28;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(
+                    self.output,
+                    "{}shl.b32 {}, {}, 28;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}shr.s32 {}, {}, 28;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
                 // Dequantize: (q - zp) * scale
-                writeln!(self.output, "{}sub.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
-                writeln!(self.output, "{}cvt.rn.f32.s32 {}, {};", indent, tmp_f32, tmp_i32).unwrap();
-                writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, reg, tmp_f32, s).unwrap();
+                writeln!(
+                    self.output,
+                    "{}sub.s32 {}, {}, {};",
+                    indent, tmp_i32, tmp_i32, zp
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rn.f32.s32 {}, {};",
+                    indent, tmp_f32, tmp_i32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}mul.f32 {}, {}, {};",
+                    indent, reg, tmp_f32, s
+                )
+                .unwrap();
             }
 
-            GpuOp::DequantizeInt4ToF32Hi { packed, scale, zero_point } => {
+            GpuOp::DequantizeInt4ToF32Hi {
+                packed,
+                scale,
+                zero_point,
+            } => {
                 let p = self.get_register(*packed);
                 let s = self.get_register(*scale);
                 let zp = self.get_register(*zero_point);
@@ -1440,17 +1690,52 @@ impl PtxCodegen {
                 let tmp_i32 = self.alloc_register(&GpuType::I32);
                 let tmp_f32 = self.alloc_register(&GpuType::F32);
 
-                writeln!(self.output, "{}// Dequantize INT4 (high nibble) to F32", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Dequantize INT4 (high nibble) to F32",
+                    indent
+                )
+                .unwrap();
                 // Extract high nibble and sign-extend
                 writeln!(self.output, "{}cvt.s32.u8 {}, {};", indent, tmp_i32, p).unwrap();
-                writeln!(self.output, "{}shr.b32 {}, {}, 4;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(
+                    self.output,
+                    "{}shr.b32 {}, {}, 4;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
                 // Sign extend from 4-bit
-                writeln!(self.output, "{}shl.b32 {}, {}, 28;", indent, tmp_i32, tmp_i32).unwrap();
-                writeln!(self.output, "{}shr.s32 {}, {}, 28;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(
+                    self.output,
+                    "{}shl.b32 {}, {}, 28;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}shr.s32 {}, {}, 28;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
                 // Dequantize: (q - zp) * scale
-                writeln!(self.output, "{}sub.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, zp).unwrap();
-                writeln!(self.output, "{}cvt.rn.f32.s32 {}, {};", indent, tmp_f32, tmp_i32).unwrap();
-                writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, reg, tmp_f32, s).unwrap();
+                writeln!(
+                    self.output,
+                    "{}sub.s32 {}, {}, {};",
+                    indent, tmp_i32, tmp_i32, zp
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rn.f32.s32 {}, {};",
+                    indent, tmp_f32, tmp_i32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}mul.f32 {}, {}, {};",
+                    indent, reg, tmp_f32, s
+                )
+                .unwrap();
             }
 
             // dp4a - INT8 dot product (sm_61+, Pascal and later)
@@ -1462,8 +1747,18 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::I32);
 
-                writeln!(self.output, "{}// dp4a: c + dot(a[0:3], b[0:3]) (sm_61+)", indent).unwrap();
-                writeln!(self.output, "{}dp4a.s32.s32 {}, {}, {}, {};", indent, reg, a_reg, b_reg, c_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// dp4a: c + dot(a[0:3], b[0:3]) (sm_61+)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}dp4a.s32.s32 {}, {}, {}, {};",
+                    indent, reg, a_reg, b_reg, c_reg
+                )
+                .unwrap();
             }
 
             GpuOp::Dp4aUnsigned { a, b, c } => {
@@ -1474,8 +1769,18 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U32);
 
-                writeln!(self.output, "{}// dp4a.u32: unsigned INT8 dot product (sm_61+)", indent).unwrap();
-                writeln!(self.output, "{}dp4a.u32.u32 {}, {}, {}, {};", indent, reg, a_reg, b_reg, c_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// dp4a.u32: unsigned INT8 dot product (sm_61+)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}dp4a.u32.u32 {}, {}, {}, {};",
+                    indent, reg, a_reg, b_reg, c_reg
+                )
+                .unwrap();
             }
 
             GpuOp::Dp4aSU { a, b, c } => {
@@ -1486,11 +1791,30 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::I32);
 
-                writeln!(self.output, "{}// dp4a.s32.u32: mixed signed/unsigned dot product (sm_61+)", indent).unwrap();
-                writeln!(self.output, "{}dp4a.s32.u32 {}, {}, {}, {};", indent, reg, a_reg, b_reg, c_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// dp4a.s32.u32: mixed signed/unsigned dot product (sm_61+)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}dp4a.s32.u32 {}, {}, {}, {};",
+                    indent, reg, a_reg, b_reg, c_reg
+                )
+                .unwrap();
             }
 
-            GpuOp::Int8MatMul { a, b, c, m, n, k, a_scale, b_scale } => {
+            GpuOp::Int8MatMul {
+                a,
+                b,
+                c,
+                m,
+                n,
+                k,
+                a_scale,
+                b_scale,
+            } => {
                 let a_reg = self.get_register(*a);
                 let b_reg = self.get_register(*b);
                 let c_reg = self.get_register(*c);
@@ -1500,19 +1824,49 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::I32);
 
-                writeln!(self.output, "{}// INT8 Matrix Multiply with Tensor Cores (sm_75+)", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// INT8 Matrix Multiply with Tensor Cores (sm_75+)",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}// M={}, N={}, K={}", indent, m, n, k).unwrap();
-                writeln!(self.output, "{}// Note: Requires WMMA API or mma.sync instruction", indent).unwrap();
-                writeln!(self.output, "{}mma.sync.aligned.m{}n{}k{}.s32.s8.s8.s32",
-                         indent, m, n, k).unwrap();
-                writeln!(self.output, "{}    {{{}}}, {{{}}}, {{{}}}, {{{}}};",
-                         indent, c_reg, a_reg, b_reg, c_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Note: Requires WMMA API or mma.sync instruction",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}mma.sync.aligned.m{}n{}k{}.s32.s8.s8.s32",
+                    indent, m, n, k
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}    {{{}}}, {{{}}}, {{{}}}, {{{}}};",
+                    indent, c_reg, a_reg, b_reg, c_reg
+                )
+                .unwrap();
                 // Apply dequantization scales
-                writeln!(self.output, "{}// Apply dequant scales: scale_a={}, scale_b={}", indent, a_s, b_s).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Apply dequant scales: scale_a={}, scale_b={}",
+                    indent, a_s, b_s
+                )
+                .unwrap();
                 writeln!(self.output, "{}mov.s32 {}, {};", indent, reg, c_reg).unwrap();
             }
 
-            GpuOp::QuantizePerChannel { values, scales, zero_points, axis, num_channels, signed } => {
+            GpuOp::QuantizePerChannel {
+                values,
+                scales,
+                zero_points,
+                axis,
+                num_channels,
+                signed,
+            } => {
                 let v = self.get_register(*values);
                 let s = self.get_register(*scales);
                 let zp = self.get_register(*zero_points);
@@ -1520,19 +1874,40 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U8);
 
-                writeln!(self.output, "{}// Per-channel quantization (axis={}, channels={})", indent, axis, num_channels).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Per-channel quantization (axis={}, channels={})",
+                    indent, axis, num_channels
+                )
+                .unwrap();
                 if *signed {
                     writeln!(self.output, "{}// Output: INT8 (signed)", indent).unwrap();
                 } else {
                     writeln!(self.output, "{}// Output: UINT8 (unsigned)", indent).unwrap();
                 }
-                writeln!(self.output, "{}// Scale and zero_point arrays at: {}, {}", indent, s, zp).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Scale and zero_point arrays at: {}, {}",
+                    indent, s, zp
+                )
+                .unwrap();
                 // Per-channel quantization is typically done in a loop at the IR level
-                writeln!(self.output, "{}// Placeholder: actual implementation depends on tensor layout", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Placeholder: actual implementation depends on tensor layout",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}mov.u32 {}, 0;", indent, reg).unwrap();
             }
 
-            GpuOp::DequantizePerChannel { values, scales, zero_points, axis, num_channels } => {
+            GpuOp::DequantizePerChannel {
+                values,
+                scales,
+                zero_points,
+                axis,
+                num_channels,
+            } => {
                 let v = self.get_register(*values);
                 let s = self.get_register(*scales);
                 let zp = self.get_register(*zero_points);
@@ -1540,13 +1915,33 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::F32);
 
-                writeln!(self.output, "{}// Per-channel dequantization (axis={}, channels={})", indent, axis, num_channels).unwrap();
-                writeln!(self.output, "{}// Scale and zero_point arrays at: {}, {}", indent, s, zp).unwrap();
-                writeln!(self.output, "{}// Placeholder: actual implementation depends on tensor layout", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Per-channel dequantization (axis={}, channels={})",
+                    indent, axis, num_channels
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Scale and zero_point arrays at: {}, {}",
+                    indent, s, zp
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Placeholder: actual implementation depends on tensor layout",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}mov.f32 {}, 0f00000000;", indent, reg).unwrap();
             }
 
-            GpuOp::ComputeQuantScale { min_val, max_val, num_bits, symmetric } => {
+            GpuOp::ComputeQuantScale {
+                min_val,
+                max_val,
+                num_bits,
+                symmetric,
+            } => {
                 let min_v = self.get_register(*min_val);
                 let max_v = self.get_register(*max_val);
                 let reg = self.alloc_register(&GpuType::F32);
@@ -1556,26 +1951,69 @@ impl PtxCodegen {
                 let tmp_range = self.alloc_register(&GpuType::F32);
                 let tmp_qrange = self.alloc_register(&GpuType::F32);
 
-                writeln!(self.output, "{}// Compute quantization scale ({}-bit, symmetric={})", indent, num_bits, symmetric).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Compute quantization scale ({}-bit, symmetric={})",
+                    indent, num_bits, symmetric
+                )
+                .unwrap();
                 if *symmetric {
                     // scale = max(|min|, |max|) / 127 (for INT8)
                     let qmax = (1 << (num_bits - 1)) - 1;
                     let tmp_abs = self.alloc_register(&GpuType::F32);
                     writeln!(self.output, "{}abs.f32 {}, {};", indent, tmp_abs, min_v).unwrap();
                     writeln!(self.output, "{}abs.f32 {}, {};", indent, tmp_range, max_v).unwrap();
-                    writeln!(self.output, "{}max.f32 {}, {}, {};", indent, tmp_range, tmp_range, tmp_abs).unwrap();
-                    writeln!(self.output, "{}mov.f32 {}, 0f{:08X};", indent, tmp_qrange, (qmax as f32).to_bits()).unwrap();
-                    writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, reg, tmp_range, tmp_qrange).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}max.f32 {}, {}, {};",
+                        indent, tmp_range, tmp_range, tmp_abs
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}mov.f32 {}, 0f{:08X};",
+                        indent,
+                        tmp_qrange,
+                        (qmax as f32).to_bits()
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}div.rn.f32 {}, {}, {};",
+                        indent, reg, tmp_range, tmp_qrange
+                    )
+                    .unwrap();
                 } else {
                     // scale = (max - min) / (qmax - qmin)
                     let qmax = (1 << *num_bits) - 1;
-                    writeln!(self.output, "{}sub.f32 {}, {}, {};", indent, tmp_range, max_v, min_v).unwrap();
-                    writeln!(self.output, "{}mov.f32 {}, 0f{:08X};", indent, tmp_qrange, (qmax as f32).to_bits()).unwrap();
-                    writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, reg, tmp_range, tmp_qrange).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}sub.f32 {}, {}, {};",
+                        indent, tmp_range, max_v, min_v
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}mov.f32 {}, 0f{:08X};",
+                        indent,
+                        tmp_qrange,
+                        (qmax as f32).to_bits()
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}div.rn.f32 {}, {}, {};",
+                        indent, reg, tmp_range, tmp_qrange
+                    )
+                    .unwrap();
                 }
             }
 
-            GpuOp::ComputeZeroPoint { min_val, scale, num_bits } => {
+            GpuOp::ComputeZeroPoint {
+                min_val,
+                scale,
+                num_bits,
+            } => {
                 let min_v = self.get_register(*min_val);
                 let s = self.get_register(*scale);
                 let reg = self.alloc_register(&GpuType::I32);
@@ -1584,11 +2022,26 @@ impl PtxCodegen {
 
                 let tmp_f32 = self.alloc_register(&GpuType::F32);
 
-                writeln!(self.output, "{}// Compute zero point ({}-bit)", indent, num_bits).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Compute zero point ({}-bit)",
+                    indent, num_bits
+                )
+                .unwrap();
                 // zero_point = round(-min / scale)
                 writeln!(self.output, "{}neg.f32 {}, {};", indent, tmp_f32, min_v).unwrap();
-                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32, tmp_f32, s).unwrap();
-                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, reg, tmp_f32).unwrap();
+                writeln!(
+                    self.output,
+                    "{}div.rn.f32 {}, {}, {};",
+                    indent, tmp_f32, tmp_f32, s
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rni.s32.f32 {}, {};",
+                    indent, reg, tmp_f32
+                )
+                .unwrap();
             }
 
             GpuOp::FindMinMax { values, count } => {
@@ -1599,13 +2052,34 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::Vec2(Box::new(GpuType::F32)));
 
-                writeln!(self.output, "{}// Find min/max in tensor (reduction)", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Find min/max in tensor (reduction)",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}// Input: {} values at {}", indent, cnt, v).unwrap();
-                writeln!(self.output, "{}// Placeholder: reduction implemented at higher level", indent).unwrap();
-                writeln!(self.output, "{}mov.v2.f32 {}, {{0f00000000, 0f00000000}};", indent, reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Placeholder: reduction implemented at higher level",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}mov.v2.f32 {}, {{0f00000000, 0f00000000}};",
+                    indent, reg
+                )
+                .unwrap();
             }
 
-            GpuOp::Requantize { value, in_scale, in_zero_point, out_scale, out_zero_point } => {
+            GpuOp::Requantize {
+                value,
+                in_scale,
+                in_zero_point,
+                out_scale,
+                out_zero_point,
+            } => {
                 let v = self.get_register(*value);
                 let in_s = self.get_register(*in_scale);
                 let in_zp = self.get_register(*in_zero_point);
@@ -1619,46 +2093,124 @@ impl PtxCodegen {
                 let tmp_f32 = self.alloc_register(&GpuType::F32);
                 let tmp_f32_2 = self.alloc_register(&GpuType::F32);
 
-                writeln!(self.output, "{}// Requantize from one scale to another", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Requantize from one scale to another",
+                    indent
+                )
+                .unwrap();
                 // Dequantize: x = (q - in_zp) * in_scale
                 writeln!(self.output, "{}cvt.s32.s8 {}, {};", indent, tmp_i32, v).unwrap();
-                writeln!(self.output, "{}sub.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, in_zp).unwrap();
-                writeln!(self.output, "{}cvt.rn.f32.s32 {}, {};", indent, tmp_f32, tmp_i32).unwrap();
-                writeln!(self.output, "{}mul.f32 {}, {}, {};", indent, tmp_f32, tmp_f32, in_s).unwrap();
+                writeln!(
+                    self.output,
+                    "{}sub.s32 {}, {}, {};",
+                    indent, tmp_i32, tmp_i32, in_zp
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rn.f32.s32 {}, {};",
+                    indent, tmp_f32, tmp_i32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}mul.f32 {}, {}, {};",
+                    indent, tmp_f32, tmp_f32, in_s
+                )
+                .unwrap();
                 // Quantize: q = round(x / out_scale) + out_zp
-                writeln!(self.output, "{}div.rn.f32 {}, {}, {};", indent, tmp_f32_2, tmp_f32, out_s).unwrap();
-                writeln!(self.output, "{}cvt.rni.s32.f32 {}, {};", indent, tmp_i32, tmp_f32_2).unwrap();
-                writeln!(self.output, "{}add.s32 {}, {}, {};", indent, tmp_i32, tmp_i32, out_zp).unwrap();
-                writeln!(self.output, "{}max.s32 {}, {}, -128;", indent, tmp_i32, tmp_i32).unwrap();
-                writeln!(self.output, "{}min.s32 {}, {}, 127;", indent, tmp_i32, tmp_i32).unwrap();
+                writeln!(
+                    self.output,
+                    "{}div.rn.f32 {}, {}, {};",
+                    indent, tmp_f32_2, tmp_f32, out_s
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}cvt.rni.s32.f32 {}, {};",
+                    indent, tmp_i32, tmp_f32_2
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}add.s32 {}, {}, {};",
+                    indent, tmp_i32, tmp_i32, out_zp
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}max.s32 {}, {}, -128;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}min.s32 {}, {}, 127;",
+                    indent, tmp_i32, tmp_i32
+                )
+                .unwrap();
                 writeln!(self.output, "{}cvt.s8.s32 {}, {};", indent, reg, tmp_i32).unwrap();
             }
 
             // === Blackwell Features (sm_100+) ===
-            GpuOp::TmaLoadAsync { dst_shared, src_global, size, barrier } => {
+            GpuOp::TmaLoadAsync {
+                dst_shared,
+                src_global,
+                size,
+                barrier,
+            } => {
                 let dst = self.get_register(*dst_shared);
                 let src = self.get_register(*src_global);
                 let bar = self.get_register(*barrier);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
                 writeln!(self.output, "{}// TMA async load (sm_90+)", indent).unwrap();
-                writeln!(self.output, "{}cp.async.bulk.tensor.1d.shared::cluster.global.mbarrier::complete_tx::bytes",
-                         indent).unwrap();
-                writeln!(self.output, "{}    [{}, {{{}}}], [{}], [{}];", indent, dst, size, src, bar).unwrap();
+                writeln!(
+                    self.output,
+                    "{}cp.async.bulk.tensor.1d.shared::cluster.global.mbarrier::complete_tx::bytes",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}    [{}, {{{}}}], [{}], [{}];",
+                    indent, dst, size, src, bar
+                )
+                .unwrap();
             }
 
-            GpuOp::TmaStoreAsync { dst_global, src_shared, size } => {
+            GpuOp::TmaStoreAsync {
+                dst_global,
+                src_shared,
+                size,
+            } => {
                 let dst = self.get_register(*dst_global);
                 let src = self.get_register(*src_shared);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
                 writeln!(self.output, "{}// TMA async store (sm_90+)", indent).unwrap();
-                writeln!(self.output, "{}cp.async.bulk.tensor.1d.global.shared::cta.bulk_group",
-                         indent).unwrap();
-                writeln!(self.output, "{}    [{}], [{}, {{{}}}];", indent, dst, src, size).unwrap();
+                writeln!(
+                    self.output,
+                    "{}cp.async.bulk.tensor.1d.global.shared::cta.bulk_group",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}    [{}], [{}, {{{}}}];",
+                    indent, dst, src, size
+                )
+                .unwrap();
             }
 
-            GpuOp::TmaMulticastLoad { dst_shared, src_global, size, cluster_mask, barrier } => {
+            GpuOp::TmaMulticastLoad {
+                dst_shared,
+                src_global,
+                size,
+                cluster_mask,
+                barrier,
+            } => {
                 let dst = self.get_register(*dst_shared);
                 let src = self.get_register(*src_global);
                 let bar = self.get_register(*barrier);
@@ -1667,23 +2219,50 @@ impl PtxCodegen {
                 writeln!(self.output, "{}// TMA multicast load (sm_90+)", indent).unwrap();
                 writeln!(self.output, "{}cp.async.bulk.tensor.1d.shared::cluster.global.mbarrier::complete_tx::bytes.multicast::cluster",
                          indent).unwrap();
-                writeln!(self.output, "{}    [{}, {{{}}}], [{}], [{}], 0x{:x};",
-                         indent, dst, size, src, bar, cluster_mask).unwrap();
+                writeln!(
+                    self.output,
+                    "{}    [{}, {{{}}}], [{}], [{}], 0x{:x};",
+                    indent, dst, size, src, bar, cluster_mask
+                )
+                .unwrap();
             }
 
-            GpuOp::TmaReduceAsync { dst_global, src_shared, size, reduce_op } => {
+            GpuOp::TmaReduceAsync {
+                dst_global,
+                src_shared,
+                size,
+                reduce_op,
+            } => {
                 let dst = self.get_register(*dst_global);
                 let src = self.get_register(*src_shared);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
                 writeln!(self.output, "{}// TMA reduce async (sm_100+)", indent).unwrap();
-                writeln!(self.output, "{}cp.reduce.async.bulk.tensor.1d.global.shared::cta.{}",
-                         indent, reduce_op).unwrap();
-                writeln!(self.output, "{}    [{}], [{}, {{{}}}];", indent, dst, src, size).unwrap();
+                writeln!(
+                    self.output,
+                    "{}cp.reduce.async.bulk.tensor.1d.global.shared::cta.{}",
+                    indent, reduce_op
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}    [{}], [{}, {{{}}}];",
+                    indent, dst, src, size
+                )
+                .unwrap();
             }
 
             // 5th-gen Tensor Core operations (sm_100+)
-            GpuOp::WgmmaFp4 { a, b, c, m, n, k, scale_a, scale_b } => {
+            GpuOp::WgmmaFp4 {
+                a,
+                b,
+                c,
+                m,
+                n,
+                k,
+                scale_a,
+                scale_b,
+            } => {
                 let a_reg = self.get_register(*a);
                 let b_reg = self.get_register(*b);
                 let c_reg = self.get_register(*c);
@@ -1692,16 +2271,37 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&GpuType::F32);
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::F32);
-                writeln!(self.output, "{}// WGMMA FP4 (sm_100+ 5th-gen Tensor Cores)", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// WGMMA FP4 (sm_100+ 5th-gen Tensor Cores)",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}// M={}, N={}, K={}", indent, m, n, k).unwrap();
-                writeln!(self.output, "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.e2m1.e2m1",
-                         indent, m, n, k).unwrap();
-                writeln!(self.output, "{}    {{{}}}, {{{}}}, {{{}}}, {}, {};",
-                         indent, c_reg, a_reg, b_reg, sa, sb).unwrap();
+                writeln!(
+                    self.output,
+                    "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.e2m1.e2m1",
+                    indent, m, n, k
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}    {{{}}}, {{{}}}, {{{}}}, {}, {};",
+                    indent, c_reg, a_reg, b_reg, sa, sb
+                )
+                .unwrap();
                 writeln!(self.output, "{}mov.f32 {}, {};", indent, reg, c_reg).unwrap();
             }
 
-            GpuOp::WgmmaFp8 { a, b, c, m, n, k, format } => {
+            GpuOp::WgmmaFp8 {
+                a,
+                b,
+                c,
+                m,
+                n,
+                k,
+                format,
+            } => {
                 let a_reg = self.get_register(*a);
                 let b_reg = self.get_register(*b);
                 let c_reg = self.get_register(*c);
@@ -1713,9 +2313,18 @@ impl PtxCodegen {
                     Fp8Format::E5M2 => "e5m2",
                 };
                 writeln!(self.output, "{}// WGMMA FP8 {} (sm_89+)", indent, fmt).unwrap();
-                writeln!(self.output, "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.{}.{}",
-                         indent, m, n, k, fmt, fmt).unwrap();
-                writeln!(self.output, "{}    {{{}}}, {{{}}}, {{{}}};", indent, c_reg, a_reg, b_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.{}.{}",
+                    indent, m, n, k, fmt, fmt
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}    {{{}}}, {{{}}}, {{{}}};",
+                    indent, c_reg, a_reg, b_reg
+                )
+                .unwrap();
                 writeln!(self.output, "{}mov.f32 {}, {};", indent, reg, c_reg).unwrap();
             }
 
@@ -1727,14 +2336,30 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::F32);
                 writeln!(self.output, "{}// WGMMA BF16 (sm_90+)", indent).unwrap();
-                writeln!(self.output, "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.bf16.bf16",
-                         indent, m, n, k).unwrap();
-                writeln!(self.output, "{}    {{{}}}, {{{}}}, {{{}}};", indent, c_reg, a_reg, b_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.bf16.bf16",
+                    indent, m, n, k
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}    {{{}}}, {{{}}}, {{{}}};",
+                    indent, c_reg, a_reg, b_reg
+                )
+                .unwrap();
                 writeln!(self.output, "{}mov.f32 {}, {};", indent, reg, c_reg).unwrap();
             }
 
             // Transformer Engine v2 (sm_100+)
-            GpuOp::TransformerEngineFusedAttention { q, k, v, scale, output, format } => {
+            GpuOp::TransformerEngineFusedAttention {
+                q,
+                k,
+                v,
+                scale,
+                output,
+                format,
+            } => {
                 let q_reg = self.get_register(*q);
                 let k_reg = self.get_register(*k);
                 let v_reg = self.get_register(*v);
@@ -1742,56 +2367,136 @@ impl PtxCodegen {
                 let o_reg = self.get_register(*output);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
-                writeln!(self.output, "{}// Transformer Engine Fused Attention (sm_100+)", indent).unwrap();
-                writeln!(self.output, "{}// Format: {} - This maps to cuDNN fused attention",
-                         indent, format).unwrap();
-                writeln!(self.output, "{}// Placeholder: call external TE library", indent).unwrap();
-                writeln!(self.output, "{}// te.fused_attention({}, {}, {}, {}, {});",
-                         indent, q_reg, k_reg, v_reg, s_reg, o_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Transformer Engine Fused Attention (sm_100+)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Format: {} - This maps to cuDNN fused attention",
+                    indent, format
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Placeholder: call external TE library",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}// te.fused_attention({}, {}, {}, {}, {});",
+                    indent, q_reg, k_reg, v_reg, s_reg, o_reg
+                )
+                .unwrap();
             }
 
-            GpuOp::TransformerEngineFp8Gemm { a, b, c, amax_out, format } => {
+            GpuOp::TransformerEngineFp8Gemm {
+                a,
+                b,
+                c,
+                amax_out,
+                format,
+            } => {
                 let a_reg = self.get_register(*a);
                 let b_reg = self.get_register(*b);
                 let c_reg = self.get_register(*c);
                 let amax = self.get_register(*amax_out);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
-                writeln!(self.output, "{}// Transformer Engine FP8 GEMM with amax (sm_100+)", indent).unwrap();
-                writeln!(self.output, "{}// Format: {} - Dynamic scaling", indent, format).unwrap();
-                writeln!(self.output, "{}// te.fp8_gemm({}, {}, {}, amax={});",
-                         indent, a_reg, b_reg, c_reg, amax).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Transformer Engine FP8 GEMM with amax (sm_100+)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Format: {} - Dynamic scaling",
+                    indent, format
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}// te.fp8_gemm({}, {}, {}, amax={});",
+                    indent, a_reg, b_reg, c_reg, amax
+                )
+                .unwrap();
             }
 
             // Decompression Engine (sm_100+)
-            GpuOp::DecompressLz4 { dst, src, compressed_size, uncompressed_size } => {
+            GpuOp::DecompressLz4 {
+                dst,
+                src,
+                compressed_size,
+                uncompressed_size,
+            } => {
                 let d = self.get_register(*dst);
                 let s = self.get_register(*src);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
-                writeln!(self.output, "{}// Hardware LZ4 decompression (sm_100+)", indent).unwrap();
-                writeln!(self.output, "{}decompress.lz4 [{}, {}], [{}, {}];",
-                         indent, d, uncompressed_size, s, compressed_size).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Hardware LZ4 decompression (sm_100+)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}decompress.lz4 [{}, {}], [{}, {}];",
+                    indent, d, uncompressed_size, s, compressed_size
+                )
+                .unwrap();
             }
 
-            GpuOp::DecompressSnappy { dst, src, compressed_size, uncompressed_size } => {
+            GpuOp::DecompressSnappy {
+                dst,
+                src,
+                compressed_size,
+                uncompressed_size,
+            } => {
                 let d = self.get_register(*dst);
                 let s = self.get_register(*src);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
-                writeln!(self.output, "{}// Hardware Snappy decompression (sm_100+)", indent).unwrap();
-                writeln!(self.output, "{}decompress.snappy [{}, {}], [{}, {}];",
-                         indent, d, uncompressed_size, s, compressed_size).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Hardware Snappy decompression (sm_100+)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}decompress.snappy [{}, {}], [{}, {}];",
+                    indent, d, uncompressed_size, s, compressed_size
+                )
+                .unwrap();
             }
 
-            GpuOp::DecompressDeflate { dst, src, compressed_size, uncompressed_size } => {
+            GpuOp::DecompressDeflate {
+                dst,
+                src,
+                compressed_size,
+                uncompressed_size,
+            } => {
                 let d = self.get_register(*dst);
                 let s = self.get_register(*src);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
-                writeln!(self.output, "{}// Hardware Deflate decompression (sm_100+)", indent).unwrap();
-                writeln!(self.output, "{}decompress.deflate [{}, {}], [{}, {}];",
-                         indent, d, uncompressed_size, s, compressed_size).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Hardware Deflate decompression (sm_100+)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}decompress.deflate [{}, {}], [{}, {}];",
+                    indent, d, uncompressed_size, s, compressed_size
+                )
+                .unwrap();
             }
 
             // Cluster operations (sm_90+, enhanced in sm_100)
@@ -1826,48 +2531,104 @@ impl PtxCodegen {
                 let bar = self.get_register(*barrier);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
-                writeln!(self.output, "{}mbarrier.arrive.shared::cluster [{}];", indent, bar).unwrap();
+                writeln!(
+                    self.output,
+                    "{}mbarrier.arrive.shared::cluster [{}];",
+                    indent, bar
+                )
+                .unwrap();
             }
 
             GpuOp::ClusterWait(barrier) => {
                 let bar = self.get_register(*barrier);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
-                writeln!(self.output, "{}mbarrier.wait.shared::cluster [{}];", indent, bar).unwrap();
+                writeln!(
+                    self.output,
+                    "{}mbarrier.wait.shared::cluster [{}];",
+                    indent, bar
+                )
+                .unwrap();
             }
 
             // NVLink 5.0 Operations (sm_100+)
-            GpuOp::NvlinkRead { dst, src_gpu, src_addr, size } => {
+            GpuOp::NvlinkRead {
+                dst,
+                src_gpu,
+                src_addr,
+                size,
+            } => {
                 let d = self.get_register(*dst);
                 let sa = self.get_register(*src_addr);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
                 writeln!(self.output, "{}// NVLink 5.0 remote read (sm_100+)", indent).unwrap();
-                writeln!(self.output, "{}// rdma.read gpu={} size={}", indent, src_gpu, size).unwrap();
-                writeln!(self.output, "{}ld.global.nc.b8 {}, [{} + gpu{}];",
-                         indent, d, sa, src_gpu).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// rdma.read gpu={} size={}",
+                    indent, src_gpu, size
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}ld.global.nc.b8 {}, [{} + gpu{}];",
+                    indent, d, sa, src_gpu
+                )
+                .unwrap();
             }
 
-            GpuOp::NvlinkWrite { dst_gpu, dst_addr, src, size } => {
+            GpuOp::NvlinkWrite {
+                dst_gpu,
+                dst_addr,
+                src,
+                size,
+            } => {
                 let da = self.get_register(*dst_addr);
                 let s = self.get_register(*src);
                 self.registers.push("_".to_string());
                 self.value_types.push(GpuType::Void);
-                writeln!(self.output, "{}// NVLink 5.0 remote write (sm_100+)", indent).unwrap();
-                writeln!(self.output, "{}// rdma.write gpu={} size={}", indent, dst_gpu, size).unwrap();
-                writeln!(self.output, "{}st.global.b8 [{} + gpu{}], {};",
-                         indent, da, dst_gpu, s).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// NVLink 5.0 remote write (sm_100+)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}// rdma.write gpu={} size={}",
+                    indent, dst_gpu, size
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}st.global.b8 [{} + gpu{}], {};",
+                    indent, da, dst_gpu, s
+                )
+                .unwrap();
             }
 
-            GpuOp::NvlinkAtomicAdd { dst_gpu, dst_addr, value } => {
+            GpuOp::NvlinkAtomicAdd {
+                dst_gpu,
+                dst_addr,
+                value,
+            } => {
                 let da = self.get_register(*dst_addr);
                 let v = self.get_register(*value);
                 let reg = self.alloc_register(&GpuType::U64);
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U64);
-                writeln!(self.output, "{}// NVLink 5.0 remote atomic (sm_100+)", indent).unwrap();
-                writeln!(self.output, "{}atom.global.add.u64 {}, [{} + gpu{}], {};",
-                         indent, reg, da, dst_gpu, v).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// NVLink 5.0 remote atomic (sm_100+)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}atom.global.add.u64 {}, [{} + gpu{}], {};",
+                    indent, reg, da, dst_gpu, v
+                )
+                .unwrap();
             }
 
             // Memory operations
@@ -2475,8 +3236,18 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
                 // Emit inline quaternion multiply code
-                writeln!(self.output, "{}// QuatMul: Hamilton product (noncommutative)", indent).unwrap();
-                writeln!(self.output, "{}// Result = q1 * q2 stored in {}", indent, reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// QuatMul: Hamilton product (noncommutative)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Result = q1 * q2 stored in {}",
+                    indent, reg
+                )
+                .unwrap();
                 writeln!(self.output, "{}call.uni __quat_mul, ({});", indent, reg).unwrap();
             }
 
@@ -2496,7 +3267,12 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&GpuType::F32);
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::F32);
-                writeln!(self.output, "{}// QuatNormSq: |q|² = w² + x² + y² + z²", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// QuatNormSq: |q|² = w² + x² + y² + z²",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}call.uni __quat_norm_sq, ({});", indent, reg).unwrap();
             }
 
@@ -2507,7 +3283,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
                 writeln!(self.output, "{}// QuatNormalize: q / |q| for SU(2)", indent).unwrap();
-                writeln!(self.output, "{}call.uni __quat_normalize, ({});", indent, reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}call.uni __quat_normalize, ({});",
+                    indent, reg
+                )
+                .unwrap();
             }
 
             // Quaternion SLERP (spherical linear interpolation)
@@ -2518,7 +3299,12 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&GpuType::Vec4(Box::new(GpuType::F32)));
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
-                writeln!(self.output, "{}// QuatSlerp: spherical interpolation", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// QuatSlerp: spherical interpolation",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}call.uni __quat_slerp, ({});", indent, reg).unwrap();
             }
 
@@ -2529,7 +3315,12 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&GpuType::U8);
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U8);
-                writeln!(self.output, "{}// DnaComplement: A↔T (0↔3), C↔G (1↔2)", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// DnaComplement: A↔T (0↔3), C↔G (1↔2)",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}xor.b32 {}, {}, 3;", indent, reg, r).unwrap();
             }
 
@@ -2543,7 +3334,12 @@ impl PtxCodegen {
                 // GF(4) addition is XOR of indices into addition table
                 // But for efficiency, we inline the table lookup
                 writeln!(self.output, "{}// GF(4) addition: characteristic 2", indent).unwrap();
-                writeln!(self.output, "{}call.uni __gf4_add, ({}, {}, {});", indent, reg, ra, rb).unwrap();
+                writeln!(
+                    self.output,
+                    "{}call.uni __gf4_add, ({}, {}, {});",
+                    indent, reg, ra, rb
+                )
+                .unwrap();
             }
 
             // GF(4) multiplication (uses α² + α + 1 = 0)
@@ -2554,7 +3350,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U8);
                 writeln!(self.output, "{}// GF(4) multiply: α² + α + 1 = 0", indent).unwrap();
-                writeln!(self.output, "{}call.uni __gf4_mul, ({}, {}, {});", indent, reg, ra, rb).unwrap();
+                writeln!(
+                    self.output,
+                    "{}call.uni __gf4_mul, ({}, {}, {});",
+                    indent, reg, ra, rb
+                )
+                .unwrap();
             }
 
             // Transmission channel composition (quaternion product + renormalize)
@@ -2564,8 +3365,18 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&GpuType::Vec4(Box::new(GpuType::F32)));
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
-                writeln!(self.output, "{}// TransmissionCompose: (g,t,p,e) quaternion product", indent).unwrap();
-                writeln!(self.output, "{}call.uni __transmission_compose, ({});", indent, reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// TransmissionCompose: (g,t,p,e) quaternion product",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}call.uni __transmission_compose, ({});",
+                    indent, reg
+                )
+                .unwrap();
             }
 
             // Transmission distortion with renormalization
@@ -2578,8 +3389,18 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&GpuType::Vec4(Box::new(GpuType::F32)));
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::Vec4(Box::new(GpuType::F32)));
-                writeln!(self.output, "{}// TransmissionDistort: perturb + renormalize", indent).unwrap();
-                writeln!(self.output, "{}call.uni __transmission_distort, ({});", indent, reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// TransmissionDistort: perturb + renormalize",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}call.uni __transmission_distort, ({});",
+                    indent, reg
+                )
+                .unwrap();
             }
 
             // ================================================================
@@ -2613,9 +3434,9 @@ impl PtxCodegen {
                 self.value_types.push(GpuType::U32);
                 writeln!(self.output, "{}// CoopGroupSize", indent).unwrap();
                 // Check scope from group handle
-                writeln!(self.output, "{}setp.eq.u32 p0, {}, 1;", indent, grp).unwrap();  // warp?
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 1;", indent, grp).unwrap(); // warp?
                 writeln!(self.output, "{}@p0 mov.u32 {}, 32;", indent, reg).unwrap();
-                writeln!(self.output, "{}setp.eq.u32 p0, {}, 2;", indent, grp).unwrap();  // block?
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 2;", indent, grp).unwrap(); // block?
                 writeln!(self.output, "{}@p0 mov.u32 {}, %ntid.x;", indent, reg).unwrap();
             }
 
@@ -2626,9 +3447,9 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U32);
                 writeln!(self.output, "{}// CoopThreadRank", indent).unwrap();
-                writeln!(self.output, "{}setp.eq.u32 p0, {}, 1;", indent, grp).unwrap();  // warp?
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 1;", indent, grp).unwrap(); // warp?
                 writeln!(self.output, "{}@p0 mov.u32 {}, %laneid;", indent, reg).unwrap();
-                writeln!(self.output, "{}setp.eq.u32 p0, {}, 2;", indent, grp).unwrap();  // block?
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 2;", indent, grp).unwrap(); // block?
                 writeln!(self.output, "{}@p0 mov.u32 {}, %tid.x;", indent, reg).unwrap();
             }
 
@@ -2640,7 +3461,12 @@ impl PtxCodegen {
                 self.value_types.push(GpuType::Bool);
                 writeln!(self.output, "{}// CoopIsLeader (rank == 0)", indent).unwrap();
                 writeln!(self.output, "{}setp.eq.u32 p1, {}, 1;", indent, grp).unwrap();
-                writeln!(self.output, "{}@p1 setp.eq.u32 {}, %laneid, 0;", indent, reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}@p1 setp.eq.u32 {}, %laneid, 0;",
+                    indent, reg
+                )
+                .unwrap();
                 writeln!(self.output, "{}setp.eq.u32 p1, {}, 2;", indent, grp).unwrap();
                 writeln!(self.output, "{}@p1 setp.eq.u32 {}, %tid.x, 0;", indent, reg).unwrap();
             }
@@ -2649,9 +3475,9 @@ impl PtxCodegen {
             GpuOp::CoopSync(group) => {
                 let grp = self.get_register(*group);
                 writeln!(self.output, "{}// CoopSync", indent).unwrap();
-                writeln!(self.output, "{}setp.eq.u32 p0, {}, 1;", indent, grp).unwrap();  // warp?
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 1;", indent, grp).unwrap(); // warp?
                 writeln!(self.output, "{}@p0 bar.warp.sync 0xffffffff;", indent).unwrap();
-                writeln!(self.output, "{}setp.eq.u32 p0, {}, 2;", indent, grp).unwrap();  // block?
+                writeln!(self.output, "{}setp.eq.u32 p0, {}, 2;", indent, grp).unwrap(); // block?
                 writeln!(self.output, "{}@p0 bar.sync 0;", indent).unwrap();
                 // For cluster (sm_90+)
                 writeln!(self.output, "{}setp.eq.u32 p0, {}, 3;", indent, grp).unwrap();
@@ -2671,8 +3497,12 @@ impl PtxCodegen {
                 self.value_types.push(ty.clone());
                 let suffix = self.type_suffix(&ty);
                 writeln!(self.output, "{}// CoopShfl broadcast", indent).unwrap();
-                writeln!(self.output, "{}shfl.sync.idx.b32 {}, {}, {}, 31, 0xffffffff;",
-                    indent, reg, v, src).unwrap();
+                writeln!(
+                    self.output,
+                    "{}shfl.sync.idx.b32 {}, {}, {}, 31, 0xffffffff;",
+                    indent, reg, v, src
+                )
+                .unwrap();
             }
 
             // Shuffle with index
@@ -2685,8 +3515,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(ty.clone());
                 writeln!(self.output, "{}// CoopShflIdx", indent).unwrap();
-                writeln!(self.output, "{}shfl.sync.idx.b32 {}, {}, {}, 31, 0xffffffff;",
-                    indent, reg, v, i).unwrap();
+                writeln!(
+                    self.output,
+                    "{}shfl.sync.idx.b32 {}, {}, {}, 31, 0xffffffff;",
+                    indent, reg, v, i
+                )
+                .unwrap();
             }
 
             // Shuffle up (get from thread rank - delta)
@@ -2699,8 +3533,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(ty.clone());
                 writeln!(self.output, "{}// CoopShflUp", indent).unwrap();
-                writeln!(self.output, "{}shfl.sync.up.b32 {}, {}, {}, 0, 0xffffffff;",
-                    indent, reg, v, d).unwrap();
+                writeln!(
+                    self.output,
+                    "{}shfl.sync.up.b32 {}, {}, {}, 0, 0xffffffff;",
+                    indent, reg, v, d
+                )
+                .unwrap();
             }
 
             // Shuffle down (get from thread rank + delta)
@@ -2713,8 +3551,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(ty.clone());
                 writeln!(self.output, "{}// CoopShflDown", indent).unwrap();
-                writeln!(self.output, "{}shfl.sync.down.b32 {}, {}, {}, 31, 0xffffffff;",
-                    indent, reg, v, d).unwrap();
+                writeln!(
+                    self.output,
+                    "{}shfl.sync.down.b32 {}, {}, {}, 31, 0xffffffff;",
+                    indent, reg, v, d
+                )
+                .unwrap();
             }
 
             // Shuffle XOR (butterfly pattern)
@@ -2727,8 +3569,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(ty.clone());
                 writeln!(self.output, "{}// CoopShflXor (butterfly)", indent).unwrap();
-                writeln!(self.output, "{}shfl.sync.bfly.b32 {}, {}, {}, 31, 0xffffffff;",
-                    indent, reg, v, m).unwrap();
+                writeln!(
+                    self.output,
+                    "{}shfl.sync.bfly.b32 {}, {}, {}, 31, 0xffffffff;",
+                    indent, reg, v, m
+                )
+                .unwrap();
             }
 
             // Collective reduce
@@ -2751,8 +3597,12 @@ impl PtxCodegen {
                 let type_suffix = if ty.is_float() { ".f32" } else { ".s32" };
                 writeln!(self.output, "{}// CoopReduce {:?}", indent, op).unwrap();
                 // Use redux.sync for warp-level reduction (sm_80+)
-                writeln!(self.output, "{}redux.sync.{}{} {}, {}, 0xffffffff;",
-                    indent, op_str, type_suffix, reg, v).unwrap();
+                writeln!(
+                    self.output,
+                    "{}redux.sync.{}{} {}, {}, 0xffffffff;",
+                    indent, op_str, type_suffix, reg, v
+                )
+                .unwrap();
             }
 
             // Inclusive scan
@@ -2763,15 +3613,29 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&ty);
                 self.registers.push(reg.clone());
                 self.value_types.push(ty.clone());
-                writeln!(self.output, "{}// CoopInclusiveScan {:?} - Kogge-Stone pattern", indent, op).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// CoopInclusiveScan {:?} - Kogge-Stone pattern",
+                    indent, op
+                )
+                .unwrap();
                 // Implement via shuffle tree (Kogge-Stone)
                 writeln!(self.output, "{}mov.b32 {}, {};", indent, reg, v).unwrap();
                 for delta in [1, 2, 4, 8, 16] {
                     let tmp = format!("tmp_scan_{}", delta);
                     writeln!(self.output, "{}{{\n{}\t.reg .b32 {};", indent, indent, tmp).unwrap();
-                    writeln!(self.output, "{}\tshfl.sync.up.b32 {}, {}, {}, 0, 0xffffffff;",
-                        indent, tmp, reg, delta).unwrap();
-                    writeln!(self.output, "{}\tadd.s32 {}, {}, {};", indent, reg, reg, tmp).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}\tshfl.sync.up.b32 {}, {}, {}, 0, 0xffffffff;",
+                        indent, tmp, reg, delta
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}\tadd.s32 {}, {}, {};",
+                        indent, reg, reg, tmp
+                    )
+                    .unwrap();
                     writeln!(self.output, "{}}}", indent).unwrap();
                 }
             }
@@ -2784,19 +3648,38 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&ty);
                 self.registers.push(reg.clone());
                 self.value_types.push(ty.clone());
-                writeln!(self.output, "{}// CoopExclusiveScan {:?} - shift + inclusive", indent, op).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// CoopExclusiveScan {:?} - shift + inclusive",
+                    indent, op
+                )
+                .unwrap();
                 // Exclusive = shift(inclusive, 1) with identity at lane 0
                 writeln!(self.output, "{}mov.b32 {}, {};", indent, reg, v).unwrap();
                 for delta in [1, 2, 4, 8, 16] {
                     let tmp = format!("tmp_escan_{}", delta);
                     writeln!(self.output, "{}{{\n{}\t.reg .b32 {};", indent, indent, tmp).unwrap();
-                    writeln!(self.output, "{}\tshfl.sync.up.b32 {}, {}, {}, 0, 0xffffffff;",
-                        indent, tmp, reg, delta).unwrap();
-                    writeln!(self.output, "{}\tadd.s32 {}, {}, {};", indent, reg, reg, tmp).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}\tshfl.sync.up.b32 {}, {}, {}, 0, 0xffffffff;",
+                        indent, tmp, reg, delta
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}\tadd.s32 {}, {}, {};",
+                        indent, reg, reg, tmp
+                    )
+                    .unwrap();
                     writeln!(self.output, "{}}}", indent).unwrap();
                 }
                 // Shift result down by 1, put 0 in lane 0
-                writeln!(self.output, "{}shfl.sync.up.b32 {}, {}, 1, 0, 0xffffffff;", indent, reg, reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}shfl.sync.up.b32 {}, {}, 1, 0, 0xffffffff;",
+                    indent, reg, reg
+                )
+                .unwrap();
                 writeln!(self.output, "{}setp.eq.u32 p0, %laneid, 0;", indent).unwrap();
                 writeln!(self.output, "{}@p0 mov.b32 {}, 0;", indent, reg).unwrap();
             }
@@ -2809,7 +3692,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U32);
                 writeln!(self.output, "{}// CoopBallot", indent).unwrap();
-                writeln!(self.output, "{}vote.sync.ballot.b32 {}, {}, 0xffffffff;", indent, reg, p).unwrap();
+                writeln!(
+                    self.output,
+                    "{}vote.sync.ballot.b32 {}, {}, 0xffffffff;",
+                    indent, reg, p
+                )
+                .unwrap();
             }
 
             // All threads predicate true
@@ -2820,7 +3708,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::Bool);
                 writeln!(self.output, "{}// CoopAll", indent).unwrap();
-                writeln!(self.output, "{}vote.sync.all.pred {}, {}, 0xffffffff;", indent, reg, p).unwrap();
+                writeln!(
+                    self.output,
+                    "{}vote.sync.all.pred {}, {}, 0xffffffff;",
+                    indent, reg, p
+                )
+                .unwrap();
             }
 
             // Any thread predicate true
@@ -2831,7 +3724,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::Bool);
                 writeln!(self.output, "{}// CoopAny", indent).unwrap();
-                writeln!(self.output, "{}vote.sync.any.pred {}, {}, 0xffffffff;", indent, reg, p).unwrap();
+                writeln!(
+                    self.output,
+                    "{}vote.sync.any.pred {}, {}, 0xffffffff;",
+                    indent, reg, p
+                )
+                .unwrap();
             }
 
             // Partition group into tiles
@@ -2841,7 +3739,12 @@ impl PtxCodegen {
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U32);
                 let scope_val = 0x100 | (*tile_size as u32);
-                writeln!(self.output, "{}// CoopPartitionTiled size={}", indent, tile_size).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// CoopPartitionTiled size={}",
+                    indent, tile_size
+                )
+                .unwrap();
                 writeln!(self.output, "{}mov.u32 {}, {};", indent, reg, scope_val).unwrap();
             }
 
@@ -2854,7 +3757,12 @@ impl PtxCodegen {
                 self.value_types.push(GpuType::U32);
                 writeln!(self.output, "{}// CoopPartitionBinary", indent).unwrap();
                 // Use match.sync to get mask of matching threads
-                writeln!(self.output, "{}match.sync.any.b32 {}, {}, 0xffffffff;", indent, reg, p).unwrap();
+                writeln!(
+                    self.output,
+                    "{}match.sync.any.b32 {}, {}, 0xffffffff;",
+                    indent, reg, p
+                )
+                .unwrap();
             }
 
             // Labeled partition
@@ -2866,7 +3774,12 @@ impl PtxCodegen {
                 self.value_types.push(GpuType::U32);
                 writeln!(self.output, "{}// CoopPartitionLabeled", indent).unwrap();
                 // match.sync groups threads by label value
-                writeln!(self.output, "{}match.sync.any.b32 {}, {}, 0xffffffff;", indent, reg, l).unwrap();
+                writeln!(
+                    self.output,
+                    "{}match.sync.any.b32 {}, {}, 0xffffffff;",
+                    indent, reg, l
+                )
+                .unwrap();
             }
 
             // Get coalesced threads (active mask)
@@ -2874,7 +3787,12 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&GpuType::U32);
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U32);
-                writeln!(self.output, "{}// CoopCoalescedThreads (activemask)", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// CoopCoalescedThreads (activemask)",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}activemask.b32 {};", indent, reg).unwrap();
             }
 
@@ -2886,11 +3804,21 @@ impl PtxCodegen {
                 self.value_types.push(GpuType::Bool);
                 writeln!(self.output, "{}// CoopElect (first active thread)", indent).unwrap();
                 // Get active mask, find first set bit, compare with laneid
-                writeln!(self.output, "{}{{\n{}\t.reg .b32 mask, first;", indent, indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}{{\n{}\t.reg .b32 mask, first;",
+                    indent, indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}\tactivemask.b32 mask;", indent).unwrap();
                 writeln!(self.output, "{}\tbrev.b32 first, mask;", indent).unwrap();
                 writeln!(self.output, "{}\tclz.b32 first, first;", indent).unwrap();
-                writeln!(self.output, "{}\tsetp.eq.u32 {}, first, %laneid;", indent, reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}\tsetp.eq.u32 {}, first, %laneid;",
+                    indent, reg
+                )
+                .unwrap();
                 writeln!(self.output, "{}}}", indent).unwrap();
             }
 
@@ -2913,7 +3841,12 @@ impl PtxCodegen {
             // Printf from GPU using vprintf
             // PTX vprintf requires: format string pointer, argument buffer pointer
             GpuOp::Printf(fmt_id, args) => {
-                writeln!(self.output, "{}// gpu.printf (format_id={})", indent, fmt_id).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// gpu.printf (format_id={})",
+                    indent, fmt_id
+                )
+                .unwrap();
 
                 // Allocate result register for return value
                 let ret_reg = self.alloc_register(&GpuType::I32);
@@ -2923,9 +3856,12 @@ impl PtxCodegen {
                 // Build argument buffer in local memory (each arg is 8 bytes for alignment)
                 let arg_buf_size = args.len() * 8;
                 if arg_buf_size > 0 {
-                    writeln!(self.output, "{}{{\n{}\t.local .align 8 .b8 __printf_args[{}];",
+                    writeln!(
+                        self.output,
+                        "{}{{\n{}\t.local .align 8 .b8 __printf_args[{}];",
                         indent, indent, arg_buf_size
-                    ).unwrap();
+                    )
+                    .unwrap();
                     writeln!(self.output, "{}\t.reg .b64 buf_addr;", indent).unwrap();
                     writeln!(self.output, "{}\tmov.u64 buf_addr, __printf_args;", indent).unwrap();
 
@@ -2934,38 +3870,73 @@ impl PtxCodegen {
                         let arg_reg = self.get_register(*arg);
                         let offset = i * 8;
                         // Use generic store since we don't know exact type
-                        writeln!(self.output, "{}\tst.local.b64 [buf_addr+{}], {};",
+                        writeln!(
+                            self.output,
+                            "{}\tst.local.b64 [buf_addr+{}], {};",
                             indent, offset, arg_reg
-                        ).unwrap();
+                        )
+                        .unwrap();
                     }
 
                     // Call vprintf with format string and argument buffer
                     writeln!(self.output, "{}\t.param .b64 fmt_param;", indent).unwrap();
                     writeln!(self.output, "{}\t.param .b64 buf_param;", indent).unwrap();
                     writeln!(self.output, "{}\t.param .b32 ret_param;", indent).unwrap();
-                    writeln!(self.output, "{}\tst.param.b64 [fmt_param], __printf_fmt_{};",
+                    writeln!(
+                        self.output,
+                        "{}\tst.param.b64 [fmt_param], __printf_fmt_{};",
                         indent, fmt_id
-                    ).unwrap();
-                    writeln!(self.output, "{}\tst.param.b64 [buf_param], buf_addr;", indent).unwrap();
-                    writeln!(self.output, "{}\tcall.uni (ret_param), vprintf, (fmt_param, buf_param);",
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}\tst.param.b64 [buf_param], buf_addr;",
                         indent
-                    ).unwrap();
-                    writeln!(self.output, "{}\tld.param.b32 {}, [ret_param];", indent, ret_reg).unwrap();
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}\tcall.uni (ret_param), vprintf, (fmt_param, buf_param);",
+                        indent
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}\tld.param.b32 {}, [ret_param];",
+                        indent, ret_reg
+                    )
+                    .unwrap();
                     writeln!(self.output, "{}}}", indent).unwrap();
                 } else {
                     // No args - pass null buffer
-                    writeln!(self.output, "{}{{\n{}\t.param .b64 fmt_param;", indent, indent).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}{{\n{}\t.param .b64 fmt_param;",
+                        indent, indent
+                    )
+                    .unwrap();
                     writeln!(self.output, "{}\t.param .b64 buf_param;", indent).unwrap();
                     writeln!(self.output, "{}\t.param .b32 ret_param;", indent).unwrap();
-                    writeln!(self.output, "{}\tst.param.b64 [fmt_param], __printf_fmt_{};",
+                    writeln!(
+                        self.output,
+                        "{}\tst.param.b64 [fmt_param], __printf_fmt_{};",
                         indent, fmt_id
-                    ).unwrap();
+                    )
+                    .unwrap();
                     writeln!(self.output, "{}\tmov.u64 %rd0, 0;", indent).unwrap();
                     writeln!(self.output, "{}\tst.param.b64 [buf_param], %rd0;", indent).unwrap();
-                    writeln!(self.output, "{}\tcall.uni (ret_param), vprintf, (fmt_param, buf_param);",
+                    writeln!(
+                        self.output,
+                        "{}\tcall.uni (ret_param), vprintf, (fmt_param, buf_param);",
                         indent
-                    ).unwrap();
-                    writeln!(self.output, "{}\tld.param.b32 {}, [ret_param];", indent, ret_reg).unwrap();
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}\tld.param.b32 {}, [ret_param];",
+                        indent, ret_reg
+                    )
+                    .unwrap();
                     writeln!(self.output, "{}}}", indent).unwrap();
                 }
             }
@@ -2976,10 +3947,12 @@ impl PtxCodegen {
                 writeln!(self.output, "{}// gpu.assert", indent).unwrap();
                 writeln!(self.output, "{}setp.eq.s32 p_assert, {}, 0;", indent, c).unwrap();
                 if let Some(msg) = msg_id {
-                    writeln!(self.output,
+                    writeln!(
+                        self.output,
                         "{}@p_assert {{ // assertion failed: msg_id={}\n{}\ttrap;\n{}}}",
                         indent, msg, indent, indent
-                    ).unwrap();
+                    )
+                    .unwrap();
                 } else {
                     writeln!(self.output, "{}@p_assert trap;", indent).unwrap();
                 }
@@ -3013,10 +3986,12 @@ impl PtxCodegen {
 
             // Performance monitoring event (requires profiler)
             GpuOp::PmEvent(event_id) => {
-                writeln!(self.output,
+                writeln!(
+                    self.output,
                     "{}// pmevent {} (enabled only under profiler)",
                     indent, event_id
-                ).unwrap();
+                )
+                .unwrap();
                 // pmevent instruction is only meaningful when running under Nsight
                 // Uncomment to enable: writeln!(self.output, "{}pmevent {};", indent, event_id).unwrap();
             }
@@ -3024,18 +3999,36 @@ impl PtxCodegen {
             // ========================================
             // Tile Programming Operations (CUDA 13)
             // ========================================
-
-            GpuOp::TileCreate { tile_m, tile_n, element_type, layout, .. } => {
+            GpuOp::TileCreate {
+                tile_m,
+                tile_n,
+                element_type,
+                layout,
+                ..
+            } => {
                 // Allocate shared memory for tile with proper alignment
                 let elem_size = crate::codegen::gpu::tile::element_size_bytes(element_type);
-                let smem_bytes = crate::codegen::gpu::tile::shared_memory_bytes(*tile_m, *tile_n, element_type);
+                let smem_bytes =
+                    crate::codegen::gpu::tile::shared_memory_bytes(*tile_m, *tile_n, element_type);
                 let layout_str = match layout {
                     TileLayout::RowMajor => "row_major",
                     TileLayout::ColMajor => "col_major",
                     TileLayout::Swizzled { .. } => "swizzled",
                 };
-                writeln!(self.output, "{}// TileCreate {}x{} {:?} ({})", indent, tile_m, tile_n, element_type, layout_str).unwrap();
-                writeln!(self.output, "{}.shared .align {} .b8 tile_smem[{}];", indent, elem_size.max(16), smem_bytes).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// TileCreate {}x{} {:?} ({})",
+                    indent, tile_m, tile_n, element_type, layout_str
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}.shared .align {} .b8 tile_smem[{}];",
+                    indent,
+                    elem_size.max(16),
+                    smem_bytes
+                )
+                .unwrap();
                 // Result is pointer to shared memory
                 let reg = self.alloc_register(&GpuType::U64);
                 self.registers.push(reg.clone());
@@ -3043,7 +4036,12 @@ impl PtxCodegen {
                 writeln!(self.output, "{}mov.u64 {}, tile_smem;", indent, reg).unwrap();
             }
 
-            GpuOp::TileLoad { tile, src_ptr, stride, barrier } => {
+            GpuOp::TileLoad {
+                tile,
+                src_ptr,
+                stride,
+                barrier,
+            } => {
                 let tile_reg = self.get_register(*tile);
                 let src_reg = self.get_register(*src_ptr);
                 let stride_reg = self.get_register(*stride);
@@ -3052,23 +4050,52 @@ impl PtxCodegen {
                     // Use TMA on Hopper+ for async bulk load
                     let barrier_reg = self.get_register(barrier.unwrap());
                     writeln!(self.output, "{}// TileLoad via TMA (sm_90+)", indent).unwrap();
-                    writeln!(self.output, "{}cp.async.bulk.shared.global [{}, 0], [{}, {}], {};",
-                        indent, tile_reg, src_reg, stride_reg, barrier_reg).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}cp.async.bulk.shared.global [{}, 0], [{}, {}], {};",
+                        indent, tile_reg, src_reg, stride_reg, barrier_reg
+                    )
+                    .unwrap();
                     writeln!(self.output, "{}cp.async.bulk.commit_group;", indent).unwrap();
                 } else {
                     // Fallback: cooperative coalesced loads
                     writeln!(self.output, "{}// TileLoad via coalesced loads", indent).unwrap();
-                    writeln!(self.output, "{}// Each thread loads its element from global to shared", indent).unwrap();
-                    writeln!(self.output, "{}ld.global.b32 %r_tmp, [{} + %tid.x * 4];", indent, src_reg).unwrap();
-                    writeln!(self.output, "{}st.shared.b32 [{} + %tid.x * 4], %r_tmp;", indent, tile_reg).unwrap();
-                    writeln!(self.output, "{}bar.sync 0; // Ensure all loads complete", indent).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}// Each thread loads its element from global to shared",
+                        indent
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}ld.global.b32 %r_tmp, [{} + %tid.x * 4];",
+                        indent, src_reg
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}st.shared.b32 [{} + %tid.x * 4], %r_tmp;",
+                        indent, tile_reg
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}bar.sync 0; // Ensure all loads complete",
+                        indent
+                    )
+                    .unwrap();
                 }
                 // No result register for store-like operations
                 self.registers.push(String::new());
                 self.value_types.push(GpuType::Void);
             }
 
-            GpuOp::TileStore { tile, dst_ptr, stride, barrier } => {
+            GpuOp::TileStore {
+                tile,
+                dst_ptr,
+                stride,
+                barrier,
+            } => {
                 let tile_reg = self.get_register(*tile);
                 let dst_reg = self.get_register(*dst_ptr);
                 let stride_reg = self.get_register(*stride);
@@ -3076,24 +4103,55 @@ impl PtxCodegen {
                 if self.sm_version.0 >= 9 && barrier.is_some() {
                     let barrier_reg = self.get_register(barrier.unwrap());
                     writeln!(self.output, "{}// TileStore via TMA (sm_90+)", indent).unwrap();
-                    writeln!(self.output, "{}cp.async.bulk.global.shared [{}, {}], [{}, 0], {};",
-                        indent, dst_reg, stride_reg, tile_reg, barrier_reg).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}cp.async.bulk.global.shared [{}, {}], [{}, 0], {};",
+                        indent, dst_reg, stride_reg, tile_reg, barrier_reg
+                    )
+                    .unwrap();
                 } else {
                     writeln!(self.output, "{}// TileStore via coalesced stores", indent).unwrap();
-                    writeln!(self.output, "{}bar.sync 0; // Ensure tile data ready", indent).unwrap();
-                    writeln!(self.output, "{}ld.shared.b32 %r_tmp, [{} + %tid.x * 4];", indent, tile_reg).unwrap();
-                    writeln!(self.output, "{}st.global.b32 [{} + %tid.x * 4], %r_tmp;", indent, dst_reg).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}bar.sync 0; // Ensure tile data ready",
+                        indent
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}ld.shared.b32 %r_tmp, [{} + %tid.x * 4];",
+                        indent, tile_reg
+                    )
+                    .unwrap();
+                    writeln!(
+                        self.output,
+                        "{}st.global.b32 [{} + %tid.x * 4], %r_tmp;",
+                        indent, dst_reg
+                    )
+                    .unwrap();
                 }
                 self.registers.push(String::new());
                 self.value_types.push(GpuType::Void);
             }
 
-            GpuOp::TileMma { c, a, b, tile_m, tile_n, tile_k } => {
+            GpuOp::TileMma {
+                c,
+                a,
+                b,
+                tile_m,
+                tile_n,
+                tile_k,
+            } => {
                 let c_reg = self.get_register(*c);
                 let a_reg = self.get_register(*a);
                 let b_reg = self.get_register(*b);
 
-                writeln!(self.output, "{}// TileMma {}x{}x{}", indent, tile_m, tile_n, tile_k).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// TileMma {}x{}x{}",
+                    indent, tile_m, tile_n, tile_k
+                )
+                .unwrap();
                 if self.sm_version.0 >= 10 {
                     // Blackwell: Use WGMMA (warpgroup-scoped)
                     writeln!(self.output, "{}wgmma.mma_async.sync.aligned.m{}n{}k{}.f32.bf16.bf16 {{{}}}, {{{}}}, {{{}}};",
@@ -3103,7 +4161,12 @@ impl PtxCodegen {
                     writeln!(self.output, "{}mma.sync.aligned.m{}n{}k{}.row.col.f32.bf16.bf16.f32 {{{}}}, {{{}}}, {{{}}}, {{{}}};",
                         indent, tile_m, tile_n, tile_k, c_reg, a_reg, b_reg, c_reg).unwrap();
                 } else {
-                    writeln!(self.output, "{}// TileMma requires sm_80+ (Ampere or newer)", indent).unwrap();
+                    writeln!(
+                        self.output,
+                        "{}// TileMma requires sm_80+ (Ampere or newer)",
+                        indent
+                    )
+                    .unwrap();
                 }
                 let reg = self.alloc_register(&GpuType::F32);
                 self.registers.push(reg);
@@ -3126,14 +4189,34 @@ impl PtxCodegen {
                 let offset_reg = self.alloc_register(&GpuType::U32);
                 let addr_reg = self.alloc_register(&GpuType::U64);
                 let result_reg = self.alloc_register(&GpuType::F32);
-                writeln!(self.output, "{}mad.lo.u32 {}, {}, %tile_n, {};", indent, offset_reg, row_reg, col_reg).unwrap();
-                writeln!(self.output, "{}mad.wide.u32 {}, {}, 4, {};", indent, addr_reg, offset_reg, tile_reg).unwrap();
-                writeln!(self.output, "{}ld.shared.f32 {}, [{}];", indent, result_reg, addr_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}mad.lo.u32 {}, {}, %tile_n, {};",
+                    indent, offset_reg, row_reg, col_reg
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}mad.wide.u32 {}, {}, 4, {};",
+                    indent, addr_reg, offset_reg, tile_reg
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}ld.shared.f32 {}, [{}];",
+                    indent, result_reg, addr_reg
+                )
+                .unwrap();
                 self.registers.push(result_reg);
                 self.value_types.push(GpuType::F32);
             }
 
-            GpuOp::TileSetElement { tile, row, col, value } => {
+            GpuOp::TileSetElement {
+                tile,
+                row,
+                col,
+                value,
+            } => {
                 let tile_reg = self.get_register(*tile);
                 let row_reg = self.get_register(*row);
                 let col_reg = self.get_register(*col);
@@ -3142,9 +4225,24 @@ impl PtxCodegen {
                 writeln!(self.output, "{}// TileSetElement", indent).unwrap();
                 let offset_reg = self.alloc_register(&GpuType::U32);
                 let addr_reg = self.alloc_register(&GpuType::U64);
-                writeln!(self.output, "{}mad.lo.u32 {}, {}, %tile_n, {};", indent, offset_reg, row_reg, col_reg).unwrap();
-                writeln!(self.output, "{}mad.wide.u32 {}, {}, 4, {};", indent, addr_reg, offset_reg, tile_reg).unwrap();
-                writeln!(self.output, "{}st.shared.f32 [{}], {};", indent, addr_reg, val_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}mad.lo.u32 {}, {}, %tile_n, {};",
+                    indent, offset_reg, row_reg, col_reg
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}mad.wide.u32 {}, {}, 4, {};",
+                    indent, addr_reg, offset_reg, tile_reg
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}st.shared.f32 [{}], {};",
+                    indent, addr_reg, val_reg
+                )
+                .unwrap();
                 self.registers.push(String::new());
                 self.value_types.push(GpuType::Void);
             }
@@ -3153,9 +4251,19 @@ impl PtxCodegen {
                 let tile_reg = self.get_register(*tile);
                 let val_reg = self.get_register(*value);
 
-                writeln!(self.output, "{}// TileFill - broadcast scalar to all elements", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// TileFill - broadcast scalar to all elements",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}// Each thread fills its element", indent).unwrap();
-                writeln!(self.output, "{}st.shared.f32 [{} + %tid.x * 4], {};", indent, tile_reg, val_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}st.shared.f32 [{} + %tid.x * 4], {};",
+                    indent, tile_reg, val_reg
+                )
+                .unwrap();
                 writeln!(self.output, "{}bar.sync 0;", indent).unwrap();
                 self.registers.push(String::new());
                 self.value_types.push(GpuType::Void);
@@ -3176,9 +4284,19 @@ impl PtxCodegen {
                 writeln!(self.output, "{}// TileReduce ({})", indent, op_name).unwrap();
                 // Load element, then perform warp reduction
                 let val_reg = self.alloc_register(&GpuType::F32);
-                writeln!(self.output, "{}ld.shared.f32 {}, [{} + %tid.x * 4];", indent, val_reg, tile_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}ld.shared.f32 {}, [{} + %tid.x * 4];",
+                    indent, val_reg, tile_reg
+                )
+                .unwrap();
                 // Warp shuffle reduction
-                writeln!(self.output, "{}redux.sync.{}.b32 {}, {}, 0xffffffff;", indent, op_name, val_reg, val_reg).unwrap();
+                writeln!(
+                    self.output,
+                    "{}redux.sync.{}.b32 {}, {}, 0xffffffff;",
+                    indent, op_name, val_reg, val_reg
+                )
+                .unwrap();
                 self.registers.push(val_reg);
                 self.value_types.push(GpuType::F32);
             }
@@ -3186,10 +4304,25 @@ impl PtxCodegen {
             GpuOp::TileTranspose(tile) => {
                 let tile_reg = self.get_register(*tile);
 
-                writeln!(self.output, "{}// TileTranspose - requires diagonal copy through shared memory", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// TileTranspose - requires diagonal copy through shared memory",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}bar.sync 0;", indent).unwrap();
-                writeln!(self.output, "{}// Read from (row,col), write to (col,row)", indent).unwrap();
-                writeln!(self.output, "{}// Actual implementation requires auxiliary shared memory", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Read from (row,col), write to (col,row)",
+                    indent
+                )
+                .unwrap();
+                writeln!(
+                    self.output,
+                    "{}// Actual implementation requires auxiliary shared memory",
+                    indent
+                )
+                .unwrap();
                 let _ = tile_reg;
                 self.registers.push(String::new());
                 self.value_types.push(GpuType::Void);
@@ -3200,7 +4333,12 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&GpuType::U32);
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U32);
-                writeln!(self.output, "{}// TileM - should be constant-folded", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// TileM - should be constant-folded",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}mov.u32 {}, 0; // placeholder", indent, reg).unwrap();
             }
 
@@ -3209,7 +4347,12 @@ impl PtxCodegen {
                 let reg = self.alloc_register(&GpuType::U32);
                 self.registers.push(reg.clone());
                 self.value_types.push(GpuType::U32);
-                writeln!(self.output, "{}// TileN - should be constant-folded", indent).unwrap();
+                writeln!(
+                    self.output,
+                    "{}// TileN - should be constant-folded",
+                    indent
+                )
+                .unwrap();
                 writeln!(self.output, "{}mov.u32 {}, 0; // placeholder", indent, reg).unwrap();
             }
         }
@@ -3381,10 +4524,10 @@ impl PtxCodegen {
             GpuType::F32 => ".f32",
             GpuType::F64 => ".f64",
             // Modern ML types (PTX 8.x+, Blackwell architecture)
-            GpuType::BF16 => ".bf16",          // BFloat16
-            GpuType::F8E4M3 => ".b8",          // FP8 E4M3 stored as byte
-            GpuType::F8E5M2 => ".b8",          // FP8 E5M2 stored as byte
-            GpuType::F4 => ".b8",              // FP4 stored as byte (2 packed)
+            GpuType::BF16 => ".bf16", // BFloat16
+            GpuType::F8E4M3 => ".b8", // FP8 E4M3 stored as byte
+            GpuType::F8E5M2 => ".b8", // FP8 E5M2 stored as byte
+            GpuType::F4 => ".b8",     // FP4 stored as byte (2 packed)
             GpuType::Ptr(_, _) => ".b64",
             _ => ".b64",
         }
@@ -3404,10 +4547,10 @@ impl PtxCodegen {
             GpuType::F32 => "f32",
             GpuType::F64 => "f64",
             // Modern ML types (PTX 8.x+, Blackwell architecture)
-            GpuType::BF16 => "bf16",       // BFloat16
-            GpuType::F8E4M3 => "e4m3",     // FP8 E4M3 format
-            GpuType::F8E5M2 => "e5m2",     // FP8 E5M2 format
-            GpuType::F4 => "b8",           // 4-bit packed (stored as byte)
+            GpuType::BF16 => "bf16",   // BFloat16
+            GpuType::F8E4M3 => "e4m3", // FP8 E4M3 format
+            GpuType::F8E5M2 => "e5m2", // FP8 E5M2 format
+            GpuType::F4 => "b8",       // 4-bit packed (stored as byte)
             _ => "b64",
         }
     }
@@ -3439,7 +4582,7 @@ mod tests {
         );
         let ptx = codegen.generate(&module);
 
-        assert!(ptx.contains(".version 6.4"));  // PTX 6.4 for Turing (sm_75)
+        assert!(ptx.contains(".version 6.4")); // PTX 6.4 for Turing (sm_75)
         assert!(ptx.contains(".target sm_75"));
         assert!(ptx.contains(".address_size 64"));
     }
@@ -3595,13 +4738,22 @@ mod tests {
         // Shuffle source lane
         block.add_instruction(ValueId(2), GpuOp::ConstInt(0, GpuType::U32));
         // Broadcast from lane 0
-        block.add_instruction(ValueId(3), GpuOp::CoopShfl(ValueId(0), ValueId(1), ValueId(2)));
+        block.add_instruction(
+            ValueId(3),
+            GpuOp::CoopShfl(ValueId(0), ValueId(1), ValueId(2)),
+        );
         // Delta for shuffle down
         block.add_instruction(ValueId(4), GpuOp::ConstInt(16, GpuType::U32));
         // Shuffle down by 16
-        block.add_instruction(ValueId(5), GpuOp::CoopShflDown(ValueId(0), ValueId(1), ValueId(4)));
+        block.add_instruction(
+            ValueId(5),
+            GpuOp::CoopShflDown(ValueId(0), ValueId(1), ValueId(4)),
+        );
         // Shuffle XOR with mask
-        block.add_instruction(ValueId(6), GpuOp::CoopShflXor(ValueId(0), ValueId(1), ValueId(4)));
+        block.add_instruction(
+            ValueId(6),
+            GpuOp::CoopShflXor(ValueId(0), ValueId(1), ValueId(4)),
+        );
         block.set_terminator(GpuTerminator::ReturnVoid);
         kernel.add_block(block);
 
@@ -3632,9 +4784,15 @@ mod tests {
         // Value to reduce
         block.add_instruction(ValueId(1), GpuOp::ConstFloat(1.0, GpuType::F32));
         // Reduce with add
-        block.add_instruction(ValueId(2), GpuOp::CoopReduce(ValueId(0), ValueId(1), CoopReduceOp::Add));
+        block.add_instruction(
+            ValueId(2),
+            GpuOp::CoopReduce(ValueId(0), ValueId(1), CoopReduceOp::Add),
+        );
         // Reduce with max
-        block.add_instruction(ValueId(3), GpuOp::CoopReduce(ValueId(0), ValueId(1), CoopReduceOp::Max));
+        block.add_instruction(
+            ValueId(3),
+            GpuOp::CoopReduce(ValueId(0), ValueId(1), CoopReduceOp::Max),
+        );
         block.set_terminator(GpuTerminator::ReturnVoid);
         kernel.add_block(block);
 

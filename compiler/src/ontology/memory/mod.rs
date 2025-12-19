@@ -76,7 +76,7 @@ impl TieredMemoryStats {
         } else {
             self.l1_hits as f64 / total as f64
         }
-}
+    }
 
     /// Estimate total memory usage in bytes
     pub fn memory_usage(&self) -> usize {

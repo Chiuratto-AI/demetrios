@@ -820,7 +820,10 @@ impl MetalCodegen {
             }
             GpuOp::UnpackF8x2High(val) => {
                 let v = self.get_var_name(*val);
-                self.emit(&format!("uchar {} = uchar(({} >> 8) & 0x00FF);", result_name, v));
+                self.emit(&format!(
+                    "uchar {} = uchar(({} >> 8) & 0x00FF);",
+                    result_name, v
+                ));
             }
             GpuOp::PackF4x2(lo, hi) => {
                 let lo_v = self.get_var_name(*lo);
@@ -862,7 +865,12 @@ impl MetalCodegen {
             }
 
             // === INT8/INT4 Quantization (Phase 11) ===
-            GpuOp::QuantizeF32ToInt8 { value, scale, zero_point, symmetric } => {
+            GpuOp::QuantizeF32ToInt8 {
+                value,
+                scale,
+                zero_point,
+                symmetric,
+            } => {
                 let v = self.get_var_name(*value);
                 let s = self.get_var_name(*scale);
                 let zp = self.get_var_name(*zero_point);
@@ -879,7 +887,11 @@ impl MetalCodegen {
                     ));
                 }
             }
-            GpuOp::DequantizeInt8ToF32 { value, scale, zero_point } => {
+            GpuOp::DequantizeInt8ToF32 {
+                value,
+                scale,
+                zero_point,
+            } => {
                 let v = self.get_var_name(*value);
                 let s = self.get_var_name(*scale);
                 let zp = self.get_var_name(*zero_point);
@@ -889,7 +901,11 @@ impl MetalCodegen {
                     result_name, v, zp, s
                 ));
             }
-            GpuOp::QuantizeF32ToUint8 { value, scale, zero_point } => {
+            GpuOp::QuantizeF32ToUint8 {
+                value,
+                scale,
+                zero_point,
+            } => {
                 let v = self.get_var_name(*value);
                 let s = self.get_var_name(*scale);
                 let zp = self.get_var_name(*zero_point);
@@ -899,7 +915,11 @@ impl MetalCodegen {
                     result_name, v, s, zp
                 ));
             }
-            GpuOp::DequantizeUint8ToF32 { value, scale, zero_point } => {
+            GpuOp::DequantizeUint8ToF32 {
+                value,
+                scale,
+                zero_point,
+            } => {
                 let v = self.get_var_name(*value);
                 let s = self.get_var_name(*scale);
                 let zp = self.get_var_name(*zero_point);
@@ -909,7 +929,12 @@ impl MetalCodegen {
                     result_name, v, zp, s
                 ));
             }
-            GpuOp::QuantizeF32ToInt4 { value_lo, value_hi, scale, zero_point } => {
+            GpuOp::QuantizeF32ToInt4 {
+                value_lo,
+                value_hi,
+                scale,
+                zero_point,
+            } => {
                 let v_lo = self.get_var_name(*value_lo);
                 let v_hi = self.get_var_name(*value_hi);
                 let s = self.get_var_name(*scale);
@@ -928,21 +953,26 @@ impl MetalCodegen {
                     result_name
                 ));
             }
-            GpuOp::DequantizeInt4ToF32Lo { packed, scale, zero_point } => {
+            GpuOp::DequantizeInt4ToF32Lo {
+                packed,
+                scale,
+                zero_point,
+            } => {
                 let p = self.get_var_name(*packed);
                 let s = self.get_var_name(*scale);
                 let zp = self.get_var_name(*zero_point);
                 self.emit("// Dequantize INT4 (low nibble) to F32");
-                self.emit(&format!(
-                    "int lo = ({} & 0x0F); if (lo > 7) lo -= 16;",
-                    p
-                ));
+                self.emit(&format!("int lo = ({} & 0x0F); if (lo > 7) lo -= 16;", p));
                 self.emit(&format!(
                     "float {} = (float(lo) - float({})) * {};",
                     result_name, zp, s
                 ));
             }
-            GpuOp::DequantizeInt4ToF32Hi { packed, scale, zero_point } => {
+            GpuOp::DequantizeInt4ToF32Hi {
+                packed,
+                scale,
+                zero_point,
+            } => {
                 let p = self.get_var_name(*packed);
                 let s = self.get_var_name(*scale);
                 let zp = self.get_var_name(*zero_point);
@@ -956,7 +986,9 @@ impl MetalCodegen {
                     result_name, zp, s
                 ));
             }
-            GpuOp::Dp4a { a, b, c } | GpuOp::Dp4aUnsigned { a, b, c } | GpuOp::Dp4aSU { a, b, c } => {
+            GpuOp::Dp4a { a, b, c }
+            | GpuOp::Dp4aUnsigned { a, b, c }
+            | GpuOp::Dp4aSU { a, b, c } => {
                 let a_v = self.get_var_name(*a);
                 let b_v = self.get_var_name(*b);
                 let c_v = self.get_var_name(*c);
@@ -982,7 +1014,10 @@ impl MetalCodegen {
                 let c_v = self.get_var_name(*c);
                 self.emit("// INT8 MatMul not directly supported on Metal");
                 self.emit("// Use simdgroup_matrix with conversion or MPSGraph");
-                self.emit(&format!("int {} = {}; // INT8 MatMul placeholder", result_name, c_v));
+                self.emit(&format!(
+                    "int {} = {}; // INT8 MatMul placeholder",
+                    result_name, c_v
+                ));
             }
             GpuOp::QuantizePerChannel { .. } => {
                 self.emit("// Per-channel quantization - implemented at higher level");
@@ -992,7 +1027,12 @@ impl MetalCodegen {
                 self.emit("// Per-channel dequantization - implemented at higher level");
                 self.emit(&format!("float {} = 0.0f; // Placeholder", result_name));
             }
-            GpuOp::ComputeQuantScale { min_val, max_val, num_bits, symmetric } => {
+            GpuOp::ComputeQuantScale {
+                min_val,
+                max_val,
+                num_bits,
+                symmetric,
+            } => {
                 let min_v = self.get_var_name(*min_val);
                 let max_v = self.get_var_name(*max_val);
                 self.emit("// Compute quantization scale");
@@ -1021,9 +1061,18 @@ impl MetalCodegen {
             }
             GpuOp::FindMinMax { .. } => {
                 self.emit("// FindMinMax - reduction implemented at higher level");
-                self.emit(&format!("float2 {} = float2(0.0f, 0.0f); // Placeholder", result_name));
+                self.emit(&format!(
+                    "float2 {} = float2(0.0f, 0.0f); // Placeholder",
+                    result_name
+                ));
             }
-            GpuOp::Requantize { value, in_scale, in_zero_point, out_scale, out_zero_point } => {
+            GpuOp::Requantize {
+                value,
+                in_scale,
+                in_zero_point,
+                out_scale,
+                out_zero_point,
+            } => {
                 let v = self.get_var_name(*value);
                 let in_s = self.get_var_name(*in_scale);
                 let in_zp = self.get_var_name(*in_zero_point);
@@ -1063,16 +1112,28 @@ impl MetalCodegen {
                 let b_v = self.get_var_name(*b);
                 let c_v = self.get_var_name(*c);
                 self.emit("// WGMMA FP4 not available - using simdgroup_matrix placeholder");
-                self.emit(&format!("float {} = {}; // FP4 WGMMA placeholder", result_name, c_v));
-                self.emit(&format!("// Would use simdgroup_matrix with {} and {}", a_v, b_v));
+                self.emit(&format!(
+                    "float {} = {}; // FP4 WGMMA placeholder",
+                    result_name, c_v
+                ));
+                self.emit(&format!(
+                    "// Would use simdgroup_matrix with {} and {}",
+                    a_v, b_v
+                ));
             }
             GpuOp::WgmmaFp8 { a, b, c, .. } => {
                 let a_v = self.get_var_name(*a);
                 let b_v = self.get_var_name(*b);
                 let c_v = self.get_var_name(*c);
                 self.emit("// WGMMA FP8 not available - using simdgroup_matrix placeholder");
-                self.emit(&format!("float {} = {}; // FP8 WGMMA placeholder", result_name, c_v));
-                self.emit(&format!("// Would use simdgroup_matrix with {} and {}", a_v, b_v));
+                self.emit(&format!(
+                    "float {} = {}; // FP8 WGMMA placeholder",
+                    result_name, c_v
+                ));
+                self.emit(&format!(
+                    "// Would use simdgroup_matrix with {} and {}",
+                    a_v, b_v
+                ));
             }
             GpuOp::WgmmaBf16 { a, b, c, .. } => {
                 let a_v = self.get_var_name(*a);
@@ -1083,7 +1144,10 @@ impl MetalCodegen {
                 self.emit(&format!("// ma.load({});", a_v));
                 self.emit(&format!("// mb.load({});", b_v));
                 self.emit(&format!("// mc = ma * mb;"));
-                self.emit(&format!("float {} = {}; // BF16 WGMMA placeholder", result_name, c_v));
+                self.emit(&format!(
+                    "float {} = {}; // BF16 WGMMA placeholder",
+                    result_name, c_v
+                ));
             }
 
             // Transformer Engine - not available on Metal
@@ -1427,8 +1491,14 @@ impl MetalCodegen {
             GpuOp::CoopSync(group) => {
                 let grp = self.get_var_name(*group);
                 self.emit(&format!("// CoopSync for group {}", grp));
-                self.emit(&format!("if ({} == 1) {{ simdgroup_barrier(mem_flags::mem_threadgroup); }}", grp));
-                self.emit(&format!("if ({} == 2) {{ threadgroup_barrier(mem_flags::mem_threadgroup); }}", grp));
+                self.emit(&format!(
+                    "if ({} == 1) {{ simdgroup_barrier(mem_flags::mem_threadgroup); }}",
+                    grp
+                ));
+                self.emit(&format!(
+                    "if ({} == 2) {{ threadgroup_barrier(mem_flags::mem_threadgroup); }}",
+                    grp
+                ));
             }
 
             // Shuffle broadcast
@@ -1605,8 +1675,14 @@ impl MetalCodegen {
             GpuOp::CoopMemoryFence(group) => {
                 let grp = self.get_var_name(*group);
                 self.emit(&format!("// CoopMemoryFence for group {}", grp));
-                self.emit(&format!("if ({} == 1) {{ simdgroup_barrier(mem_flags::mem_device); }}", grp));
-                self.emit(&format!("if ({} == 2) {{ threadgroup_barrier(mem_flags::mem_device); }}", grp));
+                self.emit(&format!(
+                    "if ({} == 1) {{ simdgroup_barrier(mem_flags::mem_device); }}",
+                    grp
+                ));
+                self.emit(&format!(
+                    "if ({} == 2) {{ threadgroup_barrier(mem_flags::mem_device); }}",
+                    grp
+                ));
             }
 
             // Bio operations (quaternion, DNA, GF4, transmission) - call device functions
@@ -1644,10 +1720,7 @@ impl MetalCodegen {
 
             // Bitwise ops handled but duplicated
             GpuOp::Xor(_, _) => {
-                self.emit(&format!(
-                    "// Xor -> {} (not yet implemented)",
-                    result_name
-                ));
+                self.emit(&format!("// Xor -> {} (not yet implemented)", result_name));
             }
 
             // Warp match
@@ -1663,10 +1736,17 @@ impl MetalCodegen {
             // Printf is not natively supported in Metal compute shaders
             // Use os_log or print buffer pattern instead
             GpuOp::Printf(fmt_id, args) => {
-                self.emit(&format!("// gpu.printf (format_id={}, {} args)", fmt_id, args.len()));
+                self.emit(&format!(
+                    "// gpu.printf (format_id={}, {} args)",
+                    fmt_id,
+                    args.len()
+                ));
                 self.emit("// Metal does not support printf in compute shaders");
                 self.emit("// Use debug buffer pattern: store values to buffer, read on host");
-                self.emit(&format!("auto {} = 0; // printf not supported", result_name));
+                self.emit(&format!(
+                    "auto {} = 0; // printf not supported",
+                    result_name
+                ));
             }
 
             // Assert - use Metal's assert or trap
@@ -1692,18 +1772,27 @@ impl MetalCodegen {
             // Clock counter - Metal doesn't expose raw clock
             GpuOp::Clock => {
                 self.emit(&format!("// gpu.clock - not directly available in Metal"));
-                self.emit(&format!("uint64_t {} = 0; // placeholder for clock", result_name));
+                self.emit(&format!(
+                    "uint64_t {} = 0; // placeholder for clock",
+                    result_name
+                ));
             }
 
             // Global timer - not available in Metal
             GpuOp::GlobalTimer => {
                 self.emit(&format!("// gpu.globaltimer - not available in Metal"));
-                self.emit(&format!("uint64_t {} = 0; // placeholder for globaltimer", result_name));
+                self.emit(&format!(
+                    "uint64_t {} = 0; // placeholder for globaltimer",
+                    result_name
+                ));
             }
 
             // Performance event - not directly available
             GpuOp::PmEvent(event_id) => {
-                self.emit(&format!("// pmevent {} - use Metal GPU counters via API", event_id));
+                self.emit(&format!(
+                    "// pmevent {} - use Metal GPU counters via API",
+                    event_id
+                ));
             }
 
             // ========================================
@@ -1711,34 +1800,65 @@ impl MetalCodegen {
             // Metal does not have native tile support like CUDA's cooperative groups + WMMA.
             // These emit placeholders directing users to use threadgroup memory manually.
             // ========================================
-
-            GpuOp::TileCreate { tile_m, tile_n, element_type, layout, .. } => {
+            GpuOp::TileCreate {
+                tile_m,
+                tile_n,
+                element_type,
+                layout,
+                ..
+            } => {
                 let layout_str = match layout {
                     TileLayout::RowMajor => "row_major",
                     TileLayout::ColMajor => "col_major",
                     TileLayout::Swizzled { .. } => "swizzled",
                 };
-                self.emit(&format!("// TILE_CREATE: {}x{} {:?} ({})", tile_m, tile_n, element_type, layout_str));
+                self.emit(&format!(
+                    "// TILE_CREATE: {}x{} {:?} ({})",
+                    tile_m, tile_n, element_type, layout_str
+                ));
                 self.emit("// Metal: Use threadgroup memory manually instead");
-                self.emit(&format!("threadgroup float tile_smem[{} * {}];", tile_m, tile_n));
-                self.emit(&format!("{} {} = tile_smem;", "threadgroup float*", result_name));
+                self.emit(&format!(
+                    "threadgroup float tile_smem[{} * {}];",
+                    tile_m, tile_n
+                ));
+                self.emit(&format!(
+                    "{} {} = tile_smem;",
+                    "threadgroup float*", result_name
+                ));
             }
 
-            GpuOp::TileLoad { tile: _, src_ptr: _, stride: _, barrier: _ } => {
+            GpuOp::TileLoad {
+                tile: _,
+                src_ptr: _,
+                stride: _,
+                barrier: _,
+            } => {
                 self.emit("// TILE_LOAD: Metal does not support TMA-style bulk transfers");
                 self.emit("// Use manual coalesced loads into threadgroup memory");
                 self.emit("// Example: tile_smem[thread_idx] = src_ptr[thread_idx];");
                 self.emit("threadgroup_barrier(mem_flags::mem_threadgroup);");
             }
 
-            GpuOp::TileStore { tile: _, dst_ptr: _, stride: _, barrier: _ } => {
+            GpuOp::TileStore {
+                tile: _,
+                dst_ptr: _,
+                stride: _,
+                barrier: _,
+            } => {
                 self.emit("// TILE_STORE: Metal does not support TMA-style bulk transfers");
                 self.emit("// Use manual coalesced stores from threadgroup memory");
                 self.emit("// Example: dst_ptr[thread_idx] = tile_smem[thread_idx];");
                 self.emit("threadgroup_barrier(mem_flags::mem_threadgroup);");
             }
 
-            GpuOp::TileMma { c: _, a: _, b: _, tile_m, tile_n, tile_k } => {
+            GpuOp::TileMma {
+                c: _,
+                a: _,
+                b: _,
+                tile_m,
+                tile_n,
+                tile_k,
+            } => {
                 self.emit(&format!("// TILE_MMA: {}x{}x{}", tile_m, tile_n, tile_k));
                 #[allow(clippy::collapsible_else_if)]
                 if self.config.gpu_family >= MetalGpuFamily::Apple7 {
@@ -1754,19 +1874,33 @@ impl MetalCodegen {
                 self.emit("threadgroup_barrier(mem_flags::mem_threadgroup);");
             }
 
-            GpuOp::TileGetElement { tile: _, row: _, col: _ } => {
+            GpuOp::TileGetElement {
+                tile: _,
+                row: _,
+                col: _,
+            } => {
                 self.emit("// TILE_GET_ELEMENT: Access threadgroup memory element");
-                self.emit(&format!("auto {} = tile_smem[row * tile_n + col];", result_name));
+                self.emit(&format!(
+                    "auto {} = tile_smem[row * tile_n + col];",
+                    result_name
+                ));
             }
 
-            GpuOp::TileSetElement { tile: _, row: _, col: _, value: _ } => {
+            GpuOp::TileSetElement {
+                tile: _,
+                row: _,
+                col: _,
+                value: _,
+            } => {
                 self.emit("// TILE_SET_ELEMENT: Set threadgroup memory element");
                 self.emit("// tile_smem[row * tile_n + col] = value;");
             }
 
             GpuOp::TileFill { tile: _, value: _ } => {
                 self.emit("// TILE_FILL: Fill all elements with scalar");
-                self.emit("// for (uint i = thread_idx; i < tile_m * tile_n; i += threads_per_group)");
+                self.emit(
+                    "// for (uint i = thread_idx; i < tile_m * tile_n; i += threads_per_group)",
+                );
                 self.emit("//     tile_smem[i] = value;");
                 self.emit("threadgroup_barrier(mem_flags::mem_threadgroup);");
             }
@@ -1783,7 +1917,10 @@ impl MetalCodegen {
                 };
                 self.emit(&format!("// TILE_REDUCE: {} reduction", op_name));
                 self.emit("// Use simd_sum/simd_min/simd_max + tree reduction");
-                self.emit(&format!("float {} = 0.0f; // placeholder for {} reduction", result_name, op_name));
+                self.emit(&format!(
+                    "float {} = 0.0f; // placeholder for {} reduction",
+                    result_name, op_name
+                ));
             }
 
             GpuOp::TileTranspose(_tile) => {
@@ -1793,11 +1930,17 @@ impl MetalCodegen {
             }
 
             GpuOp::TileM(_tile) => {
-                self.emit(&format!("uint {} = 0; // TILE_M: should be constant-folded", result_name));
+                self.emit(&format!(
+                    "uint {} = 0; // TILE_M: should be constant-folded",
+                    result_name
+                ));
             }
 
             GpuOp::TileN(_tile) => {
-                self.emit(&format!("uint {} = 0; // TILE_N: should be constant-folded", result_name));
+                self.emit(&format!(
+                    "uint {} = 0; // TILE_N: should be constant-folded",
+                    result_name
+                ));
             }
         }
     }
