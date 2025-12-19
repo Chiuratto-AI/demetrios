@@ -96,8 +96,13 @@ jobs:
                     -A clippy::assertions_on_constants \
                     -A clippy::cloned_ref_to_slice_refs \
                     -A clippy::nonminimal_bool \
+                    -A clippy::no_effect_replace \
+                    -A clippy::needless_borrow \
                     -A unused_imports \
-                    -A unused_comparisons
+                    -A unused_comparisons \
+                    -A dead_code \
+                    -A unused_assignments \
+                    -A unused_variables
 
     # Build and test on multiple platforms
     test:
