@@ -1713,4 +1713,71 @@ mod tests {
             _ => panic!("expected named type for return"),
         }
     }
+
+    #[test]
+    fn annotates_paths_with_module_info() {
+        let dir = tempfile::tempdir().unwrap();
+        let module_main = dir.path().join("main.d");
+        let module_math = dir.path().join("math.d");
+
+        fs::write(&module_math, "fn sin(x: f64) -> f64 { return x }").unwrap();
+        fs::write(
+            &module_main,
+            "import math;\n\nfn test() -> f64 {\n    let x = math.sin(1.0)\n    return x\n}\n",
+        )
+        .unwrap();
+
+        let ast = load_program_ast(&module_main).unwrap();
+
+        // Find the test function
+        let func = ast.items.iter().find_map(|item| match item {
+            Item::Function(f) if f.name == "test" => Some(f),
+            _ => None,
+        });
+        let func = func.expect("missing test() function");
+
+        // Check that the function body contains a call with module annotation
+        // The call to math.sin should have resolved_module set
+        let has_annotated_path = func.body.stmts.iter().any(|stmt| {
+            if let Stmt::Let {
+                value: Some(expr), ..
+            } = stmt
+            {
+                if let Expr::Call { callee, .. } = expr {
+                    if let Expr::Path { path, .. } = callee.as_ref() {
+                        // Check that source_module is set (annotated from main.d)
+                        return path.source_module.is_some();
+                    }
+                }
+            }
+            false
+        });
+
+        assert!(
+            has_annotated_path,
+            "Expected paths to be annotated with source_module"
+        );
+    }
+
+    #[test]
+    fn module_id_from_file_path() {
+        let path = std::path::Path::new("/some/path/mymodule.d");
+        let module_id = ModuleId::from_file_path(path);
+        assert_eq!(module_id.path, vec!["mymodule"]);
+        assert_eq!(format!("{}", module_id), "mymodule");
+    }
+
+    #[test]
+    fn module_id_root() {
+        let root = ModuleId::root();
+        assert!(root.is_root());
+        assert_eq!(format!("{}", root), "<root>");
+    }
+
+    #[test]
+    fn module_id_join() {
+        let base = ModuleId::new(vec!["std".to_string()]);
+        let joined = base.join("math");
+        assert_eq!(joined.path, vec!["std", "math"]);
+    }
 }
