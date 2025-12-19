@@ -6,15 +6,16 @@
 //! single-namespace compiler pipeline.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Path as StdPath, PathBuf};
 
 use miette::Result;
 
+use crate::ast::Path as AstPath;
 use crate::ast::*;
 use crate::lexer;
 use crate::parser;
 
-pub fn load_program_ast(entry_path: &Path) -> Result<Ast> {
+pub fn load_program_ast(entry_path: &StdPath) -> Result<Ast> {
     let mut loader = ModuleLoader::new()?;
     let root_id = loader.load_module(entry_path)?;
     loader.into_ast(root_id)
@@ -46,10 +47,10 @@ impl ModuleLoader {
         })
     }
 
-    fn load_module(&mut self, path: &Path) -> Result<usize> {
-        let canonical = path
-            .canonicalize()
-            .map_err(|e| miette::miette!("Failed to resolve module path {}: {}", path.display(), e))?;
+    fn load_module(&mut self, path: &StdPath) -> Result<usize> {
+        let canonical = path.canonicalize().map_err(|e| {
+            miette::miette!("Failed to resolve module path {}: {}", path.display(), e)
+        })?;
 
         if let Some(existing) = self.path_to_id.get(&canonical) {
             return Ok(*existing);
@@ -67,8 +68,7 @@ impl ModuleLoader {
         let source = std::fs::read_to_string(&canonical)
             .map_err(|e| miette::miette!("Failed to read {}: {}", canonical.display(), e))?;
         let tokens = lexer::lex(&source)?;
-        let (mut ast, next_id) =
-            parser::parse_with_id_start(&tokens, &source, self.next_node_id)?;
+        let (mut ast, next_id) = parser::parse_with_id_start(&tokens, &source, self.next_node_id)?;
         self.next_node_id = next_id;
 
         let import_paths = collect_import_paths(&ast);
@@ -160,7 +160,7 @@ fn collect_import_paths(ast: &Ast) -> Vec<Vec<String>> {
         .collect()
 }
 
-fn module_prefixes(import_paths: &[Vec<String>], module_path: &Path) -> Vec<Vec<String>> {
+fn module_prefixes(import_paths: &[Vec<String>], module_path: &StdPath) -> Vec<Vec<String>> {
     let mut prefixes = Vec::new();
 
     for import_path in import_paths {
@@ -182,12 +182,15 @@ fn module_prefixes(import_paths: &[Vec<String>], module_path: &Path) -> Vec<Vec<
 }
 
 fn resolve_import_path(
-    current_path: &Path,
+    current_path: &StdPath,
     import_path: &[String],
-    stdlib_dir: &Path,
+    stdlib_dir: &StdPath,
 ) -> Result<PathBuf> {
     if import_path.is_empty() {
-        return Err(miette::miette!("Empty import path in {}", current_path.display()));
+        return Err(miette::miette!(
+            "Empty import path in {}",
+            current_path.display()
+        ));
     }
 
     let (base_dir, segments) = if import_path[0] == "std" {
@@ -196,7 +199,7 @@ fn resolve_import_path(
         (
             current_path
                 .parent()
-                .unwrap_or_else(|| Path::new(".")) 
+                .unwrap_or_else(|| StdPath::new("."))
                 .to_path_buf(),
             import_path,
         )
@@ -457,8 +460,7 @@ fn rewrite_pde_def(def: &mut PdeDef, prefixes: &[Vec<String>]) {
     for bc in &mut def.boundary_conditions {
         rewrite_expr(&mut bc.boundary.value, prefixes);
         match &mut bc.condition {
-            BoundaryConditionType::Dirichlet(expr)
-            | BoundaryConditionType::Neumann(expr) => {
+            BoundaryConditionType::Dirichlet(expr) | BoundaryConditionType::Neumann(expr) => {
                 rewrite_expr(expr, prefixes);
             }
             BoundaryConditionType::Robin { a, b, value } => {
@@ -488,7 +490,9 @@ fn rewrite_causal_model_def(def: &mut CausalModelDef, prefixes: &[Vec<String>]) 
 fn rewrite_generics(generics: &mut Generics, prefixes: &[Vec<String>]) {
     for param in &mut generics.params {
         match param {
-            GenericParam::Type { bounds, default, .. } => {
+            GenericParam::Type {
+                bounds, default, ..
+            } => {
                 for bound in bounds {
                     rewrite_path(bound, prefixes);
                 }
@@ -553,10 +557,7 @@ fn rewrite_block(block: &mut Block, prefixes: &[Vec<String>]) {
 fn rewrite_stmt(stmt: &mut Stmt, prefixes: &[Vec<String>]) {
     match stmt {
         Stmt::Let {
-            pattern,
-            ty,
-            value,
-            ..
+            pattern, ty, value, ..
         } => {
             rewrite_pattern(pattern, prefixes);
             if let Some(ty) = ty {
@@ -619,7 +620,9 @@ fn rewrite_expr(expr: &mut Expr, prefixes: &[Vec<String>]) {
                 rewrite_expr(else_expr, prefixes);
             }
         }
-        Expr::Match { scrutinee, arms, .. } => {
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
             rewrite_expr(scrutinee, prefixes);
             for arm in arms {
                 rewrite_pattern(&mut arm.pattern, prefixes);
@@ -630,11 +633,18 @@ fn rewrite_expr(expr: &mut Expr, prefixes: &[Vec<String>]) {
             }
         }
         Expr::Loop { body, .. } => rewrite_block(body, prefixes),
-        Expr::While { condition, body, .. } => {
+        Expr::While {
+            condition, body, ..
+        } => {
             rewrite_expr(condition, prefixes);
             rewrite_block(body, prefixes);
         }
-        Expr::For { pattern, iter, body, .. } => {
+        Expr::For {
+            pattern,
+            iter,
+            body,
+            ..
+        } => {
             rewrite_pattern(pattern, prefixes);
             rewrite_expr(iter, prefixes);
             rewrite_block(body, prefixes);
@@ -644,8 +654,18 @@ fn rewrite_expr(expr: &mut Expr, prefixes: &[Vec<String>]) {
                 rewrite_expr(value, prefixes);
             }
         }
-        Expr::Closure { params, return_type, body, .. }
-        | Expr::AsyncClosure { params, return_type, body, .. } => {
+        Expr::Closure {
+            params,
+            return_type,
+            body,
+            ..
+        }
+        | Expr::AsyncClosure {
+            params,
+            return_type,
+            body,
+            ..
+        } => {
             for (_, ty) in params {
                 if let Some(ty) = ty {
                     rewrite_type_expr(ty, prefixes);
@@ -720,7 +740,13 @@ fn rewrite_expr(expr: &mut Expr, prefixes: &[Vec<String>]) {
             rewrite_expr(intervention, prefixes);
             rewrite_expr(outcome, prefixes);
         }
-        Expr::KnowledgeExpr { value, epsilon, validity, provenance, .. } => {
+        Expr::KnowledgeExpr {
+            value,
+            epsilon,
+            validity,
+            provenance,
+            ..
+        } => {
             rewrite_expr(value, prefixes);
             if let Some(eps) = epsilon {
                 rewrite_expr(eps, prefixes);
@@ -732,21 +758,32 @@ fn rewrite_expr(expr: &mut Expr, prefixes: &[Vec<String>]) {
                 rewrite_expr(provenance, prefixes);
             }
         }
-        Expr::Uncertain { value, uncertainty, .. } => {
+        Expr::Uncertain {
+            value, uncertainty, ..
+        } => {
             rewrite_expr(value, prefixes);
             rewrite_expr(uncertainty, prefixes);
         }
-        Expr::GpuAnnotated { expr, annotation, .. } => {
+        Expr::GpuAnnotated {
+            expr, annotation, ..
+        } => {
             rewrite_expr(expr, prefixes);
             for (_, param_expr) in &mut annotation.params {
                 rewrite_expr(param_expr, prefixes);
             }
         }
-        Expr::Observe { data, distribution, .. } => {
+        Expr::Observe {
+            data, distribution, ..
+        } => {
             rewrite_expr(data, prefixes);
             rewrite_expr(distribution, prefixes);
         }
-        Expr::Query { target, given, interventions, .. } => {
+        Expr::Query {
+            target,
+            given,
+            interventions,
+            ..
+        } => {
             rewrite_expr(target, prefixes);
             for g in given {
                 rewrite_expr(g, prefixes);
@@ -818,7 +855,10 @@ fn rewrite_type_expr(ty: &mut TypeExpr, prefixes: &[Vec<String>]) {
             }
         }
         TypeExpr::Quantity { numeric_type, .. } => rewrite_type_expr(numeric_type, prefixes),
-        TypeExpr::Tensor { element_type, shape } => {
+        TypeExpr::Tensor {
+            element_type,
+            shape,
+        } => {
             rewrite_type_expr(element_type, prefixes);
             for dim in shape {
                 if let TensorDim::Expr(expr) = dim {
@@ -831,13 +871,16 @@ fn rewrite_type_expr(ty: &mut TypeExpr, prefixes: &[Vec<String>]) {
     }
 }
 
-fn rewrite_path(path: &mut Path, prefixes: &[Vec<String>]) {
+fn rewrite_path(path: &mut AstPath, prefixes: &[Vec<String>]) {
     if path.segments.len() <= 1 {
         return;
     }
 
     let module_part = &path.segments[..path.segments.len() - 1];
-    if prefixes.iter().any(|prefix| module_part == prefix.as_slice()) {
+    if prefixes
+        .iter()
+        .any(|prefix| module_part == prefix.as_slice())
+    {
         if let Some(last) = path.segments.last().cloned() {
             path.segments = vec![last];
         }
