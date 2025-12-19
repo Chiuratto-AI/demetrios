@@ -47,6 +47,7 @@ pub mod gates;
 pub mod noise;
 pub mod pennylane;
 pub mod states;
+pub mod uccsd;
 pub mod vqe;
 
 pub use circuit::{CircuitBuilder, CircuitStats, QuantumCircuit};
@@ -58,4 +59,8 @@ pub use pennylane::{
     VariationalLayer,
 };
 pub use states::{DensityMatrix, EpistemicQubit, QubitState, StateVector};
+pub use uccsd::{
+    DoubleExcitation, FermionOp, FermionString, MolecularSystem, QubitMapping, SingleExcitation,
+    UCCSDCircuit, UCCSDResult,
+};
 pub use vqe::{Hamiltonian, PauliTerm, VQEConfig, VQEResult, VQESolver};
