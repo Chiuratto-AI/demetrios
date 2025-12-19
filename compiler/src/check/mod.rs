@@ -600,9 +600,7 @@ impl TypeChecker {
                 let name = token.text.clone();
                 Some(Expr::Path {
                     id: NodeId::dummy(),
-                    path: Path {
-                        segments: vec![name],
-                    },
+                    path: Path::simple(&name),
                 })
             }
             _ => None,

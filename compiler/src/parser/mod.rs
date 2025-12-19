@@ -19,6 +19,7 @@ pub fn parse(tokens: &[Token], _source: &str) -> Result<Ast> {
 }
 
 /// Parse a token stream into an AST with a custom NodeId start.
+/// Returns the AST and the next available NodeId value.
 pub fn parse_with_id_start(tokens: &[Token], _source: &str, start_id: u32) -> Result<(Ast, u32)> {
     let mut parser = Parser::with_id_start(tokens, start_id);
     let ast = parser.parse_program()?;
@@ -2364,9 +2365,7 @@ impl<'a> Parser<'a> {
                     }
                     // Return as f64 with unit annotation (shorthand expansion)
                     return Ok(TypeExpr::Named {
-                        path: Path {
-                            segments: vec!["f64".to_string()],
-                        },
+                        path: Path::simple("f64"),
                         args: Vec::new(),
                         unit: Some(unit_str),
                     });
@@ -2407,9 +2406,7 @@ impl<'a> Parser<'a> {
             TokenKind::Vec2 => {
                 self.advance();
                 Ok(TypeExpr::Named {
-                    path: Path {
-                        segments: vec!["vec2".to_string()],
-                    },
+                    path: Path::simple("vec2"),
                     args: Vec::new(),
                     unit: None,
                 })
@@ -2417,9 +2414,7 @@ impl<'a> Parser<'a> {
             TokenKind::Vec3 => {
                 self.advance();
                 Ok(TypeExpr::Named {
-                    path: Path {
-                        segments: vec!["vec3".to_string()],
-                    },
+                    path: Path::simple("vec3"),
                     args: Vec::new(),
                     unit: None,
                 })
@@ -2427,9 +2422,7 @@ impl<'a> Parser<'a> {
             TokenKind::Vec4 => {
                 self.advance();
                 Ok(TypeExpr::Named {
-                    path: Path {
-                        segments: vec!["vec4".to_string()],
-                    },
+                    path: Path::simple("vec4"),
                     args: Vec::new(),
                     unit: None,
                 })
@@ -2437,9 +2430,7 @@ impl<'a> Parser<'a> {
             TokenKind::Mat2 => {
                 self.advance();
                 Ok(TypeExpr::Named {
-                    path: Path {
-                        segments: vec!["mat2".to_string()],
-                    },
+                    path: Path::simple("mat2"),
                     args: Vec::new(),
                     unit: None,
                 })
@@ -2447,9 +2438,7 @@ impl<'a> Parser<'a> {
             TokenKind::Mat3 => {
                 self.advance();
                 Ok(TypeExpr::Named {
-                    path: Path {
-                        segments: vec!["mat3".to_string()],
-                    },
+                    path: Path::simple("mat3"),
                     args: Vec::new(),
                     unit: None,
                 })
@@ -2457,9 +2446,7 @@ impl<'a> Parser<'a> {
             TokenKind::Mat4 => {
                 self.advance();
                 Ok(TypeExpr::Named {
-                    path: Path {
-                        segments: vec!["mat4".to_string()],
-                    },
+                    path: Path::simple("mat4"),
                     args: Vec::new(),
                     unit: None,
                 })
@@ -2467,9 +2454,7 @@ impl<'a> Parser<'a> {
             TokenKind::Quat => {
                 self.advance();
                 Ok(TypeExpr::Named {
-                    path: Path {
-                        segments: vec!["quat".to_string()],
-                    },
+                    path: Path::simple("quat"),
                     args: Vec::new(),
                     unit: None,
                 })
@@ -2477,9 +2462,7 @@ impl<'a> Parser<'a> {
             TokenKind::Dual => {
                 self.advance();
                 Ok(TypeExpr::Named {
-                    path: Path {
-                        segments: vec!["dual".to_string()],
-                    },
+                    path: Path::simple("dual"),
                     args: Vec::new(),
                     unit: None,
                 })
@@ -3289,9 +3272,7 @@ impl<'a> Parser<'a> {
                     id: self.next_id(),
                     callee: Box::new(Expr::Path {
                         id: self.next_id(),
-                        path: Path {
-                            segments: vec![type_name],
-                        },
+                        path: Path::simple(&type_name),
                     }),
                     args,
                 })
@@ -3886,9 +3867,7 @@ impl<'a> Parser<'a> {
                 // Shorthand: name without : means name: name
                 Expr::Path {
                     id: self.next_id(),
-                    path: Path {
-                        segments: vec![name.clone()],
-                    },
+                    path: Path::simple(&name),
                 }
             };
             fields.push((name, value));
@@ -4446,7 +4425,11 @@ impl<'a> Parser<'a> {
             segments.push(self.parse_ident()?);
         }
 
-        Ok(Path { segments })
+        Ok(Path {
+            segments,
+            source_module: None,
+            resolved_module: None,
+        })
     }
 
     // ==================== MACROS ====================

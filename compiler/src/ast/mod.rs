@@ -1619,25 +1619,132 @@ pub struct MacroInvocation {
 
 // ==================== PATHS ====================
 
+/// Module identifier for tracking where definitions originate
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub struct ModuleId {
+    /// The module path (e.g., ["std", "math"] for std::math)
+    pub path: Vec<String>,
+}
+
+impl ModuleId {
+    pub fn new(path: Vec<String>) -> Self {
+        Self { path }
+    }
+
+    pub fn root() -> Self {
+        Self { path: vec![] }
+    }
+
+    pub fn from_file_path(file_path: &std::path::Path) -> Self {
+        let stem = file_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        Self {
+            path: vec![stem.to_string()],
+        }
+    }
+
+    pub fn is_root(&self) -> bool {
+        self.path.is_empty()
+    }
+
+    pub fn join(&self, name: &str) -> Self {
+        let mut path = self.path.clone();
+        path.push(name.to_string());
+        Self { path }
+    }
+}
+
+impl std::fmt::Display for ModuleId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.path.is_empty() {
+            write!(f, "<root>")
+        } else {
+            write!(f, "{}", self.path.join("::"))
+        }
+    }
+}
+
 /// Path (e.g., std::io::Write)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Path {
+    /// The path segments (e.g., ["std", "io", "Write"])
     pub segments: Vec<String>,
+    /// The module where this path was written (for diagnostics)
+    #[serde(default)]
+    pub source_module: Option<ModuleId>,
+    /// The module this path resolves to (set during name resolution)
+    #[serde(default)]
+    pub resolved_module: Option<ModuleId>,
 }
 
 impl Path {
     pub fn simple(name: &str) -> Self {
         Path {
             segments: vec![name.to_string()],
+            source_module: None,
+            resolved_module: None,
         }
+    }
+
+    pub fn qualified(module: Vec<String>, name: &str) -> Self {
+        let mut segments = module;
+        segments.push(name.to_string());
+        Path {
+            segments,
+            source_module: None,
+            resolved_module: None,
+        }
+    }
+
+    pub fn with_source_module(mut self, module: ModuleId) -> Self {
+        self.source_module = Some(module);
+        self
+    }
+
+    pub fn with_resolved_module(mut self, module: ModuleId) -> Self {
+        self.resolved_module = Some(module);
+        self
     }
 
     pub fn is_simple(&self) -> bool {
         self.segments.len() == 1
     }
 
+    pub fn is_qualified(&self) -> bool {
+        self.segments.len() > 1
+    }
+
     pub fn name(&self) -> Option<&str> {
         self.segments.last().map(|s| s.as_str())
+    }
+
+    /// Get the module prefix (all segments except the last)
+    pub fn module_prefix(&self) -> Option<Vec<String>> {
+        if self.segments.len() > 1 {
+            Some(self.segments[..self.segments.len() - 1].to_vec())
+        } else {
+            None
+        }
+    }
+
+    /// Check if this path starts with a given module prefix
+    pub fn starts_with_module(&self, prefix: &[String]) -> bool {
+        if prefix.len() >= self.segments.len() {
+            return false;
+        }
+        self.segments[..prefix.len()] == *prefix
+    }
+}
+
+impl Default for Path {
+    fn default() -> Self {
+        Path {
+            segments: vec![],
+            source_module: None,
+            resolved_module: None,
+        }
     }
 }
 

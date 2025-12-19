@@ -1,9 +1,8 @@
 //! Module loader and import resolver.
 //!
 //! Loads a root source file, resolves its imports, and returns a single AST
-//! with all imported modules merged. Qualified paths that match imported
-//! module prefixes are rewritten to unqualified names to match the current
-//! single-namespace compiler pipeline.
+//! with all imported modules merged. Qualified paths are annotated with their
+//! resolved module information for proper namespace handling.
 
 use std::collections::HashMap;
 use std::path::{Path as StdPath, PathBuf};
@@ -14,6 +13,17 @@ use crate::ast::Path as AstPath;
 use crate::ast::*;
 use crate::lexer;
 use crate::parser;
+
+/// Mapping from import prefix to resolved module info
+#[derive(Debug, Clone)]
+pub struct ImportMapping {
+    /// The prefix used in source code (e.g., ["math"] for `import math`)
+    pub prefix: Vec<String>,
+    /// The resolved module ID
+    pub module_id: ModuleId,
+    /// The file path of the resolved module
+    pub file_path: PathBuf,
+}
 
 pub fn load_program_ast(entry_path: &StdPath) -> Result<Ast> {
     let mut loader = ModuleLoader::new()?;
@@ -34,6 +44,10 @@ struct ModuleData {
     path: PathBuf,
     ast: Ast,
     import_paths: Vec<Vec<String>>,
+    /// The module ID derived from the file path
+    module_id: ModuleId,
+    /// Resolved import mappings for this module
+    import_mappings: Vec<ImportMapping>,
 }
 
 impl ModuleLoader {
@@ -71,9 +85,28 @@ impl ModuleLoader {
         let (mut ast, next_id) = parser::parse_with_id_start(&tokens, &source, self.next_node_id)?;
         self.next_node_id = next_id;
 
+        // Create module ID from file path
+        let module_id = ModuleId::from_file_path(&canonical);
+
         let import_paths = collect_import_paths(&ast);
+
+        // Build import mappings (will be populated after resolving imports)
+        let mut import_mappings = Vec::new();
+        for import_path in &import_paths {
+            if let Ok(import_file) = resolve_import_path(&canonical, import_path, &self.stdlib_dir)
+            {
+                let imported_module_id = ModuleId::from_file_path(&import_file);
+                import_mappings.push(ImportMapping {
+                    prefix: import_path.clone(),
+                    module_id: imported_module_id,
+                    file_path: import_file,
+                });
+            }
+        }
+
+        // Annotate paths with module information instead of stripping them
         let module_prefixes = module_prefixes(&import_paths, &canonical);
-        rewrite_paths_in_ast(&mut ast, &module_prefixes);
+        annotate_paths_in_ast(&mut ast, &module_prefixes, &module_id, &import_mappings);
 
         let id = self.modules.len();
         self.modules.push(ModuleData {
@@ -81,6 +114,8 @@ impl ModuleLoader {
             path: canonical.clone(),
             ast,
             import_paths: import_paths.clone(),
+            module_id,
+            import_mappings,
         });
         self.path_to_id.insert(canonical.clone(), id);
 
@@ -260,6 +295,49 @@ fn item_name(item: &Item) -> Option<String> {
 fn rewrite_paths_in_ast(ast: &mut Ast, prefixes: &[Vec<String>]) {
     for item in &mut ast.items {
         rewrite_paths_in_item(item, prefixes);
+    }
+}
+
+/// Annotate paths in the AST with module information.
+/// This sets source_module on all paths, and resolved_module on qualified paths
+/// that match import prefixes.
+fn annotate_paths_in_ast(
+    ast: &mut Ast,
+    prefixes: &[Vec<String>],
+    source_module: &ModuleId,
+    import_mappings: &[ImportMapping],
+) {
+    for item in &mut ast.items {
+        annotate_paths_in_item(item, prefixes, source_module, import_mappings);
+    }
+}
+
+fn annotate_paths_in_item(
+    item: &mut Item,
+    prefixes: &[Vec<String>],
+    source_module: &ModuleId,
+    import_mappings: &[ImportMapping],
+) {
+    match item {
+        Item::Function(f) => annotate_fn_def(f, prefixes, source_module, import_mappings),
+        Item::Struct(s) => annotate_struct_def(s, prefixes, source_module, import_mappings),
+        Item::Enum(e) => annotate_enum_def(e, prefixes, source_module, import_mappings),
+        Item::Trait(t) => annotate_trait_def(t, prefixes, source_module, import_mappings),
+        Item::Impl(i) => annotate_impl_def(i, prefixes, source_module, import_mappings),
+        Item::TypeAlias(t) => {
+            annotate_generics(&mut t.generics, prefixes, source_module, import_mappings);
+            annotate_type_expr(&mut t.ty, prefixes, source_module, import_mappings);
+        }
+        Item::Effect(e) => annotate_effect_def(e, prefixes, source_module, import_mappings),
+        Item::Handler(h) => annotate_handler_def(h, prefixes, source_module, import_mappings),
+        Item::Extern(e) => annotate_extern_block(e, prefixes, source_module, import_mappings),
+        Item::Global(g) => annotate_global_def(g, prefixes, source_module, import_mappings),
+        Item::OdeDef(o) => annotate_ode_def(o, prefixes, source_module, import_mappings),
+        Item::PdeDef(p) => annotate_pde_def(p, prefixes, source_module, import_mappings),
+        Item::CausalModel(c) => {
+            annotate_causal_model_def(c, prefixes, source_module, import_mappings)
+        }
+        _ => {}
     }
 }
 
@@ -881,9 +959,715 @@ fn rewrite_path(path: &mut AstPath, prefixes: &[Vec<String>]) {
         .iter()
         .any(|prefix| module_part == prefix.as_slice())
     {
+        // Set the resolved module before stripping the prefix
+        path.resolved_module = Some(ModuleId::new(module_part.to_vec()));
+
         if let Some(last) = path.segments.last().cloned() {
             path.segments = vec![last];
         }
+    }
+}
+
+/// Annotate a path with source and resolved module information.
+/// Unlike rewrite_path, this preserves the qualified path structure.
+fn annotate_path(
+    path: &mut AstPath,
+    _prefixes: &[Vec<String>],
+    source_module: &ModuleId,
+    import_mappings: &[ImportMapping],
+) {
+    // Always set the source module
+    path.source_module = Some(source_module.clone());
+
+    // For qualified paths, try to resolve to an import mapping
+    if path.segments.len() > 1 {
+        let module_part = &path.segments[..path.segments.len() - 1];
+
+        // Look for a matching import
+        for mapping in import_mappings {
+            if mapping.prefix == module_part
+                || (mapping.prefix.len() == 1
+                    && module_part.len() >= 1
+                    && mapping.prefix[0] == module_part[0])
+            {
+                path.resolved_module = Some(mapping.module_id.clone());
+                break;
+            }
+        }
+
+        // If no import found, create a module ID from the path prefix
+        if path.resolved_module.is_none() {
+            path.resolved_module = Some(ModuleId::new(module_part.to_vec()));
+        }
+    }
+}
+
+// ==================== ANNOTATE HELPER FUNCTIONS ====================
+
+fn annotate_fn_def(def: &mut FnDef, prefixes: &[Vec<String>], sm: &ModuleId, im: &[ImportMapping]) {
+    annotate_generics(&mut def.generics, prefixes, sm, im);
+    for param in &mut def.params {
+        annotate_pattern(&mut param.pattern, prefixes, sm, im);
+        annotate_type_expr(&mut param.ty, prefixes, sm, im);
+    }
+    if let Some(ret) = &mut def.return_type {
+        annotate_type_expr(ret, prefixes, sm, im);
+    }
+    for effect in &mut def.effects {
+        annotate_effect_ref(effect, prefixes, sm, im);
+    }
+    annotate_block(&mut def.body, prefixes, sm, im);
+}
+
+fn annotate_struct_def(
+    def: &mut StructDef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    annotate_generics(&mut def.generics, prefixes, sm, im);
+    annotate_where_clause(&mut def.where_clause, prefixes, sm, im);
+    for field in &mut def.fields {
+        annotate_type_expr(&mut field.ty, prefixes, sm, im);
+    }
+}
+
+fn annotate_enum_def(
+    def: &mut EnumDef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    annotate_generics(&mut def.generics, prefixes, sm, im);
+    annotate_where_clause(&mut def.where_clause, prefixes, sm, im);
+    for variant in &mut def.variants {
+        match &mut variant.data {
+            VariantData::Tuple(types) => {
+                for ty in types {
+                    annotate_type_expr(ty, prefixes, sm, im);
+                }
+            }
+            VariantData::Struct(fields) => {
+                for f in fields {
+                    annotate_type_expr(&mut f.ty, prefixes, sm, im);
+                }
+            }
+            VariantData::Unit => {}
+        }
+    }
+}
+
+fn annotate_trait_def(
+    def: &mut TraitDef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    annotate_generics(&mut def.generics, prefixes, sm, im);
+    for st in &mut def.supertraits {
+        annotate_path(st, prefixes, sm, im);
+    }
+    annotate_where_clause(&mut def.where_clause, prefixes, sm, im);
+    for item in &mut def.items {
+        match item {
+            TraitItem::Fn(f) => {
+                annotate_generics(&mut f.generics, prefixes, sm, im);
+                annotate_where_clause(&mut f.where_clause, prefixes, sm, im);
+                for p in &mut f.params {
+                    annotate_pattern(&mut p.pattern, prefixes, sm, im);
+                    annotate_type_expr(&mut p.ty, prefixes, sm, im);
+                }
+                if let Some(ret) = &mut f.return_type {
+                    annotate_type_expr(ret, prefixes, sm, im);
+                }
+                for e in &mut f.effects {
+                    annotate_effect_ref(e, prefixes, sm, im);
+                }
+                if let Some(body) = &mut f.default_body {
+                    annotate_block(body, prefixes, sm, im);
+                }
+            }
+            TraitItem::Type(ty) => {
+                for b in &mut ty.bounds {
+                    annotate_path(b, prefixes, sm, im);
+                }
+                if let Some(d) = &mut ty.default {
+                    annotate_type_expr(d, prefixes, sm, im);
+                }
+            }
+        }
+    }
+}
+
+fn annotate_impl_def(
+    def: &mut ImplDef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    annotate_generics(&mut def.generics, prefixes, sm, im);
+    if let Some(tr) = &mut def.trait_ref {
+        annotate_path(tr, prefixes, sm, im);
+    }
+    annotate_type_expr(&mut def.target_type, prefixes, sm, im);
+    annotate_where_clause(&mut def.where_clause, prefixes, sm, im);
+    for item in &mut def.items {
+        match item {
+            ImplItem::Fn(f) => annotate_fn_def(f, prefixes, sm, im),
+            ImplItem::Type(t) => annotate_type_expr(&mut t.ty, prefixes, sm, im),
+        }
+    }
+}
+
+fn annotate_effect_def(
+    def: &mut EffectDef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    for op in &mut def.operations {
+        for p in &mut op.params {
+            annotate_pattern(&mut p.pattern, prefixes, sm, im);
+            annotate_type_expr(&mut p.ty, prefixes, sm, im);
+        }
+        if let Some(ret) = &mut op.return_type {
+            annotate_type_expr(ret, prefixes, sm, im);
+        }
+    }
+}
+
+fn annotate_handler_def(
+    def: &mut HandlerDef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    annotate_generics(&mut def.generics, prefixes, sm, im);
+    annotate_path(&mut def.effect, prefixes, sm, im);
+    for case in &mut def.cases {
+        for p in &mut case.params {
+            annotate_pattern(&mut p.pattern, prefixes, sm, im);
+            annotate_type_expr(&mut p.ty, prefixes, sm, im);
+        }
+        annotate_expr(&mut case.body, prefixes, sm, im);
+    }
+}
+
+fn annotate_extern_block(
+    block: &mut ExternBlock,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    for item in &mut block.items {
+        match item {
+            ExternItem::Fn(f) => {
+                for p in &mut f.params {
+                    annotate_type_expr(&mut p.ty, prefixes, sm, im);
+                }
+                if let Some(ret) = &mut f.return_type {
+                    annotate_type_expr(ret, prefixes, sm, im);
+                }
+            }
+            ExternItem::Static(s) => annotate_type_expr(&mut s.ty, prefixes, sm, im),
+            ExternItem::Type(_) => {}
+        }
+    }
+}
+
+fn annotate_global_def(
+    def: &mut GlobalDef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    annotate_pattern(&mut def.pattern, prefixes, sm, im);
+    if let Some(ty) = &mut def.ty {
+        annotate_type_expr(ty, prefixes, sm, im);
+    }
+    annotate_expr(&mut def.value, prefixes, sm, im);
+}
+
+fn annotate_ode_def(
+    def: &mut OdeDef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    for p in &mut def.params {
+        annotate_type_expr(&mut p.ty, prefixes, sm, im);
+        if let Some(d) = &mut p.default {
+            annotate_expr(d, prefixes, sm, im);
+        }
+    }
+    for s in &mut def.state {
+        annotate_type_expr(&mut s.ty, prefixes, sm, im);
+    }
+    for eq in &mut def.equations {
+        annotate_expr(&mut eq.rhs, prefixes, sm, im);
+    }
+}
+
+fn annotate_pde_def(
+    def: &mut PdeDef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    for p in &mut def.params {
+        annotate_type_expr(&mut p.ty, prefixes, sm, im);
+    }
+    for dim in &mut def.domain.dimensions {
+        annotate_expr(&mut dim.min, prefixes, sm, im);
+        annotate_expr(&mut dim.max, prefixes, sm, im);
+    }
+    annotate_expr(&mut def.equation.rhs, prefixes, sm, im);
+    for bc in &mut def.boundary_conditions {
+        annotate_expr(&mut bc.boundary.value, prefixes, sm, im);
+        match &mut bc.condition {
+            BoundaryConditionType::Dirichlet(e) | BoundaryConditionType::Neumann(e) => {
+                annotate_expr(e, prefixes, sm, im)
+            }
+            BoundaryConditionType::Robin { a, b, value } => {
+                annotate_expr(a, prefixes, sm, im);
+                annotate_expr(b, prefixes, sm, im);
+                annotate_expr(value, prefixes, sm, im);
+            }
+            BoundaryConditionType::Periodic => {}
+        }
+    }
+    if let Some(init) = &mut def.initial_condition {
+        annotate_expr(init, prefixes, sm, im);
+    }
+}
+
+fn annotate_causal_model_def(
+    def: &mut CausalModelDef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    for n in &mut def.nodes {
+        if let Some(ty) = &mut n.ty {
+            annotate_type_expr(ty, prefixes, sm, im);
+        }
+    }
+    for eq in &mut def.equations {
+        annotate_expr(&mut eq.rhs, prefixes, sm, im);
+    }
+}
+
+fn annotate_generics(
+    g: &mut Generics,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    for p in &mut g.params {
+        match p {
+            GenericParam::Type {
+                bounds, default, ..
+            } => {
+                for b in bounds {
+                    annotate_path(b, prefixes, sm, im);
+                }
+                if let Some(d) = default {
+                    annotate_type_expr(d, prefixes, sm, im);
+                }
+            }
+            GenericParam::Const { ty, .. } => annotate_type_expr(ty, prefixes, sm, im),
+        }
+    }
+}
+
+fn annotate_where_clause(
+    preds: &mut [WherePredicate],
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    for p in preds {
+        annotate_type_expr(&mut p.ty, prefixes, sm, im);
+        for b in &mut p.bounds {
+            annotate_path(b, prefixes, sm, im);
+        }
+    }
+}
+
+fn annotate_effect_ref(
+    e: &mut EffectRef,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    annotate_path(&mut e.name, prefixes, sm, im);
+    for a in &mut e.args {
+        annotate_type_expr(a, prefixes, sm, im);
+    }
+}
+
+fn annotate_pattern(
+    pat: &mut Pattern,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    match pat {
+        Pattern::Tuple(items) | Pattern::Or(items) => {
+            for i in items {
+                annotate_pattern(i, prefixes, sm, im);
+            }
+        }
+        Pattern::Struct { path, fields } => {
+            annotate_path(path, prefixes, sm, im);
+            for (_, p) in fields {
+                annotate_pattern(p, prefixes, sm, im);
+            }
+        }
+        Pattern::Enum { path, patterns } => {
+            annotate_path(path, prefixes, sm, im);
+            if let Some(ps) = patterns {
+                for p in ps {
+                    annotate_pattern(p, prefixes, sm, im);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn annotate_block(
+    block: &mut Block,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    for s in &mut block.stmts {
+        annotate_stmt(s, prefixes, sm, im);
+    }
+}
+
+fn annotate_stmt(stmt: &mut Stmt, prefixes: &[Vec<String>], sm: &ModuleId, im: &[ImportMapping]) {
+    match stmt {
+        Stmt::Let {
+            pattern, ty, value, ..
+        } => {
+            annotate_pattern(pattern, prefixes, sm, im);
+            if let Some(ty) = ty {
+                annotate_type_expr(ty, prefixes, sm, im);
+            }
+            if let Some(v) = value {
+                annotate_expr(v, prefixes, sm, im);
+            }
+        }
+        Stmt::Expr { expr, .. } => annotate_expr(expr, prefixes, sm, im),
+        Stmt::Assign { target, value, .. } => {
+            annotate_expr(target, prefixes, sm, im);
+            annotate_expr(value, prefixes, sm, im);
+        }
+        Stmt::MacroInvocation(_) | Stmt::Empty => {}
+    }
+}
+
+fn annotate_expr(expr: &mut Expr, prefixes: &[Vec<String>], sm: &ModuleId, im: &[ImportMapping]) {
+    match expr {
+        Expr::Path { path, .. } => annotate_path(path, prefixes, sm, im),
+        Expr::Binary { left, right, .. } => {
+            annotate_expr(left, prefixes, sm, im);
+            annotate_expr(right, prefixes, sm, im);
+        }
+        Expr::Unary { expr, .. } => annotate_expr(expr, prefixes, sm, im),
+        Expr::Call { callee, args, .. } => {
+            annotate_expr(callee, prefixes, sm, im);
+            for a in args {
+                annotate_expr(a, prefixes, sm, im);
+            }
+        }
+        Expr::MethodCall { receiver, args, .. } => {
+            annotate_expr(receiver, prefixes, sm, im);
+            for a in args {
+                annotate_expr(a, prefixes, sm, im);
+            }
+        }
+        Expr::Field { base, .. } | Expr::TupleField { base, .. } => {
+            annotate_expr(base, prefixes, sm, im)
+        }
+        Expr::Index { base, index, .. } => {
+            annotate_expr(base, prefixes, sm, im);
+            annotate_expr(index, prefixes, sm, im);
+        }
+        Expr::Cast { expr, ty, .. } => {
+            annotate_expr(expr, prefixes, sm, im);
+            annotate_type_expr(ty, prefixes, sm, im);
+        }
+        Expr::Block { block, .. } => annotate_block(block, prefixes, sm, im),
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            annotate_expr(condition, prefixes, sm, im);
+            annotate_block(then_branch, prefixes, sm, im);
+            if let Some(e) = else_branch {
+                annotate_expr(e, prefixes, sm, im);
+            }
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            annotate_expr(scrutinee, prefixes, sm, im);
+            for arm in arms {
+                annotate_pattern(&mut arm.pattern, prefixes, sm, im);
+                if let Some(g) = &mut arm.guard {
+                    annotate_expr(g, prefixes, sm, im);
+                }
+                annotate_expr(&mut arm.body, prefixes, sm, im);
+            }
+        }
+        Expr::Loop { body, .. } => annotate_block(body, prefixes, sm, im),
+        Expr::While {
+            condition, body, ..
+        } => {
+            annotate_expr(condition, prefixes, sm, im);
+            annotate_block(body, prefixes, sm, im);
+        }
+        Expr::For {
+            pattern,
+            iter,
+            body,
+            ..
+        } => {
+            annotate_pattern(pattern, prefixes, sm, im);
+            annotate_expr(iter, prefixes, sm, im);
+            annotate_block(body, prefixes, sm, im);
+        }
+        Expr::Return { value, .. } | Expr::Break { value, .. } => {
+            if let Some(v) = value {
+                annotate_expr(v, prefixes, sm, im);
+            }
+        }
+        Expr::Closure {
+            params,
+            return_type,
+            body,
+            ..
+        }
+        | Expr::AsyncClosure {
+            params,
+            return_type,
+            body,
+            ..
+        } => {
+            for (_, ty) in params {
+                if let Some(ty) = ty {
+                    annotate_type_expr(ty, prefixes, sm, im);
+                }
+            }
+            if let Some(ret) = return_type {
+                annotate_type_expr(ret, prefixes, sm, im);
+            }
+            annotate_expr(body, prefixes, sm, im);
+        }
+        Expr::Tuple { elements, .. } | Expr::Array { elements, .. } => {
+            for e in elements {
+                annotate_expr(e, prefixes, sm, im);
+            }
+        }
+        Expr::Range { start, end, .. } => {
+            if let Some(s) = start {
+                annotate_expr(s, prefixes, sm, im);
+            }
+            if let Some(e) = end {
+                annotate_expr(e, prefixes, sm, im);
+            }
+        }
+        Expr::StructLit { path, fields, .. } => {
+            annotate_path(path, prefixes, sm, im);
+            for (_, e) in fields {
+                annotate_expr(e, prefixes, sm, im);
+            }
+        }
+        Expr::Try { expr, .. } | Expr::Await { expr, .. } | Expr::Spawn { expr, .. } => {
+            annotate_expr(expr, prefixes, sm, im)
+        }
+        Expr::Perform { effect, args, .. } => {
+            annotate_path(effect, prefixes, sm, im);
+            for a in args {
+                annotate_expr(a, prefixes, sm, im);
+            }
+        }
+        Expr::Handle { expr, handler, .. } => {
+            annotate_expr(expr, prefixes, sm, im);
+            annotate_path(handler, prefixes, sm, im);
+        }
+        Expr::Sample { distribution, .. } => annotate_expr(distribution, prefixes, sm, im),
+        Expr::AsyncBlock { block, .. } => annotate_block(block, prefixes, sm, im),
+        Expr::Select { arms, .. } => {
+            for a in arms {
+                annotate_expr(&mut a.future, prefixes, sm, im);
+                annotate_pattern(&mut a.pattern, prefixes, sm, im);
+                if let Some(g) = &mut a.guard {
+                    annotate_expr(g, prefixes, sm, im);
+                }
+                annotate_expr(&mut a.body, prefixes, sm, im);
+            }
+        }
+        Expr::Join { futures, .. } => {
+            for f in futures {
+                annotate_expr(f, prefixes, sm, im);
+            }
+        }
+        Expr::Do { interventions, .. } => {
+            for (_, v) in interventions {
+                annotate_expr(v, prefixes, sm, im);
+            }
+        }
+        Expr::Counterfactual {
+            factual,
+            intervention,
+            outcome,
+            ..
+        } => {
+            annotate_expr(factual, prefixes, sm, im);
+            annotate_expr(intervention, prefixes, sm, im);
+            annotate_expr(outcome, prefixes, sm, im);
+        }
+        Expr::KnowledgeExpr {
+            value,
+            epsilon,
+            validity,
+            provenance,
+            ..
+        } => {
+            annotate_expr(value, prefixes, sm, im);
+            if let Some(e) = epsilon {
+                annotate_expr(e, prefixes, sm, im);
+            }
+            if let Some(v) = validity {
+                annotate_expr(v, prefixes, sm, im);
+            }
+            if let Some(p) = provenance {
+                annotate_expr(p, prefixes, sm, im);
+            }
+        }
+        Expr::Uncertain {
+            value, uncertainty, ..
+        } => {
+            annotate_expr(value, prefixes, sm, im);
+            annotate_expr(uncertainty, prefixes, sm, im);
+        }
+        Expr::GpuAnnotated {
+            expr, annotation, ..
+        } => {
+            annotate_expr(expr, prefixes, sm, im);
+            for (_, p) in &mut annotation.params {
+                annotate_expr(p, prefixes, sm, im);
+            }
+        }
+        Expr::Observe {
+            data, distribution, ..
+        } => {
+            annotate_expr(data, prefixes, sm, im);
+            annotate_expr(distribution, prefixes, sm, im);
+        }
+        Expr::Query {
+            target,
+            given,
+            interventions,
+            ..
+        } => {
+            annotate_expr(target, prefixes, sm, im);
+            for g in given {
+                annotate_expr(g, prefixes, sm, im);
+            }
+            for (_, v) in interventions {
+                annotate_expr(v, prefixes, sm, im);
+            }
+        }
+        Expr::Literal { .. }
+        | Expr::Continue { .. }
+        | Expr::MacroInvocation(_)
+        | Expr::OntologyTerm { .. } => {}
+    }
+}
+
+fn annotate_type_expr(
+    ty: &mut TypeExpr,
+    prefixes: &[Vec<String>],
+    sm: &ModuleId,
+    im: &[ImportMapping],
+) {
+    match ty {
+        TypeExpr::Named { path, args, .. } => {
+            annotate_path(path, prefixes, sm, im);
+            for a in args {
+                annotate_type_expr(a, prefixes, sm, im);
+            }
+        }
+        TypeExpr::Reference { inner, .. }
+        | TypeExpr::RawPointer { inner, .. }
+        | TypeExpr::Linear { inner, .. }
+        | TypeExpr::Effected { inner, .. } => annotate_type_expr(inner, prefixes, sm, im),
+        TypeExpr::Array { element, size } => {
+            annotate_type_expr(element, prefixes, sm, im);
+            if let Some(s) = size {
+                annotate_expr(s, prefixes, sm, im);
+            }
+        }
+        TypeExpr::Tuple(elems) => {
+            for e in elems {
+                annotate_type_expr(e, prefixes, sm, im);
+            }
+        }
+        TypeExpr::Function {
+            params,
+            return_type,
+            effects,
+        } => {
+            for p in params {
+                annotate_type_expr(p, prefixes, sm, im);
+            }
+            annotate_type_expr(return_type, prefixes, sm, im);
+            for e in effects {
+                annotate_effect_ref(e, prefixes, sm, im);
+            }
+        }
+        TypeExpr::Knowledge {
+            value_type,
+            epsilon,
+            validity,
+            provenance,
+        } => {
+            annotate_type_expr(value_type, prefixes, sm, im);
+            if let Some(e) = epsilon {
+                annotate_expr(&mut e.value, prefixes, sm, im);
+            }
+            if let Some(v) = validity {
+                annotate_expr(&mut v.condition, prefixes, sm, im);
+            }
+            if let Some(p) = provenance {
+                if let Some(src) = &mut p.source {
+                    annotate_expr(src, prefixes, sm, im);
+                }
+            }
+        }
+        TypeExpr::Quantity { numeric_type, .. } => {
+            annotate_type_expr(numeric_type, prefixes, sm, im)
+        }
+        TypeExpr::Tensor {
+            element_type,
+            shape,
+        } => {
+            annotate_type_expr(element_type, prefixes, sm, im);
+            for d in shape {
+                if let TensorDim::Expr(e) = d {
+                    annotate_expr(e, prefixes, sm, im);
+                }
+            }
+        }
+        TypeExpr::Tile { element_type, .. } => annotate_type_expr(element_type, prefixes, sm, im),
+        TypeExpr::SelfType | TypeExpr::Infer | TypeExpr::Unit | TypeExpr::Ontology { .. } => {}
     }
 }
 
