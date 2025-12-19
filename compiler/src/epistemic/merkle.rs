@@ -296,6 +296,22 @@ impl MerkleProvenanceNode {
             1 // Would need DAG to compute recursively
         }
     }
+
+    /// Extend this node with a new transformation
+    pub fn extend(&self, transformation_name: &str) -> Self {
+        Self::derived(
+            vec![self.id.clone()],
+            ProvenanceOperation::transformation(transformation_name, 1.0),
+        )
+    }
+
+    /// Merge two provenance nodes with a combining operation
+    pub fn merge(&self, other: &Self, operation_name: &str) -> Self {
+        Self::derived(
+            vec![self.id.clone(), other.id.clone()],
+            ProvenanceOperation::new(operation_name, OperationKind::Aggregation),
+        )
+    }
 }
 
 /// Operation that produced a provenance node

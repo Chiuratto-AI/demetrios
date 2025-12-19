@@ -38,6 +38,7 @@
 
 pub mod agents;
 pub mod bayesian;
+pub mod beta_knowledge;
 pub mod composition;
 pub mod confidence;
 pub mod evolution;
@@ -85,4 +86,10 @@ pub use models::{
     AffineConfig, BayesianConfig, BinaryOp, CombinationRule, DempsterShaferConfig, EpistemicConfig,
     FuzzyConfig, IntervalConfig, ProbabilisticConfig, UncertainValue, UncertaintyModel,
     propagate_binary,
+};
+
+// Beta-epistemic knowledge types (revolutionary full-distribution epistemic computing)
+pub use beta_knowledge::{
+    ActiveInferenceMetrics, BetaEpistemicStatus, BetaKnowledge, DecayModel, PriorType,
+    SourcePriorType, exploration_priorities, variance_penalty,
 };
