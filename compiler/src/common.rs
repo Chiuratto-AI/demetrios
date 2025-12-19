@@ -63,10 +63,18 @@ impl IdGenerator {
         Self { next: 1 }
     }
 
+    pub fn with_start(start: u32) -> Self {
+        Self { next: start }
+    }
+
     pub fn next(&mut self) -> NodeId {
         let id = NodeId(self.next);
         self.next += 1;
         id
+    }
+
+    pub fn next_value(&self) -> u32 {
+        self.next
     }
 }
 

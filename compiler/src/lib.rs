@@ -62,6 +62,7 @@ pub mod locality;
 pub mod lsp;
 pub mod macro_system;
 pub mod mlir;
+pub mod module_loader;
 pub mod ontology;
 pub mod optimizer;
 pub mod ownership;
