@@ -98,6 +98,12 @@ jobs:
                     -A clippy::nonminimal_bool \
                     -A clippy::no_effect_replace \
                     -A clippy::needless_borrow \
+                    -A clippy::int_plus_one \
+                    -A clippy::useless_conversion \
+                    -A clippy::single_char_add_str \
+                    -A clippy::manual_div_ceil \
+                    -A clippy::println_empty_string \
+                    -A clippy::print_literal \
                     -A unused_imports \
                     -A unused_comparisons \
                     -A dead_code \
