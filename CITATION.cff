@@ -13,7 +13,7 @@ authors:
     orcid: "https://orcid.org/0009-0001-8671-8878"
   - family-names: "Agourakis"
     given-names: "Dionisio Chiuratto"
-version: "0.63.0"
+version: "0.79.0"
 date-released: 2025-12-20
 license: MIT
 license-url: https://opensource.org/licenses/MIT
