@@ -11,7 +11,7 @@
 //! println!("Found {} tests", suite.tests.len());
 //! ```
 
-use super::attrs::{RawAttribute, TestAttributes, parse_test_attributes};
+use super::attrs::{AttributeArgs, AttributeValue, RawAttribute, TestAttributes, parse_test_attributes};
 use crate::ast::{Ast, FnDef, Item};
 use crate::common::{NodeId, Span};
 use crate::lexer;
@@ -427,11 +427,54 @@ fn discover_from_ast(
 }
 
 /// Extract test attributes from a function definition
-/// This is a placeholder - in the real implementation, attributes would be parsed
-fn extract_test_attrs(_fn_def: &FnDef, _source: &str) -> TestAttributes {
-    // In the actual implementation, this would parse attributes from the function
-    // For now, return empty attributes
-    TestAttributes::default()
+fn extract_test_attrs(fn_def: &FnDef, _source: &str) -> TestAttributes {
+    // Convert AST attributes to RawAttributes
+    let raw_attrs: Vec<RawAttribute> = fn_def
+        .attributes
+        .iter()
+        .map(|attr| {
+            let args = match &attr.args {
+                crate::ast::AttributeArgs::Empty => AttributeArgs::None,
+                crate::ast::AttributeArgs::Value(v) => {
+                    AttributeArgs::Single(convert_attr_value(v))
+                }
+                crate::ast::AttributeArgs::Named(pairs) => {
+                    AttributeArgs::Named(
+                        pairs
+                            .iter()
+                            .map(|(k, v)| (k.clone(), convert_attr_value(v)))
+                            .collect(),
+                    )
+                }
+                crate::ast::AttributeArgs::List(values) => {
+                    AttributeArgs::List(values.iter().map(convert_attr_value).collect())
+                }
+            };
+            RawAttribute {
+                id: attr.id,
+                name: attr.name.clone(),
+                args,
+                span: attr.span,
+            }
+        })
+        .collect();
+
+    parse_test_attributes(&raw_attrs)
+}
+
+/// Convert AST AttributeValue to test AttributeValue
+fn convert_attr_value(v: &crate::ast::AttributeValue) -> AttributeValue {
+    match v {
+        crate::ast::AttributeValue::String(s) => AttributeValue::String(s.clone()),
+        crate::ast::AttributeValue::Int(i) => AttributeValue::Int(*i),
+        crate::ast::AttributeValue::Float(f) => AttributeValue::Float(*f),
+        crate::ast::AttributeValue::Bool(b) => AttributeValue::Bool(*b),
+        crate::ast::AttributeValue::Path(p) => AttributeValue::Path(p.segments.clone()),
+        crate::ast::AttributeValue::Nested(name, _) => {
+            // For nested attributes, just use the name as a path
+            AttributeValue::Path(vec![name.clone()])
+        }
+    }
 }
 
 /// Parse attributes from raw attribute list
