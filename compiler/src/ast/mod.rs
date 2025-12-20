@@ -177,6 +177,25 @@ pub enum Item {
     PdeDef(PdeDef),
     /// Causal model definition: `causal model SmokingCancer { ... }`
     CausalModel(CausalModelDef),
+    /// Module definition: `pub module foo { ... }` or `mod foo;`
+    Module(ModuleDef),
+}
+
+// ==================== MODULES ====================
+
+/// Module definition
+/// Supports both inline modules and file-based modules:
+/// - Inline: `pub module foo { fn bar() {} }`
+/// - File-based: `mod foo;` (loads from foo.d or foo/mod.d)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleDef {
+    pub id: NodeId,
+    pub visibility: Visibility,
+    /// Module name (single identifier, not a path)
+    pub name: String,
+    /// Module items: Some(items) for inline, None for file-based (`mod foo;`)
+    pub items: Option<Vec<Item>>,
+    pub span: Span,
 }
 
 // ==================== FUNCTIONS ====================
@@ -412,8 +431,26 @@ pub struct HandlerCase {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportDef {
     pub id: NodeId,
+    /// The module path being imported (e.g., `std::collections`)
     pub path: Path,
+    /// Selective imports: None = import entire module, Some([]) = import nothing (invalid)
+    /// Examples: `use foo::{A, B}` -> Some([A, B]), `use foo::*` -> Some([*])
+    pub items: Option<Vec<ImportItem>>,
+    /// Whether this is a re-export (`pub use`)
+    pub is_reexport: bool,
     pub span: Span,
+}
+
+/// A single import item with optional rename
+/// Examples: `A`, `A as B`, `*`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportItem {
+    /// The name being imported (or "*" for glob)
+    pub name: String,
+    /// Optional alias: `use foo::Bar as Baz`
+    pub alias: Option<String>,
+    /// Whether this is a glob import (`*`)
+    pub is_glob: bool,
 }
 
 /// Export definition
@@ -706,14 +743,13 @@ impl OntologyTermRef {
 }
 
 /// ABI specification for FFI
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Abi {
     /// C ABI (default for extern)
     C,
     /// C ABI with unwind support
     CUnwind,
     /// Rust ABI (default for normal functions)
-    #[default]
     Rust,
     /// System ABI (stdcall on Windows, C elsewhere)
     System,
@@ -739,6 +775,12 @@ pub enum Abi {
     PlatformIntrinsic,
     /// Unknown ABI (for forward compatibility)
     Unknown(String),
+}
+
+impl Default for Abi {
+    fn default() -> Self {
+        Abi::Rust
+    }
 }
 
 impl Abi {
@@ -1662,7 +1704,7 @@ impl std::fmt::Display for ModuleId {
 }
 
 /// Path (e.g., std::io::Write)
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Path {
     /// The path segments (e.g., ["std", "io", "Write"])
     pub segments: Vec<String>,
@@ -1730,6 +1772,16 @@ impl Path {
             return false;
         }
         self.segments[..prefix.len()] == *prefix
+    }
+}
+
+impl Default for Path {
+    fn default() -> Self {
+        Path {
+            segments: vec![],
+            source_module: None,
+            resolved_module: None,
+        }
     }
 }
 

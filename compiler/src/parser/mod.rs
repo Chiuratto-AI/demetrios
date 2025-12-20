@@ -265,7 +265,7 @@ impl<'a> Parser<'a> {
             TokenKind::Type => self.parse_type_alias(visibility),
             TokenKind::Effect => self.parse_effect(visibility),
             TokenKind::Handler => self.parse_handler(visibility),
-            TokenKind::Import | TokenKind::Use => self.parse_import(),
+            TokenKind::Import | TokenKind::Use => self.parse_import_with_visibility(visibility),
             TokenKind::Export => self.parse_export(),
             TokenKind::Extern => self.parse_extern_with_visibility(visibility),
             TokenKind::Ontology => self.parse_ontology_import(),
@@ -273,6 +273,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ode => self.parse_ode_def(visibility),
             TokenKind::Pde => self.parse_pde_def(visibility),
             TokenKind::Causal => self.parse_causal_model_def(visibility),
+            TokenKind::Module => self.parse_module_decl(visibility),
             _ => Err(miette::miette!(
                 "Unexpected token {:?} at start of item",
                 self.peek()
@@ -1103,10 +1104,70 @@ impl<'a> Parser<'a> {
         })
     }
 
+    // ==================== MODULES ====================
+
+    /// Parse module declaration: `pub module foo { ... }` or `mod foo;`
+    fn parse_module_decl(&mut self, visibility: Visibility) -> Result<Item> {
+        let start = self.span();
+        self.expect(TokenKind::Module)?;
+        let name = self.parse_ident()?;
+
+        if self.at(TokenKind::LBrace) {
+            // Inline module: `module foo { ... }`
+            self.advance();
+            let mut items = Vec::new();
+            while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+                items.push(self.parse_item()?);
+            }
+            self.expect(TokenKind::RBrace)?;
+            let end = self.span();
+
+            Ok(Item::Module(ModuleDef {
+                id: self.next_id(),
+                visibility,
+                name,
+                items: Some(items),
+                span: start.merge(end),
+            }))
+        } else {
+            // File module: `mod foo;`
+            self.expect(TokenKind::Semi)?;
+            let end = self.span();
+
+            Ok(Item::Module(ModuleDef {
+                id: self.next_id(),
+                visibility,
+                name,
+                items: None,
+                span: start.merge(end),
+            }))
+        }
+    }
+
     // ==================== IMPORTS & EXTERN ====================
 
+    /// Parse import with visibility for `pub use` re-exports
+    fn parse_import_with_visibility(&mut self, visibility: Visibility) -> Result<Item> {
+        let is_reexport = matches!(visibility, Visibility::Public);
+        self.parse_import_inner(is_reexport)
+    }
+
+    /// Legacy parse_import for backward compatibility
     fn parse_import(&mut self) -> Result<Item> {
+        self.parse_import_inner(false)
+    }
+
+    /// Parse import/use statement with full syntax support
+    /// Supports:
+    /// - `import path;` or `use path;` - import entire module
+    /// - `use path::{A, B, C};` - selective imports (Rust-style)
+    /// - `use path::*;` - glob import
+    /// - `use path as alias;` - renamed import
+    /// - `import { A, B } from path;` - selective imports (Darwin Atlas style)
+    /// - `pub use path::Item;` - re-export
+    fn parse_import_inner(&mut self, is_reexport: bool) -> Result<Item> {
         let start = self.span();
+
         // Accept both 'import' and 'use' keywords (Darwin Atlas compatibility)
         if self.at(TokenKind::Import) {
             self.advance();
@@ -1116,42 +1177,149 @@ impl<'a> Parser<'a> {
             return Err(miette::miette!("Expected 'import' or 'use'"));
         }
 
-        // Check for `import { items } from path;` syntax
+        // Check for `import { items } from path;` syntax (Darwin Atlas style)
         if self.at(TokenKind::LBrace) {
-            self.advance(); // consume {
-            let mut _items = Vec::new();
-            while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
-                _items.push(self.parse_ident()?);
-                if self.at(TokenKind::Comma) {
-                    self.advance();
-                } else {
-                    break;
-                }
-            }
-            self.expect(TokenKind::RBrace)?;
-            self.expect(TokenKind::From)?;
-            let path = self.parse_path()?;
-            self.expect(TokenKind::Semi)?;
-            let end = self.span();
-
-            // For now, treat as regular import (items are ignored, full module imported)
-            Ok(Item::Import(ImportDef {
-                id: self.next_id(),
-                path,
-                span: start.merge(end),
-            }))
-        } else {
-            // Simple `import path;` syntax
-            let path = self.parse_path()?;
-            self.expect(TokenKind::Semi)?;
-            let end = self.span();
-
-            Ok(Item::Import(ImportDef {
-                id: self.next_id(),
-                path,
-                span: start.merge(end),
-            }))
+            return self.parse_import_from_syntax(start, is_reexport);
         }
+
+        // Parse the base path
+        let path = self.parse_path()?;
+
+        // Check for `use path::{items}` Rust-style syntax
+        if self.at(TokenKind::ColonColon) {
+            let next = self.peek_n(1);
+            if next == TokenKind::LBrace {
+                self.advance(); // consume ::
+                let items = self.parse_import_items()?;
+                self.expect(TokenKind::Semi)?;
+                let end = self.span();
+                return Ok(Item::Import(ImportDef {
+                    id: self.next_id(),
+                    path,
+                    items: Some(items),
+                    is_reexport,
+                    span: start.merge(end),
+                }));
+            } else if next == TokenKind::Star {
+                // Glob import: `use path::*`
+                self.advance(); // consume ::
+                self.advance(); // consume *
+                self.expect(TokenKind::Semi)?;
+                let end = self.span();
+                return Ok(Item::Import(ImportDef {
+                    id: self.next_id(),
+                    path,
+                    items: Some(vec![ImportItem {
+                        name: "*".to_string(),
+                        alias: None,
+                        is_glob: true,
+                    }]),
+                    is_reexport,
+                    span: start.merge(end),
+                }));
+            }
+        }
+
+        // Check for rename: `use path as alias`
+        if self.at(TokenKind::As) {
+            self.advance();
+            let alias = self.parse_ident()?;
+            self.expect(TokenKind::Semi)?;
+            let end = self.span();
+
+            // The last segment of the path is the item being renamed
+            let item_name = path.segments.last().cloned().unwrap_or_default();
+            let module_path = if path.segments.len() > 1 {
+                Path {
+                    segments: path.segments[..path.segments.len() - 1].to_vec(),
+                    source_module: path.source_module.clone(),
+                    resolved_module: None,
+                }
+            } else {
+                path.clone()
+            };
+
+            return Ok(Item::Import(ImportDef {
+                id: self.next_id(),
+                path: module_path,
+                items: Some(vec![ImportItem {
+                    name: item_name,
+                    alias: Some(alias),
+                    is_glob: false,
+                }]),
+                is_reexport,
+                span: start.merge(end),
+            }));
+        }
+
+        // Simple `import path;` syntax
+        self.expect(TokenKind::Semi)?;
+        let end = self.span();
+
+        Ok(Item::Import(ImportDef {
+            id: self.next_id(),
+            path,
+            items: None,
+            is_reexport,
+            span: start.merge(end),
+        }))
+    }
+
+    /// Parse import items: `{ A, B as C, * }`
+    fn parse_import_items(&mut self) -> Result<Vec<ImportItem>> {
+        self.expect(TokenKind::LBrace)?;
+        let mut items = Vec::new();
+
+        while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+            // Check for glob: `*`
+            if self.at(TokenKind::Star) {
+                self.advance();
+                items.push(ImportItem {
+                    name: "*".to_string(),
+                    alias: None,
+                    is_glob: true,
+                });
+            } else {
+                let name = self.parse_ident()?;
+                let alias = if self.at(TokenKind::As) {
+                    self.advance();
+                    Some(self.parse_ident()?)
+                } else {
+                    None
+                };
+                items.push(ImportItem {
+                    name,
+                    alias,
+                    is_glob: false,
+                });
+            }
+
+            if self.at(TokenKind::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(items)
+    }
+
+    /// Parse `import { A, B as C } from path;` syntax (Darwin Atlas style)
+    fn parse_import_from_syntax(&mut self, start: Span, is_reexport: bool) -> Result<Item> {
+        let items = self.parse_import_items()?;
+        self.expect(TokenKind::From)?;
+        let path = self.parse_path()?;
+        self.expect(TokenKind::Semi)?;
+        let end = self.span();
+
+        Ok(Item::Import(ImportDef {
+            id: self.next_id(),
+            path,
+            items: Some(items),
+            is_reexport,
+            span: start.merge(end),
+        }))
     }
 
     /// Parse export block: `export { Item1, Item2, ... };`
@@ -4426,6 +4594,11 @@ impl<'a> Parser<'a> {
         // struct field access (s.field was parsed as path ["s", "field"] instead of
         // Expr::Field). Field access is now handled in parse_postfix via TokenKind::Dot.
         while self.at(TokenKind::ColonColon) {
+            // Stop if next token after :: is { or * (for import syntax like `use foo::{a, b}` or `use foo::*`)
+            let next = self.peek_n(1);
+            if next == TokenKind::LBrace || next == TokenKind::Star {
+                break;
+            }
             self.advance();
             segments.push(self.parse_ident()?);
         }

@@ -156,77 +156,77 @@ impl Formatter {
         let mut chars = source.char_indices().peekable();
 
         while let Some((i, c)) = chars.next() {
-            if c == '/'
-                && let Some(&(_, next)) = chars.peek()
-            {
-                if next == '/' {
-                    // Line comment
-                    chars.next();
-                    let start = i;
-                    let mut content = String::new();
-                    let is_doc = chars.peek().map(|&(_, c)| c == '/').unwrap_or(false);
-
-                    if is_doc {
+            if c == '/' {
+                if let Some(&(_, next)) = chars.peek() {
+                    if next == '/' {
+                        // Line comment
                         chars.next();
-                    }
+                        let start = i;
+                        let mut content = String::new();
+                        let is_doc = chars.peek().map(|&(_, c)| c == '/').unwrap_or(false);
 
-                    while let Some(&(_, c)) = chars.peek() {
-                        if c == '\n' {
-                            break;
+                        if is_doc {
+                            chars.next();
                         }
-                        content.push(c);
-                        chars.next();
-                    }
 
-                    let content_len = content.len();
-                    comments.push(Comment {
-                        kind: if is_doc {
-                            CommentKind::DocLine
-                        } else {
-                            CommentKind::Line
-                        },
-                        content,
-                        span: Span {
-                            start,
-                            end: start + content_len + if is_doc { 3 } else { 2 },
-                        },
-                        is_doc,
-                    });
-                } else if next == '*' {
-                    // Block comment
-                    chars.next();
-                    let start = i;
-                    let mut content = String::new();
-                    let is_doc = chars.peek().map(|&(_, c)| c == '*').unwrap_or(false);
-
-                    if is_doc {
-                        chars.next();
-                    }
-
-                    let mut prev = ' ';
-                    for (_, c) in chars.by_ref() {
-                        if prev == '*' && c == '/' {
-                            content.pop(); // Remove trailing *
-                            break;
+                        while let Some(&(_, c)) = chars.peek() {
+                            if c == '\n' {
+                                break;
+                            }
+                            content.push(c);
+                            chars.next();
                         }
-                        content.push(c);
-                        prev = c;
-                    }
 
-                    let content_len = content.len();
-                    comments.push(Comment {
-                        kind: if is_doc {
-                            CommentKind::DocBlock
-                        } else {
-                            CommentKind::Block
-                        },
-                        content,
-                        span: Span {
-                            start,
-                            end: start + content_len + if is_doc { 5 } else { 4 },
-                        },
-                        is_doc,
-                    });
+                        let content_len = content.len();
+                        comments.push(Comment {
+                            kind: if is_doc {
+                                CommentKind::DocLine
+                            } else {
+                                CommentKind::Line
+                            },
+                            content,
+                            span: Span {
+                                start,
+                                end: start + content_len + if is_doc { 3 } else { 2 },
+                            },
+                            is_doc,
+                        });
+                    } else if next == '*' {
+                        // Block comment
+                        chars.next();
+                        let start = i;
+                        let mut content = String::new();
+                        let is_doc = chars.peek().map(|&(_, c)| c == '*').unwrap_or(false);
+
+                        if is_doc {
+                            chars.next();
+                        }
+
+                        let mut prev = ' ';
+                        while let Some((_, c)) = chars.next() {
+                            if prev == '*' && c == '/' {
+                                content.pop(); // Remove trailing *
+                                break;
+                            }
+                            content.push(c);
+                            prev = c;
+                        }
+
+                        let content_len = content.len();
+                        comments.push(Comment {
+                            kind: if is_doc {
+                                CommentKind::DocBlock
+                            } else {
+                                CommentKind::Block
+                            },
+                            content,
+                            span: Span {
+                                start,
+                                end: start + content_len + if is_doc { 5 } else { 4 },
+                            },
+                            is_doc,
+                        });
+                    }
                 }
             }
         }
@@ -282,6 +282,18 @@ impl Formatter {
             Item::OdeDef(o) => Doc::Text(format!("ode {} {{ ... }}", o.name)),
             Item::PdeDef(p) => Doc::Text(format!("pde {} {{ ... }}", p.name)),
             Item::CausalModel(c) => Doc::Text(format!("causal model {} {{ ... }}", c.name)),
+            Item::Module(m) => {
+                let vis = if matches!(m.visibility, Visibility::Public) {
+                    "pub "
+                } else {
+                    ""
+                };
+                if m.items.is_some() {
+                    Doc::Text(format!("{}module {} {{ ... }}", vis, m.name))
+                } else {
+                    Doc::Text(format!("{}mod {};", vis, m.name))
+                }
+            }
         }
     }
 

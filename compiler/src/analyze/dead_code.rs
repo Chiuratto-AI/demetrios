@@ -360,23 +360,27 @@ impl DeadCodeAnalyzer {
         match item {
             Item::Function(f) => {
                 let is_public = matches!(f.visibility, Visibility::Public);
-                self.defined_items
-                    .insert(f.name.clone(), (ItemKind::Function, f.span, is_public));
+                self.defined_items.insert(
+                    f.name.clone(),
+                    (ItemKind::Function, f.span.clone(), is_public),
+                );
             }
             Item::Struct(s) => {
                 let is_public = matches!(s.visibility, Visibility::Public);
-                self.defined_items
-                    .insert(s.name.clone(), (ItemKind::Struct, s.span, is_public));
+                self.defined_items.insert(
+                    s.name.clone(),
+                    (ItemKind::Struct, s.span.clone(), is_public),
+                );
             }
             Item::Enum(e) => {
                 let is_public = matches!(e.visibility, Visibility::Public);
                 self.defined_items
-                    .insert(e.name.clone(), (ItemKind::Enum, e.span, is_public));
+                    .insert(e.name.clone(), (ItemKind::Enum, e.span.clone(), is_public));
                 // Also track variants
                 for variant in &e.variants {
                     let variant_name = format!("{}::{}", e.name, variant.name);
                     self.defined_items
-                        .insert(variant_name, (ItemKind::Variant, e.span, is_public));
+                        .insert(variant_name, (ItemKind::Variant, e.span.clone(), is_public));
                 }
             }
             Item::Global(g) => {
@@ -388,17 +392,20 @@ impl DeadCodeAnalyzer {
                 };
                 // Extract name from pattern
                 let name = extract_pattern_name(&g.pattern);
-                self.defined_items.insert(name, (kind, g.span, is_public));
+                self.defined_items
+                    .insert(name, (kind, g.span.clone(), is_public));
             }
             Item::TypeAlias(t) => {
                 let is_public = matches!(t.visibility, Visibility::Public);
-                self.defined_items
-                    .insert(t.name.clone(), (ItemKind::TypeAlias, t.span, is_public));
+                self.defined_items.insert(
+                    t.name.clone(),
+                    (ItemKind::TypeAlias, t.span.clone(), is_public),
+                );
             }
             Item::Trait(t) => {
                 let is_public = matches!(t.visibility, Visibility::Public);
                 self.defined_items
-                    .insert(t.name.clone(), (ItemKind::Trait, t.span, is_public));
+                    .insert(t.name.clone(), (ItemKind::Trait, t.span.clone(), is_public));
             }
             Item::Impl(i) => {
                 // Impls are used if their type is used
@@ -409,7 +416,7 @@ impl DeadCodeAnalyzer {
                             trait_ref.segments.join("::"),
                             i.target_type
                         ),
-                        (ItemKind::Impl, i.span, false),
+                        (ItemKind::Impl, i.span.clone(), false),
                     );
                 }
             }
@@ -423,7 +430,8 @@ impl DeadCodeAnalyzer {
             | Item::AlignDecl(_)
             | Item::OdeDef(_)
             | Item::PdeDef(_)
-            | Item::CausalModel(_) => {}
+            | Item::CausalModel(_)
+            | Item::Module(_) => {}
         }
     }
 
@@ -531,7 +539,8 @@ impl DeadCodeAnalyzer {
             | Item::AlignDecl(_)
             | Item::OdeDef(_)
             | Item::PdeDef(_)
-            | Item::CausalModel(_) => {}
+            | Item::CausalModel(_)
+            | Item::Module(_) => {}
         }
     }
 
@@ -981,7 +990,7 @@ impl DeadCodeAnalyzer {
                 self.unreachable_code.push(UnreachableCode {
                     span: stmt_span,
                     reason: terminator_reason.clone().unwrap(),
-                    caused_by: terminator_span,
+                    caused_by: terminator_span.clone(),
                 });
                 break; // Only report first unreachable
             }
@@ -1030,12 +1039,12 @@ impl DeadCodeAnalyzer {
                 ..
             } => {
                 // Check for constant conditions
-                if let Some(value) = self.is_constant_bool(condition)
-                    && value
-                {
-                    // Else branch is unreachable
-                    if let Some(_else_b) = else_branch {
-                        // Note: would need span for else block
+                if let Some(value) = self.is_constant_bool(condition) {
+                    if value {
+                        // Else branch is unreachable
+                        if let Some(_else_b) = else_branch {
+                            // Note: would need span for else block
+                        }
                     }
                 }
 
@@ -1095,11 +1104,12 @@ impl DeadCodeAnalyzer {
             Expr::Continue { .. } => Some((UnreachableReason::AfterBreak, Span::dummy())),
             Expr::Call { callee, .. } => {
                 // Check for panic calls
-                if let Expr::Path { path, .. } = callee.as_ref()
-                    && let Some(name) = path.segments.last()
-                    && (name == "panic" || name == "unreachable" || name == "todo")
-                {
-                    return Some((UnreachableReason::AfterPanic, Span::dummy()));
+                if let Expr::Path { path, .. } = callee.as_ref() {
+                    if let Some(name) = path.segments.last() {
+                        if name == "panic" || name == "unreachable" || name == "todo" {
+                            return Some((UnreachableReason::AfterPanic, Span::dummy()));
+                        }
+                    }
                 }
                 None
             }
@@ -1210,7 +1220,7 @@ impl DeadCodeAnalyzer {
                 self.unused_items.push(UnusedItem {
                     name: name.clone(),
                     kind: *kind,
-                    span: *span,
+                    span: span.clone(),
                     is_public: *is_public,
                     reason: UnusedReason::NeverReferenced,
                 });
@@ -1235,8 +1245,8 @@ impl DeadCodeAnalyzer {
                 if let Some((original_span, _, _)) = scope.get(name) {
                     self.shadowed_definitions.push(ShadowedDefinition {
                         name: name.to_string(),
-                        shadow_span: span,
-                        original_span: *original_span,
+                        shadow_span: span.clone(),
+                        original_span: original_span.clone(),
                         kind: ShadowKind::Variable,
                     });
                     break;
@@ -1275,7 +1285,7 @@ impl DeadCodeAnalyzer {
 
                     self.unused_variables.push(UnusedVariable {
                         name: name.clone(),
-                        span: *span,
+                        span: span.clone(),
                         kind: *kind,
                         suggestion,
                     });
