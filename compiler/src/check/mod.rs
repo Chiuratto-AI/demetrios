@@ -410,6 +410,42 @@ impl TypeChecker {
                 };
                 self.env.bind(f.name.clone(), fn_type, false);
             }
+            // Register associated functions from impl blocks (e.g., String::new)
+            if let Item::Impl(impl_def) = item {
+                // Get the type name from target_type
+                let type_name = match &impl_def.target_type {
+                    TypeExpr::Named { path, .. } => path.to_string(),
+                    _ => continue,
+                };
+                for impl_item in &impl_def.items {
+                    if let ImplItem::Fn(f) = impl_item {
+                        // Check if it's an associated function (no self parameter)
+                        let is_associated = f.params.first().map_or(true, |p| {
+                            !matches!(&p.pattern, Pattern::Binding { name, .. } if name == "self")
+                        });
+                        if is_associated {
+                            let params: Vec<Type> = f
+                                .params
+                                .iter()
+                                .map(|p| self.lower_type_expr(&p.ty))
+                                .collect();
+                            let return_type = f
+                                .return_type
+                                .as_ref()
+                                .map(|t| self.lower_type_expr(t))
+                                .unwrap_or(Type::Unit);
+                            let fn_type = Type::Function {
+                                params,
+                                return_type: Box::new(return_type),
+                                effects: types::EffectSet::new(),
+                            };
+                            // Register as TypeName::method_name
+                            let qualified_name = format!("{}::{}", type_name, f.name);
+                            self.env.bind(qualified_name, fn_type, false);
+                        }
+                    }
+                }
+            }
         }
 
         // Third pass: type check items
@@ -482,10 +518,10 @@ impl TypeChecker {
         }
 
         // Handle last expression (no trailing comma)
-        if !current_tokens.is_empty()
-            && let Some(expr) = self.tokens_to_simple_expr(&current_tokens)
-        {
-            exprs.push(expr);
+        if !current_tokens.is_empty() {
+            if let Some(expr) = self.tokens_to_simple_expr(&current_tokens) {
+                exprs.push(expr);
+            }
         }
 
         exprs
@@ -499,10 +535,10 @@ impl TypeChecker {
         // directly (already unwrapped from the bracket).
         //
         // For recursive calls with [Delimited(Bracket, inner)], we need to unwrap.
-        if args.len() == 1
-            && let TokenTree::Delimited(Delimiter::Bracket, inner, _) = &args[0]
-        {
-            return inner;
+        if args.len() == 1 {
+            if let TokenTree::Delimited(Delimiter::Bracket, inner, _) = &args[0] {
+                return inner;
+            }
         }
 
         // Otherwise, args are the direct content
@@ -518,18 +554,20 @@ impl TypeChecker {
         }
 
         // Check for nested vec! macro: [Token("vec"), Token("!"), Delimited(Bracket, ...)]
-        if tokens.len() >= 3
-            && let (TokenTree::Token(first), TokenTree::Token(second)) = (&tokens[0], &tokens[1])
-            && first.token.kind == TokenKind::Ident
-            && first.token.text == "vec"
-            && second.token.kind == TokenKind::Bang
-        {
-            // This is a nested vec! macro - recursively parse it
-            let nested_exprs = self.parse_vec_macro_args(&tokens[2..]);
-            return Some(Expr::Array {
-                id: NodeId::dummy(),
-                elements: nested_exprs,
-            });
+        if tokens.len() >= 3 {
+            if let (TokenTree::Token(first), TokenTree::Token(second)) = (&tokens[0], &tokens[1]) {
+                if first.token.kind == TokenKind::Ident
+                    && first.token.text == "vec"
+                    && second.token.kind == TokenKind::Bang
+                {
+                    // This is a nested vec! macro - recursively parse it
+                    let nested_exprs = self.parse_vec_macro_args(&tokens[2..]);
+                    return Some(Expr::Array {
+                        id: NodeId::dummy(),
+                        elements: nested_exprs,
+                    });
+                }
+            }
         }
 
         // For single token, convert directly
@@ -554,10 +592,10 @@ impl TypeChecker {
                         _ => current.push(tt.clone()),
                     }
                 }
-                if !current.is_empty()
-                    && let Some(e) = self.tokens_to_simple_expr(&current)
-                {
-                    inner_exprs.push(e);
+                if !current.is_empty() {
+                    if let Some(e) = self.tokens_to_simple_expr(&current) {
+                        inner_exprs.push(e);
+                    }
                 }
                 return Some(Expr::Array {
                     id: NodeId::dummy(),
@@ -688,10 +726,10 @@ impl TypeChecker {
                     match &attr.args {
                         AttributeArgs::Named(pairs) => {
                             for (key, value) in pairs {
-                                if key == "threshold"
-                                    && let AttributeValue::Float(threshold) = value
-                                {
-                                    self.validate_and_insert_threshold(&f.name, *threshold);
+                                if key == "threshold" {
+                                    if let AttributeValue::Float(threshold) = value {
+                                        self.validate_and_insert_threshold(&f.name, *threshold);
+                                    }
                                 }
                             }
                         }
@@ -1037,7 +1075,8 @@ impl TypeChecker {
                 // Look up if these are type aliases to ontology types
                 if let (Some(TypeDef::Alias(exp_ty, _, _)), Some(TypeDef::Alias(found_ty, _, _))) =
                     (self.type_defs.get(exp_name), self.type_defs.get(found_name))
-                    && let (
+                {
+                    if let (
                         Type::Ontology {
                             namespace: exp_ns,
                             term: exp_term,
@@ -1047,18 +1086,29 @@ impl TypeChecker {
                             term: found_term,
                         },
                     ) = (exp_ty, found_ty)
-                {
-                    match self.check_ontology_compatibility(
-                        exp_ns, exp_term, found_ns, found_term, threshold,
-                    ) {
-                        Ok(_) => {}
-                        Err(msg) => {
-                            // Include type alias names in error message
-                            let full_msg = format!(
-                                "type mismatch: expected `{}` ({}:{}), found `{}` ({}:{}): {}",
-                                exp_name, exp_ns, exp_term, found_name, found_ns, found_term, msg
-                            );
-                            self.error(full_msg, span);
+                    {
+                        match self.check_ontology_compatibility(
+                            &exp_ns,
+                            &exp_term,
+                            &found_ns,
+                            &found_term,
+                            threshold,
+                        ) {
+                            Ok(_) => {}
+                            Err(msg) => {
+                                // Include type alias names in error message
+                                let full_msg = format!(
+                                    "type mismatch: expected `{}` ({}:{}), found `{}` ({}:{}): {}",
+                                    exp_name,
+                                    exp_ns,
+                                    exp_term,
+                                    found_name,
+                                    found_ns,
+                                    found_term,
+                                    msg
+                                );
+                                self.error(full_msg, span);
+                            }
                         }
                     }
                 }
@@ -1208,7 +1258,15 @@ impl TypeChecker {
             ty: HirFnType {
                 params: params.clone(),
                 return_type: Box::new(self.type_to_hir(&return_type)),
-                effects: Vec::new(), // TODO: convert effects
+                effects: f
+                    .effects
+                    .iter()
+                    .map(|e| HirEffect {
+                        id: e.id,
+                        name: e.name.to_string(),
+                        operations: Vec::new(), // Operations are defined in effect declarations
+                    })
+                    .collect(),
             },
             body,
             abi,
@@ -1319,16 +1377,19 @@ impl TypeChecker {
                     .map(|p| self.pattern_name(&p.pattern))
                     .collect();
 
-                // TODO: properly check handler case body
+                // Check handler case body expression
+                let body = self
+                    .check_expr(&case.body, None)
+                    .unwrap_or_else(|_| HirExpr {
+                        id: NodeId::dummy(),
+                        kind: HirExprKind::Literal(HirLiteral::Unit),
+                        ty: HirType::Unit,
+                    });
                 HirHandlerCase {
                     id: case.id,
                     op_name: case.name.clone(),
                     params,
-                    body: HirExpr {
-                        id: NodeId::dummy(),
-                        kind: HirExprKind::Literal(HirLiteral::Unit),
-                        ty: HirType::Unit,
-                    },
+                    body,
                 }
             })
             .collect();
@@ -1347,12 +1408,16 @@ impl TypeChecker {
                 .map(|t| self.lower_type_expr(t))
                 .unwrap_or_else(|| self.fresh_type_var());
 
-        // TODO: properly check global value expression
-        let value = HirExpr {
-            id: NodeId::dummy(),
-            kind: HirExprKind::Literal(HirLiteral::Unit),
-            ty: self.type_to_hir(&ty),
-        };
+        // Check global value expression with expected type
+        let expected_ty = ty.clone();
+        let hir_ty = self.type_to_hir(&ty);
+        let value = self
+            .check_expr(&g.value, Some(&expected_ty))
+            .unwrap_or_else(|_| HirExpr {
+                id: NodeId::dummy(),
+                kind: HirExprKind::Literal(HirLiteral::Unit),
+                ty: hir_ty,
+            });
 
         Ok(HirGlobal {
             id: g.id,
@@ -1547,10 +1612,11 @@ impl TypeChecker {
                             let error_msg = if let Some(ref resolved) = path.resolved_module {
                                 format!(
                                     "Unknown qualified path `{}` (resolved to module {:?})",
-                                    path, resolved.path
+                                    path.to_string(),
+                                    resolved.path
                                 )
                             } else {
-                                format!("Unknown qualified path `{}`", path)
+                                format!("Unknown qualified path `{}`", path.to_string())
                             };
                             self.error(error_msg, Span::dummy());
                             (HirExprKind::Global(path.to_string()), HirType::Error)
@@ -2389,7 +2455,7 @@ impl TypeChecker {
                         arm_types.iter().filter(|t| **t != HirType::Never).collect();
                     if non_never.len() == 1 {
                         non_never[0].clone()
-                    } else if arm_types.contains(&HirType::Unit) {
+                    } else if arm_types.iter().any(|t| *t == HirType::Unit) {
                         // If any arm returns Unit (like if-let without else), the whole expression is Unit
                         HirType::Unit
                     } else {
@@ -2637,17 +2703,17 @@ impl TypeChecker {
             | BinaryOp::Le
             | BinaryOp::Gt
             | BinaryOp::Ge => {
-                if let (Some(lu), Some(ru)) = (&left_unit, &right_unit)
-                    && !lu.is_compatible(ru)
-                {
-                    self.error(
-                        format!(
-                            "Unit mismatch in comparison: cannot compare {} and {}",
-                            lu.format(),
-                            ru.format()
-                        ),
-                        Span::dummy(),
-                    );
+                if let (Some(lu), Some(ru)) = (&left_unit, &right_unit) {
+                    if !lu.is_compatible(ru) {
+                        self.error(
+                            format!(
+                                "Unit mismatch in comparison: cannot compare {} and {}",
+                                lu.format(),
+                                ru.format()
+                            ),
+                            Span::dummy(),
+                        );
+                    }
                 }
                 HirType::Bool
             }
@@ -3211,12 +3277,13 @@ impl TypeChecker {
                     name: type_name,
                     args,
                 }) = expected
-                    && type_name == "Option"
                 {
-                    return HirType::Named {
-                        name: "Option".to_string(),
-                        args: args.iter().map(|t| self.type_to_hir(t)).collect(),
-                    };
+                    if type_name == "Option" {
+                        return HirType::Named {
+                            name: "Option".to_string(),
+                            args: args.iter().map(|t| self.type_to_hir(t)).collect(),
+                        };
+                    }
                 }
                 // Default to Option<()>
                 HirType::Named {
@@ -3367,6 +3434,17 @@ impl TypeChecker {
         }
     }
 
+    /// Evaluate a constant expression to a usize (for array sizes)
+    fn eval_const_usize(&self, expr: &Expr) -> Option<usize> {
+        match expr {
+            Expr::Literal {
+                value: Literal::Int(i),
+                ..
+            } if *i >= 0 => Some(*i as usize),
+            _ => None, // Non-literal const expressions not yet supported
+        }
+    }
+
     fn lower_type_expr(&mut self, ty: &TypeExpr) -> Type {
         match ty {
             TypeExpr::Unit => Type::Unit,
@@ -3433,7 +3511,7 @@ impl TypeChecker {
             },
             TypeExpr::Array { element, size } => Type::Array {
                 element: Box::new(self.lower_type_expr(element)),
-                size: None, // TODO: evaluate const expression
+                size: size.as_ref().and_then(|s| self.eval_const_usize(s)),
             },
             TypeExpr::Tuple(elems) => {
                 Type::Tuple(elems.iter().map(|e| self.lower_type_expr(e)).collect())
@@ -3944,45 +4022,47 @@ impl TypeChecker {
             }
             // Named type (alias) compared with Ontology type - resolve alias
             (Type::Named { name, .. }, Type::Ontology { namespace, term }) => {
-                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name)
-                    && let Type::Ontology {
+                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name) {
+                    if let Type::Ontology {
                         namespace: alias_ns,
                         term: alias_term,
                     } = alias_ty
-                {
-                    // Same namespace = compatible
-                    if alias_ns == namespace {
-                        return true;
+                    {
+                        // Same namespace = compatible
+                        if alias_ns == namespace {
+                            return true;
+                        }
+                        // Check alignment
+                        let key1 = format!("{}:{}", alias_ns, alias_term);
+                        let key2 = format!("{}:{}", namespace, term);
+                        return self
+                            .get_semantic_distance(&key1, &key2)
+                            .map(|d| d <= self.default_threshold)
+                            .unwrap_or(false);
                     }
-                    // Check alignment
-                    let key1 = format!("{}:{}", alias_ns, alias_term);
-                    let key2 = format!("{}:{}", namespace, term);
-                    return self
-                        .get_semantic_distance(&key1, &key2)
-                        .map(|d| d <= self.default_threshold)
-                        .unwrap_or(false);
                 }
                 false
             }
             // Ontology type compared with Named type (alias) - resolve alias
             (Type::Ontology { namespace, term }, Type::Named { name, .. }) => {
-                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name)
-                    && let Type::Ontology {
+                if let Some(TypeDef::Alias(alias_ty, _, _)) = self.type_defs.get(name) {
+                    if let Type::Ontology {
                         namespace: alias_ns,
                         term: alias_term,
                     } = alias_ty
-                {
-                    // Same namespace = compatible
-                    if alias_ns == namespace {
-                        return true;
+                    {
+                        // Same namespace = compatible
+                        if alias_ns == namespace {
+                            return true;
+                        }
+                        // Check alignment
+                        let key1 = format!("{}:{}", namespace, term);
+                        let key2 = format!("{}:{}", alias_ns, alias_term);
+                        return self
+                            .get_semantic_distance(&key1, &key2)
+                            .map(|d| d <= self.default_threshold)
+                            .unwrap_or(false);
                     }
-                    // Check alignment
-                    let key1 = format!("{}:{}", namespace, term);
-                    let key2 = format!("{}:{}", alias_ns, alias_term);
-                    return self
-                        .get_semantic_distance(&key1, &key2)
-                        .map(|d| d <= self.default_threshold)
-                        .unwrap_or(false);
                 }
                 false
             }
@@ -4063,6 +4143,12 @@ impl TypeEnv {
             .module_bindings
             .get(&(module_path.to_vec(), name.clone()))
         {
+            return Some(binding);
+        }
+
+        // Try looking up the full qualified name (e.g., "String::new" for associated functions)
+        let full_name = path.join("::");
+        if let Some(binding) = self.lookup(&full_name) {
             return Some(binding);
         }
 
