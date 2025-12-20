@@ -5,6 +5,45 @@ All notable changes to Demetrios will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.0] - 2025-12-20
+
+### ODE Solvers, BLAS Integration & Academic Citation
+
+This release adds numerical ODE solvers, BLAS/LAPACK bindings, and establishes academic citation with a Zenodo DOI.
+
+### Added
+
+#### ODE Solvers (`stdlib/ode/`)
+- **Tsit5** - Tsitouras 5(4) adaptive Runge-Kutta solver (recommended for non-stiff problems)
+- **DOPRI5** - Dormand-Prince 5(4) adaptive solver with PI step control
+- **RK4** - Classic fixed-step 4th-order Runge-Kutta
+- **BDF1** - Backward Euler implicit solver for stiff equations
+- `ODEConfig` - Configurable tolerances (rtol, atol), step limits, safety factors
+- `ODESolution` - Result type with statistics (steps, function evaluations, rejections)
+- `examples/ode_demo.d` - Comprehensive demo comparing solver accuracy
+
+#### BLAS/LAPACK Integration (`stdlib/`)
+- Dynamic matrix types with heap allocation
+- BLAS Level 1: `dscal`, `daxpy`, `ddot`, `dnrm2`
+- BLAS Level 2: `dgemv`
+- BLAS Level 3: `dgemm`
+- LAPACK: `dgetrf`, `dgetrs`, `dgesv`, `dpotrf`, `dgeev`
+
+#### Academic Citation
+- `CITATION.cff` - Machine-readable citation metadata
+- Zenodo DOI: [10.5281/zenodo.18004435](https://doi.org/10.5281/zenodo.18004435)
+
+### Changed
+
+#### Module System Integration
+- Type checker now fully integrates with module-aware symbol tables
+- Resolver supports nested modules and cross-module references
+- Enhanced import syntax: `use std::math::{sin, cos}`
+
+### Fixed
+- Tsit5 solver accuracy issue caused by mutable variable scoping in loops
+- LLVM 15 API compatibility for GPU codegen
+
 ## [0.58.0] - 2025-12-08
 
 ### Day 58: End-to-End Integration Tests
