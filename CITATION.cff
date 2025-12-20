@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use Demetrios in research, please cite it as below."
+type: software
+title: "Demetrios: A Systems and Scientific Programming Language with Epistemic Computing"
+abstract: >-
+  Demetrios is a novel systems and scientific programming language featuring
+  first-class epistemic computing (confidence, provenance, uncertainty),
+  compile-time units of measure, SMT-backed refinement types, algebraic effects,
+  linear/affine types, GPU-native syntax, and scientific ontology integration.
+authors:
+  - family-names: "Agourakis"
+    given-names: "Demetrios Chiuratto"
+    orcid: "https://orcid.org/0009-0001-8671-8878"
+  - family-names: "Agourakis"
+    given-names: "Dionisio Chiuratto"
+version: "0.63.0"
+date-released: 2025-12-20
+license: MIT
+license-url: https://opensource.org/licenses/MIT
+repository-code: "https://github.com/Chiuratto-AI/demetrios"
+url: "https://github.com/Chiuratto-AI/demetrios"
+keywords:
+  - programming-language
+  - systems-programming
+  - scientific-computing
+  - epistemic-computing
+  - pharmacokinetics
+  - PBPK
+  - units-of-measure
+  - refinement-types
+  - algebraic-effects
+  - linear-types
+  - GPU
+  - Rust
