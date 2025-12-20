@@ -2,10 +2,10 @@
 
 **A novel systems + scientific programming language with epistemic computing.**
 
-[![Version](https://img.shields.io/badge/version-0.78.1-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.79.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green.svg)](LICENSE-MIT)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17849626.svg)](https://doi.org/10.5281/zenodo.17849626)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18004435.svg)](https://doi.org/10.5281/zenodo.18004435)
 
 ---
 
