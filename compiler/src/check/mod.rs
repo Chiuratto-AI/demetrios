@@ -446,6 +446,10 @@ impl TypeChecker {
                     }
                 }
             }
+            // Register functions from nested modules
+            if let Item::Module(m) = item {
+                self.collect_module_functions(m);
+            }
         }
 
         // Third pass: type check items
@@ -702,7 +706,50 @@ impl TypeChecker {
                 self.type_defs
                     .insert(t.name.clone(), TypeDef::Alias(ty, t.span, None)); // TODO: extract module context
             }
+            Item::Module(m) => {
+                // Recursively collect type definitions from nested modules
+                if let Some(ref items) = m.items {
+                    for item in items {
+                        self.collect_type_def(item);
+                    }
+                }
+            }
             _ => {}
+        }
+    }
+
+    /// Collect function signatures from a module (recursive)
+    fn collect_module_functions(&mut self, m: &ModuleDef) {
+        if let Some(ref items) = m.items {
+            for item in items {
+                if let Item::Function(f) = item {
+                    let params: Vec<Type> = f
+                        .params
+                        .iter()
+                        .map(|p| self.lower_type_expr(&p.ty))
+                        .collect();
+                    let return_type = f
+                        .return_type
+                        .as_ref()
+                        .map(|t| self.lower_type_expr(t))
+                        .unwrap_or(Type::Unit);
+                    let fn_type = Type::Function {
+                        params,
+                        return_type: Box::new(return_type),
+                        effects: types::EffectSet::new(),
+                    };
+                    // Register with module-qualified name
+                    let qualified_name = format!("{}::{}", m.name, f.name);
+                    self.env
+                        .bind(qualified_name.clone(), fn_type.clone(), false);
+                    // Also register unqualified for now (within module scope)
+                    self.env.bind(f.name.clone(), fn_type, false);
+                }
+                // Recursively handle nested modules
+                if let Item::Module(nested) = item {
+                    self.collect_module_functions(nested);
+                }
+            }
         }
     }
 
@@ -1196,6 +1243,23 @@ impl TypeChecker {
             Item::Global(g) => {
                 let hir_global = self.check_global(g)?;
                 Ok(Some(HirItem::Global(hir_global)))
+            }
+            Item::Module(m) => {
+                // Type check inline module items recursively
+                // Items are flattened into the parent HIR for now
+                if let Some(ref items) = m.items {
+                    for item in items {
+                        // Module items are checked but not collected here
+                        // They'll be collected via the main item loop
+                        let _ = self.check_item(item)?;
+                    }
+                }
+                Ok(None)
+            }
+            Item::Import(_) => {
+                // Imports are handled during name resolution
+                // No HIR items produced
+                Ok(None)
             }
             _ => Ok(None),
         }
