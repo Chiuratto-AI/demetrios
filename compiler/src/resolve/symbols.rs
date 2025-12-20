@@ -1,5 +1,6 @@
 //! Symbol table implementation
 
+use crate::ast::{ImportItem, ModuleId, Visibility};
 use crate::common::{NodeId, Span};
 use std::collections::HashMap;
 
@@ -107,6 +108,129 @@ impl Scope {
     }
 }
 
+// ==================== MODULE SYSTEM ====================
+
+/// A module with its own namespace and visibility control
+#[derive(Debug, Clone)]
+pub struct ModuleScope {
+    /// Module identity (e.g., ["std", "collections"])
+    pub id: ModuleId,
+    /// Module name (last segment of path)
+    pub name: String,
+    /// Private items (visible only within this module)
+    pub private_names: HashMap<String, DefId>,
+    pub private_types: HashMap<String, DefId>,
+    /// Public items (visible from outside)
+    pub public_names: HashMap<String, DefId>,
+    pub public_types: HashMap<String, DefId>,
+    /// Re-exports: local_name -> (source_module, original_name)
+    pub reexports: HashMap<String, (ModuleId, String)>,
+    /// Child modules
+    pub children: HashMap<String, ModuleId>,
+    /// Parent module (None for root)
+    pub parent: Option<ModuleId>,
+    /// Imports in this module: local_name -> (source_module, original_name)
+    pub imports: HashMap<String, (ModuleId, String)>,
+}
+
+impl ModuleScope {
+    pub fn new(id: ModuleId, parent: Option<ModuleId>) -> Self {
+        let name = id.path.last().cloned().unwrap_or_default();
+        Self {
+            id,
+            name,
+            private_names: HashMap::new(),
+            private_types: HashMap::new(),
+            public_names: HashMap::new(),
+            public_types: HashMap::new(),
+            reexports: HashMap::new(),
+            children: HashMap::new(),
+            parent,
+            imports: HashMap::new(),
+        }
+    }
+
+    /// Create root module
+    pub fn root() -> Self {
+        Self::new(ModuleId::root(), None)
+    }
+
+    /// Define a value with visibility
+    pub fn define(&mut self, name: String, def_id: DefId, visibility: Visibility) {
+        if matches!(visibility, Visibility::Public) {
+            self.public_names.insert(name.clone(), def_id);
+        }
+        self.private_names.insert(name, def_id);
+    }
+
+    /// Define a type with visibility
+    pub fn define_type(&mut self, name: String, def_id: DefId, visibility: Visibility) {
+        if matches!(visibility, Visibility::Public) {
+            self.public_types.insert(name.clone(), def_id);
+        }
+        self.private_types.insert(name, def_id);
+    }
+
+    /// Look up a value, respecting visibility
+    pub fn lookup(&self, name: &str, from_same_module: bool) -> Option<DefId> {
+        // First check imports
+        if let Some((source_mod, orig_name)) = self.imports.get(name) {
+            // Import resolution handled by caller
+            return None; // Signal to look in source module
+        }
+
+        if from_same_module {
+            self.private_names.get(name).copied()
+        } else {
+            self.public_names.get(name).copied()
+        }
+    }
+
+    /// Look up a type, respecting visibility
+    pub fn lookup_type(&self, name: &str, from_same_module: bool) -> Option<DefId> {
+        if from_same_module {
+            self.private_types.get(name).copied()
+        } else {
+            self.public_types.get(name).copied()
+        }
+    }
+
+    /// Add a child module
+    pub fn add_child(&mut self, name: String, child_id: ModuleId) {
+        self.children.insert(name, child_id);
+    }
+
+    /// Register an import
+    pub fn add_import(
+        &mut self,
+        local_name: String,
+        source_module: ModuleId,
+        original_name: String,
+    ) {
+        self.imports
+            .insert(local_name, (source_module, original_name));
+    }
+
+    /// Register a re-export (pub use)
+    pub fn add_reexport(
+        &mut self,
+        local_name: String,
+        source_module: ModuleId,
+        original_name: String,
+        def_id: DefId,
+    ) {
+        self.reexports
+            .insert(local_name.clone(), (source_module, original_name));
+        // Re-exports are also public
+        self.public_names.insert(local_name, def_id);
+    }
+
+    /// Get all public items (for glob imports)
+    pub fn public_items(&self) -> impl Iterator<Item = (&String, &DefId)> {
+        self.public_names.iter().chain(self.public_types.iter())
+    }
+}
+
 /// Symbol table with scoped lookups
 #[derive(Debug)]
 pub struct SymbolTable {
@@ -120,16 +244,26 @@ pub struct SymbolTable {
     node_to_def: HashMap<NodeId, DefId>,
     /// NodeId -> DefId mapping (for references)
     node_to_ref: HashMap<NodeId, DefId>,
+    /// All modules by their ID
+    modules: HashMap<ModuleId, ModuleScope>,
+    /// Current module context for resolution
+    current_module: ModuleId,
 }
 
 impl SymbolTable {
     pub fn new() -> Self {
+        let root_module = ModuleId::root();
+        let mut modules = HashMap::new();
+        modules.insert(root_module.clone(), ModuleScope::root());
+
         let mut table = Self {
             symbols: HashMap::new(),
             scopes: Vec::new(),
             next_id: 0,
             node_to_def: HashMap::new(),
             node_to_ref: HashMap::new(),
+            modules,
+            current_module: root_module,
         };
         // Start with module scope
         table.push_scope(ScopeKind::Module, None);
@@ -508,6 +642,251 @@ impl SymbolTable {
             }
         }
         names
+    }
+
+    // ==================== MODULE METHODS ====================
+
+    /// Enter a module scope
+    pub fn enter_module(&mut self, id: ModuleId) {
+        if !self.modules.contains_key(&id) {
+            let parent = if id.is_root() {
+                None
+            } else {
+                Some(self.current_module.clone())
+            };
+            self.modules
+                .insert(id.clone(), ModuleScope::new(id.clone(), parent));
+
+            // Register as child of current module
+            if let Some(parent_mod) = self.modules.get_mut(&self.current_module) {
+                if let Some(name) = id.path.last() {
+                    parent_mod.add_child(name.clone(), id.clone());
+                }
+            }
+        }
+        self.current_module = id;
+    }
+
+    /// Exit current module, return to parent
+    pub fn exit_module(&mut self) {
+        if let Some(scope) = self.modules.get(&self.current_module) {
+            if let Some(parent) = &scope.parent {
+                self.current_module = parent.clone();
+            }
+        }
+    }
+
+    /// Get current module ID
+    pub fn current_module(&self) -> &ModuleId {
+        &self.current_module
+    }
+
+    /// Get module by ID
+    pub fn get_module(&self, id: &ModuleId) -> Option<&ModuleScope> {
+        self.modules.get(id)
+    }
+
+    /// Get mutable module by ID
+    pub fn get_module_mut(&mut self, id: &ModuleId) -> Option<&mut ModuleScope> {
+        self.modules.get_mut(id)
+    }
+
+    /// Define a value in the current module with visibility
+    pub fn define_in_module(&mut self, name: String, def_id: DefId, visibility: Visibility) {
+        if let Some(module) = self.modules.get_mut(&self.current_module) {
+            module.define(name, def_id, visibility);
+        }
+    }
+
+    /// Define a type in the current module with visibility
+    pub fn define_type_in_module(&mut self, name: String, def_id: DefId, visibility: Visibility) {
+        if let Some(module) = self.modules.get_mut(&self.current_module) {
+            module.define_type(name, def_id, visibility);
+        }
+    }
+
+    /// Resolve a qualified path (e.g., ["std", "collections", "HashMap"])
+    /// Returns the DefId if found, respecting visibility from the requesting module
+    pub fn resolve_path(&self, path: &[String], from_module: &ModuleId) -> Option<DefId> {
+        if path.is_empty() {
+            return None;
+        }
+
+        if path.len() == 1 {
+            // Unqualified name - search current module, then imports, then builtins
+            return self.resolve_unqualified(&path[0], from_module);
+        }
+
+        // Qualified path - walk the module tree
+        let mut current = ModuleId::root();
+
+        for (i, segment) in path.iter().enumerate() {
+            if i == path.len() - 1 {
+                // Last segment is the item name
+                let module = self.modules.get(&current)?;
+                let same_module = &current == from_module;
+                return module.lookup(segment, same_module);
+            } else {
+                // Intermediate segment is a module name
+                let module = self.modules.get(&current)?;
+                current = module.children.get(segment)?.clone();
+            }
+        }
+
+        None
+    }
+
+    /// Resolve a qualified type path
+    pub fn resolve_type_path(&self, path: &[String], from_module: &ModuleId) -> Option<DefId> {
+        if path.is_empty() {
+            return None;
+        }
+
+        if path.len() == 1 {
+            // Check current module first
+            if let Some(module) = self.modules.get(from_module) {
+                if let Some(def_id) = module.lookup_type(&path[0], true) {
+                    return Some(def_id);
+                }
+            }
+            // Fall back to lexical scope lookup
+            return self.lookup_type(&path[0]);
+        }
+
+        // Qualified path
+        let mut current = ModuleId::root();
+
+        for (i, segment) in path.iter().enumerate() {
+            if i == path.len() - 1 {
+                let module = self.modules.get(&current)?;
+                let same_module = &current == from_module;
+                return module.lookup_type(segment, same_module);
+            } else {
+                let module = self.modules.get(&current)?;
+                current = module.children.get(segment)?.clone();
+            }
+        }
+
+        None
+    }
+
+    /// Resolve an unqualified name in a module context
+    fn resolve_unqualified(&self, name: &str, from_module: &ModuleId) -> Option<DefId> {
+        // 1. Check current module's definitions
+        if let Some(module) = self.modules.get(from_module) {
+            if let Some(def_id) = module.lookup(name, true) {
+                return Some(def_id);
+            }
+
+            // 2. Check imports
+            if let Some((source_mod, orig_name)) = module.imports.get(name) {
+                // Resolve from source module
+                if let Some(source_module) = self.modules.get(source_mod) {
+                    return source_module.lookup(orig_name, false);
+                }
+            }
+        }
+
+        // 3. Fall back to lexical scope (for builtins, etc.)
+        self.lookup(name)
+    }
+
+    /// Process an import into the current module
+    pub fn process_import(
+        &mut self,
+        source_path: &[String],
+        items: Option<&[ImportItem]>,
+        is_reexport: bool,
+    ) -> Result<(), String> {
+        let source_module_id = ModuleId::new(source_path.to_vec());
+        let current = self.current_module.clone();
+
+        // Get source module
+        let source_module = self
+            .modules
+            .get(&source_module_id)
+            .ok_or_else(|| format!("Module not found: {}", source_path.join("::")))?
+            .clone();
+
+        match items {
+            None => {
+                // Import entire module - make it accessible by its name
+                let module_name = source_path.last().cloned().unwrap_or_default();
+                if let Some(current_mod) = self.modules.get_mut(&current) {
+                    current_mod.add_child(module_name, source_module_id);
+                }
+            }
+            Some(items) => {
+                for item in items {
+                    if item.is_glob {
+                        // Glob import: import all public items
+                        let public_items: Vec<_> = source_module
+                            .public_items()
+                            .map(|(n, d)| (n.clone(), *d))
+                            .collect();
+
+                        if let Some(current_mod) = self.modules.get_mut(&current) {
+                            for (name, def_id) in public_items {
+                                if is_reexport {
+                                    current_mod.add_reexport(
+                                        name.clone(),
+                                        source_module_id.clone(),
+                                        name,
+                                        def_id,
+                                    );
+                                } else {
+                                    current_mod.add_import(
+                                        name.clone(),
+                                        source_module_id.clone(),
+                                        name,
+                                    );
+                                }
+                            }
+                        }
+                    } else {
+                        // Selective import
+                        let local_name = item.alias.clone().unwrap_or_else(|| item.name.clone());
+                        let orig_name = &item.name;
+
+                        // Verify the item exists and is public
+                        let def_id = source_module
+                            .lookup(orig_name, false)
+                            .or_else(|| source_module.lookup_type(orig_name, false))
+                            .ok_or_else(|| {
+                                format!(
+                                    "Item `{}` not found or not public in module `{}`",
+                                    orig_name,
+                                    source_path.join("::")
+                                )
+                            })?;
+
+                        if let Some(current_mod) = self.modules.get_mut(&current) {
+                            if is_reexport {
+                                current_mod.add_reexport(
+                                    local_name,
+                                    source_module_id.clone(),
+                                    orig_name.clone(),
+                                    def_id,
+                                );
+                            } else {
+                                current_mod.add_import(
+                                    local_name,
+                                    source_module_id.clone(),
+                                    orig_name.clone(),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get all module IDs
+    pub fn all_modules(&self) -> impl Iterator<Item = &ModuleId> {
+        self.modules.keys()
     }
 }
 
