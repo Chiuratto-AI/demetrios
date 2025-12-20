@@ -240,10 +240,16 @@ impl BuildManager {
     /// Compile a single unit (placeholder for future implementation)
     /// Compile a single source file
     fn compile_unit_file(path: &Path, verbose: bool) -> Result<(), String> {
-        // Compile using the Demetrios compiler pipeline (imports resolved)
+        // Read source file
+        let source = std::fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+
+        // Compile using the Demetrios compiler pipeline
         // For now, just do check (type-checking) - full compilation would use compile()
-        let ast = crate::module_loader::load_program_ast(path)
-            .map_err(|e| format!("Module error in {}: {}", path.display(), e))?;
+        let tokens = crate::lexer::lex(&source)
+            .map_err(|e| format!("Lexer error in {}: {}", path.display(), e))?;
+        let ast = crate::parser::parse(&tokens, &source)
+            .map_err(|e| format!("Parser error in {}: {}", path.display(), e))?;
         let _hir = crate::check::check(&ast)
             .map_err(|e| format!("Type error in {}: {}", path.display(), e))?;
 
@@ -270,16 +276,26 @@ impl BuildManager {
 
         if let Some(_cached) = self.cache.get(&cache_key) {
             // Cache hit - no compilation needed
+            if self.config.flags.verbose {
+                println!("  Cached: {}", unit.path.display());
+            }
             return Ok(());
         }
 
-        // Compile (placeholder - actual compilation would happen here)
-        if self.config.flags.verbose {
-            println!("Compiling {}", unit.path.display());
-        }
+        // Compile the unit using the actual compiler pipeline
+        let path = unit.path.clone();
+        let verbose = self.config.flags.verbose;
+        Self::compile_unit_file(&path, verbose)?;
 
-        // TODO: Actual compilation logic would go here
-        // For now, just simulate successful compilation
+        // Store compilation result in cache
+        // For now, we store a simple marker since we're only doing type-checking
+        let metadata = cache::CacheMetadata::default();
+        let _ = self
+            .cache
+            .put(cache_key, path.as_os_str().as_encoded_bytes(), metadata);
+
+        // Mark unit as clean
+        self.graph.mark_clean(unit_id);
 
         Ok(())
     }
