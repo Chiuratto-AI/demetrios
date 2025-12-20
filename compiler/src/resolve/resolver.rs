@@ -1,7 +1,7 @@
 //! Name resolution pass
 
 use super::symbols::*;
-use crate::ast::*;
+use crate::ast::{ModuleId, *};
 use crate::common::{NodeId, Span};
 use miette::{Diagnostic, Result, SourceSpan};
 use thiserror::Error;
@@ -109,14 +109,62 @@ impl Resolver {
             Item::Effect(e) => self.define_effect(e),
             Item::Trait(t) => self.define_trait(t),
             Item::Global(g) => self.define_global(g),
+            Item::Module(m) => self.collect_module(m),
+            Item::Import(i) => self.collect_import(i),
             _ => {}
+        }
+    }
+
+    fn collect_module(&mut self, m: &ModuleDef) {
+        // Create a module ID from the name
+        let parent_path = self.symbols.current_module().path.clone();
+        let mut module_path = parent_path;
+        module_path.push(m.name.clone());
+        let module_id = ModuleId::new(module_path);
+
+        // Enter the module
+        self.symbols.enter_module(module_id.clone());
+
+        // Define the module as a symbol
+        let def_id = self.symbols.fresh_def_id();
+        self.symbols.insert(Symbol {
+            def_id,
+            name: m.name.clone(),
+            kind: DefKind::Module,
+            node_id: m.id,
+            span: m.span,
+            parent: None,
+        });
+
+        // Recursively collect items if inline module
+        if let Some(ref items) = m.items {
+            for item in items {
+                self.collect_item(item);
+            }
+        }
+
+        // Exit module
+        self.symbols.exit_module();
+    }
+
+    fn collect_import(&mut self, i: &ImportDef) {
+        // Process import into the current module's symbol table
+        let path: Vec<String> = i.path.segments.clone();
+        if let Err(e) = self
+            .symbols
+            .process_import(&path, i.items.as_deref(), i.is_reexport)
+        {
+            // Imports to unknown modules are common during initial parsing
+            // Don't treat as error yet - module may be loaded later
+            // TODO: Track unresolved imports and verify after all modules loaded
+            let _ = e; // Silence warning for now
         }
     }
 
     fn define_function(&mut self, f: &FnDef) {
         let def_id = self.symbols.fresh_def_id();
 
-        if self.symbols.define(f.name.clone(), def_id).is_err() {
+        if let Err(_) = self.symbols.define(f.name.clone(), def_id) {
             self.errors.push(ResolveError::DuplicateDef {
                 name: f.name.clone(),
                 span: self.span_to_source(f.span),
@@ -137,7 +185,7 @@ impl Resolver {
     fn define_struct(&mut self, s: &StructDef) {
         let def_id = self.symbols.fresh_def_id();
 
-        if self.symbols.define_type(s.name.clone(), def_id).is_err() {
+        if let Err(_) = self.symbols.define_type(s.name.clone(), def_id) {
             self.errors.push(ResolveError::DuplicateDef {
                 name: s.name.clone(),
                 span: self.span_to_source(s.span),
@@ -265,8 +313,29 @@ impl Resolver {
             Item::Enum(e) => self.resolve_enum(e),
             Item::TypeAlias(t) => self.resolve_type_alias(t),
             Item::Global(g) => self.resolve_global(g),
+            Item::Module(m) => self.resolve_module(m),
+            Item::Import(_) => {} // Imports are fully handled in collect phase
             _ => {}
         }
+    }
+
+    fn resolve_module(&mut self, m: &ModuleDef) {
+        // Enter the module
+        let parent_path = self.symbols.current_module().path.clone();
+        let mut module_path = parent_path;
+        module_path.push(m.name.clone());
+        let module_id = ModuleId::new(module_path);
+        self.symbols.enter_module(module_id);
+
+        // Resolve items if inline module
+        if let Some(ref items) = m.items {
+            for item in items {
+                self.resolve_item(item);
+            }
+        }
+
+        // Exit module
+        self.symbols.exit_module();
     }
 
     fn resolve_function(&mut self, f: &FnDef) {
