@@ -53,7 +53,6 @@ extern "C" fn runtime_print_bool(val: i8) {
 /// Debug test function - just returns 99 to verify FFI works
 #[cfg(feature = "jit")]
 extern "C" fn runtime_debug_test() -> i64 {
-    eprintln!("[DEBUG] runtime_debug_test called!");
     99
 }
 
@@ -71,7 +70,7 @@ use cranelift_codegen::ir::{AbiParam, InstBuilder, MemFlags, Signature, UserFunc
 #[cfg(feature = "jit")]
 use cranelift_codegen::settings::{self, Configurable};
 #[cfg(feature = "jit")]
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 #[cfg(feature = "jit")]
 use cranelift_jit::{JITBuilder, JITModule};
 #[cfg(feature = "jit")]
@@ -300,18 +299,32 @@ impl JitCompiler {
 
         // First pass: declare all user functions
         for func in &module.functions {
+            // Declaration-only functions are treated as imports (e.g., `extern { fn ...; }`).
+            let is_import = func.blocks.is_empty();
             let sig = self.create_signature(func);
+            let symbol_name = func.link_name.as_deref().unwrap_or(&func.name);
+            let linkage = if is_import {
+                Linkage::Import
+            } else {
+                Linkage::Export
+            };
             let func_id = self
                 .jit_module
-                .declare_function(&func.name, Linkage::Export, &sig)
+                .declare_function(symbol_name, linkage, &sig)
                 .map_err(|e| format!("Failed to declare function {}: {}", func.name, e))?;
             self.func_ids.insert(func.name.clone(), func_id);
             self.func_sigs.insert(func.name.clone(), sig);
-            self.exported_funcs.insert(func.name.clone());
+            if !is_import {
+                self.exported_funcs.insert(func.name.clone());
+            }
         }
 
         // Second pass: compile all functions
         for func in &module.functions {
+            if func.blocks.is_empty() {
+                // Import-only declarations have no body to compile/define.
+                continue;
+            }
             self.compile_function(func)?;
         }
 
@@ -419,14 +432,9 @@ impl JitCompiler {
             for (name, id) in &needed_funcs {
                 if let Some(sig) = self.func_sigs.get(name) {
                     let local_ref = self.jit_module.declare_func_in_func(*id, builder.func);
-                    eprintln!("[JIT DEBUG] Declared func '{}' as {:?}", name, local_ref);
                     local_func_refs.insert(name.clone(), local_ref);
                 }
             }
-            eprintln!(
-                "[JIT DEBUG] Total funcs available: {:?}",
-                local_func_refs.keys().collect::<Vec<_>>()
-            );
 
             translate_function(&mut builder, func, &local_func_refs)?;
             builder.finalize();
@@ -617,10 +625,8 @@ fn translate_instruction(
 
             // Handle print/println specially by routing to runtime functions
             if name == "print" || name == "println" {
-                eprintln!("[JIT DEBUG] Handling {} with {} args", name, arg_vals.len());
                 for arg_val in &arg_vals {
                     let arg_type = builder.func.dfg.value_type(*arg_val);
-                    eprintln!("[JIT DEBUG] Arg type: {:?}", arg_type);
 
                     // Choose runtime function based on argument type
                     let runtime_func = if arg_type == types::F64 || arg_type == types::F32 {
@@ -735,35 +741,55 @@ fn translate_instruction(
         Op::GetElementPtr { base, index } => {
             let base_val = get_value(values, *base)?;
             let idx_val = get_value(values, *index)?;
-            let elem_size = 8i64; // Assume 8-byte elements
+            let idx_val = match builder.func.dfg.value_type(idx_val) {
+                types::I64 => idx_val,
+                t if t.is_int() && t.bits() < 64 => builder.ins().sextend(types::I64, idx_val),
+                _ => idx_val,
+            };
+            // Extract element size from pointer type (fixes issue #11)
+            let elem_size = match &instr.ty {
+                HlirType::Ptr(inner) => {
+                    let bits = inner.size_bits();
+                    if bits == 0 { 8 } else { bits / 8 }
+                }
+                _ => 8, // Fallback for non-pointer types
+            } as i64;
             let offset = builder.ins().imul_imm(idx_val, elem_size);
             let ptr = builder.ins().iadd(base_val, offset);
             Ok(Some(ptr))
         }
 
-        Op::Cast { value, target } => {
+        Op::Cast {
+            value,
+            source,
+            target,
+        } => {
             let val = get_value(values, *value)?;
             let target_ty = hlir_to_cranelift_type(target);
             let val_ty = builder.func.dfg.value_type(val);
 
             if val_ty == target_ty {
                 Ok(Some(val))
-            } else if val_ty.bits() < target_ty.bits() {
-                // Extend
-                let extended = if target_ty.is_int() {
+            } else if val_ty.is_int() && target_ty.is_int() && val_ty.bits() < target_ty.bits() {
+                // Integer widening: preserve signedness of the *source* type.
+                let extended = if matches!(
+                    source,
+                    HlirType::I8 | HlirType::I16 | HlirType::I32 | HlirType::I64 | HlirType::I128
+                ) {
                     builder.ins().sextend(target_ty, val)
                 } else {
-                    builder.ins().fpromote(target_ty, val)
+                    builder.ins().uextend(target_ty, val)
                 };
                 Ok(Some(extended))
+            } else if !val_ty.is_int() && !target_ty.is_int() && val_ty.bits() < target_ty.bits() {
+                Ok(Some(builder.ins().fpromote(target_ty, val)))
             } else {
-                // Truncate
-                let truncated = if target_ty.is_int() {
-                    builder.ins().ireduce(target_ty, val)
+                // Truncate / demote
+                if target_ty.is_int() {
+                    Ok(Some(builder.ins().ireduce(target_ty, val)))
                 } else {
-                    builder.ins().fdemote(target_ty, val)
-                };
-                Ok(Some(truncated))
+                    Ok(Some(builder.ins().fdemote(target_ty, val)))
+                }
             }
         }
 
@@ -950,6 +976,10 @@ fn translate_binary_op(
         BinaryOp::FOLe => builder.ins().fcmp(FloatCC::LessThanOrEqual, lhs, rhs),
         BinaryOp::FOGt => builder.ins().fcmp(FloatCC::GreaterThan, lhs, rhs),
         BinaryOp::FOGe => builder.ins().fcmp(FloatCC::GreaterThanOrEqual, lhs, rhs),
+        BinaryOp::Concat => {
+            // String concatenation - not supported in JIT, would need runtime call
+            return Err("String concatenation not supported in JIT".to_string());
+        }
     };
 
     // Comparisons return i8, may need to extend for result type

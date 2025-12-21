@@ -257,14 +257,24 @@ impl<'ctx> TypeConverter<'ctx> {
         params: &[HlirType],
         return_type: &HlirType,
     ) -> FunctionType<'ctx> {
+        self.function_type_variadic(params, return_type, false)
+    }
+
+    /// Create a function type with explicit variadic flag.
+    pub fn function_type_variadic(
+        &mut self,
+        params: &[HlirType],
+        return_type: &HlirType,
+        is_variadic: bool,
+    ) -> FunctionType<'ctx> {
         let param_types: Vec<BasicMetadataTypeEnum<'ctx>> =
             params.iter().map(|t| self.convert_to_metadata(t)).collect();
 
         match return_type {
-            HlirType::Void => self.void_type().fn_type(&param_types, false),
+            HlirType::Void => self.void_type().fn_type(&param_types, is_variadic),
             _ => {
                 let ret_ty = self.convert(return_type);
-                ret_ty.fn_type(&param_types, false)
+                ret_ty.fn_type(&param_types, is_variadic)
             }
         }
     }

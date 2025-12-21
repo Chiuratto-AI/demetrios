@@ -13,6 +13,10 @@ use crate::common::NodeId;
 #[derive(Debug, Clone)]
 pub struct Hir {
     pub items: Vec<HirItem>,
+    /// Extern blocks (FFI imports) collected from the AST.
+    ///
+    /// Kept separate from `items` so most compiler passes can ignore FFI unless needed.
+    pub externs: Vec<HirExternBlock>,
 }
 
 /// HIR item
@@ -27,6 +31,27 @@ pub enum HirItem {
     Effect(HirEffect),
     Handler(HirHandler),
     Global(HirGlobal),
+}
+
+// ==================== EXTERN (FFI IMPORTS) ====================
+
+/// HIR extern block (e.g., `extern "C" { fn ...; }`)
+#[derive(Debug, Clone)]
+pub struct HirExternBlock {
+    pub id: NodeId,
+    pub abi: Abi,
+    pub functions: Vec<HirExternFn>,
+}
+
+/// HIR extern function declaration (no body)
+#[derive(Debug, Clone)]
+pub struct HirExternFn {
+    pub id: NodeId,
+    pub name: String,
+    pub params: Vec<HirParam>,
+    pub return_type: HirType,
+    pub is_variadic: bool,
+    pub link_name: Option<String>,
 }
 
 // ==================== FUNCTIONS ====================

@@ -531,7 +531,10 @@ mod tests {
     #[test]
     fn test_empty_hir_analysis() {
         let mut analyzer = HirLocalityAnalyzer::new();
-        let hir = Hir { items: vec![] };
+        let hir = Hir {
+            items: vec![],
+            externs: Vec::new(),
+        };
         let result = analyzer.analyze(&hir);
         assert!(result.patterns.is_empty());
     }

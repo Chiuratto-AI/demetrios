@@ -323,6 +323,14 @@ impl<'a> LoweringContext<'a> {
                     self.builder.build_store(ptr, value);
                 }
             }
+            HirExprKind::Unary {
+                op: HirUnaryOp::Deref,
+                expr: inner,
+            } => {
+                if let Some(ptr) = self.lower_expr(inner) {
+                    self.builder.build_store(ptr, value);
+                }
+            }
             HirExprKind::Field { base, field } => {
                 // Aggregate values (structs/refs) are represented as pointers in HLIR/codegen,
                 // so for field stores we need the base *value* (a pointer), not the address of a slot.
@@ -360,6 +368,10 @@ impl<'a> LoweringContext<'a> {
         match &expr.kind {
             HirExprKind::Local(name) => self.builder.get_var_slot(name),
             HirExprKind::Deref(inner) => self.lower_expr(inner),
+            HirExprKind::Unary {
+                op: HirUnaryOp::Deref,
+                expr: inner,
+            } => self.lower_expr(inner),
             HirExprKind::Field { base, field } => {
                 let base_ptr = match HlirType::from_hir(&base.ty) {
                     HlirType::Ptr(_) | HlirType::Struct(_) => self.lower_expr(base)?,
@@ -479,6 +491,10 @@ impl<'a> LoweringContext<'a> {
                 // Special handling for Ref/RefMut: get address, not value
                 if matches!(op, HirUnaryOp::Ref | HirUnaryOp::RefMut) {
                     return self.lower_lvalue(inner);
+                }
+                if matches!(op, HirUnaryOp::Deref) {
+                    let ptr = self.lower_expr(inner)?;
+                    return Some(self.builder.build_load(ptr, ty));
                 }
                 let operand = self.lower_expr(inner)?;
                 let inner_ty = HlirType::from_hir(&inner.ty);
@@ -630,8 +646,9 @@ impl<'a> LoweringContext<'a> {
                 target,
             } => {
                 let val = self.lower_expr(inner)?;
+                let source_ty = HlirType::from_hir(&inner.ty);
                 let target_ty = HlirType::from_hir(target);
-                Some(self.builder.build_cast(val, target_ty))
+                Some(self.builder.build_cast(val, source_ty, target_ty))
             }
 
             HirExprKind::Match { scrutinee, arms } => self.lower_match(scrutinee, arms, &ty),

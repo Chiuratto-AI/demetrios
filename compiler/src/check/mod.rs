@@ -14,6 +14,9 @@ pub mod compatibility;
 pub mod diagnostics;
 pub mod epistemic;
 
+#[cfg(test)]
+mod extern_tests;
+
 use crate::ast::*;
 use crate::common::{NodeId, Span};
 use crate::hir::*;
@@ -369,6 +372,7 @@ impl TypeChecker {
         self.ast = Some(std::sync::Arc::new(ast.clone()));
 
         let mut items = Vec::new();
+        let mut externs = Vec::new();
 
         // First pass: collect ontology prefixes, type definitions, and alignments
         for item in &ast.items {
@@ -409,6 +413,31 @@ impl TypeChecker {
                     effects: types::EffectSet::new(),
                 };
                 self.env.bind(f.name.clone(), fn_type, false);
+            }
+            if let Item::Extern(extern_block) = item {
+                for ext_item in &extern_block.items {
+                    if let ExternItem::Fn(ext_fn) = ext_item {
+                        let params: Vec<Type> = ext_fn
+                            .params
+                            .iter()
+                            .map(|p| self.lower_type_expr(&p.ty))
+                            .collect();
+                        let return_type = ext_fn
+                            .return_type
+                            .as_ref()
+                            .map(|t| self.lower_type_expr(t))
+                            .unwrap_or(Type::Unit);
+
+                        let fn_type = Type::Function {
+                            params,
+                            return_type: Box::new(return_type),
+                            effects: types::EffectSet::new(),
+                        };
+
+                        // Bind using the D-visible name; codegen/linking uses `link_name` later.
+                        self.env.bind(ext_fn.name.clone(), fn_type, false);
+                    }
+                }
             }
             // Register associated functions from impl blocks (e.g., String::new)
             if let Item::Impl(impl_def) = item {
@@ -454,6 +483,10 @@ impl TypeChecker {
 
         // Third pass: type check items
         for item in &ast.items {
+            if let Item::Extern(extern_block) = item {
+                externs.push(self.lower_extern_block(extern_block)?);
+                continue;
+            }
             if let Some(hir_item) = self.check_item(item)? {
                 items.push(hir_item);
             }
@@ -472,7 +505,53 @@ impl TypeChecker {
             return Err(miette::miette!("Type errors:\n{}", messages.join("\n")));
         }
 
-        Ok(Hir { items })
+        Ok(Hir { items, externs })
+    }
+
+    fn lower_extern_block(&mut self, block: &ExternBlock) -> Result<HirExternBlock> {
+        let mut functions = Vec::new();
+
+        for item in &block.items {
+            if let ExternItem::Fn(f) = item {
+                let params: Vec<HirParam> = f
+                    .params
+                    .iter()
+                    .map(|p| {
+                        let ty = self.lower_type_expr(&p.ty);
+                        HirParam {
+                            id: p.id,
+                            name: self.pattern_name(&p.pattern),
+                            ty: self.type_to_hir(&ty),
+                            is_mut: p.is_mut,
+                        }
+                    })
+                    .collect();
+
+                let return_type = f
+                    .return_type
+                    .as_ref()
+                    .map(|t| {
+                        let ty = self.lower_type_expr(t);
+                        self.type_to_hir(&ty)
+                    })
+                    .unwrap_or(HirType::Unit);
+
+                functions.push(HirExternFn {
+                    id: f.id,
+                    name: f.name.clone(),
+                    params,
+                    return_type,
+                    is_variadic: f.is_variadic,
+                    link_name: f.link_name.clone(),
+                });
+            }
+        }
+
+        Ok(HirExternBlock {
+            id: block.id,
+            abi: block.abi.clone(),
+            functions,
+        })
     }
 
     /// Check for unused ontology imports and add warnings
@@ -1508,6 +1587,8 @@ impl TypeChecker {
                     ty,
                     value,
                 } => {
+                    // Check if we have an explicit type annotation
+                    let has_annotation = ty.is_some();
                     let declared_ty = ty
                         .as_ref()
                         .map(|t| self.lower_type_expr(t))
@@ -1520,6 +1601,18 @@ impl TypeChecker {
                         .as_ref()
                         .map(|v| self.check_expr(v, Some(&expanded_ty)))
                         .transpose()?;
+
+                    // Determine the final binding type:
+                    // - If there's an explicit annotation, use the declared type
+                    // - If no annotation, infer from the value expression's type
+                    let binding_ty = if has_annotation {
+                        declared_ty.clone()
+                    } else if let Some(ref v_expr) = value_expr {
+                        // Infer type from value expression
+                        self.hir_type_to_type(&v_expr.ty)
+                    } else {
+                        declared_ty.clone()
+                    };
 
                     // CRITICAL: Verify type compatibility between declared type and value type
                     if let Some(ref v_expr) = value_expr {
@@ -1540,7 +1633,8 @@ impl TypeChecker {
                             .unwrap_or(self.default_threshold);
 
                         // First check structural compatibility (use expanded type for comparison)
-                        if !self.types_compatible(&expanded_ty, &actual_ty) {
+                        // Only check if we have an explicit annotation (otherwise we're inferring)
+                        if has_annotation && !self.types_compatible(&expanded_ty, &actual_ty) {
                             let decl_name = self.type_display_name(&expanded_ty);
                             let actual_name = self.type_display_name(&actual_ty);
                             self.error(
@@ -1563,12 +1657,12 @@ impl TypeChecker {
                     }
 
                     if let Pattern::Binding { name, .. } = pattern {
-                        self.env.bind(name.clone(), declared_ty.clone(), *is_mut);
+                        self.env.bind(name.clone(), binding_ty.clone(), *is_mut);
                     }
 
                     stmts.push(HirStmt::Let {
                         name: self.pattern_name(pattern),
-                        ty: self.type_to_hir(&declared_ty),
+                        ty: self.type_to_hir(&binding_ty),
                         value: value_expr,
                         is_mut: *is_mut,
                         layout_hint: None, // Layout hints are filled in by layout synthesis pass
@@ -1781,10 +1875,21 @@ impl TypeChecker {
                 }
 
                 let callee_expr = self.check_expr(callee, None)?;
-                let checked_args: Vec<_> = args
-                    .iter()
-                    .map(|a| self.check_expr(a, None))
-                    .collect::<Result<_>>()?;
+                // If we know the callee's parameter types, use them as expected types for args.
+                // This enables context-driven literal typing (e.g., `1` -> `u8` when calling `fn(_, _, u8)`).
+                let expected_param_tys: Option<Vec<Type>> = match &callee_expr.ty {
+                    HirType::Fn { params, .. } => Some(params.iter().map(|p| self.hir_type_to_type(p)).collect()),
+                    _ => None,
+                };
+
+                let checked_args: Vec<_> = if let Some(param_tys) = expected_param_tys {
+                    args.iter()
+                        .enumerate()
+                        .map(|(i, a)| self.check_expr(a, param_tys.get(i)))
+                        .collect::<Result<_>>()?
+                } else {
+                    args.iter().map(|a| self.check_expr(a, None)).collect::<Result<_>>()?
+                };
 
                 // Extract function name for threshold lookup
                 let fn_name = match callee.as_ref() {
@@ -2069,10 +2174,20 @@ impl TypeChecker {
                 let base_expr = self.check_expr(base, None)?;
                 let index_expr = self.check_expr(index, Some(&Type::I64))?;
 
-                // Extract element type from array type
+                // Extract element type from indexable types
                 let elem_ty = match &base_expr.ty {
                     HirType::Array { element, .. } => *element.clone(),
                     HirType::String => HirType::Char,
+                    // Raw pointers are indexable - return inner type
+                    HirType::RawPointer { inner, .. } => *inner.clone(),
+                    // References to arrays
+                    HirType::Ref { inner, .. } => {
+                        if let HirType::Array { element, .. } = inner.as_ref() {
+                            *element.clone()
+                        } else {
+                            HirType::Error
+                        }
+                    }
                     _ => HirType::Error,
                 };
 
@@ -2537,6 +2652,24 @@ impl TypeChecker {
                 )
             }
 
+            // Cast expression: expr as Type
+            Expr::Cast { id: _, expr, ty } => {
+                // Check the inner expression
+                let inner_expr = self.check_expr(expr, None)?;
+
+                // Convert target type from TypeExpr to HirType
+                let target_type = self.lower_type_expr(ty);
+                let hir_target = self.type_to_hir(&target_type);
+
+                (
+                    HirExprKind::Cast {
+                        expr: Box::new(inner_expr),
+                        target: hir_target.clone(),
+                    },
+                    hir_target,
+                )
+            }
+
             // Simplified handling for other expressions
             _ => {
                 // For now, return a placeholder
@@ -2555,6 +2688,7 @@ impl TypeChecker {
             | Expr::Return { id, .. }
             | Expr::Tuple { id, .. }
             | Expr::Array { id, .. }
+            | Expr::Cast { id, .. }
             | Expr::OntologyTerm { id, .. } => *id,
             _ => NodeId::dummy(),
         };

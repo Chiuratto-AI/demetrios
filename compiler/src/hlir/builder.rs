@@ -62,12 +62,14 @@ impl FunctionBuilder {
             func: HlirFunction {
                 id,
                 name: name.into(),
+                link_name: None,
                 params: Vec::new(),
                 return_type,
                 effects: Vec::new(),
                 blocks: Vec::new(),
                 is_kernel: false,
                 locals: HashMap::new(),
+                is_variadic: false,
                 abi: Abi::Rust,
                 is_exported: false,
             },
@@ -77,6 +79,16 @@ impl FunctionBuilder {
             var_values: HashMap::new(),
             var_slots: HashMap::new(),
         }
+    }
+
+    /// Set the linker-visible symbol name for this function.
+    pub fn set_link_name(&mut self, link_name: Option<String>) {
+        self.func.link_name = link_name;
+    }
+
+    /// Mark this function as variadic.
+    pub fn set_variadic(&mut self, is_variadic: bool) {
+        self.func.is_variadic = is_variadic;
     }
 
     /// Add a parameter to the function
@@ -397,10 +409,11 @@ impl FunctionBuilder {
     }
 
     /// Build a type cast
-    pub fn build_cast(&mut self, value: ValueId, target: HlirType) -> ValueId {
+    pub fn build_cast(&mut self, value: ValueId, source: HlirType, target: HlirType) -> ValueId {
         self.emit(
             Op::Cast {
                 value,
+                source,
                 target: target.clone(),
             },
             target,

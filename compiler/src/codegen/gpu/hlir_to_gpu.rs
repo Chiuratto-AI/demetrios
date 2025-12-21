@@ -685,7 +685,7 @@ impl HlirToGpuLowering {
             }
 
             // Type cast
-            Op::Cast { value, target } => {
+            Op::Cast { value, target, .. } => {
                 if let Some(result) = instr.result {
                     let value_gpu = self.get_value(*value);
                     let gpu_value = self.alloc_value();
@@ -1378,6 +1378,7 @@ mod tests {
         let func = HlirFunction {
             id: FunctionId(0),
             name: "test_kernel".to_string(),
+            link_name: None,
             params: vec![HlirParam {
                 value: HlirValueId(0),
                 name: "data".to_string(),
@@ -1401,6 +1402,7 @@ mod tests {
             }],
             is_kernel: true,
             locals: HashMap::new(),
+            is_variadic: false,
             abi: crate::ast::Abi::Rust,
             is_exported: false,
         };

@@ -152,7 +152,9 @@ impl<'ctx> LLVMCodegen<'ctx> {
     fn declare_function(&mut self, func: &HlirFunction) {
         let param_types: Vec<HlirType> = func.params.iter().map(|p| p.ty.clone()).collect();
 
-        let fn_type = self.types.function_type(&param_types, &func.return_type);
+        let fn_type = self
+            .types
+            .function_type_variadic(&param_types, &func.return_type, func.is_variadic);
 
         // Determine linkage based on ABI and export status
         // extern "C" functions or exported functions get External linkage
@@ -162,7 +164,8 @@ impl<'ctx> LLVMCodegen<'ctx> {
             _ => None, // Default (internal) linkage
         };
 
-        let fn_val = self.module.add_function(&func.name, fn_type, linkage);
+        let symbol_name = func.link_name.as_deref().unwrap_or(&func.name);
+        let fn_val = self.module.add_function(symbol_name, fn_type, linkage);
 
         // Set calling convention for C ABI
         match &func.abi {
@@ -337,7 +340,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
                     .map(|v| v.into())
             }
 
-            Op::Cast { value, target } => {
+            Op::Cast { value, target, .. } => {
                 let val = self.get_value(*value)?;
                 self.compile_cast(val, &instr.ty, target)
             }

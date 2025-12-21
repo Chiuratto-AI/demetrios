@@ -5,6 +5,17 @@ All notable changes to Demetrios will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- FFI imports: `extern "C" { fn ...; }` now type-check and lower into HLIR (with `#[link_name = "..."]` and variadic support).
+- Epistemic stdlib expansions: new modules `knowledge`, `propagate`, `meta`, `active`, `merkle` plus early `linalg` and `ode` scaffolding (`stdlib/epistemic/README.md`).
+- FFI examples: `examples/ffi_exports.d` with Julia/Python smoke tests.
+
+### Fixed
+- Issue #11 pointer indexing: corrected address-of/deref lowering, signed/unsigned casts, and Cranelift GEP indexing so pointer reads/writes work under JIT.
+- Cranelift: declaration-only extern imports are treated as imports (no body compilation) and LLVM uses the linker-visible symbol name when `link_name` is set.
+
 ## [0.79.0] - 2025-12-20
 
 ### ODE Solvers, BLAS Integration & Academic Citation

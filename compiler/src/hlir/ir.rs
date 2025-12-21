@@ -36,6 +36,10 @@ impl HlirModule {
 pub struct HlirFunction {
     pub id: FunctionId,
     pub name: String,
+    /// Optional symbol name override for linking/FFI.
+    ///
+    /// For `extern` imports, this is populated from `#[link_name = "..."]`.
+    pub link_name: Option<String>,
     pub params: Vec<HlirParam>,
     pub return_type: HlirType,
     pub effects: Vec<String>,
@@ -43,6 +47,10 @@ pub struct HlirFunction {
     pub is_kernel: bool,
     /// Local variable types (for stack allocation)
     pub locals: HashMap<ValueId, HlirType>,
+    /// Whether this function is variadic (C `...`).
+    ///
+    /// Only meaningful for `extern` imports.
+    pub is_variadic: bool,
     /// ABI for FFI functions (C, System, etc.)
     pub abi: Abi,
     /// Whether this function should be exported with external linkage
@@ -329,7 +337,11 @@ pub enum Op {
     /// Allocate stack memory
     Alloca { ty: HlirType },
     /// Type cast
-    Cast { value: ValueId, target: HlirType },
+    Cast {
+        value: ValueId,
+        source: HlirType,
+        target: HlirType,
+    },
     /// Phi node (SSA)
     Phi { incoming: Vec<(BlockId, ValueId)> },
     /// Extract value from aggregate
