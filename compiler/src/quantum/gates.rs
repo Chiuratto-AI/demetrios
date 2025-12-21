@@ -496,6 +496,82 @@ impl Gate {
                 apply_single_qubit_gate(state, qubit, |a, b| (a, phase * b));
             }
 
+            GateType::Sdg => {
+                let qubit = self.targets[0];
+                // S† = conjugate of S, which applies -i phase to |1>
+                let neg_i = Complex::new(0.0, -1.0);
+                apply_single_qubit_gate(state, qubit, |a, b| (a, neg_i * b));
+            }
+
+            GateType::Tdg => {
+                let qubit = self.targets[0];
+                // T† = conjugate of T, which applies e^{-iπ/4} phase to |1>
+                let phase = Complex::from_polar(1.0, -PI / 4.0);
+                apply_single_qubit_gate(state, qubit, |a, b| (a, phase * b));
+            }
+
+            GateType::SqrtX => {
+                let qubit = self.targets[0];
+                // sqrt(X) = (1+i)/2 * I + (1-i)/2 * X
+                let half = 0.5;
+                let half_i = Complex::new(0.0, 0.5);
+                apply_single_qubit_gate(state, qubit, |a, b| {
+                    let new_a = a * half + a * half_i + b * half - b * half_i;
+                    let new_b = a * half - a * half_i + b * half + b * half_i;
+                    (new_a, new_b)
+                });
+            }
+
+            GateType::Phase => {
+                let qubit = self.targets[0];
+                let theta = self.params[0];
+                let phase = Complex::from_polar(1.0, theta);
+                apply_single_qubit_gate(state, qubit, |a, b| (a, phase * b));
+            }
+
+            GateType::U1 => {
+                // U1(λ) = Phase(λ) - just a phase on |1>
+                let qubit = self.targets[0];
+                let lambda = self.params[0];
+                let phase = Complex::from_polar(1.0, lambda);
+                apply_single_qubit_gate(state, qubit, |a, b| (a, phase * b));
+            }
+
+            GateType::U2 => {
+                // U2(φ, λ) = (1/√2) * [[1, -e^{iλ}], [e^{iφ}, e^{i(φ+λ)}]]
+                let qubit = self.targets[0];
+                let phi = self.params[0];
+                let lambda = self.params[1];
+                let inv_sqrt2 = 1.0 / 2.0_f64.sqrt();
+                let exp_phi = Complex::from_polar(1.0, phi);
+                let exp_lambda = Complex::from_polar(1.0, lambda);
+                let exp_sum = Complex::from_polar(1.0, phi + lambda);
+                apply_single_qubit_gate(state, qubit, |a, b| {
+                    let new_a = (a - exp_lambda * b) * inv_sqrt2;
+                    let new_b = (exp_phi * a + exp_sum * b) * inv_sqrt2;
+                    (new_a, new_b)
+                });
+            }
+
+            GateType::U3 => {
+                // U3(θ, φ, λ) = [[cos(θ/2), -e^{iλ}sin(θ/2)],
+                //                [e^{iφ}sin(θ/2), e^{i(φ+λ)}cos(θ/2)]]
+                let qubit = self.targets[0];
+                let theta = self.params[0];
+                let phi = self.params[1];
+                let lambda = self.params[2];
+                let cos_half = (theta / 2.0).cos();
+                let sin_half = (theta / 2.0).sin();
+                let exp_phi = Complex::from_polar(1.0, phi);
+                let exp_lambda = Complex::from_polar(1.0, lambda);
+                let exp_sum = Complex::from_polar(1.0, phi + lambda);
+                apply_single_qubit_gate(state, qubit, |a, b| {
+                    let new_a = a * cos_half - exp_lambda * b * sin_half;
+                    let new_b = exp_phi * a * sin_half + exp_sum * b * cos_half;
+                    (new_a, new_b)
+                });
+            }
+
             GateType::RX => {
                 let qubit = self.targets[0];
                 let theta = self.params[0];
@@ -546,8 +622,52 @@ impl Gate {
                 apply_swap(state, q1, q2);
             }
 
-            _ => {
-                // TODO: Implement remaining gates
+            GateType::ISwap => {
+                let q1 = self.targets[0];
+                let q2 = self.targets[1];
+                apply_iswap(state, q1, q2);
+            }
+
+            GateType::CRX => {
+                let control = self.controls[0];
+                let target = self.targets[0];
+                let theta = self.params[0];
+                apply_controlled_rotation(state, control, target, theta, 'x');
+            }
+
+            GateType::CRY => {
+                let control = self.controls[0];
+                let target = self.targets[0];
+                let theta = self.params[0];
+                apply_controlled_rotation(state, control, target, theta, 'y');
+            }
+
+            GateType::CRZ => {
+                let control = self.controls[0];
+                let target = self.targets[0];
+                let theta = self.params[0];
+                apply_controlled_rotation(state, control, target, theta, 'z');
+            }
+
+            GateType::CPhase => {
+                let control = self.controls[0];
+                let target = self.targets[0];
+                let theta = self.params[0];
+                apply_controlled_phase(state, control, target, theta);
+            }
+
+            GateType::Toffoli => {
+                let c1 = self.controls[0];
+                let c2 = self.controls[1];
+                let target = self.targets[0];
+                apply_toffoli(state, c1, c2, target);
+            }
+
+            GateType::Fredkin => {
+                let control = self.controls[0];
+                let t1 = self.targets[0];
+                let t2 = self.targets[1];
+                apply_fredkin(state, control, t1, t2);
             }
         }
     }
@@ -630,6 +750,132 @@ fn apply_swap(state: &mut StateVector, q1: usize, q2: usize) {
             let j = i ^ mask1 ^ mask2;
             if i < j {
                 state.amplitudes.swap(i, j);
+            }
+        }
+    }
+}
+
+fn apply_iswap(state: &mut StateVector, q1: usize, q2: usize) {
+    let n = state.num_qubits;
+    let dim = 1 << n;
+    let mask1 = 1 << (n - 1 - q1);
+    let mask2 = 1 << (n - 1 - q2);
+    let i_unit = Complex::new(0.0, 1.0);
+
+    for i in 0..dim {
+        let bit1 = (i & mask1) != 0;
+        let bit2 = (i & mask2) != 0;
+
+        // iSWAP: |01> -> i|10>, |10> -> i|01>
+        if bit1 != bit2 {
+            let j = i ^ mask1 ^ mask2;
+            if i < j {
+                let tmp = state.amplitudes[i];
+                state.amplitudes[i] = state.amplitudes[j] * i_unit;
+                state.amplitudes[j] = tmp * i_unit;
+            }
+        }
+    }
+}
+
+fn apply_controlled_rotation(
+    state: &mut StateVector,
+    control: usize,
+    target: usize,
+    theta: f64,
+    axis: char,
+) {
+    let n = state.num_qubits;
+    let dim = 1 << n;
+    let control_mask = 1 << (n - 1 - control);
+    let target_mask = 1 << (n - 1 - target);
+
+    let half_theta = theta / 2.0;
+    let cos = half_theta.cos();
+    let sin = half_theta.sin();
+
+    for i in 0..dim {
+        // Only apply rotation if control is |1>
+        if i & control_mask != 0 && i & target_mask == 0 {
+            let j = i | target_mask;
+            let a0 = state.amplitudes[i];
+            let a1 = state.amplitudes[j];
+
+            let (new0, new1) = match axis {
+                'x' => {
+                    // RX: cos(θ/2)I - i·sin(θ/2)X
+                    let i_sin = Complex::new(0.0, -sin);
+                    (a0 * cos + a1 * i_sin, a0 * i_sin + a1 * cos)
+                }
+                'y' => {
+                    // RY: cos(θ/2)I - i·sin(θ/2)Y
+                    (a0 * cos - a1 * sin, a0 * sin + a1 * cos)
+                }
+                'z' => {
+                    // RZ: e^(-iθ/2)|0><0| + e^(iθ/2)|1><1|
+                    let exp_neg = Complex::new(cos, -sin);
+                    let exp_pos = Complex::new(cos, sin);
+                    (a0 * exp_neg, a1 * exp_pos)
+                }
+                _ => (a0, a1),
+            };
+
+            state.amplitudes[i] = new0;
+            state.amplitudes[j] = new1;
+        }
+    }
+}
+
+fn apply_controlled_phase(state: &mut StateVector, control: usize, target: usize, theta: f64) {
+    let n = state.num_qubits;
+    let dim = 1 << n;
+    let control_mask = 1 << (n - 1 - control);
+    let target_mask = 1 << (n - 1 - target);
+
+    let phase = Complex::new(theta.cos(), theta.sin());
+
+    for i in 0..dim {
+        // Apply phase if both control and target are |1>
+        if i & control_mask != 0 && i & target_mask != 0 {
+            state.amplitudes[i] = state.amplitudes[i] * phase;
+        }
+    }
+}
+
+fn apply_toffoli(state: &mut StateVector, c1: usize, c2: usize, target: usize) {
+    let n = state.num_qubits;
+    let dim = 1 << n;
+    let c1_mask = 1 << (n - 1 - c1);
+    let c2_mask = 1 << (n - 1 - c2);
+    let target_mask = 1 << (n - 1 - target);
+
+    for i in 0..dim {
+        // Only flip target if both controls are |1>
+        if i & c1_mask != 0 && i & c2_mask != 0 && i & target_mask == 0 {
+            let j = i | target_mask;
+            state.amplitudes.swap(i, j);
+        }
+    }
+}
+
+fn apply_fredkin(state: &mut StateVector, control: usize, t1: usize, t2: usize) {
+    let n = state.num_qubits;
+    let dim = 1 << n;
+    let control_mask = 1 << (n - 1 - control);
+    let t1_mask = 1 << (n - 1 - t1);
+    let t2_mask = 1 << (n - 1 - t2);
+
+    for i in 0..dim {
+        // Only swap targets if control is |1> and targets differ
+        if i & control_mask != 0 {
+            let bit1 = (i & t1_mask) != 0;
+            let bit2 = (i & t2_mask) != 0;
+
+            if bit1 != bit2 {
+                let j = i ^ t1_mask ^ t2_mask;
+                if i < j {
+                    state.amplitudes.swap(i, j);
+                }
             }
         }
     }

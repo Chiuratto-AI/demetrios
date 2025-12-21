@@ -3,7 +3,7 @@
 //! Quantum states with integrated epistemic uncertainty tracking.
 //! Every qubit state carries its amplitude AND noise-induced variance.
 
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, Sub};
 
 use crate::epistemic::bayesian::BetaConfidence;
 
@@ -60,6 +60,16 @@ impl Add for Complex {
         Self {
             re: self.re + other.re,
             im: self.im + other.im,
+        }
+    }
+}
+
+impl Sub for Complex {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self {
+        Self {
+            re: self.re - other.re,
+            im: self.im - other.im,
         }
     }
 }

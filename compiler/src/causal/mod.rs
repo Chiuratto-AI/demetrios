@@ -56,6 +56,12 @@ pub mod uplift;
 pub mod uplift_syntax;
 pub mod z3_identify;
 
+// Epistemic-causal modules (new)
+pub mod dag;
+pub mod do_calculus;
+pub mod effects;
+pub mod identifiability;
+
 // Re-exports
 pub use composition::*;
 pub use counterfactual::*;
@@ -68,3 +74,19 @@ pub use structural::*;
 pub use uplift::*;
 pub use uplift_syntax::*;
 pub use z3_identify::*;
+
+// Epistemic-causal re-exports (renamed to avoid conflicts with graph.rs types)
+pub use dag::{
+    CausalDAG, DAGError, EffectEstimate, EpistemicCausalNode, EpistemicNodeType,
+    UncertainCausalEdge, UncertainEdgeType,
+};
+pub use do_calculus::{AdjustmentSet, AdjustmentType, CausalQuery, DoCalculus};
+pub use effects::{
+    AverageTreatmentEffect, ConditionalAverageTreatmentEffect, LocalAverageTreatmentEffect,
+    MediationEffects, average_treatment_effect, conditional_average_treatment_effect,
+    local_average_treatment_effect, mediation_effects,
+};
+pub use identifiability::{
+    BackdoorPath, BackdoorPathAnalysis, check_frontdoor_criterion, d_separation,
+    find_backdoor_paths, find_valid_adjustment_sets,
+};

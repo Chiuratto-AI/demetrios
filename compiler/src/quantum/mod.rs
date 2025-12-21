@@ -42,18 +42,25 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 
+pub mod amplitude;
 pub mod circuit;
 pub mod epistemic_vqe;
 pub mod gates;
 pub mod gpu_quantum;
+pub mod hamiltonian;
 pub mod noise;
 pub mod pennylane;
 pub mod states;
 pub mod uccsd;
 pub mod vqe;
 
+pub use amplitude::EpistemicAmplitude;
 pub use circuit::{CircuitBuilder, CircuitStats, QuantumCircuit};
 pub use gates::{Gate, GateType, ParametricGate};
+pub use hamiltonian::{
+    Hamiltonian as MolecularHamiltonian, Pauli, PauliString,
+    VQEResult as MolecularVQEResult,
+};
 pub use noise::{AmplitudeDamping, DepolarizingNoise, NoiseModel, NoiseType};
 pub use pennylane::{
     EpistemicExpectation, EpistemicGradients, EpistemicHamiltonian, EpistemicParam, LayerType,
