@@ -50,6 +50,7 @@ pub mod models;
 pub mod operations;
 pub mod provenance;
 pub mod temporal;
+pub mod time_travel;
 
 pub use confidence::{Confidence, EpistemicStatus, Evidence, EvidenceKind, Revisability, Source};
 pub use heterogeneity::{
@@ -92,4 +93,12 @@ pub use models::{
 pub use beta_knowledge::{
     ActiveInferenceMetrics, BetaEpistemicStatus, BetaKnowledge, DecayModel, PriorType,
     SourcePriorType, exploration_priorities, variance_penalty,
+};
+
+// Time-travel debugging for epistemic provenance
+pub use time_travel::{
+    BreakAction, BreakCondition, BreakpointManager, ConfidenceDelta, CustodyRecord,
+    DegradationReason, DegradingOperation, EpistemicBreakpoint, EpistemicSnapshot,
+    FDAComplianceProof, ProofVerificationError, TimelineGraph, TimelineState,
+    TimeTravelResult, VerificationResult, verify_external,
 };

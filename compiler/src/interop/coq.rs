@@ -937,7 +937,8 @@ mod tests {
         let theorem = interop.import_theorem(&cert);
 
         assert_eq!(theorem.name, "test_thm");
-        assert!((theorem.confidence.mean() - 1.0).abs() < 0.001);
+        // Beta distribution clamps to [0.001, 0.999] for numerical stability
+        assert!((theorem.confidence.mean() - 1.0).abs() < 0.01);
     }
 
     #[test]
@@ -953,8 +954,9 @@ mod tests {
             },
         };
 
-        // Coq proofs have confidence 1.0 (axiomatic)
-        assert!((theorem.confidence.mean() - 1.0).abs() < 0.001);
+        // Coq proofs have confidence ~1.0 (axiomatic)
+        // Beta distribution clamps to [0.001, 0.999] for numerical stability
+        assert!((theorem.confidence.mean() - 1.0).abs() < 0.01);
         assert!(theorem.confidence.variance() < 0.001);
     }
 

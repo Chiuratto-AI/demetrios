@@ -510,11 +510,11 @@ impl ProvenanceMetadata {
 #[derive(Debug, Clone)]
 pub struct MerkleProvenanceDAG {
     /// All nodes indexed by hash
-    nodes: HashMap<Hash256, MerkleProvenanceNode>,
+    pub(crate) nodes: HashMap<Hash256, MerkleProvenanceNode>,
     /// Current head nodes (leaves of the DAG)
-    heads: HashSet<Hash256>,
+    pub(crate) heads: HashSet<Hash256>,
     /// Root nodes (nodes with no parents)
-    roots: HashSet<Hash256>,
+    pub(crate) roots: HashSet<Hash256>,
 }
 
 impl MerkleProvenanceDAG {
@@ -684,7 +684,7 @@ impl MerkleProvenanceDAG {
         }
     }
 
-    fn topological_sort(&self) -> Vec<Hash256> {
+    pub(crate) fn topological_sort(&self) -> Vec<Hash256> {
         let mut result = Vec::new();
         let mut visited = HashSet::new();
 

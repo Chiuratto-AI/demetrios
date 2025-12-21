@@ -963,8 +963,11 @@ mod tests {
         let config = UpliftTreeGpuConfig::default();
         let ptx = compile_uplift_tree_ptx(&config);
 
+        // Check for entry point
         assert!(ptx.contains(".entry uplift_tree_predict"));
+        // Check for CATE estimation registers
         assert!(ptx.contains("%r_tau"));
-        assert!(ptx.contains("CustomerSegment"));
+        // Check for segment classification register
+        assert!(ptx.contains("%r_segment"));
     }
 }
