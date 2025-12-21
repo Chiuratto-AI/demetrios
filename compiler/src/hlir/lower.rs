@@ -109,6 +109,22 @@ impl HirToHlir {
             }
         }
 
+        // Also collect extern function signatures for call resolution
+        for extern_block in &hir.externs {
+            for ext_fn in &extern_block.functions {
+                self.functions
+                    .insert(ext_fn.name.clone(), HlirType::from_hir(&ext_fn.return_type));
+            }
+        }
+
+        // Declare extern functions (imports) as declaration-only HLIR functions
+        for extern_block in &hir.externs {
+            for ext_fn in &extern_block.functions {
+                let hlir_func = self.lower_extern_fn(extern_block.abi.clone(), ext_fn);
+                self.module_builder.add_function(hlir_func);
+            }
+        }
+
         // Second pass: lower functions
         for item in &hir.items {
             if let HirItem::Function(f) = item {
@@ -118,6 +134,24 @@ impl HirToHlir {
         }
 
         self.module_builder.build()
+    }
+
+    fn lower_extern_fn(&mut self, abi: crate::ast::Abi, f: &HirExternFn) -> HlirFunction {
+        let func_id = self.module_builder.fresh_func_id();
+        let return_type = HlirType::from_hir(&f.return_type);
+
+        let mut func_builder = FunctionBuilder::new(func_id, &f.name, return_type);
+        func_builder.set_abi(abi);
+        func_builder.set_exported(false);
+        func_builder.set_link_name(f.link_name.clone());
+        func_builder.set_variadic(f.is_variadic);
+
+        for param in &f.params {
+            func_builder.add_param(&param.name, HlirType::from_hir(&param.ty));
+        }
+
+        // No blocks/body: declaration-only import.
+        func_builder.build()
     }
 
     fn lower_function(&mut self, f: &HirFn) -> HlirFunction {
@@ -290,7 +324,13 @@ impl<'a> LoweringContext<'a> {
                 }
             }
             HirExprKind::Field { base, field } => {
-                if let Some(base_ptr) = self.lower_lvalue(base) {
+                // Aggregate values (structs/refs) are represented as pointers in HLIR/codegen,
+                // so for field stores we need the base *value* (a pointer), not the address of a slot.
+                let base_ptr = match HlirType::from_hir(&base.ty) {
+                    HlirType::Ptr(_) | HlirType::Struct(_) => self.lower_expr(base),
+                    _ => self.lower_lvalue(base),
+                };
+                if let Some(base_ptr) = base_ptr {
                     let field_idx = self.get_field_index(&base.ty, field);
                     let field_ty = HlirType::from_hir(&target.ty);
                     let field_ptr = self.builder.build_field_ptr(base_ptr, field_idx, field_ty);
@@ -298,7 +338,13 @@ impl<'a> LoweringContext<'a> {
                 }
             }
             HirExprKind::Index { base, index } => {
-                if let Some(base_ptr) = self.lower_lvalue(base)
+                // For pointer bases, use lower_expr (get pointer value)
+                // Arrays are represented as pointers in codegen, so also use lower_expr.
+                let base_ptr = match HlirType::from_hir(&base.ty) {
+                    HlirType::Ptr(_) | HlirType::Array(_, _) => self.lower_expr(base),
+                    _ => self.lower_lvalue(base),
+                };
+                if let Some(base_ptr) = base_ptr
                     && let Some(idx) = self.lower_expr(index)
                 {
                     let elem_ty = HlirType::from_hir(&target.ty);
@@ -315,16 +361,18 @@ impl<'a> LoweringContext<'a> {
             HirExprKind::Local(name) => self.builder.get_var_slot(name),
             HirExprKind::Deref(inner) => self.lower_expr(inner),
             HirExprKind::Field { base, field } => {
-                let base_ptr = self.lower_lvalue(base)?;
+                let base_ptr = match HlirType::from_hir(&base.ty) {
+                    HlirType::Ptr(_) | HlirType::Struct(_) => self.lower_expr(base)?,
+                    _ => self.lower_lvalue(base)?,
+                };
                 let field_idx = self.get_field_index(&base.ty, field);
                 let field_ty = HlirType::from_hir(&expr.ty);
                 Some(self.builder.build_field_ptr(base_ptr, field_idx, field_ty))
             }
             HirExprKind::Index { base, index } => {
-                let base_ptr = if matches!(HlirType::from_hir(&base.ty), HlirType::Ptr(_)) {
-                    self.lower_expr(base)?
-                } else {
-                    self.lower_lvalue(base)?
+                let base_ptr = match HlirType::from_hir(&base.ty) {
+                    HlirType::Ptr(_) | HlirType::Array(_, _) => self.lower_expr(base)?,
+                    _ => self.lower_lvalue(base)?,
                 };
                 let idx = self.lower_expr(index)?;
                 let elem_ty = HlirType::from_hir(&expr.ty);
@@ -428,6 +476,10 @@ impl<'a> LoweringContext<'a> {
             }
 
             HirExprKind::Unary { op, expr: inner } => {
+                // Special handling for Ref/RefMut: get address, not value
+                if matches!(op, HirUnaryOp::Ref | HirUnaryOp::RefMut) {
+                    return self.lower_lvalue(inner);
+                }
                 let operand = self.lower_expr(inner)?;
                 let inner_ty = HlirType::from_hir(&inner.ty);
                 Some(self.lower_unary_op(*op, operand, &inner_ty))
@@ -553,7 +605,7 @@ impl<'a> LoweringContext<'a> {
             }
 
             HirExprKind::Index { base, index } => {
-                // For arrays, we need pointer arithmetic
+                // For arrays/pointers, we need pointer arithmetic
                 let base_val = self.lower_expr(base)?;
                 let idx_val = self.lower_expr(index)?;
                 let elem_ptr = self.builder.build_elem_ptr(base_val, idx_val, ty.clone());
@@ -1806,6 +1858,7 @@ mod tests {
                 abi: crate::ast::Abi::Rust,
                 is_exported: false,
             })],
+            externs: Vec::new(),
         }
     }
 
@@ -1884,6 +1937,7 @@ mod tests {
                 abi: crate::ast::Abi::Rust,
                 is_exported: false,
             })],
+            externs: Vec::new(),
         }
     }
 
@@ -1981,6 +2035,7 @@ mod tests {
                 abi: crate::ast::Abi::Rust,
                 is_exported: false,
             })],
+            externs: Vec::new(),
         };
 
         let hlir = lower(&hir);
@@ -2063,6 +2118,7 @@ mod tests {
                 abi: crate::ast::Abi::Rust,
                 is_exported: false,
             })],
+            externs: Vec::new(),
         };
 
         let hlir = lower(&hir);
