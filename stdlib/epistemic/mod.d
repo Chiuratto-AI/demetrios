@@ -52,8 +52,32 @@
 /// // effect carries full epistemic uncertainty
 /// ```
 
-// Re-export stats module
+// Core modules
 pub use stats::*
-
-// Re-export causal module
 pub use causal::*
+
+// New epistemic computing modules
+pub use knowledge::*
+pub use propagate::*
+pub use meta::*
+pub use active::*
+pub use merkle::*
+pub use linalg::*
+pub use ode::*
+pub use mcmc::*
+pub use pde::*
+pub use uplift::*
+
+// Submodule declarations
+pub mod stats
+pub mod causal
+pub mod knowledge
+pub mod propagate
+pub mod meta
+pub mod active
+pub mod merkle
+pub mod linalg
+pub mod ode
+pub mod mcmc
+pub mod pde
+pub mod uplift
