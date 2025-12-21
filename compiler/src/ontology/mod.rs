@@ -55,6 +55,7 @@ pub mod cache;
 pub mod distance;
 pub mod domain;
 pub mod embedding;
+pub mod fidelity;
 pub mod foundation;
 pub mod llm_gen;
 pub mod loader;
@@ -101,6 +102,11 @@ pub use resolver::{
 pub use semantic_sql::{SemanticSqlStore, SqlOntology, SqlTerm};
 pub use sssom::{
     MappingDirection, MappingJustification, SssomMapping, SssomMappingSet, load_sssom_mappings,
+};
+pub use fidelity::{
+    AggregateFidelity, FidelityCaveat, FidelityConfig, FidelityIssue, FidelityResult,
+    FidelityStats, ProvenanceAudit, ProvenanceIssue, SubsumptionFidelity, ViolationDetails,
+    ViolationType, WorldFidelityChecker,
 };
 
 use crate::epistemic::{OntologyBinding, OntologyRef, TermId};
