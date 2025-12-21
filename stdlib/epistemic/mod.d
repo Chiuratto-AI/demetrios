@@ -67,6 +67,8 @@ pub use ode::*
 pub use mcmc::*
 pub use pde::*
 pub use uplift::*
+pub use optimization::*
+pub use timeseries::*
 
 // Submodule declarations
 pub mod stats
@@ -81,3 +83,5 @@ pub mod ode
 pub mod mcmc
 pub mod pde
 pub mod uplift
+pub mod optimization
+pub mod timeseries
