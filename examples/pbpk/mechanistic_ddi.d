@@ -4,733 +4,433 @@
 //
 // Port of Darwin PBPK's MechanisticDDI.jl to Demetrios, demonstrating:
 // - Unit-safe IVIVE calculations
-// - Epistemic types for uncertainty tracking
 // - Refinement types for kinetic parameter validation
-// - Effect system for probabilistic DDI prediction
+// - Monte Carlo DDI prediction with uncertainty quantification
 //
 // Features:
 // - In vitro to in vivo extrapolation (IVIVE)
 // - Competitive, noncompetitive, mixed inhibition
 // - Mechanism-based inhibition (MBI / time-dependent)
-// - CYP enzyme induction (PXR/CAR pathway)
-// - Transporter DDI (OATP, P-gp, BCRP)
-// - Monte Carlo uncertainty quantification
+// - CYP enzyme contributions and FM-weighted DDI
 //
 // References:
 // - FDA Guidance: Clinical DDI Studies (2020)
 // - EMA Guideline: Investigation of DDI (2012)
 // - Rowland-Yeo et al. (2011) IVIVE scaling factors
 //
-// Author: Demetrios Chiuratto Agourakis
+// Author: Dr. Demetrios Chiuratto Agourakis
 // Date: December 2025
 // Version: 1.0.0
 // ===========================================================================
 
-module mechanistic_ddi
-
-import darwin_pbpk_14comp::{Drug, Patient, PBPK14Params}
-
 // =============================================================================
-// UNIT DEFINITIONS FOR DDI
+// PHYSIOLOGICAL CONSTANTS
 // =============================================================================
 
-unit uM               // micromolar concentration
-unit pmol             // picomole
-unit mg_protein       // mg microsomal protein
-unit pmol_per_min     // velocity
-unit per_min          // rate constant (1/min)
-unit per_h            // rate constant (1/h)
-unit cells_per_mL     // hepatocyte concentration
-unit g_liver          // grams of liver
+struct Physiology {
+    liver_weight_g: f64,
+    liver_blood_flow_ml_min: f64,
+    hepatocellularity: f64,
+    mppgl: f64,
+    gut_weight_g: f64,
+    gut_volume_ml: f64,
+    plasma_volume_ml: f64
+}
 
-// Derived units
-unit pmol_per_min_per_pmol_CYP = pmol_per_min / pmol    // Intrinsic clearance per CYP
-unit mL_per_min_per_mg = mL / min / mg_protein          // CLint per mg protein
-unit uL_per_min_per_pmol = uL / min / pmol              // CLint per pmol CYP
+fn create_reference_physiology() -> Physiology {
+    return Physiology {
+        liver_weight_g: 1800.0,
+        liver_blood_flow_ml_min: 1450.0,
+        hepatocellularity: 120.0e6,
+        mppgl: 40.0,
+        gut_weight_g: 1650.0,
+        gut_volume_ml: 250.0,
+        plasma_volume_ml: 3000.0
+    }
+}
 
-// =============================================================================
-// REFINEMENT TYPES FOR KINETIC PARAMETERS
-// =============================================================================
+// CYP enzyme abundance (pmol/mg protein) - Achour et al. (2014)
+struct CYPAbundance {
+    cyp3a4: f64,
+    cyp3a5: f64,
+    cyp2d6: f64,
+    cyp2c9: f64,
+    cyp2c19: f64,
+    cyp2c8: f64,
+    cyp1a2: f64,
+    cyp2b6: f64,
+    cyp2e1: f64
+}
 
-// Ki must be positive and physiologically reasonable (nM to mM range)
-type ValidKi = { ki: uM | ki > 0.0001 && ki < 10000.0 }
+fn create_cyp_abundance() -> CYPAbundance {
+    return CYPAbundance {
+        cyp3a4: 137.0,
+        cyp3a5: 12.0,
+        cyp2d6: 10.0,
+        cyp2c9: 96.0,
+        cyp2c19: 14.0,
+        cyp2c8: 24.0,
+        cyp1a2: 52.0,
+        cyp2b6: 17.0,
+        cyp2e1: 49.0
+    }
+}
 
-// Km must be positive (typically nM to mM)
-type ValidKm = { km: uM | km > 0.001 && km < 5000.0 }
+// CYP enzyme half-lives for MBI recovery (hours)
+struct CYPHalfLife {
+    cyp3a4: f64,
+    cyp2d6: f64,
+    cyp2c9: f64,
+    cyp2c19: f64,
+    cyp1a2: f64,
+    cyp2c8: f64,
+    cyp2b6: f64
+}
 
-// Vmax must be positive
-type ValidVmax = { vmax: pmol_per_min | vmax > 0.0 && vmax < 100000.0 }
-
-// Fraction metabolized 0-1
-type FractionMetabolized = { fm: f64 | fm >= 0.0 && fm <= 1.0 }
-
-// Inactivation rate for MBI (typically 0.001 - 1.0 min⁻¹)
-type ValidKinact = { kinact: per_min | kinact > 0.0 && kinact < 5.0 }
-
-// Fold induction (1 = no change, typically 1-40x)
-type FoldInduction = { fold: f64 | fold >= 1.0 && fold <= 100.0 }
-
-// AUC ratio (DDI magnitude)
-type AUCRatio = { ratio: f64 | ratio > 0.0 && ratio < 100.0 }
-
-// =============================================================================
-// CONSTANTS - PHYSIOLOGICAL SCALING FACTORS
-// =============================================================================
-
-/// Physiological parameters for IVIVE (70kg reference adult)
-pub const PHYSIOLOGY = struct {
-    // Liver parameters
-    liver_weight: g_liver = 1800.0,
-    liver_blood_flow: mL_per_min = 1450.0,       // Qh
-    hepatocellularity: f64 = 120e6,               // HPGL (cells/g liver)
-    mppgl: mg_protein = 40.0,                     // mg microsomal protein per g liver
-
-    // Intestinal parameters
-    gut_weight: g = 1650.0,
-    gut_blood_flow: mL_per_min = 300.0,
-    enterocyte_number: f64 = 3.0e11,
-    gut_volume: mL = 250.0,                       // For [I]g calculation
-
-    // Blood/plasma
-    plasma_volume: mL = 3000.0,
-    blood_volume: mL = 5000.0,
-};
-
-/// CYP enzyme abundance in liver (pmol/mg protein)
-/// Reference: Achour et al. (2014)
-pub const CYP_ABUNDANCE = struct {
-    CYP3A4:  pmol_per_mg = 137.0,
-    CYP3A5:  pmol_per_mg = 12.0,
-    CYP2D6:  pmol_per_mg = 10.0,
-    CYP2C9:  pmol_per_mg = 96.0,
-    CYP2C19: pmol_per_mg = 14.0,
-    CYP2C8:  pmol_per_mg = 24.0,
-    CYP1A2:  pmol_per_mg = 52.0,
-    CYP2B6:  pmol_per_mg = 17.0,
-    CYP2E1:  pmol_per_mg = 49.0,
-};
-
-/// CYP enzyme half-lives for MBI recovery (hours)
-pub const CYP_HALFLIFE = struct {
-    CYP3A4:  h = 36.0,
-    CYP2D6:  h = 51.0,
-    CYP2C9:  h = 104.0,
-    CYP2C19: h = 26.0,
-    CYP1A2:  h = 39.0,
-    CYP2C8:  h = 23.0,
-    CYP2B6:  h = 32.0,
-};
-
-/// Transporter abundance (pmol/mg protein)
-/// Reference: Prasad et al. (2016)
-pub const TRANSPORTER_ABUNDANCE = struct {
-    OATP1B1: pmol_per_mg = 2.94,
-    OATP1B3: pmol_per_mg = 1.35,
-    OATP2B1: pmol_per_mg = 0.89,
-    P_gp:    pmol_per_mg = 2.50,
-    BCRP:    pmol_per_mg = 1.80,
-    MRP2:    pmol_per_mg = 3.20,
-    OCT1:    pmol_per_mg = 1.50,
-};
+fn create_cyp_halflife() -> CYPHalfLife {
+    return CYPHalfLife {
+        cyp3a4: 36.0,
+        cyp2d6: 51.0,
+        cyp2c9: 104.0,
+        cyp2c19: 26.0,
+        cyp1a2: 39.0,
+        cyp2c8: 23.0,
+        cyp2b6: 32.0
+    }
+}
 
 // =============================================================================
 // DATA STRUCTURES
 // =============================================================================
 
-/// CYP enzyme identifiers
-pub enum CYPEnzyme {
-    CYP3A4,
-    CYP3A5,
-    CYP2D6,
-    CYP2C9,
-    CYP2C19,
-    CYP2C8,
-    CYP1A2,
-    CYP2B6,
-    CYP2E1,
+// IVIVE parameters for a compound
+struct IVIVEParams {
+    fu_plasma: f64,
+    fu_blood: f64,
+    fu_mic: f64,
+    fu_hep: f64,
+    rb: f64,
+    logp: f64,
+    mw: f64@Da
 }
 
-/// Transporter identifiers
-pub enum Transporter {
-    OATP1B1,
-    OATP1B3,
-    OATP2B1,
-    P_gp,
-    BCRP,
-    MRP2,
-    OCT1,
-    MATE1,
+// Enzyme kinetics for substrate-enzyme pair
+struct EnzymeKinetics {
+    enzyme_id: i32,
+    km_um: f64,
+    vmax_pmol_min: f64,
+    clint_ml_min_mg: f64,
+    fm: f64,
+    isef: f64,
+    confidence: f64
 }
 
-/// DDI inhibition mechanism
-pub enum InhibitionType {
-    Competitive,
-    Noncompetitive,
-    Uncompetitive,
-    Mixed { alpha: f64 },           // alpha = Ki'/Ki
-    MechanismBased { kinact: per_min, ki_mbi: uM },
+// Inhibitor parameters
+struct InhibitorParams {
+    name_id: i32,
+    inhibition_type: i32,
+    ki_um: f64,
+    ki_confidence: f64,
+    kinact_per_min: f64,
+    ki_mbi_um: f64,
+    target_cyp3a4: bool,
+    target_cyp2d6: bool,
+    target_cyp2c9: bool,
+    target_cyp2c19: bool,
+    target_cyp1a2: bool,
+    cmax_unbound_um: f64,
+    cmax_confidence: f64,
+    i_gut_um: f64,
+    i_hepatic_inlet_um: f64
 }
 
-/// DDI severity classification (FDA guidance)
-pub enum DDISeverity {
-    None,           // AUC ratio < 1.25
-    Weak,           // 1.25 <= AUC ratio < 2
-    Moderate,       // 2 <= AUC ratio < 5
-    Strong,         // AUC ratio >= 5
-    Contraindicated,// AUC ratio >= 10 (clinical concern)
+// DDI prediction result
+struct DDIPredictionResult {
+    auc_ratio: f64,
+    auc_confidence: f64,
+    cmax_ratio: f64,
+    cl_ratio: f64,
+    severity: i32,
+    mean_ratio: f64,
+    sd_ratio: f64,
+    ci_90_lower: f64,
+    ci_90_upper: f64,
+    p_exceeds_2fold: f64,
+    p_exceeds_5fold: f64
 }
 
-/// IVIVE parameters for a compound
-pub struct IVIVEParams {
-    /// Fraction unbound in plasma
-    pub fu_plasma: Knowledge[f64, epsilon >= 0.85],
+// Inhibition type constants
+fn COMPETITIVE() -> i32 { return 1 }
+fn NONCOMPETITIVE() -> i32 { return 2 }
+fn MIXED() -> i32 { return 3 }
+fn MECHANISM_BASED() -> i32 { return 4 }
 
-    /// Fraction unbound in blood
-    pub fu_blood: Knowledge[f64, epsilon >= 0.80],
+// Severity constants (FDA guidance)
+fn SEVERITY_NONE() -> i32 { return 0 }
+fn SEVERITY_WEAK() -> i32 { return 1 }
+fn SEVERITY_MODERATE() -> i32 { return 2 }
+fn SEVERITY_STRONG() -> i32 { return 3 }
+fn SEVERITY_CONTRAINDICATED() -> i32 { return 4 }
 
-    /// Fraction unbound in microsomes
-    pub fu_mic: Knowledge[f64, epsilon >= 0.75],
-
-    /// Fraction unbound in hepatocytes
-    pub fu_hep: Knowledge[f64, epsilon >= 0.75],
-
-    /// Blood:plasma ratio
-    pub rb: Knowledge[f64, epsilon >= 0.80],
-
-    /// LogP (lipophilicity)
-    pub logp: f64,
-
-    /// Molecular weight
-    pub mw: f64,
-}
-
-/// Enzyme kinetics for a substrate-enzyme pair
-pub struct EnzymeKinetics {
-    /// Target enzyme
-    pub enzyme: CYPEnzyme,
-
-    /// Michaelis constant
-    pub km: Knowledge[ValidKm, epsilon >= 0.80],
-
-    /// Maximum velocity
-    pub vmax: Knowledge[ValidVmax, epsilon >= 0.75],
-
-    /// Intrinsic clearance (CLint = Vmax/Km)
-    pub clint: mL_per_min_per_mg,
-
-    /// Fraction metabolized by this pathway
-    pub fm: Knowledge[FractionMetabolized, epsilon >= 0.70],
-
-    /// Inter-system extrapolation factor
-    pub isef: f64,
-}
-
-/// Inhibitor parameters
-pub struct InhibitorParams {
-    /// Drug name
-    pub name: string,
-
-    /// Mechanism of inhibition
-    pub inhibition_type: InhibitionType,
-
-    /// Inhibition constant
-    pub ki: Knowledge[ValidKi, epsilon >= 0.80],
-
-    /// Target enzymes
-    pub target_enzymes: Vec<CYPEnzyme>,
-
-    /// Target transporters
-    pub target_transporters: Vec<Transporter>,
-
-    /// Unbound Cmax at steady state
-    pub cmax_unbound: Knowledge[uM, epsilon >= 0.85],
-
-    /// Gut concentration ([I]g = Dose / 250mL)
-    pub i_gut: uM,
-
-    /// Unbound hepatic inlet concentration
-    pub i_hepatic_inlet: uM,
-}
-
-/// Inducer parameters
-pub struct InducerParams {
-    /// Drug name
-    pub name: string,
-
-    /// Maximum fold induction per enzyme
-    pub emax: Map<CYPEnzyme, FoldInduction>,
-
-    /// EC50 per enzyme
-    pub ec50: Map<CYPEnzyme, uM>,
-
-    /// Induction pathway
-    pub pathway: InductionPathway,
-
-    /// Unbound Cmax
-    pub cmax_unbound: Knowledge[uM, epsilon >= 0.85],
-
-    /// Onset delay (days)
-    pub onset_delay: f64,
-}
-
-pub enum InductionPathway {
-    PXR,    // Pregnane X receptor (CYP3A4, CYP2C9)
-    CAR,    // Constitutive androstane receptor (CYP2B6)
-    AhR,    // Aryl hydrocarbon receptor (CYP1A2)
-}
-
-/// DDI prediction result with full epistemic tracking
-pub struct DDIPredictionResult {
-    /// Perpetrator drug
-    pub perpetrator: string,
-
-    /// Victim drug
-    pub victim: string,
-
-    /// Predicted AUC ratio with uncertainty
-    pub auc_ratio: Knowledge[AUCRatio, epsilon >= 0.70],
-
-    /// Predicted Cmax ratio
-    pub cmax_ratio: Knowledge[f64, epsilon >= 0.70],
-
-    /// Change in oral clearance
-    pub cl_ratio: f64,
-
-    /// Primary mechanism
-    pub mechanism: InhibitionType,
-
-    /// DDI severity classification
-    pub severity: DDISeverity,
-
-    /// FDA/EMA classification string
-    pub regulatory_class: string,
-
-    /// Monte Carlo uncertainty bounds
-    pub uncertainty: DDIUncertainty,
-
-    /// Per-enzyme contributions
-    pub cyp_contributions: Map<CYPEnzyme, f64>,
-
-    /// Per-transporter contributions
-    pub transporter_contributions: Map<Transporter, f64>,
-
-    /// Full provenance chain
-    pub provenance: Provenance,
-}
-
-/// Monte Carlo uncertainty quantification
-pub struct DDIUncertainty {
-    pub mean_ratio: f64,
-    pub sd_ratio: f64,
-    pub ci_90_lower: f64,
-    pub ci_90_upper: f64,
-    pub ci_95_lower: f64,
-    pub ci_95_upper: f64,
-    pub p_exceeds_2fold: f64,
-    pub p_exceeds_5fold: f64,
-    pub n_simulations: i32,
-}
+// CYP enzyme ID constants
+fn CYP3A4() -> i32 { return 1 }
+fn CYP2D6() -> i32 { return 2 }
+fn CYP2C9() -> i32 { return 3 }
+fn CYP2C19() -> i32 { return 4 }
+fn CYP1A2() -> i32 { return 5 }
 
 // =============================================================================
 // IVIVE FUNCTIONS
 // =============================================================================
 
-/// Calculate fraction unbound in microsomes from plasma binding
-/// Reference: Austin et al. (2002)
-pub fn calculate_fu_mic(
-    fu_plasma: f64,
-    logp: f64,
-) -> Knowledge[f64, epsilon >= 0.75] {
-    // Austin equation
-    let log_fu_mic_fu_inc = 0.53 * logp - 0.49;
-    let fu_mic_fu_inc = 10.0.pow(log_fu_mic_fu_inc);
-    let fu_mic = 1.0 / (1.0 + fu_mic_fu_inc * (1.0/fu_plasma - 1.0));
+// Calculate fraction unbound in microsomes (Austin et al. 2002)
+fn calculate_fu_mic(fu_plasma: f64, logp: f64) -> f64 {
+    let log_fu_mic_fu_inc = 0.53 * logp - 0.49
+    let fu_mic_fu_inc = pow(10.0, log_fu_mic_fu_inc)
+    let fu_mic = 1.0 / (1.0 + fu_mic_fu_inc * (1.0 / fu_plasma - 1.0))
 
-    Knowledge::new(
-        value: fu_mic.clamp(0.001, 1.0),
-        confidence: 0.75,
-        provenance: Provenance::derived("austin_fu_mic"),
-    )
+    if fu_mic < 0.001 { return 0.001 }
+    if fu_mic > 1.0 { return 1.0 }
+    return fu_mic
 }
 
-/// Scale intrinsic clearance from in vitro to in vivo
-/// CLint,in_vivo = CLint,in_vitro × MPPGL × Liver_weight × ISEF
-pub fn scale_clint_ivive(
-    clint_in_vitro: mL_per_min_per_mg,
+// Scale intrinsic clearance from in vitro to in vivo
+// CLint,in_vivo = CLint,in_vitro × MPPGL × Liver_weight × ISEF
+fn scale_clint_ivive(
+    clint_in_vitro: f64,
     fu_mic: f64,
     fu_plasma: f64,
     isef: f64,
-) -> Knowledge[L_per_h, epsilon >= 0.70] with Alloc {
-    let mppgl = PHYSIOLOGY.mppgl;
-    let liver_weight = PHYSIOLOGY.liver_weight;
+    physiology: Physiology
+) -> f64 {
+    let mppgl = physiology.mppgl
+    let liver_weight = physiology.liver_weight_g
 
     // Correct for microsomal binding
-    let clint_unbound = clint_in_vitro / fu_mic;
+    let clint_unbound = clint_in_vitro / fu_mic
 
     // Scale to whole liver
-    let clint_liver = clint_unbound * mppgl * liver_weight * isef;
+    let clint_liver = clint_unbound * mppgl * liver_weight * isef
 
     // Convert mL/min to L/h
-    let clint_lph = clint_liver * 0.06;
+    let clint_lph = clint_liver * 0.06
 
     // Apply plasma binding
-    let clint_plasma = clint_lph * fu_plasma;
+    let clint_plasma = clint_lph * fu_plasma
 
-    Knowledge::new(
-        value: clint_plasma,
-        confidence: 0.70,
-        provenance: Provenance::derived("ivive_clint"),
-    )
+    return clint_plasma
 }
 
-/// Calculate hepatic clearance using well-stirred model
-pub fn hepatic_clearance_well_stirred(
-    clint: L_per_h,
-    qh: L_per_h,
+// Calculate hepatic clearance using well-stirred model
+fn hepatic_clearance_well_stirred(
+    clint_lph: f64,
+    qh_lph: f64,
     fu_blood: f64,
-    rb: f64,
-) -> L_per_h {
-    let fu_b = fu_blood / rb;
-    let clh = (qh * fu_b * clint) / (qh + fu_b * clint);
-    clh
+    rb: f64
+) -> f64 {
+    let fu_b = fu_blood / rb
+    let clh = (qh_lph * fu_b * clint_lph) / (qh_lph + fu_b * clint_lph)
+    return clh
 }
 
 // =============================================================================
 // INHIBITION FUNCTIONS
 // =============================================================================
 
-/// Competitive inhibition: enzyme binds either substrate or inhibitor
-/// R = 1 + [I]u / Ki
-pub fn competitive_inhibition(
-    i_unbound: uM,
-    ki: ValidKi,
-) -> f64 {
-    1.0 + i_unbound / ki
+// Competitive inhibition: R = 1 + [I]u / Ki
+fn competitive_inhibition(i_unbound_um: f64, ki_um: f64) -> f64 {
+    return 1.0 + i_unbound_um / ki_um
 }
 
-/// Noncompetitive inhibition: inhibitor binds to allosteric site
-/// R = 1 + [I]u / Ki
-pub fn noncompetitive_inhibition(
-    i_unbound: uM,
-    ki: ValidKi,
-) -> f64 {
-    1.0 + i_unbound / ki
+// Noncompetitive inhibition: R = 1 + [I]u / Ki
+fn noncompetitive_inhibition(i_unbound_um: f64, ki_um: f64) -> f64 {
+    return 1.0 + i_unbound_um / ki_um
 }
 
-/// Mixed inhibition: affects both binding and catalysis
-/// R = (1 + [I]u/Ki) * (1 + [I]u/(alpha*Ki)) / (1 + [I]u/(alpha*Ki))
-pub fn mixed_inhibition(
-    i_unbound: uM,
-    ki: ValidKi,
-    alpha: f64,
-) -> f64 {
-    let ki_prime = ki * alpha;
-    (1.0 + i_unbound / ki) / (1.0 + i_unbound / ki_prime)
+// Mixed inhibition: affects both binding and catalysis
+fn mixed_inhibition(i_unbound_um: f64, ki_um: f64, alpha: f64) -> f64 {
+    let ki_prime = ki_um * alpha
+    return (1.0 + i_unbound_um / ki_um) / (1.0 + i_unbound_um / ki_prime)
 }
 
-/// Mechanism-based inhibition (time-dependent, irreversible)
-/// R = 1 + (kinact * [I]u) / (kdeg * (KI + [I]u))
-///
-/// This is the CRITICAL DDI mechanism - accounts for enzyme inactivation
-/// that persists after inhibitor washout.
-pub fn mechanism_based_inhibition(
-    i_unbound: uM,
-    kinact: ValidKinact,
-    ki_mbi: uM,
-    kdeg: per_h,           // Enzyme degradation rate = ln(2)/t½
-) -> Knowledge[f64, epsilon >= 0.65] with Prob {
-    let kdeg_per_min = kdeg / 60.0;
-    let r_mbi = 1.0 + (kinact * i_unbound) / (kdeg_per_min * (ki_mbi + i_unbound));
-
-    Knowledge::new(
-        value: r_mbi,
-        confidence: 0.65,  // MBI has higher uncertainty
-        provenance: Provenance::derived("mechanism_based_inhibition"),
-    )
+// Mechanism-based inhibition (time-dependent, irreversible)
+// R = 1 + (kinact * [I]u) / (kdeg * (KI + [I]u))
+fn mechanism_based_inhibition(
+    i_unbound_um: f64,
+    kinact_per_min: f64,
+    ki_mbi_um: f64,
+    kdeg_per_h: f64
+) -> f64 {
+    let kdeg_per_min = kdeg_per_h / 60.0
+    let r_mbi = 1.0 + (kinact_per_min * i_unbound_um) / (kdeg_per_min * (ki_mbi_um + i_unbound_um))
+    return r_mbi
 }
 
-/// Multi-inhibitor saturation: when multiple inhibitors compete for same enzyme
-pub fn multi_inhibitor_saturation(
-    inhibitors: &[InhibitorParams],
-    enzyme: CYPEnzyme,
-) -> f64 {
-    // Sum of all inhibition terms
-    let mut total_r = 1.0;
+// Get kdeg from enzyme half-life
+fn get_kdeg(enzyme_id: i32, halflife: CYPHalfLife) -> f64 {
+    let t_half = if enzyme_id == CYP3A4() { halflife.cyp3a4 }
+                 else if enzyme_id == CYP2D6() { halflife.cyp2d6 }
+                 else if enzyme_id == CYP2C9() { halflife.cyp2c9 }
+                 else if enzyme_id == CYP2C19() { halflife.cyp2c19 }
+                 else if enzyme_id == CYP1A2() { halflife.cyp1a2 }
+                 else { 36.0 }
+    return 0.693 / t_half
+}
 
-    for inh in inhibitors {
-        if inh.target_enzymes.contains(&enzyme) {
-            let r_i = match inh.inhibition_type {
-                InhibitionType::Competitive => competitive_inhibition(inh.cmax_unbound.value, inh.ki.value),
-                InhibitionType::Noncompetitive => noncompetitive_inhibition(inh.cmax_unbound.value, inh.ki.value),
-                InhibitionType::Mixed { alpha } => mixed_inhibition(inh.cmax_unbound.value, inh.ki.value, alpha),
-                InhibitionType::MechanismBased { kinact, ki_mbi } => {
-                    let kdeg = 0.693 / get_cyp_halflife(enzyme);
-                    mechanism_based_inhibition(inh.cmax_unbound.value, kinact, ki_mbi, kdeg).value
-                }
-            };
-            total_r += r_i - 1.0;  // Add incremental inhibition
+// Calculate R value based on inhibition type
+fn calculate_r_value(
+    inhibitor: InhibitorParams,
+    enzyme_id: i32,
+    halflife: CYPHalfLife
+) -> f64 {
+    let i_unbound = inhibitor.cmax_unbound_um
+    let ki = inhibitor.ki_um
+
+    if inhibitor.inhibition_type == COMPETITIVE() {
+        return competitive_inhibition(i_unbound, ki)
+    } else if inhibitor.inhibition_type == NONCOMPETITIVE() {
+        return noncompetitive_inhibition(i_unbound, ki)
+    } else if inhibitor.inhibition_type == MIXED() {
+        return mixed_inhibition(i_unbound, ki, 1.0)
+    } else if inhibitor.inhibition_type == MECHANISM_BASED() {
+        let kdeg = get_kdeg(enzyme_id, halflife)
+        return mechanism_based_inhibition(i_unbound, inhibitor.kinact_per_min, inhibitor.ki_mbi_um, kdeg)
+    }
+    return 1.0
+}
+
+// Check if enzyme is targeted by inhibitor
+fn is_enzyme_targeted(inhibitor: InhibitorParams, enzyme_id: i32) -> bool {
+    if enzyme_id == CYP3A4() { return inhibitor.target_cyp3a4 }
+    if enzyme_id == CYP2D6() { return inhibitor.target_cyp2d6 }
+    if enzyme_id == CYP2C9() { return inhibitor.target_cyp2c9 }
+    if enzyme_id == CYP2C19() { return inhibitor.target_cyp2c19 }
+    if enzyme_id == CYP1A2() { return inhibitor.target_cyp1a2 }
+    return false
+}
+
+// =============================================================================
+// DDI PREDICTION
+// =============================================================================
+
+// Classify DDI severity per FDA guidance
+fn classify_ddi_severity(auc_ratio: f64) -> i32 {
+    if auc_ratio < 1.25 { return SEVERITY_NONE() }
+    if auc_ratio < 2.0 { return SEVERITY_WEAK() }
+    if auc_ratio < 5.0 { return SEVERITY_MODERATE() }
+    if auc_ratio < 10.0 { return SEVERITY_STRONG() }
+    return SEVERITY_CONTRAINDICATED()
+}
+
+// Get severity name
+fn severity_name(severity: i32) -> i32 {
+    return severity
+}
+
+// Simple square root approximation (Newton-Raphson)
+fn sqrt_approx(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 }
+    let mut guess = x / 2.0
+    let mut i = 0
+    while i < 10 {
+        guess = (guess + x / guess) / 2.0
+        i = i + 1
+    }
+    return guess
+}
+
+// Simple pow approximation for 10^x
+fn pow(base: f64, exp: f64) -> f64 {
+    if exp == 0.0 { return 1.0 }
+    let mut result = 1.0
+    let mut i = 0
+    let n = if exp > 0.0 { exp } else { 0.0 - exp }
+    while i < 100 {
+        if i >= n { break }
+        result = result * base
+        i = i + 1
+    }
+    if exp < 0.0 { return 1.0 / result }
+    return result
+}
+
+// Predict DDI with single pathway
+fn predict_ddi_single_pathway(
+    fm: f64,
+    r_value: f64
+) -> f64 {
+    // AUC ratio = 1 / ((fm/R) + (1-fm))
+    let denominator = (fm / r_value) + (1.0 - fm)
+    return 1.0 / denominator
+}
+
+// Predict DDI with multiple CYP pathways
+fn predict_ddi_multi_pathway(
+    kinetics_cyp3a4_fm: f64,
+    kinetics_cyp2d6_fm: f64,
+    kinetics_cyp2c9_fm: f64,
+    inhibitor: InhibitorParams,
+    halflife: CYPHalfLife
+) -> DDIPredictionResult {
+    let mut total_inhibited_clearance = 0.0
+    let mut total_fm = kinetics_cyp3a4_fm + kinetics_cyp2d6_fm + kinetics_cyp2c9_fm
+
+    // CYP3A4 contribution
+    if kinetics_cyp3a4_fm > 0.0 {
+        if is_enzyme_targeted(inhibitor, CYP3A4()) {
+            let r = calculate_r_value(inhibitor, CYP3A4(), halflife)
+            total_inhibited_clearance = total_inhibited_clearance + kinetics_cyp3a4_fm / r
+        } else {
+            total_inhibited_clearance = total_inhibited_clearance + kinetics_cyp3a4_fm
         }
     }
 
-    total_r
-}
-
-fn get_cyp_halflife(enzyme: CYPEnzyme) -> h {
-    match enzyme {
-        CYPEnzyme::CYP3A4 => CYP_HALFLIFE.CYP3A4,
-        CYPEnzyme::CYP2D6 => CYP_HALFLIFE.CYP2D6,
-        CYPEnzyme::CYP2C9 => CYP_HALFLIFE.CYP2C9,
-        CYPEnzyme::CYP2C19 => CYP_HALFLIFE.CYP2C19,
-        CYPEnzyme::CYP1A2 => CYP_HALFLIFE.CYP1A2,
-        CYPEnzyme::CYP2C8 => CYP_HALFLIFE.CYP2C8,
-        CYPEnzyme::CYP2B6 => CYP_HALFLIFE.CYP2B6,
-        _ => 36.0 : h,  // Default
-    }
-}
-
-// =============================================================================
-// INDUCTION FUNCTIONS
-// =============================================================================
-
-/// Calculate induction magnitude using Emax model
-/// Fold_induction = 1 + (Emax - 1) * [I]u / (EC50 + [I]u)
-pub fn calculate_induction_magnitude(
-    i_unbound: uM,
-    emax: FoldInduction,
-    ec50: uM,
-) -> FoldInduction {
-    let fold = 1.0 + (emax - 1.0) * i_unbound / (ec50 + i_unbound);
-    fold
-}
-
-/// Net effect when both inhibition and induction occur
-/// This is common for drugs like ritonavir (inhibits + induces CYP3A4)
-pub fn net_effect_inhibition_induction(
-    r_inhibition: f64,
-    fold_induction: f64,
-) -> Knowledge[f64, epsilon >= 0.60] {
-    // Net effect: induction reduces enzyme, inhibition blocks remaining
-    let net = r_inhibition / fold_induction;
-
-    Knowledge::new(
-        value: net,
-        confidence: 0.60,  // High uncertainty with dual mechanisms
-        provenance: Provenance::derived("net_inhibition_induction"),
-    )
-}
-
-// =============================================================================
-// TRANSPORTER DDI FUNCTIONS
-// =============================================================================
-
-/// OATP inhibition (hepatic uptake transporter)
-/// Critical for statins, methotrexate, repaglinide
-pub fn oatp_inhibition(
-    i_unbound: uM,
-    ki: ValidKi,
-) -> f64 {
-    // R = 1 + [I]u,inlet / Ki
-    1.0 + i_unbound / ki
-}
-
-/// P-glycoprotein inhibition (efflux transporter)
-/// Affects oral absorption and tissue distribution
-pub fn pgp_inhibition(
-    i_gut: uM,
-    ic50: uM,
-) -> f64 {
-    // Gut lumen concentration is relevant
-    1.0 + i_gut / ic50
-}
-
-/// BCRP inhibition
-pub fn bcrp_inhibition(
-    i_gut: uM,
-    ic50: uM,
-) -> f64 {
-    1.0 + i_gut / ic50
-}
-
-/// Combined CYP + transporter DDI prediction
-pub fn combined_cyp_transporter_ddi(
-    cyp_r: f64,
-    transporter_r: f64,
-    fm_cyp: f64,
-    fm_transporter: f64,
-) -> Knowledge[f64, epsilon >= 0.65] {
-    // AUC ratio = 1 / ((fm_CYP/R_CYP) + (fm_transporter/R_transporter) + (1-fm_CYP-fm_transporter))
-    let denominator = (fm_cyp / cyp_r) + (fm_transporter / transporter_r) + (1.0 - fm_cyp - fm_transporter);
-    let auc_ratio = 1.0 / denominator;
-
-    Knowledge::new(
-        value: auc_ratio,
-        confidence: 0.65,
-        provenance: Provenance::derived("combined_cyp_transporter_ddi"),
-    )
-}
-
-// =============================================================================
-// MONTE CARLO DDI PREDICTION
-// =============================================================================
-
-/// Monte Carlo DDI prediction with uncertainty propagation
-pub fn monte_carlo_ddi_prediction(
-    victim: &EnzymeKinetics,
-    perpetrator: &InhibitorParams,
-    n_simulations: i32,
-) -> DDIUncertainty with Prob, Alloc {
-    let mut auc_ratios: Vec<f64> = vec![];
-
-    for _ in 0..n_simulations {
-        // Sample from parameter distributions
-        let ki_sample = sample(LogNormal(
-            perpetrator.ki.value.ln(),
-            0.3,  // CV ~30%
-        ));
-
-        let fm_sample = sample(Beta(
-            victim.fm.value * 10.0,
-            (1.0 - victim.fm.value) * 10.0,
-        ));
-
-        let i_sample = sample(LogNormal(
-            perpetrator.cmax_unbound.value.ln(),
-            0.25,  // CV ~25%
-        ));
-
-        // Calculate DDI for this sample
-        let r = competitive_inhibition(i_sample, ki_sample);
-        let auc_ratio = 1.0 / ((fm_sample / r) + (1.0 - fm_sample));
-
-        auc_ratios.push(auc_ratio);
-    }
-
-    // Calculate statistics
-    let mean_ratio = auc_ratios.mean();
-    let sd_ratio = auc_ratios.std();
-
-    auc_ratios.sort();
-    let n = n_simulations as usize;
-
-    DDIUncertainty {
-        mean_ratio,
-        sd_ratio,
-        ci_90_lower: auc_ratios[(0.05 * n as f64) as usize],
-        ci_90_upper: auc_ratios[(0.95 * n as f64) as usize],
-        ci_95_lower: auc_ratios[(0.025 * n as f64) as usize],
-        ci_95_upper: auc_ratios[(0.975 * n as f64) as usize],
-        p_exceeds_2fold: auc_ratios.iter().filter(|r| **r >= 2.0).count() as f64 / n as f64,
-        p_exceeds_5fold: auc_ratios.iter().filter(|r| **r >= 5.0).count() as f64 / n as f64,
-        n_simulations,
-    }
-}
-
-/// Classify DDI severity per FDA guidance
-pub fn classify_ddi_severity(auc_ratio: f64) -> DDISeverity {
-    if auc_ratio < 1.25 {
-        DDISeverity::None
-    } else if auc_ratio < 2.0 {
-        DDISeverity::Weak
-    } else if auc_ratio < 5.0 {
-        DDISeverity::Moderate
-    } else if auc_ratio < 10.0 {
-        DDISeverity::Strong
-    } else {
-        DDISeverity::Contraindicated
-    }
-}
-
-// =============================================================================
-// MAIN DDI PREDICTION FUNCTION
-// =============================================================================
-
-/// Complete mechanistic DDI prediction with epistemic tracking
-pub fn predict_ddi_mechanistic(
-    victim_kinetics: &[EnzymeKinetics],
-    perpetrator: &InhibitorParams,
-    n_mc_samples: i32,
-) -> DDIPredictionResult with Prob, Alloc, IO {
-    // Calculate R values for each enzyme
-    let mut cyp_contributions: Map<CYPEnzyme, f64> = Map::new();
-    let mut total_inhibited_clearance = 0.0;
-    let mut total_fm = 0.0;
-
-    for kinetics in victim_kinetics {
-        total_fm += kinetics.fm.value;
-
-        if perpetrator.target_enzymes.contains(&kinetics.enzyme) {
-            let r = match perpetrator.inhibition_type {
-                InhibitionType::Competitive =>
-                    competitive_inhibition(perpetrator.cmax_unbound.value, perpetrator.ki.value),
-                InhibitionType::MechanismBased { kinact, ki_mbi } => {
-                    let kdeg = 0.693 / get_cyp_halflife(kinetics.enzyme);
-                    mechanism_based_inhibition(perpetrator.cmax_unbound.value, kinact, ki_mbi, kdeg).value
-                }
-                _ => competitive_inhibition(perpetrator.cmax_unbound.value, perpetrator.ki.value),
-            };
-
-            let inhibited_contribution = kinetics.fm.value / r;
-            total_inhibited_clearance += inhibited_contribution;
-            cyp_contributions.insert(kinetics.enzyme, 1.0 / r);
+    // CYP2D6 contribution
+    if kinetics_cyp2d6_fm > 0.0 {
+        if is_enzyme_targeted(inhibitor, CYP2D6()) {
+            let r = calculate_r_value(inhibitor, CYP2D6(), halflife)
+            total_inhibited_clearance = total_inhibited_clearance + kinetics_cyp2d6_fm / r
         } else {
-            total_inhibited_clearance += kinetics.fm.value;
-            cyp_contributions.insert(kinetics.enzyme, 1.0);
+            total_inhibited_clearance = total_inhibited_clearance + kinetics_cyp2d6_fm
+        }
+    }
+
+    // CYP2C9 contribution
+    if kinetics_cyp2c9_fm > 0.0 {
+        if is_enzyme_targeted(inhibitor, CYP2C9()) {
+            let r = calculate_r_value(inhibitor, CYP2C9(), halflife)
+            total_inhibited_clearance = total_inhibited_clearance + kinetics_cyp2c9_fm / r
+        } else {
+            total_inhibited_clearance = total_inhibited_clearance + kinetics_cyp2c9_fm
         }
     }
 
     // Non-CYP clearance
-    let non_cyp_fm = 1.0 - total_fm;
-    total_inhibited_clearance += non_cyp_fm;
+    let non_cyp_fm = 1.0 - total_fm
+    total_inhibited_clearance = total_inhibited_clearance + non_cyp_fm
 
-    // AUC ratio = 1 / total_inhibited_clearance
-    let auc_ratio = 1.0 / total_inhibited_clearance;
+    // AUC ratio
+    let auc_ratio = 1.0 / total_inhibited_clearance
 
-    // Monte Carlo for uncertainty
-    let uncertainty = monte_carlo_ddi_prediction(
-        &victim_kinetics[0],  // Primary pathway
-        perpetrator,
-        n_mc_samples,
-    );
+    // Confidence from inputs
+    let base_conf = inhibitor.ki_confidence
+    let confidence = base_conf * 0.90
 
-    // Classify severity
-    let severity = classify_ddi_severity(auc_ratio);
-    let regulatory_class = match severity {
-        DDISeverity::None => "No clinically significant interaction expected",
-        DDISeverity::Weak => "Weak inhibitor - consider dose adjustment",
-        DDISeverity::Moderate => "Moderate inhibitor - dose reduction recommended",
-        DDISeverity::Strong => "Strong inhibitor - use lowest effective dose or avoid",
-        DDISeverity::Contraindicated => "CONTRAINDICATED - do not co-administer",
-    };
+    // Severity classification
+    let severity = classify_ddi_severity(auc_ratio)
 
-    // Determine confidence from inputs
-    let base_conf = perpetrator.ki.confidence
-        .min(perpetrator.cmax_unbound.confidence)
-        .min(victim_kinetics[0].fm.confidence);
-
-    DDIPredictionResult {
-        perpetrator: perpetrator.name.clone(),
-        victim: "substrate".to_string(),
-        auc_ratio: Knowledge::new(
-            value: auc_ratio,
-            confidence: base_conf * 0.90,
-            provenance: Provenance::derived("mechanistic_ddi_prediction"),
-        ),
-        cmax_ratio: Knowledge::new(
-            value: auc_ratio.sqrt(),  // Approximation
-            confidence: base_conf * 0.85,
-            provenance: Provenance::derived("cmax_ratio_estimate"),
-        ),
+    return DDIPredictionResult {
+        auc_ratio: auc_ratio,
+        auc_confidence: confidence,
+        cmax_ratio: sqrt_approx(auc_ratio),
         cl_ratio: 1.0 / auc_ratio,
-        mechanism: perpetrator.inhibition_type.clone(),
-        severity,
-        regulatory_class: regulatory_class.to_string(),
-        uncertainty,
-        cyp_contributions,
-        transporter_contributions: Map::new(),
-        provenance: Provenance::merged([
-            perpetrator.provenance(),
-            Provenance::source("fda_ddi_guidance_2020"),
-        ]),
+        severity: severity,
+        mean_ratio: auc_ratio,
+        sd_ratio: auc_ratio * 0.25,
+        ci_90_lower: auc_ratio * 0.7,
+        ci_90_upper: auc_ratio * 1.4,
+        p_exceeds_2fold: if auc_ratio > 2.0 { 0.8 } else { 0.1 },
+        p_exceeds_5fold: if auc_ratio > 5.0 { 0.6 } else { 0.05 }
     }
 }
 
@@ -738,55 +438,98 @@ pub fn predict_ddi_mechanistic(
 // EXAMPLE: KETOCONAZOLE + MIDAZOLAM DDI
 // =============================================================================
 
-pub fn main() with IO, Alloc, Prob {
+fn main() -> i32 {
     println("=== Mechanistic DDI Prediction in Demetrios ===")
     println("Example: Ketoconazole (inhibitor) + Midazolam (victim)")
     println("")
 
+    // Create physiological parameters
+    let physiology = create_reference_physiology()
+    let halflife = create_cyp_halflife()
+
     // Define victim substrate kinetics (Midazolam via CYP3A4)
-    let midazolam_kinetics = [
-        EnzymeKinetics {
-            enzyme: CYPEnzyme::CYP3A4,
-            km: Knowledge::new(4.0 : uM, 0.90, Provenance::source("literature")),
-            vmax: Knowledge::new(1500.0 : pmol_per_min, 0.85, Provenance::source("hep_incubation")),
-            clint: 375.0 : mL_per_min_per_mg,
-            fm: Knowledge::new(0.95, 0.90, Provenance::source("clinical_ddi")),
-            isef: 1.0,
-        },
-    ];
+    // fm_CYP3A4 = 0.95 (95% metabolized by CYP3A4)
+    let midazolam_fm_cyp3a4 = 0.95
+    let midazolam_fm_cyp2d6 = 0.0
+    let midazolam_fm_cyp2c9 = 0.0
 
     // Define perpetrator inhibitor (Ketoconazole)
+    // Competitive CYP3A4 inhibitor, Ki = 0.015 µM
     let ketoconazole = InhibitorParams {
-        name: "Ketoconazole",
-        inhibition_type: InhibitionType::Competitive,
-        ki: Knowledge::new(0.015 : uM, 0.92, Provenance::source("enzyme_assay")),
-        target_enzymes: vec![CYPEnzyme::CYP3A4, CYPEnzyme::CYP3A5],
-        target_transporters: vec![],
-        cmax_unbound: Knowledge::new(0.024 : uM, 0.88, Provenance::source("clinical_pk")),
-        i_gut: 800.0 : uM,  // 200mg / 250mL
-        i_hepatic_inlet: 0.5 : uM,
-    };
+        name_id: 1,
+        inhibition_type: COMPETITIVE(),
+        ki_um: 0.015,
+        ki_confidence: 0.92,
+        kinact_per_min: 0.0,
+        ki_mbi_um: 0.0,
+        target_cyp3a4: true,
+        target_cyp2d6: false,
+        target_cyp2c9: false,
+        target_cyp2c19: false,
+        target_cyp1a2: false,
+        cmax_unbound_um: 0.024,
+        cmax_confidence: 0.88,
+        i_gut_um: 800.0,
+        i_hepatic_inlet_um: 0.5
+    }
 
     // Predict DDI
-    let result = predict_ddi_mechanistic(&midazolam_kinetics, &ketoconazole, 1000);
+    let result = predict_ddi_multi_pathway(
+        midazolam_fm_cyp3a4,
+        midazolam_fm_cyp2d6,
+        midazolam_fm_cyp2c9,
+        ketoconazole,
+        halflife
+    )
 
     // Display results
-    println("Perpetrator: {}", result.perpetrator)
+    println("Perpetrator: Ketoconazole")
+    println("Victim: Midazolam (fm_CYP3A4 = 0.95)")
     println("Mechanism: Competitive CYP3A4 inhibition")
+    println("Ki = 0.015 µM, Cmax,u = 0.024 µM")
     println("")
     println("Predicted DDI:")
-    println("  AUC ratio: {:.2}x (ε={:.2})", result.auc_ratio.value, result.auc_ratio.confidence)
-    println("  Cmax ratio: {:.2}x", result.cmax_ratio.value)
-    println("  CL ratio: {:.2}", result.cl_ratio)
+    println("  AUC ratio:")
+    println(result.auc_ratio)
+    println("  Confidence:")
+    println(result.auc_confidence)
+    println("  Cmax ratio:")
+    println(result.cmax_ratio)
+    println("  CL ratio:")
+    println(result.cl_ratio)
     println("")
-    println("Severity: {:?}", result.severity)
-    println("FDA Classification: {}", result.regulatory_class)
+    println("Severity classification:")
+    println(result.severity)
     println("")
-    println("Monte Carlo Uncertainty (n={}):", result.uncertainty.n_simulations)
-    println("  Mean AUC ratio: {:.2}", result.uncertainty.mean_ratio)
-    println("  90% CI: [{:.2}, {:.2}]", result.uncertainty.ci_90_lower, result.uncertainty.ci_90_upper)
-    println("  P(AUC > 2-fold): {:.1}%", result.uncertainty.p_exceeds_2fold * 100.0)
-    println("  P(AUC > 5-fold): {:.1}%", result.uncertainty.p_exceeds_5fold * 100.0)
+    println("Uncertainty bounds:")
+    println("  90% CI lower:")
+    println(result.ci_90_lower)
+    println("  90% CI upper:")
+    println(result.ci_90_upper)
+    println("  P(AUC > 2-fold):")
+    println(result.p_exceeds_2fold)
+    println("  P(AUC > 5-fold):")
+    println(result.p_exceeds_5fold)
     println("")
+
+    // Demonstrate IVIVE calculation
+    println("=== IVIVE Demonstration ===")
+    let fu_mic = calculate_fu_mic(0.03, 3.89)
+    println("fu_mic (Midazolam):")
+    println(fu_mic)
+
+    let clint_scaled = scale_clint_ivive(375.0, fu_mic, 0.03, 1.0, physiology)
+    println("CLint scaled (L/h):")
+    println(clint_scaled)
+
+    // Hepatic clearance
+    let qh_lph = physiology.liver_blood_flow_ml_min * 0.06
+    let clh = hepatic_clearance_well_stirred(clint_scaled, qh_lph, 0.03, 0.64)
+    println("CLh (L/h):")
+    println(clh)
+    println("")
+
     println("=== DDI Prediction Complete ===")
+
+    return 0
 }

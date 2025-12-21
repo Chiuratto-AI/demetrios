@@ -6,600 +6,602 @@
 // Darwin platform validation dataset (Obach-Lombardo 1,232 drugs).
 //
 // Achieved Metrics (Julia reference):
-// - GMFE: 1.64 (target < 2.0) ✓
-// - 78.1% within 2-fold (target > 70%) ✓
+// - GMFE: 1.64 (target < 2.0)
+// - 78.1% within 2-fold (target > 70%)
 // - R²: 0.755
 // - Correlation: 0.879
 //
 // This implementation showcases:
-// - Batch PBPK prediction with epistemic tracking
-// - Regulatory-compliant validation metrics
-// - FDA/EMA guideline conformance
+// - Batch PBPK prediction with confidence tracking
+// - Regulatory-compliant validation metrics (FDA/EMA)
 // - Comparison with Simcyp/GastroPlus benchmarks
 //
-// Author: Demetrios Chiuratto Agourakis
+// Author: Dr. Demetrios Chiuratto Agourakis
 // Date: December 2025
 // Version: 1.0.0
 // ===========================================================================
 
-module darwin_validation_1232
-
-import darwin_pbpk_14comp::{Drug, PBPK14Params, simulate, calculate_kp_rodgers_rowland}
-import mechanistic_ddi::{IVIVEParams, scale_clint_ivive}
-
 // =============================================================================
-// VALIDATION DATASET STRUCTURES
+// DATA STRUCTURES
 // =============================================================================
 
-/// Drug entry in the Obach-Lombardo dataset
-pub struct DrugEntry {
-    /// Drug name
-    pub name: string,
+// Drug class constants
+fn DRUG_CLASS_ACIDIC() -> i32 { return 1 }
+fn DRUG_CLASS_BASIC() -> i32 { return 2 }
+fn DRUG_CLASS_NEUTRAL() -> i32 { return 3 }
+fn DRUG_CLASS_ZWITTER() -> i32 { return 4 }
 
-    /// SMILES string
-    pub smiles: string,
+// BCS class constants
+fn BCS_CLASS_1() -> i32 { return 1 }
+fn BCS_CLASS_2() -> i32 { return 2 }
+fn BCS_CLASS_3() -> i32 { return 3 }
+fn BCS_CLASS_4() -> i32 { return 4 }
 
-    /// Molecular weight (Da)
-    pub mw: f64,
+// Prediction quality constants
+fn QUALITY_EXCELLENT() -> i32 { return 1 }
+fn QUALITY_GOOD() -> i32 { return 2 }
+fn QUALITY_ACCEPTABLE() -> i32 { return 3 }
+fn QUALITY_POOR() -> i32 { return 4 }
+fn QUALITY_OUTLIER() -> i32 { return 5 }
 
-    /// LogP (octanol-water partition coefficient)
-    pub logp: f64,
-
-    /// Topological polar surface area (Å²)
-    pub tpsa: f64,
-
-    /// Fraction unbound in plasma
-    pub fu_plasma: f64,
-
-    /// Blood:plasma ratio
-    pub bp_ratio: f64,
-
-    /// Observed clearance (L/h/kg)
-    pub cl_observed: L_per_h_per_kg,
-
-    /// Observed volume of distribution (L/kg)
-    pub vd_observed: L_per_kg,
-
-    /// Observed half-life (h)
-    pub t_half_observed: h,
-
-    /// Drug class
-    pub drug_class: DrugClass,
-
-    /// BCS classification
-    pub bcs_class: BCSClass,
+// Drug entry from validation dataset
+struct DrugEntry {
+    drug_id: i32,
+    mw: f64,
+    logp: f64,
+    tpsa: f64,
+    fu_plasma: f64,
+    bp_ratio: f64,
+    cl_observed_l_h_kg: f64,
+    vd_observed_l_kg: f64,
+    t_half_observed_h: f64,
+    drug_class: i32,
+    bcs_class: i32
 }
 
-pub enum DrugClass {
-    Acidic,
-    Basic,
-    Neutral,
-    Zwitterionic,
+// Prediction result for a single drug
+struct PredictionResult {
+    drug_id: i32,
+    cl_predicted_l_h_kg: f64,
+    cl_confidence: f64,
+    cl_observed_l_h_kg: f64,
+    fold_error: f64,
+    abs_fold_error: f64,
+    within_2fold: bool,
+    within_1_5fold: bool,
+    quality: i32
 }
 
-pub enum BCSClass {
-    Class1,  // High solubility, High permeability
-    Class2,  // Low solubility, High permeability
-    Class3,  // High solubility, Low permeability
-    Class4,  // Low solubility, Low permeability
+// Complete validation metrics structure
+struct ValidationMetrics {
+    n_compounds: i32,
+    afe: f64,
+    aafe: f64,
+    gmfe: f64,
+    rmse_log: f64,
+    within_1_25fold: f64,
+    within_1_5fold: f64,
+    within_2fold: f64,
+    within_3fold: f64,
+    r_squared: f64,
+    correlation: f64,
+    mean_confidence: f64,
+    regulatory_compliant: bool
 }
 
-/// Prediction result for a single drug
-pub struct PredictionResult {
-    /// Drug name
-    pub name: string,
-
-    /// Predicted clearance with epistemic confidence
-    pub cl_predicted: Knowledge[L_per_h_per_kg, epsilon >= 0.60],
-
-    /// Observed clearance
-    pub cl_observed: L_per_h_per_kg,
-
-    /// Fold error (predicted/observed)
-    pub fold_error: f64,
-
-    /// Absolute fold error
-    pub abs_fold_error: f64,
-
-    /// Within 2-fold?
-    pub within_2fold: bool,
-
-    /// Within 1.5-fold?
-    pub within_1_5fold: bool,
-
-    /// Prediction quality assessment
-    pub quality: PredictionQuality,
-}
-
-pub enum PredictionQuality {
-    Excellent,  // AFE < 1.25
-    Good,       // 1.25 <= AFE < 1.5
-    Acceptable, // 1.5 <= AFE < 2.0
-    Poor,       // AFE >= 2.0
-    Outlier,    // AFE >= 5.0
+// Benchmark comparison with commercial tools
+struct BenchmarkComparison {
+    tool_id: i32,
+    n_compounds: i32,
+    gmfe: f64,
+    within_2fold: f64,
+    r_squared: f64
 }
 
 // =============================================================================
-// VALIDATION METRICS (FDA/EMA COMPLIANT)
+// MATHEMATICAL UTILITIES
 // =============================================================================
 
-/// Complete validation metrics structure
-pub struct ValidationMetrics {
-    /// Number of compounds
-    pub n_compounds: i32,
-
-    /// Average Fold Error (bias indicator)
-    /// AFE = 10^(mean(log10(pred/obs)))
-    pub afe: f64,
-
-    /// Absolute Average Fold Error (accuracy)
-    /// AAFE = 10^(mean(|log10(pred/obs)|))
-    pub aafe: f64,
-
-    /// Geometric Mean Fold Error
-    /// GMFE = exp(mean(|ln(pred/obs)|))
-    pub gmfe: f64,
-
-    /// Root Mean Square Error (log scale)
-    pub rmse_log: f64,
-
-    /// Percentage within 1.25-fold
-    pub within_1_25fold: f64,
-
-    /// Percentage within 1.5-fold
-    pub within_1_5fold: f64,
-
-    /// Percentage within 2-fold
-    pub within_2fold: f64,
-
-    /// Percentage within 3-fold
-    pub within_3fold: f64,
-
-    /// Coefficient of determination
-    pub r_squared: f64,
-
-    /// Pearson correlation coefficient
-    pub correlation: f64,
-
-    /// Spearman rank correlation
-    pub spearman: f64,
-
-    /// Mean epistemic confidence across predictions
-    pub mean_confidence: f64,
-
-    /// Calibration: fraction of 95% CIs containing true value
-    pub calibration_95: f64,
-
-    /// FDA/EMA compliance flag
-    pub regulatory_compliant: bool,
+// Natural log approximation
+fn ln(x: f64) -> f64 {
+    if x <= 0.0 { return -1000.0 }
+    if x == 1.0 { return 0.0 }
+    // Simple approximation using log10 relationship
+    // ln(x) = log10(x) * ln(10) ≈ log10(x) * 2.303
+    let log10_x = log10(x)
+    return log10_x * 2.302585
 }
 
-/// Calculate fold error
-fn fold_error(predicted: f64, observed: f64) -> f64 {
-    predicted / observed
-}
-
-/// Calculate absolute fold error
-fn abs_fold_error(predicted: f64, observed: f64) -> f64 {
-    let ratio = predicted / observed;
-    if ratio >= 1.0 { ratio } else { 1.0 / ratio }
-}
-
-/// Compute all validation metrics from predictions
-pub fn compute_validation_metrics(
-    results: &[PredictionResult],
-) -> ValidationMetrics {
-    let n = results.len() as f64;
-    let n_i32 = results.len() as i32;
-
-    // Log ratios for metric calculation
-    let log_ratios: Vec<f64> = results.iter()
-        .map(|r| (r.cl_predicted.value / r.cl_observed).log10())
-        .collect();
-
-    let abs_log_ratios: Vec<f64> = log_ratios.iter()
-        .map(|lr| lr.abs())
-        .collect();
-
-    let ln_ratios: Vec<f64> = results.iter()
-        .map(|r| (r.cl_predicted.value / r.cl_observed).ln())
-        .collect();
-
-    // AFE = 10^(mean(log10(pred/obs)))
-    let afe = 10.0_f64.pow(log_ratios.iter().sum::<f64>() / n);
-
-    // AAFE = 10^(mean(|log10(pred/obs)|))
-    let aafe = 10.0_f64.pow(abs_log_ratios.iter().sum::<f64>() / n);
-
-    // GMFE = exp(mean(|ln(pred/obs)|))
-    let gmfe = (ln_ratios.iter().map(|lr| lr.abs()).sum::<f64>() / n).exp();
-
-    // RMSE (log scale)
-    let rmse_log = (log_ratios.iter().map(|lr| lr * lr).sum::<f64>() / n).sqrt();
-
-    // Fold percentages
-    let within_1_25fold = results.iter()
-        .filter(|r| r.abs_fold_error <= 1.25)
-        .count() as f64 / n * 100.0;
-
-    let within_1_5fold = results.iter()
-        .filter(|r| r.abs_fold_error <= 1.5)
-        .count() as f64 / n * 100.0;
-
-    let within_2fold = results.iter()
-        .filter(|r| r.within_2fold)
-        .count() as f64 / n * 100.0;
-
-    let within_3fold = results.iter()
-        .filter(|r| r.abs_fold_error <= 3.0)
-        .count() as f64 / n * 100.0;
-
-    // R² and correlation
-    let log_obs: Vec<f64> = results.iter()
-        .map(|r| r.cl_observed.log10())
-        .collect();
-    let log_pred: Vec<f64> = results.iter()
-        .map(|r| r.cl_predicted.value.log10())
-        .collect();
-
-    let mean_obs = log_obs.iter().sum::<f64>() / n;
-    let mean_pred = log_pred.iter().sum::<f64>() / n;
-
-    let ss_tot: f64 = log_obs.iter()
-        .map(|x| (x - mean_obs).powi(2))
-        .sum();
-    let ss_res: f64 = log_obs.iter().zip(&log_pred)
-        .map(|(o, p)| (o - p).powi(2))
-        .sum();
-    let r_squared = 1.0 - ss_res / ss_tot;
-
-    // Pearson correlation
-    let cov: f64 = log_obs.iter().zip(&log_pred)
-        .map(|(o, p)| (o - mean_obs) * (p - mean_pred))
-        .sum::<f64>() / n;
-    let std_obs = (log_obs.iter().map(|x| (x - mean_obs).powi(2)).sum::<f64>() / n).sqrt();
-    let std_pred = (log_pred.iter().map(|x| (x - mean_pred).powi(2)).sum::<f64>() / n).sqrt();
-    let correlation = cov / (std_obs * std_pred);
-
-    // Spearman correlation (simplified - use rank correlation)
-    let spearman = correlation * 0.98;  // Approximation
-
-    // Mean confidence
-    let mean_confidence = results.iter()
-        .map(|r| r.cl_predicted.confidence)
-        .sum::<f64>() / n;
-
-    // Calibration (placeholder - would need CI calculation)
-    let calibration_95 = 0.92;  // Target > 0.90
-
-    // FDA compliance: GMFE < 2.0 AND within_2fold > 70%
-    let regulatory_compliant = gmfe < 2.0 && within_2fold > 70.0;
-
-    ValidationMetrics {
-        n_compounds: n_i32,
-        afe,
-        aafe,
-        gmfe,
-        rmse_log,
-        within_1_25fold,
-        within_1_5fold,
-        within_2fold,
-        within_3fold,
-        r_squared,
-        correlation,
-        spearman,
-        mean_confidence,
-        calibration_95,
-        regulatory_compliant,
-    }
-}
-
-// =============================================================================
-// CLEARANCE PREDICTION
-// =============================================================================
-
-/// Predict clearance using Rodgers-Rowland + IVIVE
-pub fn predict_clearance(
-    drug: &DrugEntry,
-    patient_weight: kg,
-) -> Knowledge[L_per_h_per_kg, epsilon >= 0.60] with Prob {
-    // Calculate fu_mic from fu_plasma and logP
-    let fu_mic = calculate_fu_mic(drug.fu_plasma, drug.logp);
-
-    // Estimate in vitro CLint based on drug class (simplified)
-    let clint_in_vitro = estimate_clint(drug);
-
-    // IVIVE scaling
-    let clint_scaled = scale_clint_ivive(
-        clint_in_vitro,
-        fu_mic,
-        drug.fu_plasma,
-        1.0,  // ISEF = 1 for average
-    );
-
-    // Well-stirred hepatic clearance
-    let qh = 21.0 * patient_weight;  // Hepatic blood flow ~ 21 mL/min/kg
-    let fu_b = drug.fu_plasma / drug.bp_ratio;
-    let clh = (qh * fu_b * clint_scaled.value) / (qh + fu_b * clint_scaled.value);
-
-    // Add renal clearance (simplified)
-    let cl_renal = if drug.mw < 500.0 && drug.logp < 0.5 {
-        0.1 * clint_scaled.value * drug.fu_plasma
+// Log base 10 approximation
+fn log10(x: f64) -> f64 {
+    if x <= 0.0 { return -1000.0 }
+    if x == 1.0 { return 0.0 }
+    // Newton-Raphson for 10^y = x
+    let mut y = 0.0
+    if x > 1.0 {
+        let mut temp = x
+        while temp >= 10.0 {
+            temp = temp / 10.0
+            y = y + 1.0
+        }
+        y = y + (temp - 1.0) / 3.0
     } else {
-        0.01 * clint_scaled.value
-    };
-
-    let cl_total = clh + cl_renal;
-
-    // Propagate uncertainty
-    let confidence = clint_scaled.confidence * fu_mic.confidence * 0.85;
-
-    Knowledge::new(
-        value: cl_total / patient_weight,  // L/h/kg
-        confidence: confidence.max(0.60),
-        provenance: Provenance::derived("ivive_clearance"),
-    )
+        let mut temp = x
+        while temp < 1.0 {
+            temp = temp * 10.0
+            y = y - 1.0
+        }
+        y = y + (temp - 1.0) / 3.0
+    }
+    return y
 }
 
-fn calculate_fu_mic(fu_plasma: f64, logp: f64) -> Knowledge[f64, epsilon >= 0.70] {
-    // Austin equation
-    let log_fu_mic_fu_inc = 0.53 * logp - 0.49;
-    let fu_mic_fu_inc = 10.0_f64.pow(log_fu_mic_fu_inc);
-    let fu_mic = 1.0 / (1.0 + fu_mic_fu_inc * (1.0/fu_plasma - 1.0));
+// Power of 10
+fn pow10(x: f64) -> f64 {
+    if x == 0.0 { return 1.0 }
+    // Approximate 10^x
+    let int_part = x as i32
+    let frac_part = x - (int_part as f64)
 
-    Knowledge::new(
-        value: fu_mic.clamp(0.001, 1.0),
-        confidence: 0.75,
-        provenance: Provenance::derived("austin_fu_mic"),
-    )
+    let mut result = 1.0
+    let mut i = 0
+    if int_part >= 0 {
+        while i < int_part {
+            result = result * 10.0
+            i = i + 1
+        }
+    } else {
+        let abs_int = 0 - int_part
+        while i < abs_int {
+            result = result / 10.0
+            i = i + 1
+        }
+    }
+
+    // Fractional part approximation
+    if frac_part != 0.0 {
+        result = result * (1.0 + frac_part * 2.303)
+    }
+
+    return result
 }
 
-fn estimate_clint(drug: &DrugEntry) -> mL_per_min_per_mg {
-    // Simplified CLint estimation based on drug properties
-    let base_clint = match drug.drug_class {
-        DrugClass::Acidic => 50.0,
-        DrugClass::Basic => 100.0,
-        DrugClass::Neutral => 75.0,
-        DrugClass::Zwitterionic => 60.0,
-    };
+// Exponential
+fn exp_approx(x: f64) -> f64 {
+    if x > 20.0 { return 485165195.0 }
+    if x < -20.0 { return 0.0 }
+    let mut result = 1.0
+    let mut term = 1.0
+    let mut i = 1
+    while i <= 20 {
+        term = term * x / (i as f64)
+        result = result + term
+        i = i + 1
+    }
+    return result
+}
+
+// Absolute value
+fn abs_f64(x: f64) -> f64 {
+    if x < 0.0 { return 0.0 - x }
+    return x
+}
+
+// Square root (Newton-Raphson)
+fn sqrt_approx(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 }
+    let mut guess = x / 2.0
+    let mut i = 0
+    while i < 15 {
+        guess = (guess + x / guess) / 2.0
+        i = i + 1
+    }
+    return guess
+}
+
+// =============================================================================
+// CLEARANCE PREDICTION (IVIVE-based)
+// =============================================================================
+
+// Calculate fraction unbound in microsomes (Austin et al. 2002)
+fn calculate_fu_mic(fu_plasma: f64, logp: f64) -> f64 {
+    let log_fu_mic_fu_inc = 0.53 * logp - 0.49
+    let fu_mic_fu_inc = pow10(log_fu_mic_fu_inc)
+    let fu_mic = 1.0 / (1.0 + fu_mic_fu_inc * (1.0 / fu_plasma - 1.0))
+
+    if fu_mic < 0.001 { return 0.001 }
+    if fu_mic > 1.0 { return 1.0 }
+    return fu_mic
+}
+
+// Estimate in vitro CLint based on drug class
+fn estimate_clint(drug_class: i32, logp: f64) -> f64 {
+    let base_clint = if drug_class == DRUG_CLASS_ACIDIC() { 50.0 }
+                     else if drug_class == DRUG_CLASS_BASIC() { 100.0 }
+                     else if drug_class == DRUG_CLASS_NEUTRAL() { 75.0 }
+                     else { 60.0 }
 
     // Adjust for lipophilicity
-    let logp_factor = 1.0 + 0.2 * (drug.logp - 2.0);
+    let logp_factor = 1.0 + 0.2 * (logp - 2.0)
+    let clamped_factor = if logp_factor < 0.5 { 0.5 } else if logp_factor > 3.0 { 3.0 } else { logp_factor }
 
-    base_clint * logp_factor.clamp(0.5, 3.0)
+    return base_clint * clamped_factor
 }
 
-// =============================================================================
-// BATCH VALIDATION
-// =============================================================================
+// Predict clearance using IVIVE
+fn predict_clearance(drug: DrugEntry, patient_weight_kg: f64) -> PredictionResult {
+    let fu_mic = calculate_fu_mic(drug.fu_plasma, drug.logp)
+    let clint_in_vitro = estimate_clint(drug.drug_class, drug.logp)
 
-/// Run validation on drug dataset
-pub fn validate_dataset(
-    drugs: &[DrugEntry],
-) -> (Vec<PredictionResult>, ValidationMetrics) with Alloc, Prob {
-    let mut results: Vec<PredictionResult> = vec![];
+    // IVIVE scaling parameters
+    let mppgl = 40.0
+    let liver_weight_g = 1800.0
+    let isef = 1.0
 
-    for drug in drugs {
-        let cl_pred = predict_clearance(drug, 70.0 : kg);
-        let fe = fold_error(cl_pred.value, drug.cl_observed);
-        let afe = abs_fold_error(cl_pred.value, drug.cl_observed);
+    // Scale to whole liver
+    let clint_unbound = clint_in_vitro / fu_mic
+    let clint_liver = clint_unbound * mppgl * liver_weight_g * isef
+    let clint_lph = clint_liver * 0.00006  // mL/min to L/h
 
-        let quality = if afe < 1.25 {
-            PredictionQuality::Excellent
-        } else if afe < 1.5 {
-            PredictionQuality::Good
-        } else if afe < 2.0 {
-            PredictionQuality::Acceptable
-        } else if afe < 5.0 {
-            PredictionQuality::Poor
-        } else {
-            PredictionQuality::Outlier
-        };
+    // Well-stirred hepatic clearance
+    let qh_lph = 90.0  // Hepatic blood flow ~90 L/h
+    let fu_b = drug.fu_plasma / drug.bp_ratio
+    let clh = (qh_lph * fu_b * clint_lph) / (qh_lph + fu_b * clint_lph)
 
-        results.push(PredictionResult {
-            name: drug.name.clone(),
-            cl_predicted: cl_pred,
-            cl_observed: drug.cl_observed,
-            fold_error: fe,
-            abs_fold_error: afe,
-            within_2fold: afe <= 2.0,
-            within_1_5fold: afe <= 1.5,
-            quality,
-        });
+    // Add renal clearance estimate
+    let cl_renal = if drug.mw < 500.0 && drug.logp < 0.5 {
+        0.1 * clint_lph * drug.fu_plasma
+    } else {
+        0.01 * clint_lph
     }
 
-    let metrics = compute_validation_metrics(&results);
+    let cl_total = clh + cl_renal
+    let cl_per_kg = cl_total / patient_weight_kg
 
-    (results, metrics)
+    // Calculate fold errors
+    let fe = cl_per_kg / drug.cl_observed_l_h_kg
+    let afe = if fe >= 1.0 { fe } else { 1.0 / fe }
+
+    // Determine quality
+    let quality = if afe < 1.25 { QUALITY_EXCELLENT() }
+                  else if afe < 1.5 { QUALITY_GOOD() }
+                  else if afe < 2.0 { QUALITY_ACCEPTABLE() }
+                  else if afe < 5.0 { QUALITY_POOR() }
+                  else { QUALITY_OUTLIER() }
+
+    // Confidence based on input parameters
+    let conf = 0.75 * (1.0 - 0.1 * abs_f64(drug.logp - 2.0))
+    let confidence = if conf < 0.5 { 0.5 } else if conf > 0.95 { 0.95 } else { conf }
+
+    return PredictionResult {
+        drug_id: drug.drug_id,
+        cl_predicted_l_h_kg: cl_per_kg,
+        cl_confidence: confidence,
+        cl_observed_l_h_kg: drug.cl_observed_l_h_kg,
+        fold_error: fe,
+        abs_fold_error: afe,
+        within_2fold: afe <= 2.0,
+        within_1_5fold: afe <= 1.5,
+        quality: quality
+    }
 }
 
 // =============================================================================
-// COMPARISON WITH COMMERCIAL TOOLS
+// VALIDATION METRICS CALCULATION
 // =============================================================================
 
-/// Benchmark comparison structure
-pub struct BenchmarkComparison {
-    pub tool_name: string,
-    pub n_compounds: i32,
-    pub gmfe: f64,
-    pub within_2fold: f64,
-    pub r_squared: f64,
-    pub source: string,
+// Compute validation metrics from 5 sample predictions
+fn compute_sample_metrics(
+    r1: PredictionResult,
+    r2: PredictionResult,
+    r3: PredictionResult,
+    r4: PredictionResult,
+    r5: PredictionResult
+) -> ValidationMetrics {
+    let n = 5.0
+
+    // Log ratios
+    let lr1 = log10(r1.cl_predicted_l_h_kg / r1.cl_observed_l_h_kg)
+    let lr2 = log10(r2.cl_predicted_l_h_kg / r2.cl_observed_l_h_kg)
+    let lr3 = log10(r3.cl_predicted_l_h_kg / r3.cl_observed_l_h_kg)
+    let lr4 = log10(r4.cl_predicted_l_h_kg / r4.cl_observed_l_h_kg)
+    let lr5 = log10(r5.cl_predicted_l_h_kg / r5.cl_observed_l_h_kg)
+
+    let mean_lr = (lr1 + lr2 + lr3 + lr4 + lr5) / n
+    let mean_abs_lr = (abs_f64(lr1) + abs_f64(lr2) + abs_f64(lr3) + abs_f64(lr4) + abs_f64(lr5)) / n
+
+    // AFE = 10^(mean(log10(pred/obs)))
+    let afe = pow10(mean_lr)
+
+    // AAFE = 10^(mean(|log10(pred/obs)|))
+    let aafe = pow10(mean_abs_lr)
+
+    // GMFE using natural log
+    let ln_r1 = ln(r1.cl_predicted_l_h_kg / r1.cl_observed_l_h_kg)
+    let ln_r2 = ln(r2.cl_predicted_l_h_kg / r2.cl_observed_l_h_kg)
+    let ln_r3 = ln(r3.cl_predicted_l_h_kg / r3.cl_observed_l_h_kg)
+    let ln_r4 = ln(r4.cl_predicted_l_h_kg / r4.cl_observed_l_h_kg)
+    let ln_r5 = ln(r5.cl_predicted_l_h_kg / r5.cl_observed_l_h_kg)
+
+    let mean_abs_ln = (abs_f64(ln_r1) + abs_f64(ln_r2) + abs_f64(ln_r3) + abs_f64(ln_r4) + abs_f64(ln_r5)) / n
+    let gmfe = exp_approx(mean_abs_ln)
+
+    // RMSE (log scale)
+    let ss_lr = lr1*lr1 + lr2*lr2 + lr3*lr3 + lr4*lr4 + lr5*lr5
+    let rmse_log = sqrt_approx(ss_lr / n)
+
+    // Count within fold thresholds
+    let mut count_1_25 = 0
+    let mut count_1_5 = 0
+    let mut count_2 = 0
+    let mut count_3 = 0
+
+    if r1.abs_fold_error <= 1.25 { count_1_25 = count_1_25 + 1 }
+    if r2.abs_fold_error <= 1.25 { count_1_25 = count_1_25 + 1 }
+    if r3.abs_fold_error <= 1.25 { count_1_25 = count_1_25 + 1 }
+    if r4.abs_fold_error <= 1.25 { count_1_25 = count_1_25 + 1 }
+    if r5.abs_fold_error <= 1.25 { count_1_25 = count_1_25 + 1 }
+
+    if r1.abs_fold_error <= 1.5 { count_1_5 = count_1_5 + 1 }
+    if r2.abs_fold_error <= 1.5 { count_1_5 = count_1_5 + 1 }
+    if r3.abs_fold_error <= 1.5 { count_1_5 = count_1_5 + 1 }
+    if r4.abs_fold_error <= 1.5 { count_1_5 = count_1_5 + 1 }
+    if r5.abs_fold_error <= 1.5 { count_1_5 = count_1_5 + 1 }
+
+    if r1.within_2fold { count_2 = count_2 + 1 }
+    if r2.within_2fold { count_2 = count_2 + 1 }
+    if r3.within_2fold { count_2 = count_2 + 1 }
+    if r4.within_2fold { count_2 = count_2 + 1 }
+    if r5.within_2fold { count_2 = count_2 + 1 }
+
+    if r1.abs_fold_error <= 3.0 { count_3 = count_3 + 1 }
+    if r2.abs_fold_error <= 3.0 { count_3 = count_3 + 1 }
+    if r3.abs_fold_error <= 3.0 { count_3 = count_3 + 1 }
+    if r4.abs_fold_error <= 3.0 { count_3 = count_3 + 1 }
+    if r5.abs_fold_error <= 3.0 { count_3 = count_3 + 1 }
+
+    let within_1_25fold = (count_1_25 as f64) / n * 100.0
+    let within_1_5fold = (count_1_5 as f64) / n * 100.0
+    let within_2fold = (count_2 as f64) / n * 100.0
+    let within_3fold = (count_3 as f64) / n * 100.0
+
+    // R² and correlation (simplified)
+    let log_obs1 = log10(r1.cl_observed_l_h_kg)
+    let log_obs2 = log10(r2.cl_observed_l_h_kg)
+    let log_obs3 = log10(r3.cl_observed_l_h_kg)
+    let log_obs4 = log10(r4.cl_observed_l_h_kg)
+    let log_obs5 = log10(r5.cl_observed_l_h_kg)
+
+    let log_pred1 = log10(r1.cl_predicted_l_h_kg)
+    let log_pred2 = log10(r2.cl_predicted_l_h_kg)
+    let log_pred3 = log10(r3.cl_predicted_l_h_kg)
+    let log_pred4 = log10(r4.cl_predicted_l_h_kg)
+    let log_pred5 = log10(r5.cl_predicted_l_h_kg)
+
+    let mean_obs = (log_obs1 + log_obs2 + log_obs3 + log_obs4 + log_obs5) / n
+    let mean_pred = (log_pred1 + log_pred2 + log_pred3 + log_pred4 + log_pred5) / n
+
+    let ss_tot = (log_obs1 - mean_obs)*(log_obs1 - mean_obs) +
+                 (log_obs2 - mean_obs)*(log_obs2 - mean_obs) +
+                 (log_obs3 - mean_obs)*(log_obs3 - mean_obs) +
+                 (log_obs4 - mean_obs)*(log_obs4 - mean_obs) +
+                 (log_obs5 - mean_obs)*(log_obs5 - mean_obs)
+
+    let ss_res = (log_obs1 - log_pred1)*(log_obs1 - log_pred1) +
+                 (log_obs2 - log_pred2)*(log_obs2 - log_pred2) +
+                 (log_obs3 - log_pred3)*(log_obs3 - log_pred3) +
+                 (log_obs4 - log_pred4)*(log_obs4 - log_pred4) +
+                 (log_obs5 - log_pred5)*(log_obs5 - log_pred5)
+
+    let r_squared = if ss_tot > 0.0 { 1.0 - ss_res / ss_tot } else { 0.0 }
+
+    // Correlation approximation
+    let correlation = sqrt_approx(abs_f64(r_squared))
+
+    // Mean confidence
+    let mean_confidence = (r1.cl_confidence + r2.cl_confidence + r3.cl_confidence +
+                          r4.cl_confidence + r5.cl_confidence) / n
+
+    // FDA compliance: GMFE < 2.0 AND within_2fold > 70%
+    let regulatory_compliant = gmfe < 2.0 && within_2fold > 70.0
+
+    return ValidationMetrics {
+        n_compounds: 5,
+        afe: afe,
+        aafe: aafe,
+        gmfe: gmfe,
+        rmse_log: rmse_log,
+        within_1_25fold: within_1_25fold,
+        within_1_5fold: within_1_5fold,
+        within_2fold: within_2fold,
+        within_3fold: within_3fold,
+        r_squared: r_squared,
+        correlation: correlation,
+        mean_confidence: mean_confidence,
+        regulatory_compliant: regulatory_compliant
+    }
 }
 
-pub const COMMERCIAL_BENCHMARKS: [BenchmarkComparison; 3] = [
-    BenchmarkComparison {
-        tool_name: "Simcyp v21",
-        n_compounds: 500,
-        gmfe: 1.85,
-        within_2fold: 72.0,
-        r_squared: 0.68,
-        source: "Howgate et al. 2023",
-    },
-    BenchmarkComparison {
-        tool_name: "GastroPlus 9.8",
-        n_compounds: 350,
-        gmfe: 1.92,
-        within_2fold: 69.0,
-        r_squared: 0.65,
-        source: "Internal validation",
-    },
-    BenchmarkComparison {
-        tool_name: "PK-Sim 11",
-        n_compounds: 600,
-        gmfe: 1.78,
-        within_2fold: 74.0,
-        r_squared: 0.71,
-        source: "OSP validation",
-    },
-];
-
 // =============================================================================
-// EXAMPLE WITH SAMPLE DATASET
+// MAIN EXAMPLE
 // =============================================================================
 
-pub fn main() with IO, Alloc, Prob {
+fn main() -> i32 {
     println("=== Darwin PBPK Validation Showcase ===")
     println("1,232 Drug Dataset (Obach-Lombardo)")
     println("")
 
-    // Create sample dataset (in production: load from file)
-    let sample_drugs = [
-        DrugEntry {
-            name: "Midazolam",
-            smiles: "CC1=NC2=C(C=CC=CC=2)C(C2=CC=CC=C2F)=NC1",
-            mw: 325.77,
-            logp: 3.89,
-            tpsa: 30.2,
-            fu_plasma: 0.04,
-            bp_ratio: 0.66,
-            cl_observed: 6.6,
-            vd_observed: 1.1,
-            t_half_observed: 2.5,
-            drug_class: DrugClass::Basic,
-            bcs_class: BCSClass::Class1,
-        },
-        DrugEntry {
-            name: "Diazepam",
-            smiles: "CN1C(=O)CN=C(C2=CC=CC=C2)C2=C1C=CC(=C2)Cl",
-            mw: 284.74,
-            logp: 2.82,
-            tpsa: 32.7,
-            fu_plasma: 0.02,
-            bp_ratio: 0.65,
-            cl_observed: 0.38,
-            vd_observed: 1.1,
-            t_half_observed: 43.0,
-            drug_class: DrugClass::Basic,
-            bcs_class: BCSClass::Class2,
-        },
-        DrugEntry {
-            name: "Warfarin",
-            smiles: "CC(=O)CC(C1=CC=CC=C1)C1=C(O)C2=CC=CC=C2OC1=O",
-            mw: 308.33,
-            logp: 2.60,
-            tpsa: 67.5,
-            fu_plasma: 0.01,
-            bp_ratio: 0.55,
-            cl_observed: 0.045,
-            vd_observed: 0.14,
-            t_half_observed: 37.0,
-            drug_class: DrugClass::Acidic,
-            bcs_class: BCSClass::Class2,
-        },
-        DrugEntry {
-            name: "Metformin",
-            smiles: "CN(C)C(=N)NC(=N)N",
-            mw: 129.16,
-            logp: -1.43,
-            tpsa: 91.5,
-            fu_plasma: 0.99,
-            bp_ratio: 1.0,
-            cl_observed: 7.5,
-            vd_observed: 1.5,
-            t_half_observed: 5.0,
-            drug_class: DrugClass::Basic,
-            bcs_class: BCSClass::Class3,
-        },
-        DrugEntry {
-            name: "Ibuprofen",
-            smiles: "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",
-            mw: 206.28,
-            logp: 3.97,
-            tpsa: 37.3,
-            fu_plasma: 0.01,
-            bp_ratio: 0.55,
-            cl_observed: 0.75,
-            vd_observed: 0.12,
-            t_half_observed: 2.0,
-            drug_class: DrugClass::Acidic,
-            bcs_class: BCSClass::Class2,
-        },
-    ];
+    // Create sample drug dataset (5 representative drugs)
+    let midazolam = DrugEntry {
+        drug_id: 1,
+        mw: 325.77,
+        logp: 3.89,
+        tpsa: 30.2,
+        fu_plasma: 0.04,
+        bp_ratio: 0.66,
+        cl_observed_l_h_kg: 6.6,
+        vd_observed_l_kg: 1.1,
+        t_half_observed_h: 2.5,
+        drug_class: DRUG_CLASS_BASIC(),
+        bcs_class: BCS_CLASS_1()
+    }
 
-    // Run validation
-    let (results, metrics) = validate_dataset(&sample_drugs);
+    let diazepam = DrugEntry {
+        drug_id: 2,
+        mw: 284.74,
+        logp: 2.82,
+        tpsa: 32.7,
+        fu_plasma: 0.02,
+        bp_ratio: 0.65,
+        cl_observed_l_h_kg: 0.38,
+        vd_observed_l_kg: 1.1,
+        t_half_observed_h: 43.0,
+        drug_class: DRUG_CLASS_BASIC(),
+        bcs_class: BCS_CLASS_2()
+    }
+
+    let warfarin = DrugEntry {
+        drug_id: 3,
+        mw: 308.33,
+        logp: 2.60,
+        tpsa: 67.5,
+        fu_plasma: 0.01,
+        bp_ratio: 0.55,
+        cl_observed_l_h_kg: 0.045,
+        vd_observed_l_kg: 0.14,
+        t_half_observed_h: 37.0,
+        drug_class: DRUG_CLASS_ACIDIC(),
+        bcs_class: BCS_CLASS_2()
+    }
+
+    let metformin = DrugEntry {
+        drug_id: 4,
+        mw: 129.16,
+        logp: -1.43,
+        tpsa: 91.5,
+        fu_plasma: 0.99,
+        bp_ratio: 1.0,
+        cl_observed_l_h_kg: 7.5,
+        vd_observed_l_kg: 1.5,
+        t_half_observed_h: 5.0,
+        drug_class: DRUG_CLASS_BASIC(),
+        bcs_class: BCS_CLASS_3()
+    }
+
+    let ibuprofen = DrugEntry {
+        drug_id: 5,
+        mw: 206.28,
+        logp: 3.97,
+        tpsa: 37.3,
+        fu_plasma: 0.01,
+        bp_ratio: 0.55,
+        cl_observed_l_h_kg: 0.75,
+        vd_observed_l_kg: 0.12,
+        t_half_observed_h: 2.0,
+        drug_class: DRUG_CLASS_ACIDIC(),
+        bcs_class: BCS_CLASS_2()
+    }
+
+    // Predict clearance for each drug
+    let patient_weight = 70.0
+    let r1 = predict_clearance(midazolam, patient_weight)
+    let r2 = predict_clearance(diazepam, patient_weight)
+    let r3 = predict_clearance(warfarin, patient_weight)
+    let r4 = predict_clearance(metformin, patient_weight)
+    let r5 = predict_clearance(ibuprofen, patient_weight)
+
+    // Compute metrics
+    let metrics = compute_sample_metrics(r1, r2, r3, r4, r5)
 
     // Display results
     println("Sample Validation (5 drugs)")
     println("----------------------------")
     println("")
 
-    for result in &results {
-        let status = if result.within_2fold { "✓" } else { "✗" };
-        println("{} {} | CL pred: {:.2} | CL obs: {:.2} | AFE: {:.2} | ε={:.2}",
-            status,
-            result.name,
-            result.cl_predicted.value,
-            result.cl_observed,
-            result.abs_fold_error,
-            result.cl_predicted.confidence,
-        )
-    }
-
+    println("Drug 1 (Midazolam):")
+    println("  CL pred (L/h/kg):")
+    println(r1.cl_predicted_l_h_kg)
+    println("  CL obs (L/h/kg):")
+    println(r1.cl_observed_l_h_kg)
+    println("  AFE:")
+    println(r1.abs_fold_error)
+    println("  Within 2-fold:")
+    println(r1.within_2fold)
     println("")
+
+    println("Drug 2 (Diazepam):")
+    println("  CL pred:")
+    println(r2.cl_predicted_l_h_kg)
+    println("  AFE:")
+    println(r2.abs_fold_error)
+    println("")
+
+    println("Drug 3 (Warfarin):")
+    println("  CL pred:")
+    println(r3.cl_predicted_l_h_kg)
+    println("  AFE:")
+    println(r3.abs_fold_error)
+    println("")
+
+    println("Drug 4 (Metformin):")
+    println("  CL pred:")
+    println(r4.cl_predicted_l_h_kg)
+    println("  AFE:")
+    println(r4.abs_fold_error)
+    println("")
+
+    println("Drug 5 (Ibuprofen):")
+    println("  CL pred:")
+    println(r5.cl_predicted_l_h_kg)
+    println("  AFE:")
+    println(r5.abs_fold_error)
+    println("")
+
     println("Validation Metrics")
     println("------------------")
-    println("  N compounds: {}", metrics.n_compounds)
-    println("  GMFE: {:.2} (target < 2.0)", metrics.gmfe)
-    println("  AAFE: {:.2}", metrics.aafe)
-    println("  AFE: {:.2} (bias indicator)", metrics.afe)
-    println("  Within 2-fold: {:.1}% (target > 70%)", metrics.within_2fold)
-    println("  Within 1.5-fold: {:.1}%", metrics.within_1_5fold)
-    println("  R²: {:.3}", metrics.r_squared)
-    println("  Correlation: {:.3}", metrics.correlation)
-    println("  Mean confidence: {:.2}", metrics.mean_confidence)
-    println("")
-
-    let compliance = if metrics.regulatory_compliant { "✓ COMPLIANT" } else { "✗ NOT COMPLIANT" };
-    println("FDA/EMA Compliance: {}", compliance)
+    println("  N compounds:")
+    println(metrics.n_compounds)
+    println("  GMFE (target < 2.0):")
+    println(metrics.gmfe)
+    println("  AAFE:")
+    println(metrics.aafe)
+    println("  AFE (bias indicator):")
+    println(metrics.afe)
+    println("  Within 2-fold % (target > 70):")
+    println(metrics.within_2fold)
+    println("  Within 1.5-fold %:")
+    println(metrics.within_1_5fold)
+    println("  R-squared:")
+    println(metrics.r_squared)
+    println("  Correlation:")
+    println(metrics.correlation)
+    println("  Mean confidence:")
+    println(metrics.mean_confidence)
+    println("  Regulatory compliant:")
+    println(metrics.regulatory_compliant)
     println("")
 
     println("Darwin Platform (Full 1,232 Drugs)")
     println("----------------------------------")
-    println("  GMFE: 1.64 ✓")
-    println("  Within 2-fold: 78.1% ✓")
-    println("  R²: 0.755")
+    println("  GMFE: 1.64")
+    println("  Within 2-fold: 78.1%")
+    println("  R-squared: 0.755")
     println("  Correlation: 0.879")
     println("")
 
     println("Comparison with Commercial Tools")
     println("---------------------------------")
-    for benchmark in &COMMERCIAL_BENCHMARKS {
-        println("  {}: GMFE={:.2}, 2-fold={:.0}%, R²={:.2}",
-            benchmark.tool_name,
-            benchmark.gmfe,
-            benchmark.within_2fold,
-            benchmark.r_squared,
-        )
-    }
+    println("  Simcyp v21: GMFE=1.85, 2-fold=72%, R2=0.68")
+    println("  GastroPlus 9.8: GMFE=1.92, 2-fold=69%, R2=0.65")
+    println("  PK-Sim 11: GMFE=1.78, 2-fold=74%, R2=0.71")
     println("")
 
     println("=== Validation Complete ===")
     println("")
     println("Key Demetrios advantages:")
     println("  - Compile-time unit verification")
-    println("  - Epistemic confidence tracking")
-    println("  - Refinement types for physiological constraints")
-    println("  - Effect system for uncertainty propagation")
+    println("  - Confidence tracking through computation")
+    println("  - Simple, readable PBPK code")
+
+    return 0
 }

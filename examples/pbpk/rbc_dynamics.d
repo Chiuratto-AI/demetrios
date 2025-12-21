@@ -7,9 +7,9 @@
 // This module implements a closed-loop erythropoiesis model with:
 // - EPO-regulated RBC production
 // - Bone marrow progenitor dynamics (BFU-E, CFU-E, reticulocytes)
-// - Age-structured RBC population
-// - Drug binding to RBCs with competition
-// - Hematological toxicity assessment
+// - Age-structured RBC population (12 bins x 10 days = 120 day lifespan)
+// - Drug binding to RBCs
+// - Hematological toxicity assessment (CTCAE grading)
 //
 // Critical for modeling:
 // - Anemia/polycythemia drug effects
@@ -22,588 +22,546 @@
 // - Krzyzanski et al. (2006) - EPO-erythropoiesis PD
 // - Friberg et al. (2002) - Myelosuppression model
 //
-// Author: Demetrios Chiuratto Agourakis
+// Author: Dr. Demetrios Chiuratto Agourakis
 // Date: December 2025
 // Version: 1.0.0
 // ===========================================================================
-
-module rbc_dynamics
-
-import darwin_pbpk_14comp::{Drug, Patient}
-
-// =============================================================================
-// UNIT DEFINITIONS
-// =============================================================================
-
-unit cells_per_L       // RBC count
-unit g_per_dL          // Hemoglobin concentration
-unit mIU_per_mL        // EPO concentration
-unit days              // Time for slow dynamics
-unit per_day           // Rate constants
-
-// Derived
-unit cells_per_L_per_day = cells_per_L / days
 
 // =============================================================================
 // PHYSIOLOGICAL CONSTANTS
 // =============================================================================
 
-/// Reference hematological values (healthy adult)
-pub const HEMATOLOGY_REF = struct {
-    // RBC counts
-    rbc_count_male: cells_per_L = 5.0e12,
-    rbc_count_female: cells_per_L = 4.5e12,
+struct HematologyRef {
+    rbc_count_male: f64,
+    rbc_count_female: f64,
+    hgb_male: f64,
+    hgb_female: f64,
+    hct_male: f64,
+    hct_female: f64,
+    rbc_lifespan_days: f64,
+    mch_pg: f64,
+    epo_baseline_miu_ml: f64,
+    epo_half_life_h: f64,
+    retic_fraction: f64,
+    blood_volume_male_l: f64,
+    blood_volume_female_l: f64
+}
 
-    // Hemoglobin
-    hgb_male: g_per_dL = 15.5,
-    hgb_female: g_per_dL = 13.5,
+fn create_hematology_ref() -> HematologyRef {
+    return HematologyRef {
+        rbc_count_male: 5.0e12,
+        rbc_count_female: 4.5e12,
+        hgb_male: 15.5,
+        hgb_female: 13.5,
+        hct_male: 0.45,
+        hct_female: 0.40,
+        rbc_lifespan_days: 120.0,
+        mch_pg: 29.0,
+        epo_baseline_miu_ml: 10.0,
+        epo_half_life_h: 6.0,
+        retic_fraction: 0.01,
+        blood_volume_male_l: 5.0,
+        blood_volume_female_l: 4.5
+    }
+}
 
-    // Hematocrit
-    hct_male: f64 = 0.45,
-    hct_female: f64 = 0.40,
+struct MarrowKinetics {
+    bfu_e_transit_days: f64,
+    cfu_e_transit_days: f64,
+    erythroblast_transit_days: f64,
+    retic_maturation_days: f64,
+    bfu_e_amplification: f64,
+    cfu_e_amplification: f64,
+    erythroblast_amplification: f64,
+    bfu_e_apoptosis_per_day: f64,
+    cfu_e_apoptosis_per_day: f64,
+    epo_ec50_miu_ml: f64,
+    epo_emax: f64
+}
 
-    // RBC lifespan
-    rbc_lifespan: days = 120.0,
-
-    // Mean corpuscular hemoglobin
-    mch: f64 = 29.0,  // pg
-
-    // EPO
-    epo_baseline: mIU_per_mL = 10.0,
-    epo_half_life: h = 6.0,
-
-    // Reticulocyte fraction
-    retic_fraction: f64 = 0.01,  // 1% normally
-
-    // Blood volume
-    blood_volume_male: L = 5.0,
-    blood_volume_female: L = 4.5,
-};
-
-/// Bone marrow kinetic parameters
-pub const MARROW_KINETICS = struct {
-    // Progenitor transit times
-    bfu_e_transit: days = 7.0,      // BFU-E to CFU-E
-    cfu_e_transit: days = 3.0,      // CFU-E to proerythroblast
-    erythroblast_transit: days = 5.0, // Erythroblast to reticulocyte
-    retic_maturation: days = 3.0,   // Reticulocyte in marrow
-
-    // Amplification factors
-    bfu_e_amplification: f64 = 8.0,    // Divisions
-    cfu_e_amplification: f64 = 4.0,
-    erythroblast_amplification: f64 = 16.0,
-
-    // Apoptosis rates (baseline)
-    bfu_e_apoptosis: per_day = 0.1,
-    cfu_e_apoptosis: per_day = 0.15,
-
-    // EPO sensitivity
-    epo_ec50: mIU_per_mL = 20.0,
-    epo_emax: f64 = 5.0,  // Maximum fold increase
-};
-
-// =============================================================================
-// REFINEMENT TYPES
-// =============================================================================
-
-// Hemoglobin must be physiologically valid
-type ValidHgb = { hgb: g_per_dL | hgb > 3.0 && hgb < 25.0 }
-
-// Hematocrit 0-1 (typically 0.20-0.60)
-type ValidHct = { hct: f64 | hct > 0.10 && hct < 0.70 }
-
-// EPO concentration (can be very high with ESA therapy)
-type ValidEPO = { epo: mIU_per_mL | epo > 0.0 && epo < 100000.0 }
-
-// RBC count
-type ValidRBC = { rbc: cells_per_L | rbc > 1.0e11 && rbc < 1.0e13 }
+fn create_marrow_kinetics() -> MarrowKinetics {
+    return MarrowKinetics {
+        bfu_e_transit_days: 7.0,
+        cfu_e_transit_days: 3.0,
+        erythroblast_transit_days: 5.0,
+        retic_maturation_days: 3.0,
+        bfu_e_amplification: 8.0,
+        cfu_e_amplification: 4.0,
+        erythroblast_amplification: 16.0,
+        bfu_e_apoptosis_per_day: 0.1,
+        cfu_e_apoptosis_per_day: 0.15,
+        epo_ec50_miu_ml: 20.0,
+        epo_emax: 5.0
+    }
+}
 
 // =============================================================================
 // DATA STRUCTURES
 // =============================================================================
 
-/// EPO regulation state
-pub struct EPOState {
-    /// Current EPO concentration
-    pub concentration: Knowledge[ValidEPO, epsilon >= 0.80],
+// Toxicity grade constants (CTCAE)
+fn GRADE_NONE() -> i32 { return 0 }
+fn GRADE_1() -> i32 { return 1 }
+fn GRADE_2() -> i32 { return 2 }
+fn GRADE_3() -> i32 { return 3 }
+fn GRADE_4() -> i32 { return 4 }
 
-    /// Endogenous production rate
-    pub production_rate: mIU_per_mL_per_day,
+// Sex constants
+fn SEX_MALE() -> i32 { return 0 }
+fn SEX_FEMALE() -> i32 { return 1 }
 
-    /// Exogenous EPO (if any)
-    pub exogenous: mIU_per_mL,
-
-    /// Renal function factor (0-1, reduced in CKD)
-    pub renal_factor: f64,
+// EPO regulation state
+struct EPOConc {
+    concentration_miu_ml: f64,
+    confidence: f64,
+    production_rate: f64,
+    exogenous: f64,
+    renal_factor: f64
 }
 
-/// Bone marrow progenitor state
-pub struct ProgenitorState {
-    /// BFU-E (burst-forming unit erythroid)
-    pub bfu_e: cells_per_L,
-
-    /// CFU-E (colony-forming unit erythroid)
-    pub cfu_e: cells_per_L,
-
-    /// Proerythroblasts
-    pub proerythroblast: cells_per_L,
-
-    /// Erythroblasts (combined stages)
-    pub erythroblast: cells_per_L,
-
-    /// Marrow reticulocytes
-    pub marrow_retic: cells_per_L,
+// Bone marrow progenitor state
+struct ProgenitorPools {
+    bfu_e: f64,
+    cfu_e: f64,
+    proerythroblast: f64,
+    erythroblast: f64,
+    marrow_retic: f64
 }
 
-/// Age-structured RBC population
-/// Uses discrete age bins (e.g., 10-day bins over 120-day lifespan)
-pub struct RBCPopulation {
-    /// RBC count in each age bin
-    pub age_bins: [cells_per_L; 12],  // 12 bins × 10 days = 120 days
-
-    /// Total circulating RBCs
-    pub total_rbc: ValidRBC,
-
-    /// Circulating reticulocytes
-    pub reticulocytes: cells_per_L,
-
-    /// Mean RBC age
-    pub mean_age: days,
+// Age-structured RBC population (12 bins x 10 days = 120 day lifespan)
+struct RBCPopulation {
+    bin_0: f64,
+    bin_1: f64,
+    bin_2: f64,
+    bin_3: f64,
+    bin_4: f64,
+    bin_5: f64,
+    bin_6: f64,
+    bin_7: f64,
+    bin_8: f64,
+    bin_9: f64,
+    bin_10: f64,
+    bin_11: f64,
+    total_rbc: f64,
+    reticulocytes: f64,
+    mean_age_days: f64
 }
 
-/// Drug binding to RBCs
-pub struct RBCDrugBinding {
-    /// Drug name
-    pub drug: string,
-
-    /// Blood:plasma ratio
-    pub bp_ratio: f64,
-
-    /// Fraction bound to RBCs (vs plasma)
-    pub f_rbc: f64,
-
-    /// Binding site on RBC
-    pub binding_site: RBCBindingSite,
-
-    /// Binding affinity (if saturable)
-    pub kd: Option<uM>,
-
-    /// Maximum binding capacity
-    pub bmax: Option<mg_per_L>,
+// Complete erythropoiesis state
+struct ErythroData {
+    epo: EPOConc,
+    progenitors: ProgenitorPools,
+    rbc: RBCPopulation,
+    hemoglobin_g_dl: f64,
+    hemoglobin_confidence: f64,
+    hematocrit: f64
 }
 
-pub enum RBCBindingSite {
-    Hemoglobin,
-    CarbonAnhydrase,
-    Band3Protein,
-    Membrane,
-    Cytosol,
+// Progenitor derivatives for ODE
+struct ProgenitorDerivatives {
+    d_bfu_e: f64,
+    d_cfu_e: f64,
+    d_proerythroblast: f64,
+    d_erythroblast: f64,
+    d_marrow_retic: f64,
+    retic_release: f64
 }
 
-/// Complete erythropoiesis state
-pub struct ErythropoiesisState {
-    /// EPO regulation
-    pub epo: EPOState,
-
-    /// Bone marrow progenitors
-    pub progenitors: ProgenitorState,
-
-    /// Circulating RBCs
-    pub rbc_population: RBCPopulation,
-
-    /// Hemoglobin concentration
-    pub hemoglobin: Knowledge[ValidHgb, epsilon >= 0.90],
-
-    /// Hematocrit
-    pub hematocrit: Knowledge[ValidHct, epsilon >= 0.90],
-
-    /// Drug binding state
-    pub drug_binding: Option<RBCDrugBinding>,
-}
-
-/// Hematological toxicity assessment
-pub enum HematoxicityGrade {
-    None,      // Hgb >= 10 g/dL
-    Grade1,    // Hgb 10.0-9.0 g/dL
-    Grade2,    // Hgb 8.0-9.0 g/dL
-    Grade3,    // Hgb 6.5-8.0 g/dL
-    Grade4,    // Hgb < 6.5 g/dL (transfusion required)
+// Simulation time course results
+struct SimulationTimeCourse {
+    final_hemoglobin: f64,
+    final_rbc_count: f64,
+    nadir_hemoglobin: f64,
+    nadir_time_days: f64,
+    nadir_grade: i32,
+    final_grade: i32
 }
 
 // =============================================================================
 // EPO REGULATION FUNCTIONS
 // =============================================================================
 
-/// Kidney oxygen sensing and EPO production
-/// EPO production increases exponentially as Hgb decreases
-pub fn epo_production_rate(
-    hemoglobin: ValidHgb,
-    renal_factor: f64,
-    baseline_hgb: g_per_dL,
-) -> mIU_per_mL_per_day {
-    // Exponential relationship with hypoxia
-    let hgb_ratio = hemoglobin / baseline_hgb;
-    let hypoxia_stimulus = (-2.5 * (hgb_ratio - 1.0)).exp();
-
-    // Scale by renal function (CKD reduces EPO production)
-    let rate = 100.0 * hypoxia_stimulus * renal_factor;
-
-    rate.clamp(1.0, 10000.0)
+// Exponential approximation
+fn exp_approx(x: f64) -> f64 {
+    if x > 20.0 { return 485165195.0 }
+    if x < -20.0 { return 0.0 }
+    let mut result = 1.0
+    let mut term = 1.0
+    let mut i = 1
+    while i <= 20 {
+        term = term * x / (i as f64)
+        result = result + term
+        i = i + 1
+    }
+    return result
 }
 
-/// EPO effect on erythropoiesis (Emax model)
-pub fn epo_effect(
-    epo: ValidEPO,
-    ec50: mIU_per_mL,
-    emax: f64,
+// Kidney oxygen sensing and EPO production
+// EPO production increases exponentially as Hgb decreases
+fn epo_production_rate(
+    hemoglobin: f64,
+    renal_factor: f64,
+    baseline_hgb: f64
 ) -> f64 {
+    let hgb_ratio = hemoglobin / baseline_hgb
+    let hypoxia_stimulus = exp_approx(-2.5 * (hgb_ratio - 1.0))
+
+    // Scale by renal function (CKD reduces EPO production)
+    let rate = 100.0 * hypoxia_stimulus * renal_factor
+
+    // Clamp to reasonable range
+    if rate < 1.0 { return 1.0 }
+    if rate > 10000.0 { return 10000.0 }
+    return rate
+}
+
+// EPO effect on erythropoiesis (Emax model)
+fn epo_effect(epo_miu_ml: f64, kinetics: MarrowKinetics) -> f64 {
     // Fold increase in progenitor proliferation
-    1.0 + (emax - 1.0) * epo / (ec50 + epo)
+    return 1.0 + (kinetics.epo_emax - 1.0) * epo_miu_ml / (kinetics.epo_ec50_miu_ml + epo_miu_ml)
 }
 
 // =============================================================================
 // PROGENITOR DYNAMICS
 // =============================================================================
 
-/// Compute progenitor derivatives (ODE right-hand side)
-pub fn progenitor_ode(
-    state: &ProgenitorState,
-    epo: ValidEPO,
-    drug_effect: f64,  // 0-1, fraction of normal (1 = no effect)
+// Compute progenitor derivatives (ODE right-hand side)
+fn progenitor_ode(
+    pools: ProgenitorPools,
+    epo_miu_ml: f64,
+    drug_effect: f64,
+    kinetics: MarrowKinetics
 ) -> ProgenitorDerivatives {
-    let epo_stim = epo_effect(epo, MARROW_KINETICS.epo_ec50, MARROW_KINETICS.epo_emax);
+    let epo_stim = epo_effect(epo_miu_ml, kinetics)
 
     // BFU-E dynamics: production - transit - apoptosis
-    let bfu_e_production = 1.0e10 * epo_stim * drug_effect;  // cells/L/day
-    let bfu_e_transit_out = state.bfu_e / MARROW_KINETICS.bfu_e_transit;
-    let bfu_e_apoptosis = state.bfu_e * MARROW_KINETICS.bfu_e_apoptosis;
-    let d_bfu_e = bfu_e_production - bfu_e_transit_out - bfu_e_apoptosis;
+    let bfu_e_production = 1.0e10 * epo_stim * drug_effect
+    let bfu_e_transit_out = pools.bfu_e / kinetics.bfu_e_transit_days
+    let bfu_e_apoptosis = pools.bfu_e * kinetics.bfu_e_apoptosis_per_day
+    let d_bfu_e = bfu_e_production - bfu_e_transit_out - bfu_e_apoptosis
 
     // CFU-E dynamics: amplified input from BFU-E - transit
-    let cfu_e_input = bfu_e_transit_out * MARROW_KINETICS.bfu_e_amplification * epo_stim;
-    let cfu_e_transit_out = state.cfu_e / MARROW_KINETICS.cfu_e_transit;
-    let cfu_e_apoptosis = state.cfu_e * MARROW_KINETICS.cfu_e_apoptosis * (1.0 / drug_effect);
-    let d_cfu_e = cfu_e_input - cfu_e_transit_out - cfu_e_apoptosis;
+    let cfu_e_input = bfu_e_transit_out * kinetics.bfu_e_amplification * epo_stim
+    let cfu_e_transit_out = pools.cfu_e / kinetics.cfu_e_transit_days
+    let cfu_e_apoptosis = pools.cfu_e * kinetics.cfu_e_apoptosis_per_day * (1.0 / drug_effect)
+    let d_cfu_e = cfu_e_input - cfu_e_transit_out - cfu_e_apoptosis
 
     // Proerythroblast dynamics
-    let proeryth_input = cfu_e_transit_out * MARROW_KINETICS.cfu_e_amplification;
-    let proeryth_transit = state.proerythroblast / 1.0;  // 1 day transit
-    let d_proerythroblast = proeryth_input - proeryth_transit;
+    let proeryth_input = cfu_e_transit_out * kinetics.cfu_e_amplification
+    let proeryth_transit = pools.proerythroblast / 1.0
+    let d_proerythroblast = proeryth_input - proeryth_transit
 
     // Erythroblast dynamics (multiple stages combined)
-    let eryth_input = proeryth_transit;
-    let eryth_transit = state.erythroblast / MARROW_KINETICS.erythroblast_transit;
-    let d_erythroblast = eryth_input - eryth_transit;
+    let eryth_input = proeryth_transit
+    let eryth_transit = pools.erythroblast / kinetics.erythroblast_transit_days
+    let d_erythroblast = eryth_input - eryth_transit
 
     // Marrow reticulocyte dynamics
-    let retic_input = eryth_transit * MARROW_KINETICS.erythroblast_amplification;
-    let retic_release = state.marrow_retic / MARROW_KINETICS.retic_maturation;
-    let d_marrow_retic = retic_input - retic_release;
+    let retic_input = eryth_transit * kinetics.erythroblast_amplification
+    let retic_release = pools.marrow_retic / kinetics.retic_maturation_days
+    let d_marrow_retic = retic_input - retic_release
 
-    ProgenitorDerivatives {
-        d_bfu_e,
-        d_cfu_e,
-        d_proerythroblast,
-        d_erythroblast,
-        d_marrow_retic,
-        retic_release,
+    return ProgenitorDerivatives {
+        d_bfu_e: d_bfu_e,
+        d_cfu_e: d_cfu_e,
+        d_proerythroblast: d_proerythroblast,
+        d_erythroblast: d_erythroblast,
+        d_marrow_retic: d_marrow_retic,
+        retic_release: retic_release
     }
-}
-
-pub struct ProgenitorDerivatives {
-    pub d_bfu_e: cells_per_L_per_day,
-    pub d_cfu_e: cells_per_L_per_day,
-    pub d_proerythroblast: cells_per_L_per_day,
-    pub d_erythroblast: cells_per_L_per_day,
-    pub d_marrow_retic: cells_per_L_per_day,
-    pub retic_release: cells_per_L_per_day,  // Output to circulation
 }
 
 // =============================================================================
 // AGE-STRUCTURED RBC DYNAMICS
 // =============================================================================
 
-/// Update age-structured RBC population
-/// Uses McKendrick-von Foerster equation discretized into age bins
-pub fn update_rbc_population(
-    population: &mut RBCPopulation,
-    retic_input: cells_per_L_per_day,
-    drug_induced_hemolysis: f64,  // Fraction hemolyzed per day
-    dt: days,
-) {
-    // Shift cells to older bins (aging)
-    for i in (1..12).rev() {
-        population.age_bins[i] = population.age_bins[i-1];
+// Update age-structured RBC population
+// Uses McKendrick-von Foerster equation discretized into age bins
+fn update_rbc_population(
+    rbc: RBCPopulation,
+    retic_input: f64,
+    hemolysis_rate: f64,
+    dt: f64
+) -> RBCPopulation {
+    let survival = 1.0 - hemolysis_rate * dt
+
+    // Shift cells to older bins (aging) with survival
+    let new_bin_11 = 0.0  // Oldest cells die
+    let new_bin_10 = rbc.bin_10 * survival
+    let new_bin_9 = rbc.bin_9 * survival
+    let new_bin_8 = rbc.bin_8 * survival
+    let new_bin_7 = rbc.bin_7 * survival
+    let new_bin_6 = rbc.bin_6 * survival
+    let new_bin_5 = rbc.bin_5 * survival
+    let new_bin_4 = rbc.bin_4 * survival
+    let new_bin_3 = rbc.bin_3 * survival
+    let new_bin_2 = rbc.bin_2 * survival
+    let new_bin_1 = rbc.bin_1 * survival
+    let new_bin_0 = retic_input * dt
+
+    // Calculate total
+    let total = new_bin_0 + new_bin_1 + new_bin_2 + new_bin_3 + new_bin_4 + new_bin_5 +
+                new_bin_6 + new_bin_7 + new_bin_8 + new_bin_9 + new_bin_10 + new_bin_11
+
+    // Reticulocytes = youngest 2 bins
+    let retics = new_bin_0 + new_bin_1
+
+    // Mean age calculation (center of each 10-day bin)
+    let age_sum = new_bin_0 * 5.0 + new_bin_1 * 15.0 + new_bin_2 * 25.0 + new_bin_3 * 35.0 +
+                  new_bin_4 * 45.0 + new_bin_5 * 55.0 + new_bin_6 * 65.0 + new_bin_7 * 75.0 +
+                  new_bin_8 * 85.0 + new_bin_9 * 95.0 + new_bin_10 * 105.0 + new_bin_11 * 115.0
+
+    let mean_age = if total > 0.0 { age_sum / total } else { 60.0 }
+
+    return RBCPopulation {
+        bin_0: new_bin_0,
+        bin_1: new_bin_1,
+        bin_2: new_bin_2,
+        bin_3: new_bin_3,
+        bin_4: new_bin_4,
+        bin_5: new_bin_5,
+        bin_6: new_bin_6,
+        bin_7: new_bin_7,
+        bin_8: new_bin_8,
+        bin_9: new_bin_9,
+        bin_10: new_bin_10,
+        bin_11: new_bin_11,
+        total_rbc: total,
+        reticulocytes: retics,
+        mean_age_days: mean_age
     }
-
-    // New reticulocytes enter youngest bin
-    population.age_bins[0] = retic_input * dt;
-
-    // Apply senescent removal (oldest bin dies)
-    population.age_bins[11] = 0.0;
-
-    // Apply drug-induced hemolysis uniformly
-    if drug_induced_hemolysis > 0.0 {
-        for i in 0..12 {
-            population.age_bins[i] *= (1.0 - drug_induced_hemolysis * dt);
-        }
-    }
-
-    // Update totals
-    population.total_rbc = population.age_bins.iter().sum();
-    population.reticulocytes = population.age_bins[0] + population.age_bins[1];
-
-    // Calculate mean age
-    let mut age_sum = 0.0;
-    for i in 0..12 {
-        let bin_age = (i as f64 + 0.5) * 10.0;  // Center of 10-day bin
-        age_sum += population.age_bins[i] * bin_age;
-    }
-    population.mean_age = age_sum / population.total_rbc;
 }
 
 // =============================================================================
 // DRUG-RBC INTERACTIONS
 // =============================================================================
 
-/// Calculate drug concentration in RBCs
-pub fn drug_concentration_in_rbc(
-    c_plasma: mg_per_L,
-    bp_ratio: f64,
-    hematocrit: ValidHct,
-) -> mg_per_L {
+// Calculate drug concentration in RBCs
+fn drug_concentration_in_rbc(c_plasma: f64, bp_ratio: f64, hematocrit: f64) -> f64 {
     // C_blood = C_plasma * BP_ratio
     // C_RBC = (C_blood - C_plasma * (1-Hct)) / Hct
-    let c_blood = c_plasma * bp_ratio;
-    let c_rbc = (c_blood - c_plasma * (1.0 - hematocrit)) / hematocrit;
-    c_rbc.max(0.0)
-}
-
-/// Saturable hemoglobin binding (e.g., carbon monoxide, oxygen)
-pub fn hemoglobin_saturation(
-    ligand_conc: mg_per_L,
-    kd: mg_per_L,
-    n_hill: f64,  // Hill coefficient for cooperativity
-) -> f64 {
-    // Hill equation: Y = [L]^n / (Kd + [L]^n)
-    let l_n = ligand_conc.pow(n_hill);
-    l_n / (kd + l_n)
+    let c_blood = c_plasma * bp_ratio
+    let c_rbc = (c_blood - c_plasma * (1.0 - hematocrit)) / hematocrit
+    if c_rbc < 0.0 { return 0.0 }
+    return c_rbc
 }
 
 // =============================================================================
 // TOXICITY ASSESSMENT
 // =============================================================================
 
-/// Classify anemia severity per CTCAE
-pub fn classify_anemia(hemoglobin: ValidHgb) -> HematoxicityGrade {
-    if hemoglobin >= 10.0 {
-        HematoxicityGrade::None
-    } else if hemoglobin >= 9.0 {
-        HematoxicityGrade::Grade1
-    } else if hemoglobin >= 8.0 {
-        HematoxicityGrade::Grade2
-    } else if hemoglobin >= 6.5 {
-        HematoxicityGrade::Grade3
-    } else {
-        HematoxicityGrade::Grade4
-    }
+// Classify anemia severity per CTCAE
+fn classify_anemia(hemoglobin: f64) -> i32 {
+    if hemoglobin >= 10.0 { return GRADE_NONE() }
+    if hemoglobin >= 9.0 { return GRADE_1() }
+    if hemoglobin >= 8.0 { return GRADE_2() }
+    if hemoglobin >= 6.5 { return GRADE_3() }
+    return GRADE_4()
 }
 
-/// Calculate hemoglobin from RBC count and MCH
-pub fn calculate_hemoglobin(rbc_count: ValidRBC, mch: f64) -> ValidHgb {
+// Grade name as string code
+fn grade_name(grade: i32) -> i32 {
+    return grade
+}
+
+// Calculate hemoglobin from RBC count and MCH
+fn calculate_hemoglobin(rbc_count: f64, mch_pg: f64) -> f64 {
     // Hgb (g/dL) = RBC (cells/L) × MCH (pg) × 1e-13
-    let hgb = rbc_count * mch * 1.0e-13;
-    hgb.clamp(3.0, 25.0)
+    let hgb = rbc_count * mch_pg * 1.0e-13
+    if hgb < 3.0 { return 3.0 }
+    if hgb > 25.0 { return 25.0 }
+    return hgb
 }
 
-/// Calculate hematocrit from RBC and MCV
-pub fn calculate_hematocrit(rbc_count: ValidRBC, mcv: f64) -> ValidHct {
+// Calculate hematocrit from RBC and MCV
+fn calculate_hematocrit(rbc_count: f64, mcv_fl: f64) -> f64 {
     // Hct = RBC (cells/L) × MCV (fL) × 1e-15
-    let hct = rbc_count * mcv * 1.0e-15;
-    hct.clamp(0.10, 0.70)
+    let hct = rbc_count * mcv_fl * 1.0e-15
+    if hct < 0.10 { return 0.10 }
+    if hct > 0.70 { return 0.70 }
+    return hct
+}
+
+// Clamp to non-negative
+fn clamp_positive(x: f64) -> f64 {
+    if x < 0.0 { return 0.0 }
+    return x
 }
 
 // =============================================================================
 // COMPLETE ERYTHROPOIESIS SIMULATION
 // =============================================================================
 
-/// Simulate erythropoiesis over time with drug effects
-pub fn simulate_erythropoiesis(
-    patient: &Patient,
-    drug: Option<&Drug>,
-    drug_myelotoxicity: f64,  // 0-1, 1 = no effect
-    duration: days,
-    dt: days,
-) -> ErythropoiesisTimeCourse with Alloc {
-    // Initialize state based on patient
-    let is_male = patient.sex == Sex::Male;
-    let baseline_hgb = if is_male { HEMATOLOGY_REF.hgb_male } else { HEMATOLOGY_REF.hgb_female };
-    let baseline_rbc = if is_male { HEMATOLOGY_REF.rbc_count_male } else { HEMATOLOGY_REF.rbc_count_female };
+// Simulate erythropoiesis over time with drug effects
+fn simulate_erythropoiesis(
+    is_male: bool,
+    drug_myelotoxicity: f64,
+    duration_days: f64,
+    dt_days: f64
+) -> SimulationTimeCourse {
+    let hema_ref = create_hematology_ref()
+    let kinetics = create_marrow_kinetics()
 
-    let mut state = ErythropoiesisState {
-        epo: EPOState {
-            concentration: Knowledge::new(HEMATOLOGY_REF.epo_baseline, 0.85, Provenance::source("baseline")),
-            production_rate: 100.0,
-            exogenous: 0.0,
-            renal_factor: 1.0,
-        },
-        progenitors: ProgenitorState {
-            bfu_e: 1.0e10,
-            cfu_e: 2.0e10,
-            proerythroblast: 5.0e10,
-            erythroblast: 1.0e11,
-            marrow_retic: 5.0e10,
-        },
-        rbc_population: RBCPopulation {
-            age_bins: [baseline_rbc / 12.0; 12],
-            total_rbc: baseline_rbc,
-            reticulocytes: baseline_rbc * HEMATOLOGY_REF.retic_fraction,
-            mean_age: 60.0,
-        },
-        hemoglobin: Knowledge::new(baseline_hgb, 0.95, Provenance::source("baseline")),
-        hematocrit: Knowledge::new(if is_male { HEMATOLOGY_REF.hct_male } else { HEMATOLOGY_REF.hct_female }, 0.95, Provenance::source("baseline")),
-        drug_binding: None,
-    };
+    // Initialize based on sex
+    let baseline_hgb = if is_male { hema_ref.hgb_male } else { hema_ref.hgb_female }
+    let baseline_rbc = if is_male { hema_ref.rbc_count_male } else { hema_ref.rbc_count_female }
+    let baseline_hct = if is_male { hema_ref.hct_male } else { hema_ref.hct_female }
 
-    let mut time_course: Vec<(days, ValidHgb, ValidRBC, HematoxicityGrade)> = vec![];
+    // Initialize EPO state
+    let mut epo = EPOConc {
+        concentration_miu_ml: hema_ref.epo_baseline_miu_ml,
+        confidence: 0.85,
+        production_rate: 100.0,
+        exogenous: 0.0,
+        renal_factor: 1.0
+    }
 
-    let n_steps = (duration / dt) as i32;
+    // Initialize progenitors
+    let mut progenitors = ProgenitorPools {
+        bfu_e: 1.0e10,
+        cfu_e: 2.0e10,
+        proerythroblast: 5.0e10,
+        erythroblast: 1.0e11,
+        marrow_retic: 5.0e10
+    }
 
-    for step in 0..=n_steps {
-        let t = step as f64 * dt;
+    // Initialize RBC population (uniform distribution)
+    let rbc_per_bin = baseline_rbc / 12.0
+    let mut rbc_pop = RBCPopulation {
+        bin_0: rbc_per_bin,
+        bin_1: rbc_per_bin,
+        bin_2: rbc_per_bin,
+        bin_3: rbc_per_bin,
+        bin_4: rbc_per_bin,
+        bin_5: rbc_per_bin,
+        bin_6: rbc_per_bin,
+        bin_7: rbc_per_bin,
+        bin_8: rbc_per_bin,
+        bin_9: rbc_per_bin,
+        bin_10: rbc_per_bin,
+        bin_11: rbc_per_bin,
+        total_rbc: baseline_rbc,
+        reticulocytes: baseline_rbc * hema_ref.retic_fraction,
+        mean_age_days: 60.0
+    }
 
-        // Record current state
-        let grade = classify_anemia(state.hemoglobin.value);
-        time_course.push((t, state.hemoglobin.value, state.rbc_population.total_rbc, grade));
+    let mut hemoglobin = baseline_hgb
+    let mut hematocrit = baseline_hct
+
+    let mut nadir_hgb = baseline_hgb
+    let mut nadir_time = 0.0
+
+    let n_steps = (duration_days / dt_days) as i32
+    let mut step = 0
+
+    while step <= n_steps {
+        let t = (step as f64) * dt_days
+
+        // Track nadir
+        if hemoglobin < nadir_hgb {
+            nadir_hgb = hemoglobin
+            nadir_time = t
+        }
 
         if step < n_steps {
-            // Update EPO (fast dynamics, but we integrate daily)
-            let epo_prod = epo_production_rate(
-                state.hemoglobin.value,
-                state.epo.renal_factor,
-                baseline_hgb,
-            );
-            state.epo.concentration = Knowledge::new(
-                epo_prod * 0.1,  // Steady-state approximation
-                0.80,
-                Provenance::derived("epo_regulation"),
-            );
+            // Update EPO (fast dynamics, steady-state approximation)
+            let epo_prod = epo_production_rate(hemoglobin, epo.renal_factor, baseline_hgb)
+            epo.concentration_miu_ml = epo_prod * 0.1
 
             // Progenitor dynamics with drug effect
-            let derivs = progenitor_ode(
-                &state.progenitors,
-                state.epo.concentration.value,
-                drug_myelotoxicity,
-            );
+            let derivs = progenitor_ode(progenitors, epo.concentration_miu_ml, drug_myelotoxicity, kinetics)
 
             // Update progenitors
-            state.progenitors.bfu_e += derivs.d_bfu_e * dt;
-            state.progenitors.cfu_e += derivs.d_cfu_e * dt;
-            state.progenitors.proerythroblast += derivs.d_proerythroblast * dt;
-            state.progenitors.erythroblast += derivs.d_erythroblast * dt;
-            state.progenitors.marrow_retic += derivs.d_marrow_retic * dt;
-
-            // Clamp to non-negative
-            state.progenitors.bfu_e = state.progenitors.bfu_e.max(0.0);
-            state.progenitors.cfu_e = state.progenitors.cfu_e.max(0.0);
-            state.progenitors.erythroblast = state.progenitors.erythroblast.max(0.0);
-            state.progenitors.marrow_retic = state.progenitors.marrow_retic.max(0.0);
+            progenitors.bfu_e = clamp_positive(progenitors.bfu_e + derivs.d_bfu_e * dt_days)
+            progenitors.cfu_e = clamp_positive(progenitors.cfu_e + derivs.d_cfu_e * dt_days)
+            progenitors.proerythroblast = clamp_positive(progenitors.proerythroblast + derivs.d_proerythroblast * dt_days)
+            progenitors.erythroblast = clamp_positive(progenitors.erythroblast + derivs.d_erythroblast * dt_days)
+            progenitors.marrow_retic = clamp_positive(progenitors.marrow_retic + derivs.d_marrow_retic * dt_days)
 
             // Update RBC population
-            update_rbc_population(
-                &mut state.rbc_population,
-                derivs.retic_release,
-                0.0,  // No drug-induced hemolysis in this example
-                dt,
-            );
+            rbc_pop = update_rbc_population(rbc_pop, derivs.retic_release, 0.0, dt_days)
 
             // Update Hgb and Hct
-            state.hemoglobin = Knowledge::new(
-                calculate_hemoglobin(state.rbc_population.total_rbc, HEMATOLOGY_REF.mch),
-                0.90,
-                Provenance::derived("rbc_to_hgb"),
-            );
-            state.hematocrit = Knowledge::new(
-                calculate_hematocrit(state.rbc_population.total_rbc, 90.0),  // MCV ~90 fL
-                0.90,
-                Provenance::derived("rbc_to_hct"),
-            );
+            hemoglobin = calculate_hemoglobin(rbc_pop.total_rbc, hema_ref.mch_pg)
+            hematocrit = calculate_hematocrit(rbc_pop.total_rbc, 90.0)
         }
+
+        step = step + 1
     }
 
-    ErythropoiesisTimeCourse {
-        times: time_course.iter().map(|(t, _, _, _)| *t).collect(),
-        hemoglobin: time_course.iter().map(|(_, h, _, _)| *h).collect(),
-        rbc_count: time_course.iter().map(|(_, _, r, _)| *r).collect(),
-        toxicity_grades: time_course.iter().map(|(_, _, _, g)| g.clone()).collect(),
-        nadir_hgb: time_course.iter().map(|(_, h, _, _)| *h).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap(),
-        nadir_time: time_course.iter().min_by(|(_, h1, _, _), (_, h2, _, _)| h1.partial_cmp(h2).unwrap()).map(|(t, _, _, _)| *t).unwrap(),
-        recovery_time: None,  // Would calculate when Hgb returns to baseline
-    }
-}
+    let nadir_grade = classify_anemia(nadir_hgb)
+    let final_grade = classify_anemia(hemoglobin)
 
-pub struct ErythropoiesisTimeCourse {
-    pub times: Vec<days>,
-    pub hemoglobin: Vec<ValidHgb>,
-    pub rbc_count: Vec<ValidRBC>,
-    pub toxicity_grades: Vec<HematoxicityGrade>,
-    pub nadir_hgb: ValidHgb,
-    pub nadir_time: days,
-    pub recovery_time: Option<days>,
+    return SimulationTimeCourse {
+        final_hemoglobin: hemoglobin,
+        final_rbc_count: rbc_pop.total_rbc,
+        nadir_hemoglobin: nadir_hgb,
+        nadir_time_days: nadir_time,
+        nadir_grade: nadir_grade,
+        final_grade: final_grade
+    }
 }
 
 // =============================================================================
 // MAIN EXAMPLE
 // =============================================================================
 
-pub fn main() with IO, Alloc {
+fn main() -> i32 {
     println("=== RBC Dynamics with Hematopoiesis Feedback ===")
     println("Closed-loop erythropoiesis model in Demetrios")
     println("")
 
-    // Create patient
-    let patient = Patient {
-        id: "SUBJ001",
-        weight: 70.0 : kg,
-        age: 50.0,
-        sex: Sex::Male,
-        egfr: 90.0 : mL_per_min,
-        liver_function: LiverFunction::Normal,
-    };
+    let hema_ref = create_hematology_ref()
 
     println("Patient: Male, 70 kg, age 50")
-    println("Baseline Hgb: {} g/dL", HEMATOLOGY_REF.hgb_male)
+    println("Baseline Hgb (g/dL):")
+    println(hema_ref.hgb_male)
     println("")
 
     // Simulate chemotherapy-induced anemia
-    println("Simulating 30-day chemotherapy with myelotoxicity...")
+    println("Simulating 60-day chemotherapy with 50% myelotoxicity...")
     println("")
 
     let result = simulate_erythropoiesis(
-        &patient,
-        None,
-        0.5,    // 50% reduction in progenitor production
-        30.0,   // 30 days
-        1.0,    // Daily steps
-    );
+        true,       // is_male
+        0.5,        // 50% reduction in progenitor production
+        60.0,       // 60 days
+        1.0         // Daily steps
+    )
 
     println("Results:")
-    println("  Nadir Hgb: {:.1} g/dL at day {:.0}", result.nadir_hgb, result.nadir_time)
-    println("  Nadir Grade: {:?}", classify_anemia(result.nadir_hgb))
+    println("  Nadir Hgb (g/dL):")
+    println(result.nadir_hemoglobin)
+    println("  Nadir time (days):")
+    println(result.nadir_time_days)
+    println("  Nadir grade (CTCAE):")
+    println(result.nadir_grade)
+    println("")
+    println("  Final Hgb (g/dL):")
+    println(result.final_hemoglobin)
+    println("  Final RBC count:")
+    println(result.final_rbc_count)
+    println("  Final grade:")
+    println(result.final_grade)
     println("")
 
-    println("Day-by-day Hgb (first 10 days):")
-    for i in 0..10.min(result.times.len()) {
-        let grade = &result.toxicity_grades[i];
-        println("  Day {}: {:.1} g/dL [{:?}]", result.times[i], result.hemoglobin[i], grade)
-    }
+    // Test normal (no drug effect)
+    println("Control simulation (no drug effect):")
+    let control = simulate_erythropoiesis(true, 1.0, 60.0, 1.0)
+    println("  Final Hgb (g/dL):")
+    println(control.final_hemoglobin)
+    println("  Final grade:")
+    println(control.final_grade)
     println("")
 
     println("Key features demonstrated:")
     println("  - EPO-mediated feedback regulation")
     println("  - Bone marrow progenitor kinetics")
-    println("  - Age-structured RBC population")
+    println("  - Age-structured RBC population (12 bins)")
     println("  - CTCAE toxicity grading")
+    println("  - Drug myelotoxicity effects")
     println("")
     println("=== Simulation Complete ===")
+
+    return 0
 }
