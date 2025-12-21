@@ -321,7 +321,11 @@ impl<'a> LoweringContext<'a> {
                 Some(self.builder.build_field_ptr(base_ptr, field_idx, field_ty))
             }
             HirExprKind::Index { base, index } => {
-                let base_ptr = self.lower_lvalue(base)?;
+                let base_ptr = if matches!(HlirType::from_hir(&base.ty), HlirType::Ptr(_)) {
+                    self.lower_expr(base)?
+                } else {
+                    self.lower_lvalue(base)?
+                };
                 let idx = self.lower_expr(index)?;
                 let elem_ty = HlirType::from_hir(&expr.ty);
                 Some(self.builder.build_elem_ptr(base_ptr, idx, elem_ty))
@@ -1989,5 +1993,94 @@ mod tests {
             .iter()
             .any(|b| matches!(b.terminator, HlirTerminator::CondBranch { .. }));
         assert!(has_cond_branch, "Expected conditional branch for guard");
+    }
+
+    #[test]
+    fn test_lower_pointer_index_assign() {
+        use crate::common::NodeId;
+
+        let ptr_ty = HirType::RawPointer {
+            mutable: true,
+            inner: Box::new(HirType::U8),
+        };
+        let idx_ty = HirType::Usize;
+        let val_ty = HirType::U8;
+
+        let hir = Hir {
+            items: vec![HirItem::Function(HirFn {
+                id: NodeId(0),
+                name: "write_byte".to_string(),
+                ty: HirFnType {
+                    params: vec![
+                        HirParam {
+                            id: NodeId(1),
+                            name: "out".to_string(),
+                            ty: ptr_ty.clone(),
+                            is_mut: false,
+                        },
+                        HirParam {
+                            id: NodeId(2),
+                            name: "idx".to_string(),
+                            ty: idx_ty.clone(),
+                            is_mut: false,
+                        },
+                        HirParam {
+                            id: NodeId(3),
+                            name: "val".to_string(),
+                            ty: val_ty.clone(),
+                            is_mut: false,
+                        },
+                    ],
+                    return_type: Box::new(HirType::Unit),
+                    effects: Vec::new(),
+                },
+                body: HirBlock {
+                    stmts: vec![HirStmt::Assign {
+                        target: HirExpr {
+                            id: NodeId(4),
+                            kind: HirExprKind::Index {
+                                base: Box::new(HirExpr {
+                                    id: NodeId(5),
+                                    kind: HirExprKind::Local("out".to_string()),
+                                    ty: ptr_ty,
+                                }),
+                                index: Box::new(HirExpr {
+                                    id: NodeId(6),
+                                    kind: HirExprKind::Local("idx".to_string()),
+                                    ty: idx_ty,
+                                }),
+                            },
+                            ty: HirType::U8,
+                        },
+                        value: HirExpr {
+                            id: NodeId(7),
+                            kind: HirExprKind::Local("val".to_string()),
+                            ty: val_ty,
+                        },
+                    }],
+                    ty: HirType::Unit,
+                },
+                abi: crate::ast::Abi::Rust,
+                is_exported: false,
+            })],
+        };
+
+        let hlir = lower(&hir);
+        let func = &hlir.functions[0];
+
+        let mut has_gep = false;
+        let mut has_store = false;
+
+        for instr in func.blocks.iter().flat_map(|b| b.instructions.iter()) {
+            if matches!(&instr.op, Op::GetElementPtr { .. }) {
+                has_gep = true;
+            }
+            if matches!(&instr.op, Op::Store { .. }) {
+                has_store = true;
+            }
+        }
+
+        assert!(has_gep, "Expected GEP for pointer index assignment");
+        assert!(has_store, "Expected store for pointer index assignment");
     }
 }
