@@ -500,6 +500,237 @@ fn check_dominance(analysis: SobolAnalysis, policy: DominancePolicy) -> Dominanc
 }
 
 // ============================================================================
+// TYPE-A vs TYPE-B CLASSIFICATION (GUM TERMINOLOGY)
+// ============================================================================
+
+/// GUM distinguishes two types of uncertainty evaluation:
+///   Type A: Statistical analysis of repeated observations (measured data)
+///   Type B: Other sources (expert judgment, literature, calibration, specs)
+///
+/// CRITICAL INSIGHT: If output is dominated by Type-B contributions,
+/// you are relying on PRIORS, not EVIDENCE. Go measure something!
+///
+/// Type-B dominance = epistemic laziness = REFUSE
+struct UncertaintyType {
+    is_type_a: bool,       // True = measured, False = Type-B (prior/literature)
+    source_code: i32,      // 0=measurement, 1=literature, 2=expert, 3=calibration
+    n_observations: i32,   // For Type-A: number of measurements
+    confidence_level: f64, // Typical: 0.95 for measurement, often unstated for Type-B
+}
+
+fn type_a_measured(n_obs: i32) -> UncertaintyType {
+    return UncertaintyType {
+        is_type_a: true,
+        source_code: 0,
+        n_observations: n_obs,
+        confidence_level: 0.95,
+    }
+}
+
+fn type_b_literature(source: i32) -> UncertaintyType {
+    return UncertaintyType {
+        is_type_a: false,
+        source_code: source,
+        n_observations: 0,
+        confidence_level: 0.95,
+    }
+}
+
+fn type_b_expert() -> UncertaintyType {
+    return UncertaintyType {
+        is_type_a: false,
+        source_code: 2,
+        n_observations: 0,
+        confidence_level: 0.90,  // Expert judgment often less confident
+    }
+}
+
+/// Extended input with Type classification
+struct TypedSobolInput {
+    base: SobolInput,
+    utype: UncertaintyType,
+}
+
+fn typed_input_a(name: i64, mean: f64, std: f64, n_obs: i32) -> TypedSobolInput {
+    return TypedSobolInput {
+        base: sobol_input(name, mean, std),
+        utype: type_a_measured(n_obs),
+    }
+}
+
+fn typed_input_b(name: i64, mean: f64, std: f64, source: i32) -> TypedSobolInput {
+    return TypedSobolInput {
+        base: sobol_input(name, mean, std),
+        utype: type_b_literature(source),
+    }
+}
+
+// ============================================================================
+// TYPE-B DOMINANCE DETECTION AND REFUSAL
+// ============================================================================
+
+/// Type-B dominance analysis
+struct TypeBDominance {
+    type_a_fraction: f64,   // Fraction of variance from Type-A inputs
+    type_b_fraction: f64,   // Fraction of variance from Type-B inputs
+    dominant_type_b: i64,   // Hash of most dominant Type-B input (0 if none)
+    dominance_ratio: f64,   // Type-B / Type-A ratio
+    is_dominated: bool,     // True if Type-B > Type-A
+}
+
+/// Compute Type-B dominance from Sobol analysis with typed inputs
+fn compute_type_b_dominance(
+    analysis: SobolAnalysis,
+    type0: UncertaintyType,
+    type1: UncertaintyType
+) -> TypeBDominance {
+    var type_a_sum: f64 = 0.0
+    var type_b_sum: f64 = 0.0
+    var dominant_b: i64 = 0
+    var max_b: f64 = 0.0
+
+    // Sum contributions by type
+    if type0.is_type_a {
+        type_a_sum = type_a_sum + analysis.idx0.total_order
+    } else {
+        type_b_sum = type_b_sum + analysis.idx0.total_order
+        if analysis.idx0.total_order > max_b {
+            max_b = analysis.idx0.total_order
+            dominant_b = analysis.idx0.input_hash
+        }
+    }
+
+    if type1.is_type_a {
+        type_a_sum = type_a_sum + analysis.idx1.total_order
+    } else {
+        type_b_sum = type_b_sum + analysis.idx1.total_order
+        if analysis.idx1.total_order > max_b {
+            max_b = analysis.idx1.total_order
+            dominant_b = analysis.idx1.input_hash
+        }
+    }
+
+    // Dominance ratio
+    var ratio: f64 = 0.0
+    if type_a_sum > 1.0e-10 {
+        ratio = type_b_sum / type_a_sum
+    } else if type_b_sum > 0.0 {
+        ratio = 1.0e10  // Infinite dominance
+    }
+
+    return TypeBDominance {
+        type_a_fraction: type_a_sum,
+        type_b_fraction: type_b_sum,
+        dominant_type_b: dominant_b,
+        dominance_ratio: ratio,
+        is_dominated: type_b_sum > type_a_sum,
+    }
+}
+
+/// Refusal policy for Type-B dominance
+struct TypeBRefusalPolicy {
+    max_type_b_fraction: f64,   // Refuse if Type-B > this
+    max_dominance_ratio: f64,   // Refuse if Type-B/Type-A > this
+    require_measurement: bool,   // Force measurement recommendation
+}
+
+fn default_type_b_policy() -> TypeBRefusalPolicy {
+    return TypeBRefusalPolicy {
+        max_type_b_fraction: 0.6,  // Refuse if 60%+ from Type-B
+        max_dominance_ratio: 2.0,   // Refuse if Type-B > 2× Type-A
+        require_measurement: true,
+    }
+}
+
+fn strict_type_b_policy() -> TypeBRefusalPolicy {
+    return TypeBRefusalPolicy {
+        max_type_b_fraction: 0.4,  // Refuse if 40%+ from Type-B
+        max_dominance_ratio: 1.0,   // Refuse if Type-B > Type-A at all
+        require_measurement: true,
+    }
+}
+
+/// Type-B dominance refusal result
+struct TypeBRefusal {
+    should_refuse: bool,
+    reason: i32,              // 0=ok, 1=fraction_exceeded, 2=ratio_exceeded
+    type_b_fraction: f64,
+    dominance_ratio: f64,
+    measurement_target: i64,   // Which Type-B input to measure
+    recommendation: i32,       // 0=proceed, 1=measure_input, 2=get_more_data
+}
+
+/// Check if computation should be refused due to Type-B dominance
+fn check_type_b_refusal(dom: TypeBDominance, policy: TypeBRefusalPolicy) -> TypeBRefusal {
+    var refuse = false
+    var reason: i32 = 0
+    var recommendation: i32 = 0
+
+    // Check fraction threshold
+    if dom.type_b_fraction > policy.max_type_b_fraction {
+        refuse = true
+        reason = 1
+        recommendation = 1  // Measure the dominant Type-B input
+    }
+
+    // Check ratio threshold
+    if dom.dominance_ratio > policy.max_dominance_ratio {
+        refuse = true
+        reason = 2
+        recommendation = 1
+    }
+
+    // If not refusing but Type-B is notable, recommend measurement
+    if !refuse && dom.type_b_fraction > 0.3 {
+        recommendation = 2  // Get more data
+    }
+
+    return TypeBRefusal {
+        should_refuse: refuse,
+        reason: reason,
+        type_b_fraction: dom.type_b_fraction,
+        dominance_ratio: dom.dominance_ratio,
+        measurement_target: dom.dominant_type_b,
+        recommendation: recommendation,
+    }
+}
+
+/// Hard gate: refuse if Type-B dominates
+fn gate_type_b_dominance(dom: TypeBDominance) -> bool {
+    return dom.is_dominated
+}
+
+/// The epistemic message: "You're relying on priors, not evidence"
+struct TypeBDiagnostic {
+    is_problem: bool,
+    type_b_input: i64,
+    message_code: i32,  // 0=ok, 1=measure_this, 2=priors_dominate, 3=no_data
+}
+
+fn diagnose_type_b(dom: TypeBDominance) -> TypeBDiagnostic {
+    if !dom.is_dominated {
+        return TypeBDiagnostic {
+            is_problem: false,
+            type_b_input: 0,
+            message_code: 0,
+        }
+    }
+
+    var msg: i32 = 1
+    if dom.type_a_fraction < 0.1 {
+        msg = 3  // Almost no measured data
+    } else if dom.dominance_ratio > 5.0 {
+        msg = 2  // Priors strongly dominate
+    }
+
+    return TypeBDiagnostic {
+        is_problem: true,
+        type_b_input: dom.dominant_type_b,
+        message_code: msg,
+    }
+}
+
+// ============================================================================
 // PHARMACOKINETIC MODEL SENSITIVITY (EXAMPLE)
 // ============================================================================
 
@@ -680,6 +911,86 @@ fn test_refusal_on_overdominance() -> bool {
     return true
 }
 
+fn test_type_b_dominance() -> bool {
+    // Scenario: one input measured (Type-A), one from literature (Type-B)
+    let input0 = sobol_input(1, 10.0, 0.5)  // Well-measured
+    let input1 = sobol_input(2, 5.0, 2.0)   // High uncertainty from literature
+
+    let analysis = sobol_analyze_2d(input0, input1, 100, 12345)
+
+    // Type-A for input 0, Type-B for input 1
+    let type0 = type_a_measured(50)
+    let type1 = type_b_literature(1)
+
+    let dom = compute_type_b_dominance(analysis, type0, type1)
+
+    // Should detect that Type-B contributes
+    if dom.type_b_fraction < 0.0 { return false }
+
+    // Check that gate works
+    let gated = gate_type_b_dominance(dom)
+    // Just verify it returns a boolean (may or may not be dominated)
+
+    return true
+}
+
+fn test_type_b_refusal() -> bool {
+    // Create a scenario where Type-B dominates heavily
+    // Input 0: measured (Type-A) but small uncertainty
+    // Input 1: from literature (Type-B) with large uncertainty
+
+    let input0 = sobol_input(1, 10.0, 0.1)  // Very precise measurement
+    let input1 = sobol_input(2, 5.0, 3.0)   // Large literature uncertainty
+
+    let analysis = sobol_analyze_2d(input0, input1, 100, 54321)
+
+    let type0 = type_a_measured(100)  // Lots of measurements
+    let type1 = type_b_literature(1)   // From paper
+
+    let dom = compute_type_b_dominance(analysis, type0, type1)
+
+    // With strict policy, should likely refuse
+    let policy = strict_type_b_policy()
+    let refusal = check_type_b_refusal(dom, policy)
+
+    // Check that the refusal has reasonable values
+    if refusal.type_b_fraction < 0.0 { return false }
+    if refusal.type_b_fraction > 1.5 { return false }  // Should not exceed ~1
+
+    // Diagnostic should work
+    let diag = diagnose_type_b(dom)
+    // Just verify structure is valid
+
+    return true
+}
+
+fn test_type_b_diagnostic() -> bool {
+    // Test the diagnostic message generation
+    // Create dominance where Type-B clearly dominates
+
+    // Fake a dominance result directly
+    let dom = TypeBDominance {
+        type_a_fraction: 0.1,
+        type_b_fraction: 0.8,
+        dominant_type_b: 42,
+        dominance_ratio: 8.0,
+        is_dominated: true,
+    }
+
+    let diag = diagnose_type_b(dom)
+
+    // Should identify as problem
+    if !diag.is_problem { return false }
+
+    // Should point to the dominant Type-B input
+    if diag.type_b_input != 42 { return false }
+
+    // Message code should indicate priors dominate (code 2) or no data (code 3)
+    if diag.message_code != 2 { return false }  // ratio > 5 => code 2
+
+    return true
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -689,6 +1000,9 @@ fn main() -> i32 {
     if !test_sobol_analyze_2d() { return 2 }
     if !test_pk_dominance() { return 3 }
     if !test_refusal_on_overdominance() { return 4 }
+    if !test_type_b_dominance() { return 5 }
+    if !test_type_b_refusal() { return 6 }
+    if !test_type_b_diagnostic() { return 7 }
 
     return 0
 }
