@@ -102,3 +102,8 @@ pub mod fusion
 pub mod policy
 pub mod correlation
 pub mod pk_example
+
+// Hardening modules (v0.81.0)
+pub mod prov          // W3C PROV-DM export, metrological traceability
+pub mod budget        // GUM uncertainty budget ledger
+pub mod montecarlo    // Monte Carlo propagation (JCGM 101)
