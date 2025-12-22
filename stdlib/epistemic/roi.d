@@ -509,6 +509,93 @@ fn is_real_learning(ledger: EpistemicLedger) -> bool {
 }
 
 // ============================================================================
+// ROI BITS: THE FUNDAMENTAL REFUSAL METRIC
+// ============================================================================
+
+/// ROI in bits = credit - debt
+/// This is the CORE metric for refusal decisions.
+///
+/// CRITICAL: When roi_bits < 0, we are DESTROYING information.
+/// The refusal hook MUST fire when roi_bits < 0.
+///
+/// This is NOT a suggestion - it's a thermodynamic constraint.
+/// You cannot create information from nothing (Landauer limit).
+fn roi_bits(ledger: EpistemicLedger) -> f64 {
+    return ledger.credit_total_bits - ledger.debt_total_bits
+}
+
+/// Refusal policy: MUST refuse when roi_bits < 0
+/// This is the hard gate. Non-negotiable.
+///
+/// Returns:
+///   0 = proceed (positive ROI)
+///   1 = warn (marginal, 0 <= roi_bits < 0.1)
+///   2 = refuse (negative ROI, destroying information)
+fn refusal_policy(ledger: EpistemicLedger) -> i32 {
+    let bits = roi_bits(ledger)
+
+    if bits < 0.0 {
+        // HARD REFUSE: We are destroying information
+        return 2
+    }
+
+    if bits < 0.1 {
+        // WARN: Marginal, not learning much
+        return 1
+    }
+
+    // PROCEED: Positive epistemic progress
+    return 0
+}
+
+/// Refusal hook result for integration with compiler/runtime
+struct RefusalResult {
+    should_refuse: bool,
+    roi_bits: f64,
+    reason: i32,          // 0=none, 1=negative_roi, 2=noise_polishing, 3=asymptotic
+    debt_breakdown: f64,  // Total debt in bits
+    credit_breakdown: f64, // Total credit in bits
+}
+
+/// The main refusal hook - call this before any epistemic operation
+fn check_refusal(ledger: EpistemicLedger) -> RefusalResult {
+    let bits = roi_bits(ledger)
+    let policy = refusal_policy(ledger)
+
+    var reason: i32 = 0
+    var refuse = false
+
+    if policy == 2 {
+        reason = 1  // negative_roi
+        refuse = true
+    } else if is_noise_polishing(ledger) {
+        reason = 2  // noise_polishing
+        refuse = true
+    }
+
+    return RefusalResult {
+        should_refuse: refuse,
+        roi_bits: bits,
+        reason: reason,
+        debt_breakdown: ledger.debt_total_bits,
+        credit_breakdown: ledger.credit_total_bits,
+    }
+}
+
+/// Hard refusal gate - for use in pipelines
+/// Returns true if operation should be blocked
+fn gate_negative_roi(ledger: EpistemicLedger) -> bool {
+    return roi_bits(ledger) < 0.0
+}
+
+/// Soft refusal gate - warns but doesn't block
+/// Returns true if operation is marginal (0 <= roi < 0.1)
+fn gate_marginal_roi(ledger: EpistemicLedger) -> bool {
+    let bits = roi_bits(ledger)
+    return bits >= 0.0 && bits < 0.1
+}
+
+// ============================================================================
 // ASYMPTOTE DETECTION WITH ROI CONTEXT
 // ============================================================================
 
@@ -712,6 +799,100 @@ fn test_asymptote_detection() -> bool {
     return true
 }
 
+fn test_roi_bits_positive() -> bool {
+    // High credit, low debt => positive ROI bits
+    var ledger = ledger_new()
+    let prior = gaussian_new(10.0, 10.0)
+    let posterior = gaussian_new(10.0, 1.0)
+    ledger = ledger_add_credit(ledger, 1, prior, posterior)
+
+    // Add minimal debt
+    let debt = debt_rounding(100, 0.1)
+    ledger = ledger_add_debt(ledger, debt)
+
+    let bits = roi_bits(ledger)
+    // Should be positive (significant info gain, tiny debt)
+    if bits <= 0.0 { return false }
+
+    // Refusal policy should say proceed
+    if refusal_policy(ledger) != 0 { return false }
+
+    // Gate should not fire
+    if gate_negative_roi(ledger) { return false }
+
+    return true
+}
+
+fn test_roi_bits_negative() -> bool {
+    // Low credit, high debt => negative ROI bits
+    var ledger = ledger_new()
+
+    // Tiny credit
+    ledger = ledger_add_credit_direct(ledger, 1, 0.05)
+
+    // Large debt (lots of irreversible losses)
+    let debt1 = debt_truncation(100, 0.5)
+    let debt2 = debt_rounding(101, 2.0)
+    ledger = ledger_add_debt(ledger, debt1)
+    ledger = ledger_add_debt(ledger, debt2)
+
+    let bits = roi_bits(ledger)
+    // Should be negative (destroying information)
+    if bits >= 0.0 { return false }
+
+    // Refusal policy should say refuse
+    if refusal_policy(ledger) != 2 { return false }
+
+    // Gate should fire
+    if !gate_negative_roi(ledger) { return false }
+
+    return true
+}
+
+fn test_refusal_hook() -> bool {
+    // Test the full refusal hook
+    var ledger = ledger_new()
+
+    // Create negative ROI scenario
+    ledger = ledger_add_credit_direct(ledger, 1, 0.1)
+    let debt = debt_truncation(100, 0.8)  // 80% data loss = big debt
+    ledger = ledger_add_debt(ledger, debt)
+
+    let result = check_refusal(ledger)
+
+    // Should refuse
+    if !result.should_refuse { return false }
+
+    // Reason should be negative_roi (1)
+    if result.reason != 1 { return false }
+
+    // roi_bits should be negative
+    if result.roi_bits >= 0.0 { return false }
+
+    return true
+}
+
+fn test_marginal_gate() -> bool {
+    // Test marginal ROI detection
+    var ledger = ledger_new()
+
+    // Add tiny credit (0.05 bits)
+    ledger = ledger_add_credit_direct(ledger, 1, 0.05)
+
+    // No debt => roi = 0.05 (marginal)
+    let bits = roi_bits(ledger)
+    if bits < 0.0 { return false }
+    if bits >= 0.1 { return false }
+
+    // Should trigger marginal gate
+    if !gate_marginal_roi(ledger) { return false }
+
+    // But not negative gate
+    if gate_negative_roi(ledger) { return false }
+
+    return true
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -726,6 +907,10 @@ fn main() -> i32 {
     if !test_noise_polishing() { return 7 }
     if !test_real_learning() { return 8 }
     if !test_asymptote_detection() { return 9 }
+    if !test_roi_bits_positive() { return 10 }
+    if !test_roi_bits_negative() { return 11 }
+    if !test_refusal_hook() { return 12 }
+    if !test_marginal_gate() { return 13 }
 
     return 0
 }
