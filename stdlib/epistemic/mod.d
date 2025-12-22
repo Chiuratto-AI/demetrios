@@ -56,6 +56,12 @@
 pub use stats::*
 pub use causal::*
 
+// Core epistemic semantics (v0.80.0 hardening)
+pub use core::*         // EpistemicValue with Channel A (uncertainty) + Channel B (confidence)
+pub use fusion::*       // Dempster-Shafer, Beta/Bayesian evidence fusion
+pub use policy::*       // EpistemicPolicy, no implicit unwrap
+pub use correlation::*  // GUM Eq 13/14, VarID tokens, covariance tracking
+
 // New epistemic computing modules
 pub use knowledge::*
 pub use propagate::*
@@ -89,3 +95,10 @@ pub mod pde
 pub mod uplift
 pub mod optimization
 pub mod timeseries
+
+// Core semantics (v0.80.0)
+pub mod core
+pub mod fusion
+pub mod policy
+pub mod correlation
+pub mod pk_example
