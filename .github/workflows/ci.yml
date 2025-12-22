@@ -141,18 +141,34 @@ jobs:
               working-directory: compiler
               run: cargo build --release
 
-            - name: Run tests
+            - name: Run Rust tests
               working-directory: compiler
-              run: cargo test --release || echo "Some tests failed - see logs for details"
-              continue-on-error: true
+              run: cargo test --release
+
+            - name: Run stdlib tests (Unix)
+              if: runner.os != 'Windows'
+              working-directory: compiler
+              run: |
+                  echo "=== Running ALL stdlib tests ==="
+                  ../scripts/run_stdlib_tests.sh
 
             - name: Test D programs (Unix)
               if: runner.os != 'Windows'
               working-directory: compiler
               run: |
-                  echo "Testing stdlib programs..."
-                  ./target/release/dc run ../stdlib/prob/beta.d
-                  ./target/release/dc run ../stdlib/prob/distributions.d
+                  echo "Testing run-pass suite..."
+                  for f in ../tests/run-pass/*.d; do
+                    echo "  $f"
+                    ./target/release/dc run "$f"
+                  done
+                  echo "Testing compile-fail suite..."
+                  for f in ../tests/compile-fail/*.d; do
+                    echo "  $f (should fail)"
+                    if ./target/release/dc check "$f" 2>/dev/null; then
+                      echo "ERROR: $f should have failed but passed!"
+                      exit 1
+                    fi
+                  done
                   echo "Testing examples..."
                   ./target/release/dc check ../examples/hello.d
 
@@ -161,9 +177,18 @@ jobs:
               working-directory: compiler
               shell: pwsh
               run: |
-                  echo "Testing stdlib programs..."
+                  echo "Testing core stdlib programs..."
                   ./target/release/dc.exe run ../stdlib/prob/beta.d
                   ./target/release/dc.exe run ../stdlib/prob/distributions.d
+                  ./target/release/dc.exe run ../stdlib/epistemic/core.d
+                  ./target/release/dc.exe run ../stdlib/epistemic/roi.d
+                  ./target/release/dc.exe run ../stdlib/epistemic/sobol.d
+                  ./target/release/dc.exe run ../stdlib/linalg/matrix.d
+                  echo "Testing run-pass suite..."
+                  Get-ChildItem ../tests/run-pass/*.d | ForEach-Object {
+                    echo "  $_"
+                    ./target/release/dc.exe run $_.FullName
+                  }
                   echo "Testing examples..."
                   ./target/release/dc.exe check ../examples/hello.d
 
