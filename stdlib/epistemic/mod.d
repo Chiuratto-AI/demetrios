@@ -70,11 +70,13 @@ pub use uplift::*
 pub use optimization::*
 pub use timeseries::*
 pub use discovery::*
+pub use refutation::*
 
 // Submodule declarations
 pub mod stats
 pub mod causal
 pub mod discovery
+pub mod refutation
 pub mod knowledge
 pub mod propagate
 pub mod meta

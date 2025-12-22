@@ -364,10 +364,34 @@ impl SymbolTable {
 
         // Built-in functions
         let builtin_functions = [
-            "print",   // Print without newline
-            "println", // Print with newline
-            "assert",  // Runtime assertion
-            "panic",   // Abort with message
+            "print",     // Print without newline
+            "println",   // Print with newline
+            "assert",    // Runtime assertion
+            "assert_eq", // Assert equality
+            "panic",     // Abort with message
+            "dbg",       // Debug print
+            "format",    // String formatting
+            // Utility functions
+            "len",        // Get length of array/string/tuple
+            "type_of",    // Get type name as string
+            "read_line",  // Read line from stdin
+            "parse_int",  // Parse string to int
+            "parse_float", // Parse string to float
+            "to_string",  // Convert to string
+            // Math functions
+            "sqrt",  // Square root
+            "abs",   // Absolute value
+            "sin",   // Sine
+            "cos",   // Cosine
+            "tan",   // Tangent
+            "exp",   // e^x
+            "log",   // Natural logarithm
+            "pow",   // Power
+            "floor", // Floor
+            "ceil",  // Ceiling
+            "round", // Round
+            "min",   // Minimum
+            "max",   // Maximum
             // Linear algebra constructors
             "vec2", // vec2(x, y)
             "vec3", // vec3(x, y, z)

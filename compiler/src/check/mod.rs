@@ -2923,8 +2923,44 @@ impl TypeChecker {
             | BinaryOp::BitXor
             | BinaryOp::Shl
             | BinaryOp::Shr => left.clone(),
-            // Concatenation: result is array type (no unit handling)
-            BinaryOp::Concat => left.clone(),
+            // Concatenation: combine array sizes
+            BinaryOp::Concat => {
+                match (left, right) {
+                    (
+                        HirType::Array {
+                            element: left_elem,
+                            size: left_size,
+                        },
+                        HirType::Array {
+                            element: _right_elem,
+                            size: right_size,
+                        },
+                    ) => {
+                        // Combine sizes if both are known
+                        let combined_size = match (left_size, right_size) {
+                            (Some(l), Some(r)) => Some(l + r),
+                            _ => None, // Unknown size if either is unknown
+                        };
+                        HirType::Array {
+                            element: left_elem.clone(),
+                            size: combined_size,
+                        }
+                    }
+                    // For Vec or other types, just return a Vec
+                    (
+                        HirType::Named {
+                            name,
+                            args,
+                        },
+                        _,
+                    ) if name == "Vec" => HirType::Named {
+                        name: name.clone(),
+                        args: args.clone(),
+                    },
+                    // Default: keep left type
+                    _ => left.clone(),
+                }
+            }
         }
     }
 
@@ -3564,8 +3600,32 @@ impl TypeChecker {
             | BinaryOp::BitOr
             | BinaryOp::BitXor
             | BinaryOp::Shl
-            | BinaryOp::Shr
-            | BinaryOp::Concat => left.clone(),
+            | BinaryOp::Shr => left.clone(),
+            // Concatenation: combine array sizes
+            BinaryOp::Concat => {
+                match (left, right) {
+                    (
+                        HirType::Array {
+                            element: left_elem,
+                            size: left_size,
+                        },
+                        HirType::Array {
+                            element: _right_elem,
+                            size: right_size,
+                        },
+                    ) => {
+                        let combined_size = match (left_size, right_size) {
+                            (Some(l), Some(r)) => Some(l + r),
+                            _ => None,
+                        };
+                        HirType::Array {
+                            element: left_elem.clone(),
+                            size: combined_size,
+                        }
+                    }
+                    _ => left.clone(),
+                }
+            }
         }
     }
 
@@ -4161,7 +4221,14 @@ impl TypeChecker {
                     element: e2,
                     size: s2,
                 },
-            ) => s1 == s2 && self.types_compatible(e1, e2),
+            ) => {
+                // Size compatibility: None (unknown) matches any size
+                let size_ok = match (s1, s2) {
+                    (None, _) | (_, None) => true, // Unknown size is compatible with any size
+                    (Some(a), Some(b)) => a == b,  // Known sizes must match
+                };
+                size_ok && self.types_compatible(e1, e2)
+            }
             (Type::Tuple(t1), Type::Tuple(t2)) => {
                 t1.len() == t2.len()
                     && t1

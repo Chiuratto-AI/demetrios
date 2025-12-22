@@ -3448,8 +3448,13 @@ impl<'a> Parser<'a> {
                 })
             }
 
-            // Identifiers and paths
-            TokenKind::Ident | TokenKind::SelfLower => {
+            // Identifiers and paths (including contextual keywords used as identifiers)
+            // Note: contextual keywords with special syntax (Sample, Query, Observe, etc.)
+            // are handled AFTER this case when followed by their special syntax patterns
+            _ if self.at(TokenKind::Ident)
+                || self.at(TokenKind::SelfLower)
+                || (self.is_contextual_keyword() && !self.is_dsl_keyword_with_parens()) =>
+            {
                 // Check for macro invocation (identifier followed by !)
                 if self.peek_n(1) == TokenKind::Bang {
                     let macro_inv = self.parse_macro_invocation()?;
@@ -4487,7 +4492,11 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::RParen)?;
                 Ok(Pattern::Tuple(elements))
             }
-            TokenKind::Ident | TokenKind::SelfLower => {
+            // Accept Ident, self, or contextual keywords as pattern bindings
+            _ if self.at(TokenKind::Ident)
+                || self.at(TokenKind::SelfLower)
+                || self.is_contextual_keyword() =>
+            {
                 let path = self.parse_path()?;
                 if self.at(TokenKind::LParen) {
                     // Enum variant with tuple data
@@ -4572,18 +4581,55 @@ impl<'a> Parser<'a> {
     }
 
     /// Check if current token is a keyword that can be used as an identifier in certain contexts
+    /// These are "soft keywords" that have special meaning in specific syntactic positions
+    /// but can be used as variable/parameter names when the context is unambiguous.
+    ///
+    /// NOTE: Keywords with special expression syntax (Sample, Query, Observe, Infer, Do,
+    /// Counterfactual) are NOT included here because they have unambiguous syntactic
+    /// positions and shouldn't be used as variable names.
     fn is_contextual_keyword(&self) -> bool {
         matches!(
             self.peek(),
+            // Effect system keywords (can be identifiers outside effect declarations)
             TokenKind::Effect
                 | TokenKind::Handler
                 | TokenKind::Handle
+                // ODE/PDE DSL keywords (can be identifiers in normal expressions)
+                | TokenKind::State
+                | TokenKind::Nodes
+                | TokenKind::Edges
+                | TokenKind::Domain
+                | TokenKind::Boundary
+                | TokenKind::Initial
+                | TokenKind::Params
+                | TokenKind::Var // Can be used as identifier (e.g., "var" field name)
+                // Ontology keywords
                 | TokenKind::Align
                 | TokenKind::Ontology
                 | TokenKind::From
+                | TokenKind::Distance
+                | TokenKind::Threshold
+                // Other contextual keywords
                 | TokenKind::Type
                 | TokenKind::Module
         )
+    }
+
+    /// Check if the current token is a DSL keyword that has special syntax with parentheses or braces.
+    /// These should NOT be treated as identifiers when followed by their special syntax.
+    fn is_dsl_keyword_with_parens(&self) -> bool {
+        let next = self.peek_n(1);
+        match self.peek() {
+            // Keywords with (...) syntax
+            TokenKind::Sample | TokenKind::Query | TokenKind::Observe | TokenKind::Infer | TokenKind::Do => {
+                next == TokenKind::LParen
+            }
+            // Keywords with {...} syntax
+            TokenKind::Counterfactual => {
+                next == TokenKind::LBrace
+            }
+            _ => false,
+        }
     }
 
     fn parse_path(&mut self) -> Result<Path> {
