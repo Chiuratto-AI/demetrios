@@ -588,6 +588,9 @@ impl<'ctx> LlvmGpuCodegen<'ctx> {
             GpuType::U32 => self.context.i32_type().into(),
             GpuType::U64 => self.context.i64_type().into(),
             GpuType::F16 => self.context.f16_type().into(),
+            GpuType::BF16 => self.context.i16_type().into(), // BF16 stored as i16
+            GpuType::F8E4M3 => self.context.i8_type().into(), // FP8 stored as i8
+            GpuType::F8E5M2 => self.context.i8_type().into(), // FP8 stored as i8
             GpuType::F32 => self.context.f32_type().into(),
             GpuType::F64 => self.context.f64_type().into(),
             GpuType::Vec2(elem) => {

@@ -904,6 +904,12 @@ impl<'ctx> LLVMCodegen<'ctx> {
                     .ok()
                     .map(|v| v.into())
             }
+
+            BinaryOp::Concat => {
+                // Array/slice concatenation requires runtime support
+                // TODO: Implement proper array concatenation with memcpy
+                None
+            }
         }
     }
 
