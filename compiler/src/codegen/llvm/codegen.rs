@@ -85,6 +85,9 @@ pub struct LLVMCodegen<'ctx> {
     /// Value map: HLIR ValueId → LLVM Value
     values: HashMap<ValueId, BasicValueEnum<'ctx>>,
 
+    /// Type map: HLIR ValueId → HlirType (for GEP element type calculation)
+    value_types: HashMap<ValueId, HlirType>,
+
     /// Block map: HLIR BlockId → LLVM BasicBlock
     blocks: HashMap<BlockId, BasicBlock<'ctx>>,
 
@@ -120,6 +123,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
             types,
             current_function: None,
             values: HashMap::new(),
+            value_types: HashMap::new(),
             blocks: HashMap::new(),
             functions: HashMap::new(),
             strings: HashMap::new(),
@@ -196,6 +200,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
         // Clear per-function state
         self.values.clear();
+        self.value_types.clear();
         self.blocks.clear();
 
         // Create basic blocks
@@ -204,10 +209,11 @@ impl<'ctx> LLVMCodegen<'ctx> {
             self.blocks.insert(block.id, bb);
         }
 
-        // Map parameters to values
+        // Map parameters to values and types
         for (i, param) in func.params.iter().enumerate() {
             if let Some(param_val) = fn_val.get_nth_param(i as u32) {
                 self.values.insert(param.value, param_val);
+                self.value_types.insert(param.value, param.ty.clone());
             }
         }
 
@@ -233,6 +239,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
             if let Some(val) = self.compile_instruction(instr) {
                 if let Some(result_id) = instr.result {
                     self.values.insert(result_id, val);
+                    self.value_types.insert(result_id, instr.ty.clone());
                 }
             }
         }
@@ -309,11 +316,17 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 let zero = self.context.i32_type().const_zero();
                 let field_idx = self.context.i32_type().const_int(*field as u64, false);
 
-                // Using ptr_type GEP
-                let base_ty = self.types.convert(&instr.ty);
+                // Fix: Get the struct type from the base pointer's type (Ptr(Struct) -> Struct)
+                let struct_ty = match self.value_types.get(base) {
+                    Some(HlirType::Ptr(inner)) => self.types.convert(inner),
+                    _ => {
+                        // Fallback: try to infer from instr.ty (less reliable)
+                        self.types.convert(&instr.ty)
+                    }
+                };
                 unsafe {
                     self.builder
-                        .build_gep(base_ty, ptr_val, &[zero, field_idx], "field_ptr")
+                        .build_gep(struct_ty, ptr_val, &[zero, field_idx], "field_ptr")
                         .ok()
                         .map(|v| v.into())
                 }
@@ -323,7 +336,11 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 let ptr_val = self.get_value(*base)?.into_pointer_value();
                 let idx = self.get_value(*index)?.into_int_value();
 
-                let elem_ty = self.types.convert(&instr.ty);
+                // Fix: instr.ty is Ptr(element_type), we need element_type for GEP
+                let elem_ty = match &instr.ty {
+                    HlirType::Ptr(inner) => self.types.convert(inner),
+                    _ => self.types.convert(&instr.ty), // Fallback (shouldn't happen)
+                };
                 unsafe {
                     self.builder
                         .build_gep(elem_ty, ptr_val, &[idx], "elem_ptr")
