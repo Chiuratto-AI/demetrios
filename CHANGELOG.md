@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.83.0] - 2025-12-22
+
+### Trust Gate Week: "Refuses to Compute Lies"
+
+This release implements the epistemic hardening infrastructure that makes Demetrios
+a language where invalid computations are **refused**, not just warned about.
+
+### Added
+
+#### Epistemic Refusal Gates (`stdlib/epistemic/`)
+- **ROI Refusal** (`roi.d`): `gate_negative_roi()` refuses when `roi_bits < 0`
+  - KL divergence for information gain (credit)
+  - Landauer-motivated entropy debt tracking
+  - Refusal message: "Refused: gained 0.7 bits; erased 3.1 bits. You are polishing noise."
+- **Sobol Type-B Dominance** (`sobol.d`): `gate_type_b_dominance()` refuses when relying on priors
+  - Type-A (measured) vs Type-B (literature/expert) classification per GUM
+  - Refusal message: "Your output is 80% hostage to literature values. Go measure."
+- **GUM vs MC Auto-Switch** (`dual_check.d`): JCGM 101 decision tree
+  - `decide_method()` implements linearization check
+  - `cross_check_should_refuse()` catches linearization lies
+  - Auto-switch to Monte Carlo when GUM assumptions fail
+
+#### Property-Based Testing (`stdlib/epistemic/proptest.d`)
+- QuickCheck-style tests for 5 epistemic laws under random assault:
+  1. Provenance append-only (never shrinks)
+  2. Confidence monotone (no silent uplift)
+  3. Uncertainty non-contraction (no silent narrowing)
+  4. Interval enclosure preserved
+  5. Debt monotone (Landauer limit)
+- 400 property tests with random generation and ILLEGAL operation detection
+
+#### Fuzzing Infrastructure (`compiler/fuzz/`)
+- **INVARIANT**: Lexer and parser must NEVER panic on any input
+- `fuzz_lexer`: bytes → tokens (crash-proof)
+- `fuzz_parser`: tokens → AST (error recovery)
+- `fuzz_full_pipeline`: lexer → parser → type checker
+- libFuzzer-based coverage-guided fuzzing
+
+#### CI Hardening (`.github/workflows/ci.yml`)
+- Removed `continue-on-error: true` (the lie)
+- Added `scripts/run_stdlib_tests.sh` running all 73 stdlib programs
+- 61 tests pass, 12 known broken (tracked explicitly, blocking regressions)
+
+### Changed
+- CI test suite is now a **hard gate** - failures block merge
+- Known broken tests are tracked with explicit reasons, not silently skipped
+
+### References
+- JCGM 100:2008 (GUM) - Uncertainty propagation framework
+- JCGM 101:2008 - Monte Carlo supplement
+- JCGM 102:2011 - Multivariate outputs
+- Landauer (1961) - Irreversibility and Heat Generation
+- Sobol' (1993) - Sensitivity estimates for nonlinear mathematical models
+
+## [0.82.0] - 2025-12-21
+
+### Added
+- Epistemic AD, entropic ledger, and invariant tests
+
+## [0.81.0] - 2025-12-21
+
+### Added
+- PROV-DM provenance, budget ledger, and Monte Carlo propagation
+
+## [0.80.0] - 2025-12-21
+
+### Added
+- Correlation tracking and policy gating
+
+## [0.79.1] - 2025-12-20
+
 ### Added
 - FFI imports: `extern "C" { fn ...; }` now type-check and lower into HLIR (with `#[link_name = "..."]` and variadic support).
 - Epistemic stdlib expansions: new modules `knowledge`, `propagate`, `meta`, `active`, `merkle` plus early `linalg` and `ode` scaffolding (`stdlib/epistemic/README.md`).
