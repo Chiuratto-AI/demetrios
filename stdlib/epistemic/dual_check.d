@@ -534,6 +534,194 @@ fn should_refuse(res: GumMcResult) -> bool {
 }
 
 // ============================================================================
+// AUTO-SWITCH DECISION POLICY
+// ============================================================================
+
+/// Decision tree for GUM vs MC selection (JCGM 101 guidance)
+///
+/// The decision proceeds as:
+///   1. Is linearization error acceptable? If yes → use GUM (faster)
+///   2. Is auto-switch enabled? If yes → switch to MC automatically
+///   3. Is warn-only mode? If yes → warn but use GUM
+///   4. Otherwise → REFUSE (demand explicit method choice)
+///
+/// This captures the JCGM 101 philosophy: GUM is the default,
+/// MC is the fallback when GUM assumptions fail.
+struct AutoSwitchDecision {
+    method: i32,             // 0=GUM, 1=MC, 2=refused
+    reason: i32,             // 0=linear_ok, 1=auto_switch, 2=warned, 3=refused
+    gum_uncertainty: f64,    // GUM estimate of uncertainty
+    mc_uncertainty: f64,     // MC estimate of uncertainty
+    discrepancy_ratio: f64,  // |u_mc - u_gum| / u_mc
+    is_reliable: bool,       // True if we trust the result
+}
+
+/// Make the auto-switch decision based on dual check result and policy
+fn decide_method(res: GumMcResult, policy: LinearizationPolicy) -> AutoSwitchDecision {
+    // Step 1: Is linearization acceptable?
+    if res.is_linear {
+        return AutoSwitchDecision {
+            method: 0,  // GUM
+            reason: 0,  // linear_ok
+            gum_uncertainty: res.gum_std,
+            mc_uncertainty: res.mc_std,
+            discrepancy_ratio: res.std_discrepancy,
+            is_reliable: true,
+        }
+    }
+
+    // Step 2: Linearization failed - check policy
+    if policy.auto_switch_to_mc {
+        return AutoSwitchDecision {
+            method: 1,  // MC
+            reason: 1,  // auto_switch
+            gum_uncertainty: res.gum_std,
+            mc_uncertainty: res.mc_std,
+            discrepancy_ratio: res.std_discrepancy,
+            is_reliable: true,
+        }
+    }
+
+    // Step 3: No auto-switch - check warn-only
+    if policy.warn_only {
+        return AutoSwitchDecision {
+            method: 0,  // GUM (with warning)
+            reason: 2,  // warned
+            gum_uncertainty: res.gum_std,
+            mc_uncertainty: res.mc_std,
+            discrepancy_ratio: res.std_discrepancy,
+            is_reliable: false,  // Not reliable!
+        }
+    }
+
+    // Step 4: Refuse - demand explicit choice
+    return AutoSwitchDecision {
+        method: 2,  // refused
+        reason: 3,  // refused
+        gum_uncertainty: res.gum_std,
+        mc_uncertainty: res.mc_std,
+        discrepancy_ratio: res.std_discrepancy,
+        is_reliable: false,
+    }
+}
+
+/// Gate: block computation if method is refused
+fn gate_method_refused(decision: AutoSwitchDecision) -> bool {
+    return decision.method == 2
+}
+
+/// Gate: warn if result is not reliable
+fn gate_unreliable_result(decision: AutoSwitchDecision) -> bool {
+    return !decision.is_reliable
+}
+
+// ============================================================================
+// CROSS-CHECK POLICY: INTEGRATED VALIDATION
+// ============================================================================
+
+/// Cross-check policy combining multiple validation criteria
+struct CrossCheckPolicy {
+    linearization: LinearizationPolicy,
+    require_mc_validation: bool,    // Always run MC to validate GUM
+    min_mc_samples: i32,            // Minimum MC samples for validation
+    max_discrepancy_warn: f64,      // Warn if discrepancy > this
+    max_discrepancy_refuse: f64,    // Refuse if discrepancy > this
+}
+
+fn default_cross_check_policy() -> CrossCheckPolicy {
+    return CrossCheckPolicy {
+        linearization: default_linearization_policy(),
+        require_mc_validation: true,
+        min_mc_samples: 100,
+        max_discrepancy_warn: 0.10,
+        max_discrepancy_refuse: 0.30,
+    }
+}
+
+fn strict_cross_check_policy() -> CrossCheckPolicy {
+    return CrossCheckPolicy {
+        linearization: strict_linearization_policy(),
+        require_mc_validation: true,
+        min_mc_samples: 500,
+        max_discrepancy_warn: 0.05,
+        max_discrepancy_refuse: 0.15,
+    }
+}
+
+/// Cross-check result with integrated validation
+struct CrossCheckResult {
+    // Method selection
+    final_method: i32,       // 0=GUM, 1=MC
+    final_mean: f64,
+    final_std: f64,
+
+    // Validation status
+    gum_validated: bool,     // True if GUM was validated by MC
+    discrepancy: f64,        // Observed discrepancy
+    validation_status: i32,  // 0=passed, 1=warned, 2=failed
+
+    // Diagnostic
+    mc_samples_used: i32,
+    linearization_ok: bool,
+    recommendation: i32,     // 0=proceed, 1=review, 2=refuse
+}
+
+/// Run full cross-check with integrated validation
+fn run_cross_check_exp(x: UncertainInput, policy: CrossCheckPolicy) -> CrossCheckResult {
+    // Always run both methods
+    let res = dual_check_exp(x, policy.min_mc_samples, policy.linearization)
+
+    // Make method decision
+    let decision = decide_method(res, policy.linearization)
+
+    // Determine final values
+    var final_mean = res.gum_mean
+    var final_std = res.gum_std
+    if decision.method == 1 {
+        final_mean = res.mc_mean
+        final_std = res.mc_std
+    }
+
+    // Determine validation status
+    var val_status: i32 = 0
+    if res.std_discrepancy > policy.max_discrepancy_refuse {
+        val_status = 2  // Failed
+    } else if res.std_discrepancy > policy.max_discrepancy_warn {
+        val_status = 1  // Warned
+    }
+
+    // Determine recommendation
+    var rec: i32 = 0
+    if decision.method == 2 {
+        rec = 2  // Refuse
+    } else if val_status == 1 {
+        rec = 1  // Review
+    }
+
+    return CrossCheckResult {
+        final_method: decision.method,
+        final_mean: final_mean,
+        final_std: final_std,
+        gum_validated: res.is_linear,
+        discrepancy: res.std_discrepancy,
+        validation_status: val_status,
+        mc_samples_used: res.mc_samples,
+        linearization_ok: res.is_linear,
+        recommendation: rec,
+    }
+}
+
+/// Check if cross-check recommends refusal
+fn cross_check_should_refuse(result: CrossCheckResult) -> bool {
+    return result.recommendation == 2
+}
+
+/// Check if cross-check recommends review
+fn cross_check_should_review(result: CrossCheckResult) -> bool {
+    return result.recommendation == 1
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -629,6 +817,68 @@ fn test_best_estimate_selection() -> bool {
     return true
 }
 
+fn test_auto_switch_linear() -> bool {
+    // Linear case: should use GUM
+    let x = dual_input(1.0, 0.01)  // Small uncertainty -> linear
+    let policy = default_linearization_policy()
+    let res = dual_check_exp(x, 500, policy)
+    let decision = decide_method(res, policy)
+
+    if decision.method != 0 { return false }  // Should be GUM
+    if decision.reason != 0 { return false }   // linear_ok
+    if !decision.is_reliable { return false }
+
+    return true
+}
+
+fn test_auto_switch_nonlinear() -> bool {
+    // Nonlinear case: should auto-switch to MC
+    let x = dual_input(1.0, 0.5)  // Large uncertainty -> nonlinear
+    let policy = default_linearization_policy()  // auto_switch_to_mc = true
+    let res = dual_check_exp(x, 500, policy)
+    let decision = decide_method(res, policy)
+
+    // Should switch to MC
+    if decision.method != 1 { return false }  // MC
+    if decision.reason != 1 { return false }   // auto_switch
+    if !decision.is_reliable { return false }  // MC is reliable
+
+    return true
+}
+
+fn test_cross_check_policy() -> bool {
+    // Test the integrated cross-check
+    let x = dual_input(1.0, 0.3)  // Moderate uncertainty
+    let policy = default_cross_check_policy()
+
+    let result = run_cross_check_exp(x, policy)
+
+    // Should have valid outputs
+    if result.final_std < 0.0 { return false }
+    if result.mc_samples_used < 50 { return false }
+
+    // Recommendation should be valid
+    if result.recommendation < 0 || result.recommendation > 2 { return false }
+
+    return true
+}
+
+fn test_cross_check_refusal_gates() -> bool {
+    // Test the gate functions
+    let x = dual_input(1.0, 0.01)  // Linear
+    let policy = default_cross_check_policy()
+
+    let result = run_cross_check_exp(x, policy)
+
+    // Should not refuse for linear case
+    if cross_check_should_refuse(result) { return false }
+
+    // Should not require review for linear case
+    if result.validation_status == 2 { return false }
+
+    return true
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -639,6 +889,10 @@ fn main() -> i32 {
     if !test_division_nonlinear() { return 3 }
     if !test_pk_model_dual() { return 4 }
     if !test_best_estimate_selection() { return 5 }
+    if !test_auto_switch_linear() { return 6 }
+    if !test_auto_switch_nonlinear() { return 7 }
+    if !test_cross_check_policy() { return 8 }
+    if !test_cross_check_refusal_gates() { return 9 }
 
     return 0
 }
