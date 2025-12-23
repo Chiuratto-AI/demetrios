@@ -1757,7 +1757,10 @@ mod tests {
             Item::Function(f) if f.name == "sin" => Some(f),
             _ => None,
         });
-        assert!(sin_func.is_some(), "Expected sin() function from math import");
+        assert!(
+            sin_func.is_some(),
+            "Expected sin() function from math import"
+        );
     }
 
     #[test]

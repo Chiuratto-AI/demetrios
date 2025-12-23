@@ -81,6 +81,11 @@ pub use domain::{
     DomainOntologies, DomainStats, DomainTerm, OntologyMetadata as DomainOntologyMetadata,
 };
 pub use federated::{FederatedQuery, FederatedResolver, FederatedSource};
+pub use fidelity::{
+    AggregateFidelity, FidelityCaveat, FidelityConfig, FidelityIssue, FidelityResult,
+    FidelityStats, ProvenanceAudit, ProvenanceIssue, SubsumptionFidelity, ViolationDetails,
+    ViolationType, WorldFidelityChecker,
+};
 pub use foundation::{
     CurationStatus, FoundationOntologies, FoundationTerm, OntologySource, TermEntry, TermMapping,
     augmentation::EpistemicAugmenter, fhir::FHIROntology, iao::IAOOntology, pato::PATOOntology,
@@ -102,11 +107,6 @@ pub use resolver::{
 pub use semantic_sql::{SemanticSqlStore, SqlOntology, SqlTerm};
 pub use sssom::{
     MappingDirection, MappingJustification, SssomMapping, SssomMappingSet, load_sssom_mappings,
-};
-pub use fidelity::{
-    AggregateFidelity, FidelityCaveat, FidelityConfig, FidelityIssue, FidelityResult,
-    FidelityStats, ProvenanceAudit, ProvenanceIssue, SubsumptionFidelity, ViolationDetails,
-    ViolationType, WorldFidelityChecker,
 };
 
 use crate::epistemic::{OntologyBinding, OntologyRef, TermId};

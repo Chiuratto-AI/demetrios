@@ -94,18 +94,12 @@ impl BetaConfidence {
 
     /// Bayesian update with new observations
     pub fn update(&self, successes: u64, failures: u64) -> Self {
-        Self::new(
-            self.alpha + successes as f64,
-            self.beta + failures as f64,
-        )
+        Self::new(self.alpha + successes as f64, self.beta + failures as f64)
     }
 
     /// Combine two Beta distributions (product of experts)
     pub fn combine(&self, other: &Self) -> Self {
-        Self::new(
-            self.alpha + other.alpha - 1.0,
-            self.beta + other.beta - 1.0,
-        )
+        Self::new(self.alpha + other.alpha - 1.0, self.beta + other.beta - 1.0)
     }
 
     /// KL divergence from self to other (approximation)
@@ -191,12 +185,8 @@ fn erf(x: f64) -> f64 {
                             + t * (0.27886807
                                 + t * (-1.13520398
                                     + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))))
-        .exp();
-    if x >= 0.0 {
-        1.0 - tau
-    } else {
-        tau - 1.0
-    }
+            .exp();
+    if x >= 0.0 { 1.0 - tau } else { tau - 1.0 }
 }
 
 impl std::ops::Add for Knowledge<f64> {
@@ -336,7 +326,8 @@ impl EpistemicGraph {
             }
         }
 
-        Knowledge::new(entropy, variance, BetaConfidence::uniform()).with_provenance("degree_entropy")
+        Knowledge::new(entropy, variance, BetaConfidence::uniform())
+            .with_provenance("degree_entropy")
     }
 
     /// Global clustering coefficient with uncertainty
@@ -374,8 +365,10 @@ impl EpistemicGraph {
         } else {
             0.0
         };
-        let conf =
-            BetaConfidence::from_observations(triangles as u64, (triples - triangles).max(0.0) as u64);
+        let conf = BetaConfidence::from_observations(
+            triangles as u64,
+            (triples - triangles).max(0.0) as u64,
+        );
 
         Knowledge::new(cc, conf.variance(), conf).with_provenance("clustering_coefficient")
     }
@@ -390,7 +383,8 @@ impl EpistemicGraph {
         let mean: f64 = self.edges.iter().map(|e| e.weight.value).sum::<f64>() / n;
         let variance: f64 = self.edges.iter().map(|e| e.weight.variance).sum::<f64>() / (n * n);
 
-        Knowledge::new(mean, variance, BetaConfidence::uniform()).with_provenance("mean_connectivity")
+        Knowledge::new(mean, variance, BetaConfidence::uniform())
+            .with_provenance("mean_connectivity")
     }
 }
 
@@ -543,8 +537,9 @@ pub mod brain {
                     let r = correlations[i][j];
                     if r.abs() > 0.3 {
                         // Threshold for significant connection
-                        let weight = Knowledge::new(r, fisher_z_variance, BetaConfidence::uniform())
-                            .with_provenance("pearson_r");
+                        let weight =
+                            Knowledge::new(r, fisher_z_variance, BetaConfidence::uniform())
+                                .with_provenance("pearson_r");
                         graph.add_edge(i, j, weight, "functional");
                     }
                 }
@@ -696,9 +691,7 @@ pub mod psychiatry {
                 .observations
                 .iter()
                 .zip(self.model.beliefs.values())
-                .map(|(obs, belief)| {
-                    (obs.value - belief.value).powi(2) / belief.variance.max(1e-6)
-                })
+                .map(|(obs, belief)| (obs.value - belief.value).powi(2) / belief.variance.max(1e-6))
                 .sum();
 
             let complexity: f64 = self
@@ -875,8 +868,8 @@ pub mod unified {
             self.brain = Some(metrics.clone());
 
             // Update unified entropy (neural organization contributes)
-            self.unified_entropy =
-                self.unified_entropy.clone() + metrics.neural_complexity * Knowledge::constant(0.33);
+            self.unified_entropy = self.unified_entropy.clone()
+                + metrics.neural_complexity * Knowledge::constant(0.33);
             self.unified_complexity = metrics.small_worldness.clone();
         }
 
@@ -899,7 +892,10 @@ pub mod unified {
                 let entropy_complexity = Knowledge::new(
                     scaffold.entropy.value * brain.neural_complexity.value,
                     scaffold.entropy.variance * brain.neural_complexity.variance,
-                    scaffold.entropy.confidence.combine(&brain.neural_complexity.confidence),
+                    scaffold
+                        .entropy
+                        .confidence
+                        .combine(&brain.neural_complexity.confidence),
                 )
                 .with_provenance("scaffold_brain_entropy_correlation");
 
@@ -964,13 +960,23 @@ pub mod unified {
         pub fn report(&self) -> String {
             let mut report = String::new();
 
-            report.push_str("╔══════════════════════════════════════════════════════════════════════════╗\n");
-            report.push_str("║                    UNIFIED EPISTEMIC ANALYSIS                            ║\n");
-            report.push_str("║          Biomaterials × Brain Connectivity × Computational Psychiatry    ║\n");
-            report.push_str("╚══════════════════════════════════════════════════════════════════════════╝\n\n");
+            report.push_str(
+                "╔══════════════════════════════════════════════════════════════════════════╗\n",
+            );
+            report.push_str(
+                "║                    UNIFIED EPISTEMIC ANALYSIS                            ║\n",
+            );
+            report.push_str(
+                "║          Biomaterials × Brain Connectivity × Computational Psychiatry    ║\n",
+            );
+            report.push_str(
+                "╚══════════════════════════════════════════════════════════════════════════╝\n\n",
+            );
 
             if let Some(scaffold) = &self.scaffold {
-                report.push_str("┌─ BIOMATERIALS: KEC Framework ──────────────────────────────────────────┐\n");
+                report.push_str(
+                    "┌─ BIOMATERIALS: KEC Framework ──────────────────────────────────────────┐\n",
+                );
                 report.push_str(&format!(
                     "│  Entropy (K):   {:.3} ± {:.3}\n",
                     scaffold.entropy.value,
@@ -995,7 +1001,9 @@ pub mod unified {
             }
 
             if let Some(brain) = &self.brain {
-                report.push_str("┌─ BRAIN CONNECTIVITY ───────────────────────────────────────────────────┐\n");
+                report.push_str(
+                    "┌─ BRAIN CONNECTIVITY ───────────────────────────────────────────────────┐\n",
+                );
                 report.push_str(&format!(
                     "│  Global Efficiency:  {:.3} ± {:.3}\n",
                     brain.global_efficiency.value,
@@ -1020,7 +1028,9 @@ pub mod unified {
             }
 
             if let Some(psych) = &self.psychiatric {
-                report.push_str("┌─ COMPUTATIONAL PSYCHIATRY ─────────────────────────────────────────────┐\n");
+                report.push_str(
+                    "┌─ COMPUTATIONAL PSYCHIATRY ─────────────────────────────────────────────┐\n",
+                );
                 report.push_str(&format!(
                     "│  Depression (PHQ-9):  {:.1} ± {:.1}\n",
                     psych.depression_score.value,
@@ -1049,7 +1059,9 @@ pub mod unified {
             }
 
             if !self.cross_domain_correlations.is_empty() {
-                report.push_str("┌─ CROSS-DOMAIN CORRELATIONS ────────────────────────────────────────────┐\n");
+                report.push_str(
+                    "┌─ CROSS-DOMAIN CORRELATIONS ────────────────────────────────────────────┐\n",
+                );
                 for (name, corr) in &self.cross_domain_correlations {
                     report.push_str(&format!(
                         "│  {}: {:.4} ± {:.4}\n",
@@ -1061,7 +1073,9 @@ pub mod unified {
                 report.push_str("└─────────────────────────────────────────────────────────────────────────┘\n\n");
             }
 
-            report.push_str("┌─ UNIFIED METRICS ───────────────────────────────────────────────────────┐\n");
+            report.push_str(
+                "┌─ UNIFIED METRICS ───────────────────────────────────────────────────────┐\n",
+            );
             report.push_str(&format!(
                 "│  Unified Entropy:    {:.3} ± {:.3}\n",
                 self.unified_entropy.value,
@@ -1072,7 +1086,9 @@ pub mod unified {
                 self.unified_complexity.value,
                 self.unified_complexity.std_dev()
             ));
-            report.push_str("└─────────────────────────────────────────────────────────────────────────┘\n");
+            report.push_str(
+                "└─────────────────────────────────────────────────────────────────────────┘\n",
+            );
 
             report
         }

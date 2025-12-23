@@ -267,7 +267,8 @@ pub fn conditional_average_treatment_effect(
         return Err("No data in conditioning stratum".to_string());
     }
 
-    let estimate = estimate_with_adjustment(treatment, outcome, &adjustment.variables, &filtered_data)?;
+    let estimate =
+        estimate_with_adjustment(treatment, outcome, &adjustment.variables, &filtered_data)?;
 
     Ok(ConditionalAverageTreatmentEffect::new(
         conditioning,
@@ -297,12 +298,16 @@ pub fn local_average_treatment_effect(
 
     // LATE = reduced form / first stage
     let late_value = reduced_form.value / first_stage.value;
-    let late_var = if let (Some(rf_var), Some(fs_var)) = (reduced_form.variance, first_stage.variance) {
-        // Delta method approximation
-        Some((rf_var / first_stage.value.powi(2)) + (reduced_form.value.powi(2) * fs_var / first_stage.value.powi(4)))
-    } else {
-        None
-    };
+    let late_var =
+        if let (Some(rf_var), Some(fs_var)) = (reduced_form.variance, first_stage.variance) {
+            // Delta method approximation
+            Some(
+                (rf_var / first_stage.value.powi(2))
+                    + (reduced_form.value.powi(2) * fs_var / first_stage.value.powi(4)),
+            )
+        } else {
+            None
+        };
 
     let late_conf = reduced_form.confidence.min(first_stage.confidence);
 
@@ -412,7 +417,9 @@ fn estimate_with_adjustment(
     // Confidence penalty for adjustment complexity
     let confidence = 0.95_f64.powi(adjustment_vars.len() as i32);
 
-    Ok(EffectEstimate::with_variance(effect, effect_var, confidence))
+    Ok(EffectEstimate::with_variance(
+        effect, effect_var, confidence,
+    ))
 }
 
 /// Estimate simple bivariate effect (no adjustment)
@@ -467,7 +474,7 @@ fn normal_quantile(p: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::causal::dag::{EpistemicCausalNode, UncertainCausalEdge, EffectEstimate};
+    use crate::causal::dag::{EffectEstimate, EpistemicCausalNode, UncertainCausalEdge};
     use crate::epistemic::BetaConfidence;
 
     fn simple_dag() -> CausalDAG {

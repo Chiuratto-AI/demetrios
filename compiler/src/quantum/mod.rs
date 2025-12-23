@@ -58,8 +58,7 @@ pub use amplitude::EpistemicAmplitude;
 pub use circuit::{CircuitBuilder, CircuitStats, QuantumCircuit};
 pub use gates::{Gate, GateType, ParametricGate};
 pub use hamiltonian::{
-    Hamiltonian as MolecularHamiltonian, Pauli, PauliString,
-    VQEResult as MolecularVQEResult,
+    Hamiltonian as MolecularHamiltonian, Pauli, PauliString, VQEResult as MolecularVQEResult,
 };
 pub use noise::{AmplitudeDamping, DepolarizingNoise, NoiseModel, NoiseType};
 pub use pennylane::{

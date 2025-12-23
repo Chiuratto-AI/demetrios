@@ -84,11 +84,7 @@ impl BackdoorPath {
 /// A backdoor path is a path that:
 /// - Starts with an edge into the treatment (←)
 /// - Ends at the outcome
-pub fn find_backdoor_paths(
-    dag: &CausalDAG,
-    treatment: &str,
-    outcome: &str,
-) -> Vec<BackdoorPath> {
+pub fn find_backdoor_paths(dag: &CausalDAG, treatment: &str, outcome: &str) -> Vec<BackdoorPath> {
     let mut paths = Vec::new();
 
     // Start from parents of treatment (backdoor = starts with ←)
@@ -219,7 +215,9 @@ fn find_minimal_hitting_sets(
 
 /// Check if a set blocks all backdoor paths
 fn blocks_all_paths(paths: &[BackdoorPath], adjustment_set: &HashSet<String>) -> bool {
-    paths.iter().all(|path| path_is_blocked(path, adjustment_set))
+    paths
+        .iter()
+        .all(|path| path_is_blocked(path, adjustment_set))
 }
 
 /// Check if a path is blocked by the adjustment set
@@ -372,7 +370,14 @@ fn find_directed_paths(dag: &CausalDAG, source: &str, target: &str) -> Vec<Vec<S
     let mut current_path = vec![source.to_string()];
     let mut visited = HashSet::new();
 
-    explore_directed_paths(dag, source, target, &mut current_path, &mut visited, &mut paths);
+    explore_directed_paths(
+        dag,
+        source,
+        target,
+        &mut current_path,
+        &mut visited,
+        &mut paths,
+    );
 
     paths
 }
@@ -466,7 +471,7 @@ fn ancestors_of(dag: &CausalDAG, node: &str) -> HashSet<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::causal::dag::{EpistemicCausalNode, UncertainCausalEdge, EffectEstimate};
+    use crate::causal::dag::{EffectEstimate, EpistemicCausalNode, UncertainCausalEdge};
     use crate::epistemic::BetaConfidence;
 
     fn simple_confounded_dag() -> CausalDAG {

@@ -637,18 +637,12 @@ impl BreakCondition {
                 // Would need information gain tracking
                 false
             }
-            BreakCondition::ProvenanceContains(pattern) => {
-                node.operation.name().contains(pattern)
-            }
+            BreakCondition::ProvenanceContains(pattern) => node.operation.name().contains(pattern),
             BreakCondition::OperationKindIs(kind) => node.operation.kind() == *kind,
             BreakCondition::DepthExceeds(limit) => dag.depth_to_node(&node.id) > *limit,
             BreakCondition::AtHash(hash) => node.id == *hash,
-            BreakCondition::All(conditions) => {
-                conditions.iter().all(|c| c.matches(node, dag))
-            }
-            BreakCondition::Any(conditions) => {
-                conditions.iter().any(|c| c.matches(node, dag))
-            }
+            BreakCondition::All(conditions) => conditions.iter().all(|c| c.matches(node, dag)),
+            BreakCondition::Any(conditions) => conditions.iter().any(|c| c.matches(node, dag)),
             BreakCondition::Not(condition) => !condition.matches(node, dag),
         }
     }
@@ -763,7 +757,11 @@ impl BreakpointManager {
     }
 
     /// Check all breakpoints against a node
-    pub fn check(&mut self, node: &MerkleProvenanceNode, dag: &MerkleProvenanceDAG) -> Vec<&EpistemicBreakpoint> {
+    pub fn check(
+        &mut self,
+        node: &MerkleProvenanceNode,
+        dag: &MerkleProvenanceDAG,
+    ) -> Vec<&EpistemicBreakpoint> {
         let mut triggered = Vec::new();
 
         for bp in &mut self.breakpoints {
@@ -846,11 +844,7 @@ impl MerkleProvenanceDAG {
         };
 
         // Generate unique proof ID
-        let proof_id = format!(
-            "FDA-{}-{}",
-            &dag_hash.to_hex()[..8],
-            now
-        );
+        let proof_id = format!("FDA-{}-{}", &dag_hash.to_hex()[..8], now);
 
         FDAComplianceProof {
             version: "1.0.0".to_string(),
@@ -976,7 +970,10 @@ impl FDAComplianceProof {
 #[derive(Debug, Clone)]
 pub enum ProofVerificationError {
     /// Commitment hash doesn't match
-    CommitmentMismatch { expected: Hash256, computed: Hash256 },
+    CommitmentMismatch {
+        expected: Hash256,
+        computed: Hash256,
+    },
     /// DAG hash doesn't match audit trail
     DAGHashMismatch,
     /// Invalid format
@@ -1170,7 +1167,11 @@ impl fmt::Display for VerificationResult {
         writeln!(
             f,
             "Integrity:    {}",
-            if self.integrity_verified { "✓" } else { "✗" }
+            if self.integrity_verified {
+                "✓"
+            } else {
+                "✗"
+            }
         )?;
         writeln!(f, "Signatures:   {} verified", self.signatures_verified)
     }
@@ -1182,8 +1183,8 @@ impl fmt::Display for VerificationResult {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::merkle::ProvenanceOperation;
+    use super::*;
 
     fn create_test_dag() -> MerkleProvenanceDAG {
         let mut dag = MerkleProvenanceDAG::new();
@@ -1275,7 +1276,10 @@ mod tests {
         let dag = create_test_dag();
         let bp = EpistemicBreakpoint::on_operation("calibration", "calibrate");
 
-        let calibrate_node = dag.nodes.values().find(|n| n.operation.name().contains("calibrate"));
+        let calibrate_node = dag
+            .nodes
+            .values()
+            .find(|n| n.operation.name().contains("calibrate"));
 
         if let Some(node) = calibrate_node {
             assert!(bp.triggers(node, &dag));
@@ -1321,7 +1325,11 @@ mod tests {
         manager.add(EpistemicBreakpoint::on_confidence_below("bp1", 0.5));
         manager.add(EpistemicBreakpoint::on_operation("bp2", "calibrate"));
 
-        let node = dag.nodes.values().find(|n| n.operation.name().contains("calibrate")).unwrap();
+        let node = dag
+            .nodes
+            .values()
+            .find(|n| n.operation.name().contains("calibrate"))
+            .unwrap();
         let triggered = manager.check(node, &dag);
 
         // At least the operation breakpoint should trigger
@@ -1339,7 +1347,11 @@ mod tests {
 
         let bp = EpistemicBreakpoint::new("compound", condition);
 
-        let node = dag.nodes.values().find(|n| n.operation.name().contains("calibrate")).unwrap();
+        let node = dag
+            .nodes
+            .values()
+            .find(|n| n.operation.name().contains("calibrate"))
+            .unwrap();
         assert!(bp.triggers(node, &dag));
     }
 

@@ -202,15 +202,9 @@ pub enum SubsumptionFidelity {
         path_length: usize,
     },
     /// Term is superclass of expected domain
-    IsSuperclass {
-        parent: String,
-        child: String,
-    },
+    IsSuperclass { parent: String, child: String },
     /// Terms are equivalent
-    Equivalent {
-        term_a: String,
-        term_b: String,
-    },
+    Equivalent { term_a: String, term_b: String },
     /// No subsumption relationship (but compatible via mapping)
     MappedCompatible {
         source: String,
@@ -434,9 +428,7 @@ impl WorldFidelityChecker {
                         actual_domain: None,
                         semantic_distance: None,
                     },
-                    suggestions: vec![
-                        "Use format PREFIX:ID (e.g., CHEBI:15365)".to_string(),
-                    ],
+                    suggestions: vec!["Use format PREFIX:ID (e.g., CHEBI:15365)".to_string()],
                 };
             }
         };
@@ -679,10 +671,7 @@ impl WorldFidelityChecker {
 
         AggregateFidelity {
             score,
-            confidence: BetaConfidence::new(
-                alpha_sum.max(1.0),
-                beta_sum.max(1.0),
-            ),
+            confidence: BetaConfidence::new(alpha_sum.max(1.0), beta_sum.max(1.0)),
             high_count,
             medium_count,
             low_count,
@@ -752,7 +741,10 @@ impl FidelityResult {
 
     /// Check if result is acceptable (High or Medium)
     pub fn is_acceptable(&self) -> bool {
-        matches!(self, FidelityResult::High { .. } | FidelityResult::Medium { .. })
+        matches!(
+            self,
+            FidelityResult::High { .. } | FidelityResult::Medium { .. }
+        )
     }
 
     /// Check if result is a violation
@@ -770,8 +762,24 @@ mod tests {
         // This test may fail if resolver can't be created (missing data files)
         // So we test the world ontology set directly
         let world_ontologies: HashSet<String> = [
-            "chebi", "go", "uberon", "hp", "mondo", "doid", "cl", "pato", "uo",
-            "obi", "ncbitaxon", "pr", "so", "envo", "bfo", "ro", "cob", "iao",
+            "chebi",
+            "go",
+            "uberon",
+            "hp",
+            "mondo",
+            "doid",
+            "cl",
+            "pato",
+            "uo",
+            "obi",
+            "ncbitaxon",
+            "pr",
+            "so",
+            "envo",
+            "bfo",
+            "ro",
+            "cob",
+            "iao",
         ]
         .iter()
         .map(|s| s.to_string())

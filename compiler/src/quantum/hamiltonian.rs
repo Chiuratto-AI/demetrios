@@ -47,8 +47,8 @@ impl Pauli {
     pub fn eigenvalue(&self, bit: bool) -> f64 {
         match (self, bit) {
             (Pauli::I, _) => 1.0,
-            (Pauli::Z, false) => 1.0,  // Z|0⟩ = |0⟩
-            (Pauli::Z, true) => -1.0,  // Z|1⟩ = -|1⟩
+            (Pauli::Z, false) => 1.0, // Z|0⟩ = |0⟩
+            (Pauli::Z, true) => -1.0, // Z|1⟩ = -|1⟩
             // X and Y require basis rotation
             _ => 0.0,
         }
@@ -62,7 +62,7 @@ impl Pauli {
     /// Get the rotation angle for measurement
     pub fn measurement_rotation(&self) -> Option<(&'static str, f64)> {
         match self {
-            Pauli::X => Some(("H", 0.0)),           // Hadamard for X basis
+            Pauli::X => Some(("H", 0.0)), // Hadamard for X basis
             Pauli::Y => Some(("Sdg+H", -std::f64::consts::PI / 2.0)), // S†H for Y basis
             _ => None,
         }
@@ -97,10 +97,7 @@ impl PauliString {
                 map.insert(qubit, op);
             }
         }
-        Self {
-            ops: map,
-            n_qubits,
-        }
+        Self { ops: map, n_qubits }
     }
 
     /// Create single-qubit Z operator
@@ -357,9 +354,9 @@ impl Hamiltonian {
 
             // Try to add to existing group
             for group in &mut groups {
-                let group_commutes = group.iter().all(|&j| {
-                    term.pauli.commutes_with(&self.terms[j].pauli)
-                });
+                let group_commutes = group
+                    .iter()
+                    .all(|&j| term.pauli.commutes_with(&self.terms[j].pauli));
 
                 if group_commutes {
                     group.push(i);
@@ -440,12 +437,7 @@ pub struct VQEResult {
 
 impl VQEResult {
     /// Create new VQE result
-    pub fn new(
-        energy: f64,
-        shot_variance: f64,
-        param_variance: f64,
-        gate_variance: f64,
-    ) -> Self {
+    pub fn new(energy: f64, shot_variance: f64, param_variance: f64, gate_variance: f64) -> Self {
         let variance = shot_variance + param_variance + gate_variance;
         Self {
             energy,
@@ -518,7 +510,7 @@ mod tests {
     #[test]
     fn test_pauli_string_z() {
         let p = PauliString::z(2, 0);
-        assert_eq!(p.expectation_z_basis(0b00), 1.0);  // Z|0⟩ = +|0⟩
+        assert_eq!(p.expectation_z_basis(0b00), 1.0); // Z|0⟩ = +|0⟩
         assert_eq!(p.expectation_z_basis(0b10), -1.0); // Z|1⟩ = -|1⟩
     }
 
@@ -526,10 +518,10 @@ mod tests {
     fn test_pauli_string_zz() {
         let p = PauliString::zz(2, 0, 1);
 
-        assert_eq!(p.expectation_z_basis(0b00), 1.0);  // |00⟩: (+1)(+1) = +1
+        assert_eq!(p.expectation_z_basis(0b00), 1.0); // |00⟩: (+1)(+1) = +1
         assert_eq!(p.expectation_z_basis(0b01), -1.0); // |01⟩: (+1)(-1) = -1
         assert_eq!(p.expectation_z_basis(0b10), -1.0); // |10⟩: (-1)(+1) = -1
-        assert_eq!(p.expectation_z_basis(0b11), 1.0);  // |11⟩: (-1)(-1) = +1
+        assert_eq!(p.expectation_z_basis(0b11), 1.0); // |11⟩: (-1)(-1) = +1
     }
 
     #[test]

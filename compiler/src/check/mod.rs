@@ -482,11 +482,10 @@ impl TypeChecker {
             // Register global let/const bindings
             if let Item::Global(g) = item {
                 let name = self.pattern_name(&g.pattern);
-                let ty = g
-                    .ty
-                    .as_ref()
-                    .map(|t| self.lower_type_expr(t))
-                    .unwrap_or_else(|| self.fresh_type_var());
+                let ty =
+                    g.ty.as_ref()
+                        .map(|t| self.lower_type_expr(t))
+                        .unwrap_or_else(|| self.fresh_type_var());
                 self.env.bind(name, ty, g.is_mut);
             }
         }
@@ -1888,7 +1887,9 @@ impl TypeChecker {
                 // If we know the callee's parameter types, use them as expected types for args.
                 // This enables context-driven literal typing (e.g., `1` -> `u8` when calling `fn(_, _, u8)`).
                 let expected_param_tys: Option<Vec<Type>> = match &callee_expr.ty {
-                    HirType::Fn { params, .. } => Some(params.iter().map(|p| self.hir_type_to_type(p)).collect()),
+                    HirType::Fn { params, .. } => {
+                        Some(params.iter().map(|p| self.hir_type_to_type(p)).collect())
+                    }
                     _ => None,
                 };
 
@@ -1898,7 +1899,9 @@ impl TypeChecker {
                         .map(|(i, a)| self.check_expr(a, param_tys.get(i)))
                         .collect::<Result<_>>()?
                 } else {
-                    args.iter().map(|a| self.check_expr(a, None)).collect::<Result<_>>()?
+                    args.iter()
+                        .map(|a| self.check_expr(a, None))
+                        .collect::<Result<_>>()?
                 };
 
                 // Extract function name for threshold lookup
@@ -2957,13 +2960,7 @@ impl TypeChecker {
                         }
                     }
                     // For Vec or other types, just return a Vec
-                    (
-                        HirType::Named {
-                            name,
-                            args,
-                        },
-                        _,
-                    ) if name == "Vec" => HirType::Named {
+                    (HirType::Named { name, args }, _) if name == "Vec" => HirType::Named {
                         name: name.clone(),
                         args: args.clone(),
                     },
@@ -3612,30 +3609,28 @@ impl TypeChecker {
             | BinaryOp::Shl
             | BinaryOp::Shr => left.clone(),
             // Concatenation: combine array sizes
-            BinaryOp::Concat => {
-                match (left, right) {
-                    (
-                        HirType::Array {
-                            element: left_elem,
-                            size: left_size,
-                        },
-                        HirType::Array {
-                            element: _right_elem,
-                            size: right_size,
-                        },
-                    ) => {
-                        let combined_size = match (left_size, right_size) {
-                            (Some(l), Some(r)) => Some(l + r),
-                            _ => None,
-                        };
-                        HirType::Array {
-                            element: left_elem.clone(),
-                            size: combined_size,
-                        }
+            BinaryOp::Concat => match (left, right) {
+                (
+                    HirType::Array {
+                        element: left_elem,
+                        size: left_size,
+                    },
+                    HirType::Array {
+                        element: _right_elem,
+                        size: right_size,
+                    },
+                ) => {
+                    let combined_size = match (left_size, right_size) {
+                        (Some(l), Some(r)) => Some(l + r),
+                        _ => None,
+                    };
+                    HirType::Array {
+                        element: left_elem.clone(),
+                        size: combined_size,
                     }
-                    _ => left.clone(),
                 }
-            }
+                _ => left.clone(),
+            },
         }
     }
 

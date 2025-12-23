@@ -90,10 +90,15 @@ impl<'a> Parser<'a> {
             return false;
         }
         // Get the span between previous token's end and current token's start
-        let prev_end = self.tokens.get(self.pos - 1).map(|t| t.span.end).unwrap_or(0);
+        let prev_end = self
+            .tokens
+            .get(self.pos - 1)
+            .map(|t| t.span.end)
+            .unwrap_or(0);
         let curr_start = self.current().span.start;
         // Check if there's a newline in that range
-        if curr_start > prev_end && curr_start <= self.source.len() && prev_end <= self.source.len() {
+        if curr_start > prev_end && curr_start <= self.source.len() && prev_end <= self.source.len()
+        {
             self.source[prev_end..curr_start].contains('\n')
         } else {
             false
@@ -3415,7 +3420,10 @@ impl<'a> Parser<'a> {
             TokenKind::HexLit => {
                 let text = self.advance().text.clone();
                 // Remove 0x prefix and underscores
-                let clean = text.trim_start_matches("0x").trim_start_matches("0X").replace('_', "");
+                let clean = text
+                    .trim_start_matches("0x")
+                    .trim_start_matches("0X")
+                    .replace('_', "");
                 let value = i64::from_str_radix(&clean, 16).unwrap_or(0);
                 Ok(Expr::Literal {
                     id: self.next_id(),
@@ -4695,13 +4703,13 @@ impl<'a> Parser<'a> {
         let next = self.peek_n(1);
         match self.peek() {
             // Keywords with (...) syntax
-            TokenKind::Sample | TokenKind::Query | TokenKind::Observe | TokenKind::Infer | TokenKind::Do => {
-                next == TokenKind::LParen
-            }
+            TokenKind::Sample
+            | TokenKind::Query
+            | TokenKind::Observe
+            | TokenKind::Infer
+            | TokenKind::Do => next == TokenKind::LParen,
             // Keywords with {...} syntax
-            TokenKind::Counterfactual => {
-                next == TokenKind::LBrace
-            }
+            TokenKind::Counterfactual => next == TokenKind::LBrace,
             _ => false,
         }
     }

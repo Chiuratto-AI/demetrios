@@ -230,10 +230,14 @@ impl Interpreter {
                     if let HirExprKind::Index { base, index } = &inner.kind {
                         let base_val = self.eval_expr(base)?;
                         let idx_val = self.eval_expr(index)?;
-                        let idx = idx_val.as_int().ok_or(ControlFlow::Return(Value::Unit))? as usize;
+                        let idx =
+                            idx_val.as_int().ok_or(ControlFlow::Return(Value::Unit))? as usize;
 
                         if let Value::Array(arr) = base_val {
-                            return Ok(Value::ArrayRef { array: arr, index: idx });
+                            return Ok(Value::ArrayRef {
+                                array: arr,
+                                index: idx,
+                            });
                         }
                     }
                 }
@@ -440,13 +444,17 @@ impl Interpreter {
                         .map(|c| Value::String(c.to_string()))
                         .ok_or(ControlFlow::Return(Value::Unit)),
                     // ArrayRef: reference to array element - index into the inner array
-                    Value::ArrayRef { array, index: arr_idx } => {
+                    Value::ArrayRef {
+                        array,
+                        index: arr_idx,
+                    } => {
                         let arr = array.borrow();
                         if let Some(inner) = arr.get(arr_idx) {
                             match inner {
                                 Value::Array(inner_arr) => {
                                     let inner_arr = inner_arr.borrow();
-                                    inner_arr.get(idx)
+                                    inner_arr
+                                        .get(idx)
                                         .cloned()
                                         .ok_or(ControlFlow::Return(Value::Unit))
                                 }
@@ -476,7 +484,10 @@ impl Interpreter {
                     let idx = idx_val.as_int().ok_or(ControlFlow::Return(Value::Unit))? as usize;
 
                     if let Value::Array(arr) = base_val {
-                        return Ok(Value::ArrayRef { array: arr, index: idx });
+                        return Ok(Value::ArrayRef {
+                            array: arr,
+                            index: idx,
+                        });
                     }
                 }
                 // Default: evaluate and wrap in Ref
@@ -490,7 +501,9 @@ impl Interpreter {
                     Value::Ref(r) => Ok(r.borrow().clone()),
                     Value::ArrayRef { array, index } => {
                         let arr = array.borrow();
-                        arr.get(index).cloned().ok_or(ControlFlow::Return(Value::Unit))
+                        arr.get(index)
+                            .cloned()
+                            .ok_or(ControlFlow::Return(Value::Unit))
                     }
                     _ => Err(ControlFlow::Return(Value::Unit)),
                 }
@@ -594,7 +607,7 @@ impl Interpreter {
                                     Ok(Value::Int(inner_arr.borrow().len() as i64))
                                 }
                                 (Value::Array(inner_arr), "push") => {
-                                    drop(arr);  // Release borrow
+                                    drop(arr); // Release borrow
                                     let arr = array.borrow();
                                     if let Some(Value::Array(inner_arr)) = arr.get(index) {
                                         if let Some(val) = arg_values.get(1) {
@@ -859,7 +872,9 @@ impl Interpreter {
                 Value::Ref(r) => Ok(r.borrow().clone()),
                 Value::ArrayRef { array, index } => {
                     let arr = array.borrow();
-                    arr.get(index).cloned().ok_or(ControlFlow::Return(Value::Unit))
+                    arr.get(index)
+                        .cloned()
+                        .ok_or(ControlFlow::Return(Value::Unit))
                 }
                 _ => Err(ControlFlow::Return(Value::Unit)),
             },

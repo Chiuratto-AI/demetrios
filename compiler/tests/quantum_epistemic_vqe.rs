@@ -87,15 +87,15 @@ fn test_pauli_strings() {
 
     // Z₀ operator
     let z0 = PauliString::z(2, 0);
-    assert_eq!(z0.expectation_z_basis(0b00), 1.0);  // |00⟩: Z₀ = +1
+    assert_eq!(z0.expectation_z_basis(0b00), 1.0); // |00⟩: Z₀ = +1
     assert_eq!(z0.expectation_z_basis(0b10), -1.0); // |10⟩: Z₀ = -1
 
     // Z₀Z₁ operator
     let z0z1 = PauliString::zz(2, 0, 1);
-    assert_eq!(z0z1.expectation_z_basis(0b00), 1.0);  // (+1)(+1) = +1
+    assert_eq!(z0z1.expectation_z_basis(0b00), 1.0); // (+1)(+1) = +1
     assert_eq!(z0z1.expectation_z_basis(0b01), -1.0); // (+1)(-1) = -1
     assert_eq!(z0z1.expectation_z_basis(0b10), -1.0); // (-1)(+1) = -1
-    assert_eq!(z0z1.expectation_z_basis(0b11), 1.0);  // (-1)(-1) = +1
+    assert_eq!(z0z1.expectation_z_basis(0b11), 1.0); // (-1)(-1) = +1
 }
 
 #[test]
@@ -169,10 +169,10 @@ fn test_commuting_term_grouping() {
 fn test_vqe_result_formatting() {
     // Simulate a VQE result
     let result = MolecularVQEResult::new(
-        -1.136,      // energy
-        0.00015,     // shot variance
-        0.00012,     // param variance
-        0.00005,     // gate variance
+        -1.136,  // energy
+        0.00015, // shot variance
+        0.00012, // param variance
+        0.00005, // gate variance
     );
 
     println!("\nVQE Result:");
@@ -250,7 +250,10 @@ fn test_epistemic_honesty_demonstration() {
     println!("Molecule: H₂ (STO-3G basis, R = 0.735 Å)");
     println!("Number of qubits: {}", h.n_qubits);
     println!("Number of terms: {}", h.num_terms());
-    println!("Expected ground state: {:.6} Hartree\n", h.expected_ground_state().unwrap());
+    println!(
+        "Expected ground state: {:.6} Hartree\n",
+        h.expected_ground_state().unwrap()
+    );
 
     // Simulate VQE with realistic noise
     let shots = 8192;
@@ -280,10 +283,14 @@ fn test_epistemic_honesty_demonstration() {
     );
 
     println!("\nVariance Breakdown:");
-    println!("  Aleatoric (shot + gate): {:.2}%",
-        100.0 * (result.shot_variance + result.gate_variance) / result.variance);
-    println!("  Epistemic (parameters):  {:.2}%",
-        100.0 * result.param_variance / result.variance);
+    println!(
+        "  Aleatoric (shot + gate): {:.2}%",
+        100.0 * (result.shot_variance + result.gate_variance) / result.variance
+    );
+    println!(
+        "  Epistemic (parameters):  {:.2}%",
+        100.0 * result.param_variance / result.variance
+    );
 
     println!("\n✓ This is HONEST quantum computing.");
     println!("✓ Every number carries its uncertainty.");
@@ -308,7 +315,11 @@ fn test_amplitude_gate_error_accumulation() {
     // Apply a sequence of gates with errors
     for i in 0..10 {
         amp = amp.add_gate_error(0.001);
-        println!("After gate {}: total variance = {:.6}", i + 1, amp.total_variance());
+        println!(
+            "After gate {}: total variance = {:.6}",
+            i + 1,
+            amp.total_variance()
+        );
     }
 
     // Variance should accumulate linearly
@@ -322,7 +333,12 @@ fn test_probability_variance_propagation() {
 
     let (prob, prob_var) = amp.probability();
 
-    println!("Amplitude: {:.3} + {:.3}i ± {:.3}", amp.real, amp.imag, amp.total_variance().sqrt());
+    println!(
+        "Amplitude: {:.3} + {:.3}i ± {:.3}",
+        amp.real,
+        amp.imag,
+        amp.total_variance().sqrt()
+    );
     println!("Probability: {:.3} ± {:.3}", prob, prob_var.sqrt());
 
     // |0.6 + 0.8i|² = 1.0
@@ -391,7 +407,10 @@ fn test_complete_h2_vqe_workflow() {
     let (alpha_out, beta_out) = EpistemicAmplitude::ry(alpha, beta, theta, theta_var);
     println!("\nStep 3: Variational circuit applied");
     println!("  RY(π/4) with Var(θ) = {:.4}", theta_var);
-    println!("  Output variance: {:.6}", alpha_out.total_variance() + beta_out.total_variance());
+    println!(
+        "  Output variance: {:.6}",
+        alpha_out.total_variance() + beta_out.total_variance()
+    );
 
     // Step 4: Compute probabilities
     let (p0, p0_var) = alpha_out.probability();
@@ -417,7 +436,11 @@ fn test_complete_h2_vqe_workflow() {
     // Step 6: Validation
     println!("\nStep 6: Validation");
     println!("  Chemically accurate: {}", result.is_chemically_accurate());
-    println!("  95% CI: [{:.6}, {:.6}] Ha", result.confidence_interval_95().0, result.confidence_interval_95().1);
+    println!(
+        "  95% CI: [{:.6}, {:.6}] Ha",
+        result.confidence_interval_95().0,
+        result.confidence_interval_95().1
+    );
 
     println!("\n✓ Complete workflow with full epistemic tracking!");
     println!("✓ Every operation propagated uncertainty.");

@@ -11,7 +11,9 @@
 //! println!("Found {} tests", suite.tests.len());
 //! ```
 
-use super::attrs::{AttributeArgs, AttributeValue, RawAttribute, TestAttributes, parse_test_attributes};
+use super::attrs::{
+    AttributeArgs, AttributeValue, RawAttribute, TestAttributes, parse_test_attributes,
+};
 use crate::ast::{Ast, FnDef, Item};
 use crate::common::{NodeId, Span};
 use crate::lexer;
@@ -435,17 +437,13 @@ fn extract_test_attrs(fn_def: &FnDef, _source: &str) -> TestAttributes {
         .map(|attr| {
             let args = match &attr.args {
                 crate::ast::AttributeArgs::Empty => AttributeArgs::None,
-                crate::ast::AttributeArgs::Value(v) => {
-                    AttributeArgs::Single(convert_attr_value(v))
-                }
-                crate::ast::AttributeArgs::Named(pairs) => {
-                    AttributeArgs::Named(
-                        pairs
-                            .iter()
-                            .map(|(k, v)| (k.clone(), convert_attr_value(v)))
-                            .collect(),
-                    )
-                }
+                crate::ast::AttributeArgs::Value(v) => AttributeArgs::Single(convert_attr_value(v)),
+                crate::ast::AttributeArgs::Named(pairs) => AttributeArgs::Named(
+                    pairs
+                        .iter()
+                        .map(|(k, v)| (k.clone(), convert_attr_value(v)))
+                        .collect(),
+                ),
                 crate::ast::AttributeArgs::List(values) => {
                     AttributeArgs::List(values.iter().map(convert_attr_value).collect())
                 }

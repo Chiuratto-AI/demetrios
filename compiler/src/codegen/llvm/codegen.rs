@@ -156,9 +156,9 @@ impl<'ctx> LLVMCodegen<'ctx> {
     fn declare_function(&mut self, func: &HlirFunction) {
         let param_types: Vec<HlirType> = func.params.iter().map(|p| p.ty.clone()).collect();
 
-        let fn_type = self
-            .types
-            .function_type_variadic(&param_types, &func.return_type, func.is_variadic);
+        let fn_type =
+            self.types
+                .function_type_variadic(&param_types, &func.return_type, func.is_variadic);
 
         // Determine linkage based on ABI and export status
         // extern "C" functions or exported functions get External linkage

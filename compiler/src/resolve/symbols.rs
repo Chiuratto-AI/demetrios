@@ -372,12 +372,12 @@ impl SymbolTable {
             "dbg",       // Debug print
             "format",    // String formatting
             // Utility functions
-            "len",        // Get length of array/string/tuple
-            "type_of",    // Get type name as string
-            "read_line",  // Read line from stdin
-            "parse_int",  // Parse string to int
+            "len",         // Get length of array/string/tuple
+            "type_of",     // Get type name as string
+            "read_line",   // Read line from stdin
+            "parse_int",   // Parse string to int
             "parse_float", // Parse string to float
-            "to_string",  // Convert to string
+            "to_string",   // Convert to string
             // Math functions
             "sqrt",  // Square root
             "abs",   // Absolute value

@@ -253,7 +253,13 @@ impl UncertainCausalEdge {
         confidence: BetaConfidence,
         strength: EffectEstimate<f64>,
     ) -> Self {
-        Self::new(from, to, confidence, strength, UncertainEdgeType::Confounding)
+        Self::new(
+            from,
+            to,
+            confidence,
+            strength,
+            UncertainEdgeType::Confounding,
+        )
     }
 
     /// Create a mediating edge
@@ -603,8 +609,7 @@ mod tests {
 
     #[test]
     fn test_ontology_binding() {
-        let node = EpistemicCausalNode::treatment("Aspirin")
-            .with_ontology("CHEBI", "15365");
+        let node = EpistemicCausalNode::treatment("Aspirin").with_ontology("CHEBI", "15365");
 
         assert_eq!(node.ontology_uri, Some("CHEBI:15365".to_string()));
     }

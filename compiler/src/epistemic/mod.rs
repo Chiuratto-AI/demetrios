@@ -99,6 +99,6 @@ pub use beta_knowledge::{
 pub use time_travel::{
     BreakAction, BreakCondition, BreakpointManager, ConfidenceDelta, CustodyRecord,
     DegradationReason, DegradingOperation, EpistemicBreakpoint, EpistemicSnapshot,
-    FDAComplianceProof, ProofVerificationError, TimelineGraph, TimelineState,
-    TimeTravelResult, VerificationResult, verify_external,
+    FDAComplianceProof, ProofVerificationError, TimeTravelResult, TimelineGraph, TimelineState,
+    VerificationResult, verify_external,
 };

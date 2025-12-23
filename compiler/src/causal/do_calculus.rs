@@ -288,7 +288,12 @@ impl CausalDAG {
     }
 
     /// Check if mediators intercept all paths from source to target
-    fn intercepts_all_paths(&self, source: &str, target: &str, mediators: &HashSet<String>) -> bool {
+    fn intercepts_all_paths(
+        &self,
+        source: &str,
+        target: &str,
+        mediators: &HashSet<String>,
+    ) -> bool {
         // Simple path-finding: can we reach target from source without going through mediators?
         let mut queue = vec![source.to_string()];
         let mut visited = HashSet::new();
@@ -398,14 +403,12 @@ impl CausalDAG {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::causal::dag::{EpistemicCausalNode, UncertainCausalEdge, EffectEstimate};
+    use crate::causal::dag::{EffectEstimate, EpistemicCausalNode, UncertainCausalEdge};
     use crate::epistemic::BetaConfidence;
 
     #[test]
     fn test_causal_query() {
-        let query = CausalQuery::new("Y")
-            .with_intervention("X", 1.0)
-            .given("Z");
+        let query = CausalQuery::new("Y").with_intervention("X", 1.0).given("Z");
 
         assert_eq!(query.interventions.len(), 1);
         assert_eq!(query.conditioning.len(), 1);
