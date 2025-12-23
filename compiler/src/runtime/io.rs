@@ -499,7 +499,10 @@ mod tests {
 
     #[test]
     fn test_read_write_file() {
-        let test_path = "/tmp/demetrios_io_test.txt";
+        // Use cross-platform temp directory
+        let temp_dir = std::env::temp_dir();
+        let test_path_buf = temp_dir.join("demetrios_io_test.txt");
+        let test_path = test_path_buf.to_str().unwrap();
         let content = "Hello, Demetrios!";
 
         // Write file
@@ -509,7 +512,7 @@ mod tests {
             content.as_ptr(),
             content.len() as i64,
         );
-        assert_eq!(write_result, 0);
+        assert_eq!(write_result, 0, "write_file failed with error code {}", write_result);
 
         // Read file
         let mut out_ptr: *mut u8 = ptr::null_mut();
@@ -520,7 +523,7 @@ mod tests {
             &mut out_ptr,
             &mut out_len,
         );
-        assert_eq!(read_result, 0);
+        assert_eq!(read_result, 0, "read_file failed with error code {}", read_result);
         assert!(!out_ptr.is_null());
         assert_eq!(out_len, content.len() as i64);
 
