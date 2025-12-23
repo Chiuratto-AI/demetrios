@@ -501,14 +501,16 @@ impl IsabelleInterop {
     }
 
     fn translate_predicate_to_isabelle(&self, pred: &str) -> String {
+        // Order matters! Replace multi-char operators before single-char ones
+        // e.g., "!=" must be replaced before "!" to avoid "!=" -> "\<not>="
         pred.replace("&&", "\\<and>")
             .replace("||", "\\<or>")
-            .replace("!", "\\<not>")
+            .replace("!=", "\\<noteq>")
             .replace(">=", "\\<ge>")
             .replace("<=", "\\<le>")
-            .replace("!=", "\\<noteq>")
             .replace("==", "=")
             .replace("->", "\\<longrightarrow>")
+            .replace("!", "\\<not>")
     }
 
     fn generate_proof_skeleton(&self, refinement: &RefinementConstraint) -> String {

@@ -1697,10 +1697,16 @@ mod tests {
         });
         let func = func.expect("missing consume() function");
 
+        // Paths are now annotated with module info rather than rewritten/stripped.
+        // The segments remain qualified (e.g., ["b", "Foo"]) but resolved_module is set.
         let param_ty = &func.params[0].ty;
         match param_ty {
             TypeExpr::Named { path, .. } => {
-                assert_eq!(path.segments, vec!["Foo"]);
+                assert_eq!(path.segments, vec!["b", "Foo"]);
+                assert!(
+                    path.resolved_module.is_some(),
+                    "param type should have resolved_module"
+                );
             }
             _ => panic!("expected named type for param"),
         }
@@ -1708,7 +1714,11 @@ mod tests {
         let ret_ty = func.return_type.as_ref().expect("missing return type");
         match ret_ty {
             TypeExpr::Named { path, .. } => {
-                assert_eq!(path.segments, vec!["Foo"]);
+                assert_eq!(path.segments, vec!["b", "Foo"]);
+                assert!(
+                    path.resolved_module.is_some(),
+                    "return type should have resolved_module"
+                );
             }
             _ => panic!("expected named type for return"),
         }
