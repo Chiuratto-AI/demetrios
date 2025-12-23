@@ -2,6 +2,10 @@
 //
 // These tests compare compiler output against known-good reference files.
 // Run with UPDATE_GOLDEN=1 to regenerate golden files.
+//
+// Note: Golden tests are Linux-only because golden files contain Linux-specific
+// paths and the normalization assumes /tmp/ paths. On macOS/Windows, these tests
+// are automatically ignored.
 
 use super::common::TestHarness;
 
@@ -11,6 +15,7 @@ use super::common::TestHarness;
 
 /// Golden test for basic type mismatch error
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_type_mismatch_basic() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -35,6 +40,7 @@ fn main() {
 
 /// Golden test for semantic distance error
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_semantic_distance_error() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -62,6 +68,7 @@ fn main() {
 
 /// Golden test for undefined ontology error
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_undefined_ontology() {
     let source = r#"
 type Drug = undefined_ontology:drug;
@@ -77,6 +84,7 @@ fn main() {}
 
 /// Golden test for duplicate type definition
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_duplicate_type() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -99,6 +107,7 @@ fn main() {}
 
 /// Golden test for unused import warning
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_unused_import() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -120,6 +129,7 @@ fn main() {
 
 /// Golden test for loose threshold warning
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_loose_threshold() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -145,6 +155,7 @@ fn main() {}
 
 /// Golden test for multiple errors in one file
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_multiple_errors() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -167,6 +178,7 @@ fn main() {
 
 /// Golden test for cascading errors
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_cascading_errors() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -195,6 +207,7 @@ fn main() {
 
 /// Golden test for "did you mean" suggestions
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_did_you_mean() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -214,6 +227,7 @@ fn main() {
 
 /// Golden test for threshold adjustment suggestion
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_threshold_suggestion() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -241,6 +255,7 @@ fn main() {
 
 /// Golden test for alignment suggestion
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_alignment_suggestion() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -271,6 +286,7 @@ fn main() {
 
 /// Golden test for pharmacology type mismatch
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_pharma_mismatch() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -302,6 +318,7 @@ fn main() {}
 
 /// Golden test for cross-ontology coercion chain
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_coercion_chain() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -335,6 +352,7 @@ fn main() {
 
 /// Golden test for JSON error format
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_json_error() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -354,6 +372,7 @@ fn main() {
 
 /// Golden test for JSON with semantic distance
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_json_distance() {
     let source = r#"
 ontology chebi from "https://purl.obolibrary.org/obo/chebi.owl";
@@ -385,6 +404,7 @@ fn main() {
 
 /// Golden test for help output
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_help_output() {
     let harness = TestHarness::new();
     let result = harness.flag("--help").compile_str("help", "");
@@ -394,6 +414,7 @@ fn golden_help_output() {
 
 /// Golden test for version output
 #[test]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 fn golden_version_output() {
     let harness = TestHarness::new();
     let result = harness.flag("--version").compile_str("version", "");

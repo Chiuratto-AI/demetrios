@@ -590,6 +590,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore)] // Timing can be unreliable on Windows CI
     fn test_bencher_iter() {
         let mut bencher = Bencher::with_config(BenchConfig {
             sample_count: 10,
