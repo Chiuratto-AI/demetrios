@@ -259,6 +259,9 @@ pub fn can_start_expression(kind: TokenKind) -> bool {
         kind,
         TokenKind::Ident
             | TokenKind::IntLit
+            | TokenKind::BinLit
+            | TokenKind::OctLit
+            | TokenKind::HexLit
             | TokenKind::FloatLit
             | TokenKind::StringLit
             | TokenKind::CharLit

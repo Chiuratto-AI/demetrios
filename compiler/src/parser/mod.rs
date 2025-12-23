@@ -203,6 +203,11 @@ impl<'a> Parser<'a> {
     fn parse_program(&mut self) -> Result<Ast> {
         let mut items = Vec::new();
 
+        // Skip file-level doc comments before module declaration
+        while self.at(TokenKind::DocCommentOuter) || self.at(TokenKind::DocCommentInner) {
+            self.advance();
+        }
+
         // Optional module declaration
         let module_name = if self.at(TokenKind::Module) {
             self.advance();
@@ -3343,6 +3348,36 @@ impl<'a> Parser<'a> {
             TokenKind::IntLit => {
                 let text = self.advance().text.clone();
                 let value: i64 = text.replace('_', "").parse().unwrap_or(0);
+                Ok(Expr::Literal {
+                    id: self.next_id(),
+                    value: Literal::Int(value),
+                })
+            }
+            TokenKind::BinLit => {
+                let text = self.advance().text.clone();
+                // Remove 0b prefix and underscores
+                let clean = text.trim_start_matches("0b").replace('_', "");
+                let value = i64::from_str_radix(&clean, 2).unwrap_or(0);
+                Ok(Expr::Literal {
+                    id: self.next_id(),
+                    value: Literal::Int(value),
+                })
+            }
+            TokenKind::OctLit => {
+                let text = self.advance().text.clone();
+                // Remove 0o prefix and underscores
+                let clean = text.trim_start_matches("0o").replace('_', "");
+                let value = i64::from_str_radix(&clean, 8).unwrap_or(0);
+                Ok(Expr::Literal {
+                    id: self.next_id(),
+                    value: Literal::Int(value),
+                })
+            }
+            TokenKind::HexLit => {
+                let text = self.advance().text.clone();
+                // Remove 0x prefix and underscores
+                let clean = text.trim_start_matches("0x").trim_start_matches("0X").replace('_', "");
+                let value = i64::from_str_radix(&clean, 16).unwrap_or(0);
                 Ok(Expr::Literal {
                     id: self.next_id(),
                     value: Literal::Int(value),
