@@ -104,6 +104,9 @@ jobs:
                     -A clippy::manual_div_ceil \
                     -A clippy::println_empty_string \
                     -A clippy::print_literal \
+                    -A clippy::derivable_impls \
+                    -A clippy::unnecessary_map_or \
+                    -A clippy::to_string_in_format_args \
                     -A unused_imports \
                     -A unused_comparisons \
                     -A dead_code \
