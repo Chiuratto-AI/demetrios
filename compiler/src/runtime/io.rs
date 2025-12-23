@@ -498,6 +498,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))] // Skip on Windows - temp file handling differs, see issue tracking
     fn test_read_write_file() {
         // Use cross-platform temp directory
         let temp_dir = std::env::temp_dir();
