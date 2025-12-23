@@ -83,6 +83,11 @@ pub enum Value {
     },
     /// Reference to a value
     Ref(Rc<RefCell<Value>>),
+    /// Reference to an array element (array + index) - allows mutation of elements in place
+    ArrayRef {
+        array: Rc<RefCell<Vec<Value>>>,
+        index: usize,
+    },
     /// Raw pointer (for FFI) - stores address and mutability
     RawPointer { address: usize, mutable: bool },
     /// Option::None
@@ -139,6 +144,7 @@ impl Value {
             Value::Variant { .. } => "variant",
             Value::Function { .. } => "function",
             Value::Ref(_) => "ref",
+            Value::ArrayRef { .. } => "array_ref",
             Value::RawPointer { .. } => "raw_pointer",
             Value::None => "None",
             Value::Some(_) => "Some",
@@ -320,6 +326,14 @@ impl fmt::Debug for Value {
             }
             Value::Function { func, .. } => write!(f, "<fn {}>", func.name),
             Value::Ref(r) => write!(f, "&{:?}", r.borrow()),
+            Value::ArrayRef { array, index } => {
+                let arr = array.borrow();
+                if let Some(v) = arr.get(*index) {
+                    write!(f, "&arr[{}]={:?}", index, v)
+                } else {
+                    write!(f, "&arr[{}]=<out of bounds>", index)
+                }
+            }
             Value::None => write!(f, "None"),
             Value::Some(v) => write!(f, "Some({:?})", v),
             Value::Ok(v) => write!(f, "Ok({:?})", v),
@@ -424,6 +438,14 @@ impl fmt::Display for Value {
             }
             Value::Function { func, .. } => write!(f, "<fn {}>", func.name),
             Value::Ref(r) => write!(f, "{}", r.borrow()),
+            Value::ArrayRef { array, index } => {
+                let arr = array.borrow();
+                if let Some(v) = arr.get(*index) {
+                    write!(f, "{}", v)
+                } else {
+                    write!(f, "<out of bounds>")
+                }
+            }
             Value::None => write!(f, "None"),
             Value::Some(v) => write!(f, "Some({})", v),
             Value::Ok(v) => write!(f, "Ok({})", v),

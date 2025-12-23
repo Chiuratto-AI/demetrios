@@ -225,6 +225,18 @@ impl Interpreter {
             }
 
             HirExprKind::Unary { op, expr: inner } => {
+                // Special case: Ref/RefMut of array index creates ArrayRef
+                if matches!(op, HirUnaryOp::Ref | HirUnaryOp::RefMut) {
+                    if let HirExprKind::Index { base, index } = &inner.kind {
+                        let base_val = self.eval_expr(base)?;
+                        let idx_val = self.eval_expr(index)?;
+                        let idx = idx_val.as_int().ok_or(ControlFlow::Return(Value::Unit))? as usize;
+
+                        if let Value::Array(arr) = base_val {
+                            return Ok(Value::ArrayRef { array: arr, index: idx });
+                        }
+                    }
+                }
                 let val = self.eval_expr(inner)?;
                 self.eval_unary(*op, val)
             }
@@ -427,6 +439,28 @@ impl Interpreter {
                         .nth(idx)
                         .map(|c| Value::String(c.to_string()))
                         .ok_or(ControlFlow::Return(Value::Unit)),
+                    // ArrayRef: reference to array element - index into the inner array
+                    Value::ArrayRef { array, index: arr_idx } => {
+                        let arr = array.borrow();
+                        if let Some(inner) = arr.get(arr_idx) {
+                            match inner {
+                                Value::Array(inner_arr) => {
+                                    let inner_arr = inner_arr.borrow();
+                                    inner_arr.get(idx)
+                                        .cloned()
+                                        .ok_or(ControlFlow::Return(Value::Unit))
+                                }
+                                Value::String(s) => s
+                                    .chars()
+                                    .nth(idx)
+                                    .map(|c| Value::String(c.to_string()))
+                                    .ok_or(ControlFlow::Return(Value::Unit)),
+                                _ => Err(ControlFlow::Return(Value::Unit)),
+                            }
+                        } else {
+                            Err(ControlFlow::Return(Value::Unit))
+                        }
+                    }
                     _ => Err(ControlFlow::Return(Value::Unit)),
                 }
             }
@@ -435,6 +469,17 @@ impl Interpreter {
                 mutable: _,
                 expr: inner,
             } => {
+                // Special case: reference to array element creates ArrayRef
+                if let HirExprKind::Index { base, index } = &inner.kind {
+                    let base_val = self.eval_expr(base)?;
+                    let idx_val = self.eval_expr(index)?;
+                    let idx = idx_val.as_int().ok_or(ControlFlow::Return(Value::Unit))? as usize;
+
+                    if let Value::Array(arr) = base_val {
+                        return Ok(Value::ArrayRef { array: arr, index: idx });
+                    }
+                }
+                // Default: evaluate and wrap in Ref
                 let val = self.eval_expr(inner)?;
                 Ok(Value::Ref(Rc::new(RefCell::new(val))))
             }
@@ -443,6 +488,10 @@ impl Interpreter {
                 let val = self.eval_expr(inner)?;
                 match val {
                     Value::Ref(r) => Ok(r.borrow().clone()),
+                    Value::ArrayRef { array, index } => {
+                        let arr = array.borrow();
+                        arr.get(index).cloned().ok_or(ControlFlow::Return(Value::Unit))
+                    }
                     _ => Err(ControlFlow::Return(Value::Unit)),
                 }
             }
@@ -536,6 +585,34 @@ impl Interpreter {
                         Ok(Value::Unit)
                     }
                     (Value::Array(arr), "pop") => Ok(arr.borrow_mut().pop().unwrap_or(Value::None)),
+                    // ArrayRef: reference to array element - delegate to the inner array
+                    (Value::ArrayRef { array, index }, method_name) => {
+                        let arr = array.borrow();
+                        if let Some(inner) = arr.get(index) {
+                            match (inner, method_name) {
+                                (Value::Array(inner_arr), "len") => {
+                                    Ok(Value::Int(inner_arr.borrow().len() as i64))
+                                }
+                                (Value::Array(inner_arr), "push") => {
+                                    drop(arr);  // Release borrow
+                                    let arr = array.borrow();
+                                    if let Some(Value::Array(inner_arr)) = arr.get(index) {
+                                        if let Some(val) = arg_values.get(1) {
+                                            inner_arr.borrow_mut().push(val.clone());
+                                        }
+                                    }
+                                    Ok(Value::Unit)
+                                }
+                                (Value::Array(inner_arr), "pop") => {
+                                    Ok(inner_arr.borrow_mut().pop().unwrap_or(Value::None))
+                                }
+                                (Value::String(s), "len") => Ok(Value::Int(s.len() as i64)),
+                                _ => Err(ControlFlow::Return(Value::Unit)),
+                            }
+                        } else {
+                            Err(ControlFlow::Return(Value::Unit))
+                        }
+                    }
                     _ => {
                         // Try to find a function with method name
                         if let Some(func) = self.functions.get(method).cloned() {
@@ -780,6 +857,10 @@ impl Interpreter {
             HirUnaryOp::Ref | HirUnaryOp::RefMut => Ok(Value::Ref(Rc::new(RefCell::new(val)))),
             HirUnaryOp::Deref => match val {
                 Value::Ref(r) => Ok(r.borrow().clone()),
+                Value::ArrayRef { array, index } => {
+                    let arr = array.borrow();
+                    arr.get(index).cloned().ok_or(ControlFlow::Return(Value::Unit))
+                }
                 _ => Err(ControlFlow::Return(Value::Unit)),
             },
         }
