@@ -479,6 +479,16 @@ impl TypeChecker {
             if let Item::Module(m) = item {
                 self.collect_module_functions(m);
             }
+            // Register global let/const bindings
+            if let Item::Global(g) = item {
+                let name = self.pattern_name(&g.pattern);
+                let ty = g
+                    .ty
+                    .as_ref()
+                    .map(|t| self.lower_type_expr(t))
+                    .unwrap_or_else(|| self.fresh_type_var());
+                self.env.bind(name, ty, g.is_mut);
+            }
         }
 
         // Third pass: type check items
