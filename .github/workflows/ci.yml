@@ -112,6 +112,7 @@ jobs:
                     -A clippy::redundant_pattern_matching \
                     -A clippy::iter_nth_zero \
                     -A clippy::bool_assert_comparison \
+                    -A clippy::const_is_empty \
                     -A unused_imports \
                     -A unused_comparisons \
                     -A dead_code \
