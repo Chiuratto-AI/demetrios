@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.84.0] - 2025-12-23
+
+### KEC Pipeline & Stdlib Expansion
+
+This release adds the Knowledge Epistemic Curvature (KEC) pipeline and expands
+the standard library with interpreter-compatible utility modules.
+
+### Added
+
+#### Graph Analysis (`stdlib/graph/`)
+- **Entropy** (`entropy.d`): Shannon entropy and structural entropy for knowledge graphs
+- **Coherence** (`coherence.d`): Degree regularity, connectivity, and balance metrics
+- **Forman Curvature** (`curvature.d`): O(1) per-edge curvature as alternative to Ollivier-Ricci
+
+#### GUM Uncertainty (`stdlib/epistemic/gum.d`)
+- JCGM 100:2008 compliant uncertainty propagation
+- Coverage factors (k) with t-distribution tables for ν=1 to ∞
+- Welch-Satterthwaite approximation for combined degrees of freedom
+- Type A (statistical) and Type B (a priori) uncertainty components
+- Uncertainty propagation through +, -, *, / operations
+
+#### Data & I/O Modules
+- **CSV** (`stdlib/csv/mod.d`): Parser and writer, interpreter-compatible
+- **Argparse** (`stdlib/io/argparse.d`): Command-line argument parsing
+- **Directory Operations** (`stdlib/io/mod.d`): create_dir, remove_dir, read_dir, metadata
+
+#### Statistical Validation (`stdlib/stats/validation.d`)
+- Descriptive statistics: mean, variance, std_dev, min, max
+- Correlation and R-squared
+- Linear regression with fit quality metrics
+- Residual analysis: RMSE, MAE, MSE
+- Confidence intervals (95% and custom)
+- t-statistics for hypothesis testing
+
+### Notes
+
+All new modules are tested and passing in the interpreter. Some interpreter
+limitations were discovered:
+- `pub const` at module level requires function wrappers
+- String methods `.slice()` and `.byte_at()` not yet implemented
+- Float comparisons on function returns may cause issues
+
 ## [0.83.0] - 2025-12-22
 
 ### Trust Gate Week: "Refuses to Compute Lies"
