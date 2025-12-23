@@ -15,6 +15,16 @@ if [ ! -f "$DC" ]; then
     exit 1
 fi
 
+# Find timeout command (gtimeout on macOS, timeout on Linux)
+if command -v gtimeout &> /dev/null; then
+    TIMEOUT_CMD="gtimeout"
+elif command -v timeout &> /dev/null; then
+    TIMEOUT_CMD="timeout"
+else
+    # No timeout available, run without timeout
+    TIMEOUT_CMD=""
+fi
+
 # Known broken files that need repair
 # Each entry MUST have a tracking issue or be fixed
 # Format: path:reason
@@ -111,7 +121,14 @@ for f in $(find "$PROJECT_ROOT/stdlib" -name "*.d" -type f | sort); do
 
     echo -n "[TEST] $rel_path ... "
 
-    if timeout 30 "$DC" run "$f" > /dev/null 2>&1; then
+    # Use timeout command if available, otherwise run without timeout
+    if [ -n "$TIMEOUT_CMD" ]; then
+        RUN_CMD="$TIMEOUT_CMD 30 $DC run $f"
+    else
+        RUN_CMD="$DC run $f"
+    fi
+
+    if $RUN_CMD > /dev/null 2>&1; then
         echo "PASS"
         PASSED=$((PASSED + 1))
     else
