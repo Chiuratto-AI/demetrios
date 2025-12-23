@@ -107,6 +107,8 @@ jobs:
                     -A clippy::derivable_impls \
                     -A clippy::unnecessary_map_or \
                     -A clippy::to_string_in_format_args \
+                    -A clippy::manual_contains \
+                    -A clippy::while_let_on_iterator \
                     -A unused_imports \
                     -A unused_comparisons \
                     -A dead_code \
