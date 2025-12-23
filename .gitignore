@@ -8,6 +8,11 @@
 # Cargo
 # Cargo.lock  # Keep for reproducible builds
 
+# Fuzzer artifacts
+compiler/fuzz/Cargo.lock
+compiler/fuzz/corpus/
+compiler/fuzz/artifacts/
+
 # IDE
 .idea/
 .vscode/
