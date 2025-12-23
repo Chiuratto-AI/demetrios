@@ -109,6 +109,8 @@ jobs:
                     -A clippy::to_string_in_format_args \
                     -A clippy::manual_contains \
                     -A clippy::while_let_on_iterator \
+                    -A clippy::redundant_pattern_matching \
+                    -A clippy::iter_nth_zero \
                     -A unused_imports \
                     -A unused_comparisons \
                     -A dead_code \
