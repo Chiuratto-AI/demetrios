@@ -36,9 +36,16 @@ pub struct TestHarness {
 impl TestHarness {
     /// Create a new test harness
     pub fn new() -> Self {
-        // Use debug binary (dc is the compiler binary name)
-        // Assumes compiler is already built via `cargo build`
-        let compiler_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/dc");
+        // Look for compiler binary (dc)
+        // Check release first, then fall back to debug
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let release_path = manifest_dir.join("target/release/dc");
+        let debug_path = manifest_dir.join("target/debug/dc");
+        let compiler_path = if release_path.exists() {
+            release_path
+        } else {
+            debug_path
+        };
 
         // Use both process id and a counter to make temp dirs unique across parallel tests
         use std::sync::atomic::{AtomicU64, Ordering};
