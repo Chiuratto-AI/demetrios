@@ -7,55 +7,55 @@
 // Error Types
 // =============================================================================
 
-/// Error type for I/O operations
+// Error type for I/O operations
 pub enum IoError {
-    /// File or directory not found
+    // File or directory not found
     NotFound { path: String },
-    /// Permission denied
+    // Permission denied
     PermissionDenied { path: String },
-    /// Error reading file
+    // Error reading file
     ReadError { path: String, message: String },
-    /// Error writing file
+    // Error writing file
     WriteError { path: String, message: String },
-    /// Invalid path encoding
+    // Invalid path encoding
     InvalidPath { path: String },
-    /// File already exists (when creating exclusively)
+    // File already exists (when creating exclusively)
     AlreadyExists { path: String },
-    /// Directory not empty (when removing)
+    // Directory not empty (when removing)
     DirectoryNotEmpty { path: String },
-    /// Operation interrupted
+    // Operation interrupted
     Interrupted,
-    /// Other I/O error
+    // Other I/O error
     Other { message: String },
 }
 
 impl IoError {
-    /// Create a "not found" error
+    // Create a "not found" error
     pub fn not_found(path: String) -> IoError {
         IoError::NotFound { path: path }
     }
 
-    /// Create a "permission denied" error
+    // Create a "permission denied" error
     pub fn permission_denied(path: String) -> IoError {
         IoError::PermissionDenied { path: path }
     }
 
-    /// Create a "read error"
+    // Create a "read error"
     pub fn read_error(path: String, message: String) -> IoError {
         IoError::ReadError { path: path, message: message }
     }
 
-    /// Create a "write error"
+    // Create a "write error"
     pub fn write_error(path: String, message: String) -> IoError {
         IoError::WriteError { path: path, message: message }
     }
 
-    /// Create an "other" error
+    // Create an "other" error
     pub fn other(message: String) -> IoError {
         IoError::Other { message: message }
     }
 
-    /// Get error message
+    // Get error message
     pub fn message(self) -> String {
         match self {
             IoError::NotFound { path } => "File not found: " ++ path,
@@ -87,20 +87,20 @@ impl Debug for IoError {
 // File Operations
 // =============================================================================
 
-/// Read entire file contents as a string
-///
-/// # Arguments
-/// * `path` - Path to the file to read
-///
-/// # Returns
-/// * `Ok(String)` - File contents as a string
-/// * `Err(IoError)` - Error if file cannot be read
-///
-/// # Example
-/// ```d
-/// let content = read_file("config.txt")?;
-/// println("File contains: {}", content);
-/// ```
+// Read entire file contents as a string
+//
+// # Arguments
+// * `path` - Path to the file to read
+//
+// # Returns
+// * `Ok(String)` - File contents as a string
+// * `Err(IoError)` - Error if file cannot be read
+//
+// # Example
+// ```d
+// let content = read_file("config.txt")?;
+// println("File contains: {}", content);
+// ```
 pub fn read_file(path: &str) -> Result<String, IoError> with IO {
     // Implementation via FFI to system calls
     // This is a specification - actual implementation in compiler runtime
@@ -127,22 +127,22 @@ pub fn read_file(path: &str) -> Result<String, IoError> with IO {
     }
 }
 
-/// Write string contents to a file
-///
-/// Creates the file if it doesn't exist, overwrites if it does.
-///
-/// # Arguments
-/// * `path` - Path to the file to write
-/// * `content` - String content to write
-///
-/// # Returns
-/// * `Ok(())` - Success
-/// * `Err(IoError)` - Error if file cannot be written
-///
-/// # Example
-/// ```d
-/// write_file("output.txt", "Hello, world!")?;
-/// ```
+// Write string contents to a file
+//
+// Creates the file if it doesn't exist, overwrites if it does.
+//
+// # Arguments
+// * `path` - Path to the file to write
+// * `content` - String content to write
+//
+// # Returns
+// * `Ok(())` - Success
+// * `Err(IoError)` - Error if file cannot be written
+//
+// # Example
+// ```d
+// write_file("output.txt", "Hello, world!")?;
+// ```
 pub fn write_file(path: &str, content: &str) -> Result<(), IoError> with IO {
     extern "C" {
         fn __demetrios_write_file(path: *const u8, path_len: i64, content: *const u8, content_len: i64) -> i32;
@@ -163,17 +163,17 @@ pub fn write_file(path: &str, content: &str) -> Result<(), IoError> with IO {
     }
 }
 
-/// Append string contents to a file
-///
-/// Creates the file if it doesn't exist.
-///
-/// # Arguments
-/// * `path` - Path to the file
-/// * `content` - String content to append
-///
-/// # Returns
-/// * `Ok(())` - Success
-/// * `Err(IoError)` - Error if file cannot be written
+// Append string contents to a file
+//
+// Creates the file if it doesn't exist.
+//
+// # Arguments
+// * `path` - Path to the file
+// * `content` - String content to append
+//
+// # Returns
+// * `Ok(())` - Success
+// * `Err(IoError)` - Error if file cannot be written
 pub fn append_file(path: &str, content: &str) -> Result<(), IoError> with IO {
     extern "C" {
         fn __demetrios_append_file(path: *const u8, path_len: i64, content: *const u8, content_len: i64) -> i32;
@@ -194,13 +194,13 @@ pub fn append_file(path: &str, content: &str) -> Result<(), IoError> with IO {
     }
 }
 
-/// Check if a file exists
-///
-/// # Arguments
-/// * `path` - Path to check
-///
-/// # Returns
-/// * `true` if file exists, `false` otherwise
+// Check if a file exists
+//
+// # Arguments
+// * `path` - Path to check
+//
+// # Returns
+// * `true` if file exists, `false` otherwise
 pub fn file_exists(path: &str) -> bool with IO {
     extern "C" {
         fn __demetrios_file_exists(path: *const u8, path_len: i64) -> i32;
@@ -213,14 +213,14 @@ pub fn file_exists(path: &str) -> bool with IO {
     result == 1
 }
 
-/// Delete a file
-///
-/// # Arguments
-/// * `path` - Path to the file to delete
-///
-/// # Returns
-/// * `Ok(())` - Success
-/// * `Err(IoError)` - Error if file cannot be deleted
+// Delete a file
+//
+// # Arguments
+// * `path` - Path to the file to delete
+//
+// # Returns
+// * `Ok(())` - Success
+// * `Err(IoError)` - Error if file cannot be deleted
 pub fn remove_file(path: &str) -> Result<(), IoError> with IO {
     extern "C" {
         fn __demetrios_remove_file(path: *const u8, path_len: i64) -> i32;
@@ -238,24 +238,359 @@ pub fn remove_file(path: &str) -> Result<(), IoError> with IO {
     }
 }
 
+// Copy a file from source to destination
+//
+// # Arguments
+// * `from` - Source file path
+// * `to` - Destination file path
+//
+// # Returns
+// * `Ok(())` - Success
+// * `Err(IoError)` - Error if file cannot be copied
+pub fn copy_file(from: &str, to: &str) -> Result<(), IoError> with IO {
+    extern "C" {
+        fn __demetrios_copy_file(from: *const u8, from_len: i64, to: *const u8, to_len: i64) -> i32;
+    }
+
+    let result = unsafe {
+        __demetrios_copy_file(
+            from.as_ptr(), from.len() as i64,
+            to.as_ptr(), to.len() as i64
+        )
+    };
+
+    match result {
+        0 => Ok(()),
+        1 => Err(IoError::not_found(from.to_string())),
+        2 => Err(IoError::permission_denied(to.to_string())),
+        _ => Err(IoError::other("Failed to copy file".to_string())),
+    }
+}
+
+// Rename/move a file
+//
+// # Arguments
+// * `from` - Current file path
+// * `to` - New file path
+//
+// # Returns
+// * `Ok(())` - Success
+// * `Err(IoError)` - Error if file cannot be renamed
+pub fn rename(from: &str, to: &str) -> Result<(), IoError> with IO {
+    extern "C" {
+        fn __demetrios_rename(from: *const u8, from_len: i64, to: *const u8, to_len: i64) -> i32;
+    }
+
+    let result = unsafe {
+        __demetrios_rename(
+            from.as_ptr(), from.len() as i64,
+            to.as_ptr(), to.len() as i64
+        )
+    };
+
+    match result {
+        0 => Ok(()),
+        1 => Err(IoError::not_found(from.to_string())),
+        2 => Err(IoError::permission_denied(to.to_string())),
+        3 => Err(IoError::AlreadyExists { path: to.to_string() }),
+        _ => Err(IoError::other("Failed to rename file".to_string())),
+    }
+}
+
+// =============================================================================
+// Directory Operations
+// =============================================================================
+
+// Directory entry metadata
+pub struct DirEntry {
+    // Name of the file or directory
+    pub name: String,
+    // Full path
+    pub path: String,
+    // Whether this is a directory
+    pub is_dir: bool,
+    // Whether this is a file
+    pub is_file: bool,
+    // File size in bytes (0 for directories)
+    pub size: u64,
+}
+
+// Create a directory
+//
+// Creates the directory and any missing parent directories.
+//
+// # Arguments
+// * `path` - Path of directory to create
+//
+// # Returns
+// * `Ok(())` - Success
+// * `Err(IoError)` - Error if directory cannot be created
+pub fn create_dir(path: &str) -> Result<(), IoError> with IO {
+    extern "C" {
+        fn __demetrios_create_dir(path: *const u8, path_len: i64) -> i32;
+    }
+
+    let result = unsafe {
+        __demetrios_create_dir(path.as_ptr(), path.len() as i64)
+    };
+
+    match result {
+        0 => Ok(()),
+        1 => Err(IoError::AlreadyExists { path: path.to_string() }),
+        2 => Err(IoError::permission_denied(path.to_string())),
+        _ => Err(IoError::other("Failed to create directory".to_string())),
+    }
+}
+
+// Create a directory and all parent directories
+//
+// # Arguments
+// * `path` - Path of directory to create
+//
+// # Returns
+// * `Ok(())` - Success
+// * `Err(IoError)` - Error if directory cannot be created
+pub fn create_dir_all(path: &str) -> Result<(), IoError> with IO {
+    extern "C" {
+        fn __demetrios_create_dir_all(path: *const u8, path_len: i64) -> i32;
+    }
+
+    let result = unsafe {
+        __demetrios_create_dir_all(path.as_ptr(), path.len() as i64)
+    };
+
+    match result {
+        0 => Ok(()),
+        2 => Err(IoError::permission_denied(path.to_string())),
+        _ => Err(IoError::other("Failed to create directory".to_string())),
+    }
+}
+
+// Remove an empty directory
+//
+// # Arguments
+// * `path` - Path of directory to remove
+//
+// # Returns
+// * `Ok(())` - Success
+// * `Err(IoError)` - Error if directory cannot be removed
+pub fn remove_dir(path: &str) -> Result<(), IoError> with IO {
+    extern "C" {
+        fn __demetrios_remove_dir(path: *const u8, path_len: i64) -> i32;
+    }
+
+    let result = unsafe {
+        __demetrios_remove_dir(path.as_ptr(), path.len() as i64)
+    };
+
+    match result {
+        0 => Ok(()),
+        1 => Err(IoError::not_found(path.to_string())),
+        2 => Err(IoError::permission_denied(path.to_string())),
+        3 => Err(IoError::DirectoryNotEmpty { path: path.to_string() }),
+        _ => Err(IoError::other("Failed to remove directory".to_string())),
+    }
+}
+
+// Remove a directory and all its contents recursively
+//
+// # Arguments
+// * `path` - Path of directory to remove
+//
+// # Returns
+// * `Ok(())` - Success
+// * `Err(IoError)` - Error if directory cannot be removed
+pub fn remove_dir_all(path: &str) -> Result<(), IoError> with IO {
+    extern "C" {
+        fn __demetrios_remove_dir_all(path: *const u8, path_len: i64) -> i32;
+    }
+
+    let result = unsafe {
+        __demetrios_remove_dir_all(path.as_ptr(), path.len() as i64)
+    };
+
+    match result {
+        0 => Ok(()),
+        1 => Err(IoError::not_found(path.to_string())),
+        2 => Err(IoError::permission_denied(path.to_string())),
+        _ => Err(IoError::other("Failed to remove directory".to_string())),
+    }
+}
+
+// Check if a path is a directory
+//
+// # Arguments
+// * `path` - Path to check
+//
+// # Returns
+// * `true` if path is a directory, `false` otherwise
+pub fn is_dir(path: &str) -> bool with IO {
+    extern "C" {
+        fn __demetrios_is_dir(path: *const u8, path_len: i64) -> i32;
+    }
+
+    let result = unsafe {
+        __demetrios_is_dir(path.as_ptr(), path.len() as i64)
+    };
+
+    result == 1
+}
+
+// Read directory contents
+//
+// # Arguments
+// * `path` - Path of directory to read
+//
+// # Returns
+// * `Ok(entries)` - List of directory entries
+// * `Err(IoError)` - Error if directory cannot be read
+//
+// # Example
+// ```d
+// let entries = read_dir(".")?;
+// for entry in entries {
+//     println("Found: {}", entry.name);
+// }
+// ```
+pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, IoError> with IO {
+    extern "C" {
+        fn __demetrios_read_dir_count(path: *const u8, path_len: i64) -> i32;
+        fn __demetrios_read_dir_entry(
+            path: *const u8, path_len: i64, index: i32,
+            name_ptr: *mut *const u8, name_len: *mut i64,
+            is_dir: *mut i32, size: *mut u64
+        ) -> i32;
+    }
+
+    let count = unsafe {
+        __demetrios_read_dir_count(path.as_ptr(), path.len() as i64)
+    };
+
+    if count < 0 {
+        return match count {
+            -1 => Err(IoError::not_found(path.to_string())),
+            -2 => Err(IoError::permission_denied(path.to_string())),
+            _ => Err(IoError::other("Failed to read directory".to_string())),
+        };
+    }
+
+    var entries: Vec<DirEntry> = Vec::with_capacity(count as usize);
+
+    for i in 0..count {
+        var name_ptr: *const u8 = null_ptr();
+        var name_len: i64 = 0;
+        var is_dir: i32 = 0;
+        var file_size: u64 = 0;
+
+        let status = unsafe {
+            __demetrios_read_dir_entry(
+                path.as_ptr(), path.len() as i64, i,
+                &mut name_ptr, &mut name_len,
+                &mut is_dir, &mut file_size
+            )
+        };
+
+        if status == 0 {
+            let name = unsafe { String::from_raw_parts(name_ptr as *mut u8, name_len as usize) };
+            let full_path = path::join(path, &name);
+            entries.push(DirEntry {
+                name: name,
+                path: full_path,
+                is_dir: is_dir == 1,
+                is_file: is_dir == 0,
+                size: file_size,
+            });
+        }
+    }
+
+    Ok(entries)
+}
+
+// =============================================================================
+// File Metadata
+// =============================================================================
+
+// File metadata
+pub struct Metadata {
+    // File size in bytes
+    pub size: u64,
+    // Whether this is a file
+    pub is_file: bool,
+    // Whether this is a directory
+    pub is_dir: bool,
+    // Whether this is a symbolic link
+    pub is_symlink: bool,
+    // Last modification time (Unix timestamp)
+    pub modified: i64,
+    // Creation time (Unix timestamp, may not be available)
+    pub created: i64,
+}
+
+// Get file metadata
+//
+// # Arguments
+// * `path` - Path to get metadata for
+//
+// # Returns
+// * `Ok(metadata)` - File metadata
+// * `Err(IoError)` - Error if metadata cannot be read
+pub fn metadata(path: &str) -> Result<Metadata, IoError> with IO {
+    extern "C" {
+        fn __demetrios_metadata(
+            path: *const u8, path_len: i64,
+            size: *mut u64, is_file: *mut i32, is_dir: *mut i32,
+            is_symlink: *mut i32, modified: *mut i64, created: *mut i64
+        ) -> i32;
+    }
+
+    var size: u64 = 0;
+    var is_file: i32 = 0;
+    var is_dir: i32 = 0;
+    var is_symlink: i32 = 0;
+    var modified: i64 = 0;
+    var created: i64 = 0;
+
+    let result = unsafe {
+        __demetrios_metadata(
+            path.as_ptr(), path.len() as i64,
+            &mut size, &mut is_file, &mut is_dir,
+            &mut is_symlink, &mut modified, &mut created
+        )
+    };
+
+    match result {
+        0 => Ok(Metadata {
+            size: size,
+            is_file: is_file == 1,
+            is_dir: is_dir == 1,
+            is_symlink: is_symlink == 1,
+            modified: modified,
+            created: created,
+        }),
+        1 => Err(IoError::not_found(path.to_string())),
+        2 => Err(IoError::permission_denied(path.to_string())),
+        _ => Err(IoError::other("Failed to get metadata".to_string())),
+    }
+}
+
 // =============================================================================
 // Process Control
 // =============================================================================
 
-/// Exit the process with the given exit code
-///
-/// This function never returns (divergent type `!`).
-///
-/// # Arguments
-/// * `code` - Exit code (0 for success, non-zero for error)
-///
-/// # Example
-/// ```d
-/// if error_occurred {
-///     exit(1);
-/// }
-/// exit(0);
-/// ```
+// Exit the process with the given exit code
+//
+// This function never returns (divergent type `!`).
+//
+// # Arguments
+// * `code` - Exit code (0 for success, non-zero for error)
+//
+// # Example
+// ```d
+// if error_occurred {
+//     exit(1);
+// }
+// exit(0);
+// ```
 pub fn exit(code: i32) -> ! with IO {
     extern "C" {
         fn __demetrios_exit(code: i32) -> !;
@@ -270,22 +605,22 @@ pub fn exit(code: i32) -> ! with IO {
 // Environment
 // =============================================================================
 
-/// Module for environment access
+// Module for environment access
 pub mod env {
-    /// Get command line arguments
-    ///
-    /// Returns a vector of strings where:
-    /// - First element is the program name
-    /// - Subsequent elements are command line arguments
-    ///
-    /// # Example
-    /// ```d
-    /// // If run as: ./program input.txt output.txt
-    /// let args = env::args();
-    /// // args = ["./program", "input.txt", "output.txt"]
-    /// let input = args[1];
-    /// let output = args[2];
-    /// ```
+    // Get command line arguments
+    //
+    // Returns a vector of strings where:
+    // - First element is the program name
+    // - Subsequent elements are command line arguments
+    //
+    // # Example
+    // ```d
+    // // If run as: ./program input.txt output.txt
+    // let args = env::args();
+    // // args = ["./program", "input.txt", "output.txt"]
+    // let input = args[1];
+    // let output = args[2];
+    // ```
     pub fn args() -> Vec<String> with IO {
         extern "C" {
             fn __demetrios_get_argc() -> i32;
@@ -312,22 +647,22 @@ pub mod env {
         result
     }
 
-    /// Get an environment variable
-    ///
-    /// # Arguments
-    /// * `key` - Environment variable name
-    ///
-    /// # Returns
-    /// * `Some(value)` if the variable exists
-    /// * `None` if the variable doesn't exist
-    ///
-    /// # Example
-    /// ```d
-    /// match env::var("HOME") {
-    ///     Some(home) => println("Home directory: {}", home),
-    ///     None => println("HOME not set"),
-    /// }
-    /// ```
+    // Get an environment variable
+    //
+    // # Arguments
+    // * `key` - Environment variable name
+    //
+    // # Returns
+    // * `Some(value)` if the variable exists
+    // * `None` if the variable doesn't exist
+    //
+    // # Example
+    // ```d
+    // match env::var("HOME") {
+    //     Some(home) => println("Home directory: {}", home),
+    //     None => println("HOME not set"),
+    // }
+    // ```
     pub fn var(key: &str) -> Option<String> with IO {
         extern "C" {
             fn __demetrios_get_env(key: *const u8, key_len: i64, out_ptr: *mut *const u8, out_len: *mut i64) -> i32;
@@ -348,11 +683,11 @@ pub mod env {
         }
     }
 
-    /// Set an environment variable
-    ///
-    /// # Arguments
-    /// * `key` - Environment variable name
-    /// * `value` - Value to set
+    // Set an environment variable
+    //
+    // # Arguments
+    // * `key` - Environment variable name
+    // * `value` - Value to set
     pub fn set_var(key: &str, value: &str) with IO {
         extern "C" {
             fn __demetrios_set_env(key: *const u8, key_len: i64, value: *const u8, value_len: i64);
@@ -366,11 +701,11 @@ pub mod env {
         }
     }
 
-    /// Get the current working directory
-    ///
-    /// # Returns
-    /// * `Ok(path)` - Current directory path
-    /// * `Err(IoError)` - Error if cannot determine current directory
+    // Get the current working directory
+    //
+    // # Returns
+    // * `Ok(path)` - Current directory path
+    // * `Err(IoError)` - Error if cannot determine current directory
     pub fn current_dir() -> Result<String, IoError> with IO {
         extern "C" {
             fn __demetrios_current_dir(out_ptr: *mut *const u8, out_len: *mut i64) -> i32;
@@ -396,7 +731,7 @@ pub mod env {
 // Standard Streams
 // =============================================================================
 
-/// Print to standard output
+// Print to standard output
 pub fn print(s: &str) with IO {
     extern "C" {
         fn __demetrios_print(s: *const u8, len: i64);
@@ -407,13 +742,13 @@ pub fn print(s: &str) with IO {
     }
 }
 
-/// Print to standard output with newline
+// Print to standard output with newline
 pub fn println(s: &str) with IO {
     print(s);
     print("\n");
 }
 
-/// Print to standard error
+// Print to standard error
 pub fn eprint(s: &str) with IO {
     extern "C" {
         fn __demetrios_eprint(s: *const u8, len: i64);
@@ -424,13 +759,13 @@ pub fn eprint(s: &str) with IO {
     }
 }
 
-/// Print to standard error with newline
+// Print to standard error with newline
 pub fn eprintln(s: &str) with IO {
     eprint(s);
     eprint("\n");
 }
 
-/// Read a line from standard input
+// Read a line from standard input
 pub fn read_line() -> Result<String, IoError> with IO {
     extern "C" {
         fn __demetrios_read_line(out_ptr: *mut *mut u8, out_len: *mut i64) -> i32;
@@ -455,15 +790,15 @@ pub fn read_line() -> Result<String, IoError> with IO {
 // Path Utilities
 // =============================================================================
 
-/// Module for path manipulation
+// Module for path manipulation
 pub mod path {
-    /// Join two path components
-    ///
-    /// # Example
-    /// ```d
-    /// let full = path::join("dir", "file.txt");
-    /// // full = "dir/file.txt"
-    /// ```
+    // Join two path components
+    //
+    // # Example
+    // ```d
+    // let full = path::join("dir", "file.txt");
+    // // full = "dir/file.txt"
+    // ```
     pub fn join(base: &str, component: &str) -> String {
         if base.is_empty() {
             return component.to_string();
@@ -477,13 +812,13 @@ pub mod path {
         base.to_string() ++ "/" ++ component
     }
 
-    /// Get the file name from a path
-    ///
-    /// # Example
-    /// ```d
-    /// let name = path::file_name("/home/user/file.txt");
-    /// // name = Some("file.txt")
-    /// ```
+    // Get the file name from a path
+    //
+    // # Example
+    // ```d
+    // let name = path::file_name("/home/user/file.txt");
+    // // name = Some("file.txt")
+    // ```
     pub fn file_name(p: &str) -> Option<String> {
         let last_slash = p.rfind('/').or_else(|| p.rfind('\\'));
         match last_slash {
@@ -505,13 +840,13 @@ pub mod path {
         }
     }
 
-    /// Get the parent directory from a path
-    ///
-    /// # Example
-    /// ```d
-    /// let parent = path::parent("/home/user/file.txt");
-    /// // parent = Some("/home/user")
-    /// ```
+    // Get the parent directory from a path
+    //
+    // # Example
+    // ```d
+    // let parent = path::parent("/home/user/file.txt");
+    // // parent = Some("/home/user")
+    // ```
     pub fn parent(p: &str) -> Option<String> {
         let last_slash = p.rfind('/').or_else(|| p.rfind('\\'));
         match last_slash {
@@ -521,13 +856,13 @@ pub mod path {
         }
     }
 
-    /// Get the file extension
-    ///
-    /// # Example
-    /// ```d
-    /// let ext = path::extension("file.txt");
-    /// // ext = Some("txt")
-    /// ```
+    // Get the file extension
+    //
+    // # Example
+    // ```d
+    // let ext = path::extension("file.txt");
+    // // ext = Some("txt")
+    // ```
     pub fn extension(p: &str) -> Option<String> {
         let name = file_name(p)?;
         let last_dot = name.rfind('.')?;
