@@ -260,7 +260,8 @@ pub enum TokenKind {
     BinLit,
     #[regex(r"0o[0-7][0-7_]*")]
     OctLit,
-    #[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+-]?[0-9]+)?")]
+    // Float literals: supports 3.14, 3.14e10, 3.14e-10, 1e10, 1e-10
+    #[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+-]?[0-9]+)?|[0-9][0-9_]*[eE][+-]?[0-9]+")]
     FloatLit,
     #[regex(r#""([^"\\]|\\.)*""#)]
     StringLit,

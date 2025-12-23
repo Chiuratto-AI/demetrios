@@ -13,15 +13,15 @@ use crate::lexer::{Token, TokenKind};
 use miette::Result;
 
 /// Parse a token stream into an AST
-pub fn parse(tokens: &[Token], _source: &str) -> Result<Ast> {
-    let mut parser = Parser::new(tokens);
+pub fn parse(tokens: &[Token], source: &str) -> Result<Ast> {
+    let mut parser = Parser::with_source(tokens, source);
     parser.parse_program()
 }
 
 /// Parse a token stream into an AST with a custom NodeId start.
 /// Returns the AST and the next available NodeId value.
-pub fn parse_with_id_start(tokens: &[Token], _source: &str, start_id: u32) -> Result<(Ast, u32)> {
-    let mut parser = Parser::with_id_start(tokens, start_id);
+pub fn parse_with_id_start(tokens: &[Token], source: &str, start_id: u32) -> Result<(Ast, u32)> {
+    let mut parser = Parser::with_source_and_id_start(tokens, source, start_id);
     let ast = parser.parse_program()?;
     Ok((ast, parser.next_id_value()))
 }
@@ -38,10 +38,16 @@ pub struct Parser<'a> {
     node_spans: std::collections::HashMap<NodeId, Span>,
     /// Pending `>` from splitting a `>>` token (for nested generics like `Option<Box<T>>`)
     pending_gt: bool,
+    /// Source text for newline detection
+    source: &'a str,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token]) -> Self {
+        Self::with_source(tokens, "")
+    }
+
+    pub fn with_source(tokens: &'a [Token], source: &'a str) -> Self {
         Self {
             tokens,
             pos: 0,
@@ -49,10 +55,15 @@ impl<'a> Parser<'a> {
             allow_struct_literals: true,
             node_spans: std::collections::HashMap::new(),
             pending_gt: false,
+            source,
         }
     }
 
     pub fn with_id_start(tokens: &'a [Token], start_id: u32) -> Self {
+        Self::with_source_and_id_start(tokens, "", start_id)
+    }
+
+    pub fn with_source_and_id_start(tokens: &'a [Token], source: &'a str, start_id: u32) -> Self {
         Self {
             tokens,
             pos: 0,
@@ -60,6 +71,7 @@ impl<'a> Parser<'a> {
             allow_struct_literals: true,
             node_spans: std::collections::HashMap::new(),
             pending_gt: false,
+            source,
         }
     }
 
@@ -69,6 +81,23 @@ impl<'a> Parser<'a> {
 
     fn next_id(&mut self) -> NodeId {
         self.id_gen.next()
+    }
+
+    /// Check if there's a newline between the previous token and the current token.
+    /// This is used to prevent parsing `(...)` as a call expression when it's on a new line.
+    fn had_newline_before_current(&self) -> bool {
+        if self.pos == 0 || self.source.is_empty() {
+            return false;
+        }
+        // Get the span between previous token's end and current token's start
+        let prev_end = self.tokens.get(self.pos - 1).map(|t| t.span.end).unwrap_or(0);
+        let curr_start = self.current().span.start;
+        // Check if there's a newline in that range
+        if curr_start > prev_end && curr_start <= self.source.len() && prev_end <= self.source.len() {
+            self.source[prev_end..curr_start].contains('\n')
+        } else {
+            false
+        }
     }
 
     /// Check if current token can be used as a macro name (identifier or keyword)
@@ -961,6 +990,11 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_impl_item(&mut self) -> Result<ImplItem> {
+        // Skip doc comments before impl items
+        while self.at(TokenKind::DocCommentOuter) || self.at(TokenKind::DocCommentInner) {
+            self.advance();
+        }
+
         let attributes = self.parse_item_attributes()?;
         let visibility = self.parse_visibility();
         let modifiers = self.parse_modifiers();
@@ -3213,6 +3247,11 @@ impl<'a> Parser<'a> {
         loop {
             match self.peek() {
                 TokenKind::LParen => {
+                    // Don't parse as call if there's a newline before the '('
+                    // This prevents `let x = 3\n(a, b)` from being parsed as `let x = 3(a, b)`
+                    if self.had_newline_before_current() {
+                        break;
+                    }
                     let lparen_start = self.current().span.start;
                     self.advance();
                     let mut args = Vec::new();
