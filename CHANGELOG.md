@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.90.0] - 2025-12-24
+
+### fMRI Processing & Multimodal Fusion Modules
+
+This release adds neuroimaging analysis capabilities for fMRI data processing
+and EEG-fMRI multimodal integration, essential for computational psychiatry.
+
+### Added
+
+#### fMRI Module (`stdlib/fmri/`)
+- **NIfTI** (`nifti.d`): Neuroimaging file format support
+  - NIfTI image data structures for 3D/4D brain volumes
+  - Voxel indexing and coordinate transformations
+  - Affine matrix operations for MNI space conversion
+  - Header metadata handling (dimensions, voxel sizes, TR)
+- **Preprocess** (`preprocess.d`): fMRI preprocessing pipeline
+  - 6-DOF motion parameters (translation + rotation)
+  - Framewise displacement (FD) for motion scrubbing
+  - Gaussian smoothing kernels (FWHM-based)
+  - Temporal filtering configurations (bandpass 0.01-0.1 Hz)
+  - Nuisance regression settings (motion, WM/CSF, global signal)
+  - Linear detrending and z-score normalization
+- **Connectivity** (`connectivity.d`): Functional connectivity analysis
+  - Pearson correlation for ROI-to-ROI connectivity
+  - Fisher z-transformation for statistical inference
+  - Confidence intervals via z-space standard errors
+  - Network metrics (mean FC strength, node degree)
+  - FCResult structure with correlation and uncertainty
+
+#### Fusion Module (`stdlib/fusion/`)
+- **EEG-fMRI** (`eeg_fmri.d`): Multimodal integration
+  - Hemodynamic Response Function (HRF) computation
+    - Canonical double-gamma model (Glover, 1999)
+    - Configurable peak/undershoot parameters
+  - Representational Similarity Analysis (RSA)
+    - Pattern dissimilarity (1 - correlation)
+    - RDM comparison for cross-modal alignment
+  - fMRI-informed EEG source localization
+    - Soft-thresholded source priors from t-maps
+    - Sigmoid weighting for activation probability
+
+### References
+- Esteban et al. (2019): fMRIPrep preprocessing pipeline
+- Power et al. (2012): Motion artifact handling
+- Biswal et al. (1995): Functional connectivity
+- Debener et al. (2006): Trial-by-trial EEG-fMRI coupling
+- Cichy et al. (2016): Similarity-based fusion
+
 ## [0.89.0] - 2025-12-24
 
 ### Signal Processing & Connectivity Modules
