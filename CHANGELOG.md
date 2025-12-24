@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.85.0] - 2025-12-23
+
+### MCTS Module for Game Playing & Optimization
+
+This release adds Monte Carlo Tree Search with UCB1/PUCT selection policies.
+
+### Added
+
+#### MCTS Search (`stdlib/search/mcts/`)
+- **Node** (`node.d`): MCTS node structure with state, visits, values, child tracking
+- **Policy** (`policy.d`): UCB1 and PUCT (AlphaZero-style) selection policies
+- **Core** (`core.d`): Main tree operations, backpropagation, result extraction
+
+#### MCTS Examples
+- **Tic-Tac-Toe** (`examples/tictactoe.d`): Game playing with 100 MCTS simulations
+- **Variance Tracking** (`examples/uncertainty_demo.d`): GUM-style variance with Welford's algorithm
+
+#### Features
+- UCB1: `q + c * sqrt(ln(N)/n)` exploration/exploitation balance
+- PUCT: Prior probability integration for neural network guided search
+- Arena allocation with flat node structure for cache efficiency
+- Adversarial and single-player backpropagation variants
+- Online variance estimation for uncertainty-aware values
+
 ## [0.84.0] - 2025-12-23
 
 ### KEC Pipeline & Stdlib Expansion
