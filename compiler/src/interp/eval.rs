@@ -599,6 +599,35 @@ impl Interpreter {
                 match (recv, method.as_str()) {
                     (Value::Array(arr), "len") => Ok(Value::Int(arr.borrow().len() as i64)),
                     (Value::String(s), "len") => Ok(Value::Int(s.len() as i64)),
+                    (Value::String(s), "slice") => {
+                        // String slice: s.slice(start, end) -> substring
+                        let start = match arg_values.get(1) {
+                            Some(Value::Int(i)) => (*i).max(0) as usize,
+                            _ => 0,
+                        };
+                        let end = match arg_values.get(2) {
+                            Some(Value::Int(i)) => (*i).max(0) as usize,
+                            _ => s.len(),
+                        };
+                        // Handle UTF-8: use char_indices for safe slicing
+                        let chars: Vec<char> = s.chars().collect();
+                        let start = start.min(chars.len());
+                        let end = end.min(chars.len()).max(start);
+                        let result: String = chars[start..end].iter().collect();
+                        Ok(Value::String(result))
+                    }
+                    (Value::String(s), "byte_at") => {
+                        // Get byte at index as integer
+                        let idx = match arg_values.get(1) {
+                            Some(Value::Int(i)) => (*i).max(0) as usize,
+                            _ => 0,
+                        };
+                        if idx < s.len() {
+                            Ok(Value::Int(s.as_bytes()[idx] as i64))
+                        } else {
+                            Ok(Value::Int(0))
+                        }
+                    }
                     (Value::Array(arr), "push") => {
                         if let Some(val) = arg_values.get(1) {
                             arr.borrow_mut().push(val.clone());
@@ -737,8 +766,38 @@ impl Interpreter {
             HirLiteral::Int(n) => Value::Int(*n),
             HirLiteral::Float(f) => Value::Float(*f),
             HirLiteral::Char(c) => Value::String(c.to_string()),
-            HirLiteral::String(s) => Value::String(s.clone()),
+            HirLiteral::String(s) => Value::String(Self::process_escape_sequences(s)),
         }
+    }
+
+    /// Process escape sequences in a string literal
+    fn process_escape_sequences(s: &str) -> String {
+        let mut result = String::with_capacity(s.len());
+        let mut chars = s.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                match chars.next() {
+                    Some('n') => result.push('\n'),
+                    Some('r') => result.push('\r'),
+                    Some('t') => result.push('\t'),
+                    Some('\\') => result.push('\\'),
+                    Some('0') => result.push('\0'),
+                    Some('"') => result.push('"'),
+                    Some('\'') => result.push('\''),
+                    Some(other) => {
+                        // Unknown escape, keep as-is
+                        result.push('\\');
+                        result.push(other);
+                    }
+                    None => result.push('\\'),
+                }
+            } else {
+                result.push(c);
+            }
+        }
+
+        result
     }
 
     /// Cast a value to a target type
