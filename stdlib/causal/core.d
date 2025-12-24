@@ -44,6 +44,144 @@
 /// ```
 
 // ============================================================================
+// SECTION 0: EPISTEMIC PRIMITIVES
+// ============================================================================
+
+/// Beta distribution for epistemic confidence
+struct Beta {
+    alpha: f64,
+    beta: f64,
+}
+
+fn beta_new(alpha: f64, beta: f64) -> Beta {
+    Beta { alpha: alpha, beta: beta }
+}
+
+fn beta_mean(b: Beta) -> f64 {
+    b.alpha / (b.alpha + b.beta)
+}
+
+fn beta_variance(b: Beta) -> f64 {
+    let n = b.alpha + b.beta
+    return (b.alpha * b.beta) / (n * n * (n + 1.0))
+}
+
+fn beta_uniform() -> Beta {
+    Beta { alpha: 1.0, beta: 1.0 }
+}
+
+fn abs_f64(x: f64) -> f64 {
+    if x < 0.0 { return 0.0 - x }
+    return x
+}
+
+fn sqrt_f64(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 }
+    // Newton's method
+    var s = x
+    s = (s + x / s) / 2.0
+    s = (s + x / s) / 2.0
+    s = (s + x / s) / 2.0
+    s = (s + x / s) / 2.0
+    return s
+}
+
+fn beta_entropy(b: Beta) -> f64 {
+    // Approximation of Beta entropy
+    let v = beta_variance(b)
+    // Higher variance = higher entropy
+    return v * 10.0
+}
+
+fn beta_update(prior: Beta, successes: f64, failures: f64) -> Beta {
+    Beta {
+        alpha: prior.alpha + successes,
+        beta: prior.beta + failures,
+    }
+}
+
+fn epistemic_print(summary: EpistemicSummary) -> i32 {
+    print("Mean: ")
+    print(summary.mean as String)
+    print(" Var: ")
+    print(summary.variance as String)
+    print(" [")
+    print(summary.lower as String)
+    print(", ")
+    print(summary.upper as String)
+    print("]\n")
+    0
+}
+
+fn println(s: String) -> i32 {
+    print(s)
+    print("\n")
+    0
+}
+
+/// Epistemic summary for returning uncertainty information
+struct EpistemicSummary {
+    mean: f64,
+    variance: f64,
+    confidence: f64,
+    lower: f64,
+    upper: f64,
+}
+
+fn clamp01(x: f64) -> f64 {
+    if x < 0.0 { return 0.0 }
+    if x > 1.0 { return 1.0 }
+    x
+}
+
+fn beta_from_mean_variance(mean: f64, variance: f64) -> Beta {
+    // Method of moments: alpha = mean * ((mean * (1-mean) / variance) - 1)
+    let m = clamp01(mean)
+    let v = variance
+    if v <= 0.0 || v >= m * (1.0 - m) {
+        // Fallback to uniform if variance is invalid
+        return beta_uniform()
+    }
+    let common = (m * (1.0 - m) / v) - 1.0
+    let alpha = m * common
+    let beta_val = (1.0 - m) * common
+    if alpha <= 0.0 || beta_val <= 0.0 {
+        return beta_uniform()
+    }
+    Beta { alpha: alpha, beta: beta_val }
+}
+
+fn beta_summary(b: Beta) -> EpistemicSummary {
+    let m = beta_mean(b)
+    let v = beta_variance(b)
+    // 95% credible interval approximation
+    let std = v
+    if std > 0.0 {
+        // sqrt approximation using Newton's method
+        var s = std
+        s = (s + std / s) / 2.0
+        s = (s + std / s) / 2.0
+        s = (s + std / s) / 2.0
+        let lower = clamp01(m - 1.96 * s)
+        let upper = clamp01(m + 1.96 * s)
+        return EpistemicSummary {
+            mean: m,
+            variance: v,
+            confidence: m,
+            lower: lower,
+            upper: upper,
+        }
+    }
+    EpistemicSummary {
+        mean: m,
+        variance: v,
+        confidence: m,
+        lower: m,
+        upper: m,
+    }
+}
+
+// ============================================================================
 // SECTION 1: CORE DATA STRUCTURES
 // ============================================================================
 
@@ -144,7 +282,7 @@ fn dag_add_edge(
 /// Find node by name
 fn dag_find_node(dag: CausalDAG, name: [u8]) -> i64 {
     var i: i64 = 0
-    let n = len(dag.nodes)
+    let n = dag.nodes.len()
     while i < n {
         if byte_array_eq(dag.nodes[i].name, name) {
             return i
@@ -156,8 +294,8 @@ fn dag_find_node(dag: CausalDAG, name: [u8]) -> i64 {
 
 /// Check if two byte arrays are equal
 fn byte_array_eq(a: [u8], b: [u8]) -> i64 {
-    let na = len(a)
-    let nb = len(b)
+    let na = a.len()
+    let nb = b.len()
     if na != nb { return 0 }
 
     var i: i64 = 0
@@ -172,7 +310,7 @@ fn byte_array_eq(a: [u8], b: [u8]) -> i64 {
 fn dag_edges_from(dag: CausalDAG, name: [u8]) -> [CausalEdge] {
     var result: [CausalEdge] = []
     var i: i64 = 0
-    let n = len(dag.edges)
+    let n = dag.edges.len()
 
     while i < n {
         if byte_array_eq(dag.edges[i].from, name) {
@@ -187,7 +325,7 @@ fn dag_edges_from(dag: CausalDAG, name: [u8]) -> [CausalEdge] {
 fn dag_edges_to(dag: CausalDAG, name: [u8]) -> [CausalEdge] {
     var result: [CausalEdge] = []
     var i: i64 = 0
-    let n = len(dag.edges)
+    let n = dag.edges.len()
 
     while i < n {
         if byte_array_eq(dag.edges[i].to, name) {
@@ -203,7 +341,7 @@ fn dag_parents(dag: CausalDAG, name: [u8]) -> [[u8]] {
     let edges_in = dag_edges_to(dag, name)
     var parents: [[u8]] = []
     var i: i64 = 0
-    let n = len(edges_in)
+    let n = edges_in.len()
 
     while i < n {
         parents = parents ++ [edges_in[i].from]
@@ -217,7 +355,7 @@ fn dag_children(dag: CausalDAG, name: [u8]) -> [[u8]] {
     let edges_out = dag_edges_from(dag, name)
     var children: [[u8]] = []
     var i: i64 = 0
-    let n = len(edges_out)
+    let n = edges_out.len()
 
     while i < n {
         children = children ++ [edges_out[i].to]
@@ -240,7 +378,7 @@ fn do_intervention(dag: CausalDAG, var_name: [u8], value: f64) -> CausalDAG {
     // Remove all edges pointing to var_name
     var new_edges: [CausalEdge] = []
     var i: i64 = 0
-    let n = len(dag.edges)
+    let n = dag.edges.len()
 
     while i < n {
         if byte_array_eq(dag.edges[i].to, var_name) == 0 {
@@ -270,7 +408,7 @@ fn is_identifiable(dag: CausalDAG, treatment: [u8], outcome: [u8]) -> i64 {
     let edges_out = dag_edges_from(dag, treatment)
     var has_direct_path = 0
     var i: i64 = 0
-    let n = len(edges_out)
+    let n = edges_out.len()
 
     while i < n {
         if byte_array_eq(edges_out[i].to, outcome) {
@@ -295,12 +433,12 @@ fn backdoor_adjustment(dag: CausalDAG, treatment: [u8], outcome: [u8]) -> [[u8]]
 
     var adjustment_set: [[u8]] = []
     var i: i64 = 0
-    let nt = len(treatment_parents)
+    let nt = treatment_parents.len()
 
     // Find common parents (confounders)
     while i < nt {
         var j: i64 = 0
-        let no = len(outcome_parents)
+        let no = outcome_parents.len()
         while j < no {
             if byte_array_eq(treatment_parents[i], outcome_parents[j]) {
                 // Common parent - add to adjustment set
@@ -332,7 +470,7 @@ fn average_treatment_effect(
     var direct_effect: f64 = 0.0
     var direct_var: f64 = 0.0
     var i: i64 = 0
-    let n = len(edges_out)
+    let n = edges_out.len()
 
     while i < n {
         if byte_array_eq(edges_out[i].to, outcome) {
@@ -345,7 +483,7 @@ fn average_treatment_effect(
 
     // Account for confounding (adjustment set)
     let adjustment = backdoor_adjustment(dag, treatment, outcome)
-    let n_conf = len(adjustment)
+    let n_conf = adjustment.len()
 
     // Add uncertainty from confounders
     var conf_uncertainty = 0.0
@@ -386,7 +524,7 @@ fn iv_estimate(
     var relevance_strength = 0.0
     var relevance_var = 0.0
     var i: i64 = 0
-    var n = len(z_to_x)
+    var n = z_to_x.len()
 
     while i < n {
         if byte_array_eq(z_to_x[i].to, treatment) {
@@ -400,7 +538,7 @@ fn iv_estimate(
     let z_to_y = dag_edges_from(dag, instrument)
     var has_direct = 0
     i = 0
-    n = len(z_to_y)
+    n = z_to_y.len()
 
     while i < n {
         if byte_array_eq(z_to_y[i].to, outcome) {
@@ -414,7 +552,7 @@ fn iv_estimate(
     var causal_strength = 0.0
     var causal_var = 0.0
     i = 0
-    n = len(x_to_y)
+    n = x_to_y.len()
 
     while i < n {
         if byte_array_eq(x_to_y[i].to, outcome) {
@@ -464,7 +602,7 @@ fn conditional_ate(
     var modifier_strength = 0.0
     var modifier_var = 0.0
     var i: i64 = 0
-    let n = len(cond_to_y)
+    let n = cond_to_y.len()
 
     while i < n {
         if byte_array_eq(cond_to_y[i].to, outcome) {
@@ -520,7 +658,7 @@ fn update_edge_existence(
 fn dag_prune_edges(dag: CausalDAG, threshold: f64) -> CausalDAG {
     var kept_edges: [CausalEdge] = []
     var i: i64 = 0
-    let n = len(dag.edges)
+    let n = dag.edges.len()
 
     while i < n {
         let exists_prob = beta_mean(dag.edges[i].exists)
@@ -545,7 +683,7 @@ fn optimal_intervention_target(dag: CausalDAG) -> [u8] {
     var max_info_gain = 0.0
     var best_node: [u8] = []
     var i: i64 = 0
-    let n = len(dag.nodes)
+    let n = dag.nodes.len()
 
     while i < n {
         let node_name = dag.nodes[i].name
@@ -554,7 +692,7 @@ fn optimal_intervention_target(dag: CausalDAG) -> [u8] {
         let edges_out = dag_edges_from(dag, node_name)
         var total_entropy = 0.0
         var j: i64 = 0
-        let m = len(edges_out)
+        let m = edges_out.len()
 
         while j < m {
             // Entropy of edge existence
@@ -574,10 +712,10 @@ fn optimal_intervention_target(dag: CausalDAG) -> [u8] {
 }
 
 // ============================================================================
-// SECTION 6: COUNTERFACTUAL REASONING
+// SECTION 6: WHAT-IF REASONING
 // ============================================================================
 
-/// Counterfactual query: "What would Y have been if X had been x'?"
+/// What-if query: "What would Y have been if X had been x'?"
 ///
 /// Three-step process (Pearl's algorithm):
 /// 1. Abduction: Infer latent variables from observed data
@@ -585,22 +723,22 @@ fn optimal_intervention_target(dag: CausalDAG) -> [u8] {
 /// 3. Prediction: Compute outcome under modified model
 ///
 /// Simplified implementation for epistemic uncertainty propagation.
-fn counterfactual(
+fn what_if(
     dag: CausalDAG,
     treatment: [u8],
     treatment_factual: f64,
-    treatment_counterfactual: f64,
+    treatment_alt: f64,
     outcome: [u8]
 ) -> EpistemicSummary {
     // Step 1: Abduction (simplified - assume no latent confounders)
     // Step 2: Action - apply do-operator
-    let intervened = do_intervention(dag, treatment, treatment_counterfactual)
+    let intervened = do_intervention(dag, treatment, treatment_alt)
 
     // Step 3: Prediction - compute effect
     let cf_ate = average_treatment_effect(intervened, treatment, outcome)
 
     // Counterfactual effect = outcome under intervention
-    // Add extra uncertainty for counterfactual reasoning
+    // Add extra uncertainty for what_if reasoning
     let cf_var = cf_ate.variance + 0.02
 
     let normalized = clamp01((cf_ate.mean + 1.0) / 2.0)
@@ -617,9 +755,9 @@ fn probability_of_sufficiency(
     treatment: [u8],
     outcome: [u8],
     x_factual: f64,
-    x_counterfactual: f64
+    x_alt: f64
 ) -> f64 {
-    let cf = counterfactual(dag, treatment, x_factual, x_counterfactual, outcome)
+    let cf = what_if(dag, treatment, x_factual, x_alt, outcome)
     return cf.mean
 }
 
@@ -631,9 +769,9 @@ fn probability_of_necessity(
     treatment: [u8],
     outcome: [u8],
     x_factual: f64,
-    x_counterfactual: f64
+    x_alt: f64
 ) -> f64 {
-    let cf = counterfactual(dag, treatment, x_factual, x_counterfactual, outcome)
+    let cf = what_if(dag, treatment, x_factual, x_alt, outcome)
     // Necessity = 1 - P(Y would have happened anyway)
     return 1.0 - cf.mean
 }
@@ -657,7 +795,7 @@ fn natural_direct_effect(
     var direct_strength = 0.0
     var direct_var = 0.0
     var i: i64 = 0
-    let n = len(x_to_y)
+    let n = x_to_y.len()
 
     while i < n {
         if byte_array_eq(x_to_y[i].to, outcome) {
@@ -688,7 +826,7 @@ fn natural_indirect_effect(
     var tm_strength = 0.0
     var tm_var = 0.0
     var i: i64 = 0
-    var n = len(x_to_m)
+    var n = x_to_m.len()
 
     while i < n {
         if byte_array_eq(x_to_m[i].to, mediator) {
@@ -702,7 +840,7 @@ fn natural_indirect_effect(
     var mo_strength = 0.0
     var mo_var = 0.0
     i = 0
-    n = len(m_to_y)
+    n = m_to_y.len()
 
     while i < n {
         if byte_array_eq(m_to_y[i].to, outcome) {
@@ -779,7 +917,7 @@ fn robustness_value(dag: CausalDAG, treatment: [u8], outcome: [u8]) -> f64 {
     let edges = dag_edges_from(dag, treatment)
     var min_confidence = 1.0
     var i: i64 = 0
-    let n = len(edges)
+    let n = edges.len()
 
     while i < n {
         if byte_array_eq(edges[i].to, outcome) {
@@ -813,10 +951,10 @@ fn dag_print(dag: CausalDAG) -> i64 {
     }
 
     print("  Edges: ")
-    println(len(dag.edges))
+    println(dag.edges.len())
 
     i = 0
-    let m = len(dag.edges)
+    let m = dag.edges.len()
     while i < m {
         print("    ")
         print_byte_array(dag.edges[i].from)
@@ -836,7 +974,7 @@ fn dag_print(dag: CausalDAG) -> i64 {
 /// Print byte array as string (helper)
 fn print_byte_array(arr: [u8]) -> i64 {
     var i: i64 = 0
-    let n = len(arr)
+    let n = arr.len()
     while i < n {
         // Just print the bytes (in practice would convert to chars)
         print(arr[i])
@@ -859,86 +997,52 @@ fn causal_effect_print(name: [u8], effect: EpistemicSummary) -> i64 {
 // ============================================================================
 
 fn main() -> i32 {
-    println("=== epistemic::causal — Causal Inference Demo ===")
-    println("")
+    print("Testing causal::core module...\n")
 
-    // Example: Smoking -> Cancer with Age confounder
-    println("--- Example: Smoking -> Cancer (with Age confounder) ---")
+    // Test Beta functions
+    let b = beta_new(8.0, 2.0)
+    let m = beta_mean(b)
+    if m < 0.7 || m > 0.9 { return 1 }
+    print("Beta functions: PASS\n")
 
+    // Test DAG creation
     var dag = dag_new()
+    if dag.size != 0 { return 2 }
+    print("DAG creation: PASS\n")
 
-    // Add nodes
-    dag = dag_add_node(dag, "Age", NodeType::Confounder)
-    dag = dag_add_node(dag, "Smoking", NodeType::Treatment)
-    dag = dag_add_node(dag, "Cancer", NodeType::Outcome)
+    // Test node addition (using empty byte arrays for simplicity)
+    var age: [u8] = []
+    age.push(65)
+    var smoking: [u8] = []
+    smoking.push(83)
+    var cancer: [u8] = []
+    cancer.push(67)
 
-    // Add edges with epistemic uncertainty
-    // Age -> Smoking: older people more likely to have smoked
-    dag = dag_add_edge(dag, "Age", "Smoking", beta_new(8.0, 2.0), 0.4, 0.05)
+    dag = dag_add_node(dag, age, NodeType::Confounder)
+    dag = dag_add_node(dag, smoking, NodeType::Treatment)
+    dag = dag_add_node(dag, cancer, NodeType::Outcome)
+    if dag.size != 3 { return 3 }
+    print("Node addition: PASS\n")
 
-    // Age -> Cancer: age is risk factor
-    dag = dag_add_edge(dag, "Age", "Cancer", beta_new(9.0, 1.0), 0.6, 0.03)
+    // Test edge addition
+    dag = dag_add_edge(dag, age, smoking, beta_new(8.0, 2.0), 0.4, 0.05)
+    dag = dag_add_edge(dag, age, cancer, beta_new(9.0, 1.0), 0.6, 0.03)
+    dag = dag_add_edge(dag, smoking, cancer, beta_new(7.0, 3.0), 0.5, 0.08)
+    if dag.edges.len() != 3 { return 4 }
+    print("Edge addition: PASS\n")
 
-    // Smoking -> Cancer: causal effect we want to estimate
-    dag = dag_add_edge(dag, "Smoking", "Cancer", beta_new(7.0, 3.0), 0.5, 0.08)
+    // Test do-intervention
+    let intervened = do_intervention(dag, smoking, 1.0)
+    // After intervention on Smoking, edges TO Smoking should be removed
+    // Only Age->Cancer and Smoking->Cancer should remain
+    if intervened.edges.len() != 2 { return 5 }
+    print("do-intervention: PASS\n")
 
-    println("")
-    dag_print(dag)
-    println("")
+    // Test EpistemicSummary
+    let summary = beta_summary(beta_new(10.0, 2.0))
+    if summary.mean < 0.8 || summary.mean > 0.9 { return 6 }
+    print("EpistemicSummary: PASS\n")
 
-    // Estimate Average Treatment Effect
-    println("--- Average Treatment Effect ---")
-    let ate = average_treatment_effect(dag, "Smoking", "Cancer")
-    causal_effect_print("ATE", ate)
-    println("")
-
-    // Check identifiability
-    println("--- Identifiability Check ---")
-    let identifiable = is_identifiable(dag, "Smoking", "Cancer")
-    if identifiable > 0 {
-        println("Effect is identifiable from observational data")
-    } else {
-        println("Effect may not be identifiable - need interventions")
-    }
-    println("")
-
-    // Find backdoor adjustment set
-    println("--- Backdoor Adjustment Set ---")
-    let adjustment = backdoor_adjustment(dag, "Smoking", "Cancer")
-    print("Variables to condition on: ")
-    println(len(adjustment))
-    var i: i64 = 0
-    while i < len(adjustment) {
-        print("  - ")
-        print_byte_array(adjustment[i])
-        println("")
-        i = i + 1
-    }
-    println("")
-
-    // Do-calculus intervention
-    println("--- Intervention Analysis ---")
-    let intervened = do_intervention(dag, "Smoking", 1.0)
-    print("After do(Smoking=1), edges: ")
-    println(len(intervened.edges))
-    println("")
-
-    // Sensitivity analysis
-    println("--- Sensitivity to Unmeasured Confounding ---")
-    let robustness = robustness_value(dag, "Smoking", "Cancer")
-    print("Robustness value (min edge confidence): ")
-    println(robustness)
-    println("")
-
-    println("=== Demo Complete ===")
-    println("")
-    println("Key Innovations:")
-    println("1. Every edge has epistemic uncertainty (Beta posterior)")
-    println("2. Causal effects propagate uncertainty honestly")
-    println("3. Active learning identifies optimal interventions")
-    println("4. Integrates Pearl's do-calculus with Bayesian updating")
-    println("")
-    println("This makes causal inference epistemically honest.")
-
+    print("All causal::core tests PASSED\n")
     return 0
 }
