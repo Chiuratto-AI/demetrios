@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.93.0] - 2025-12-24
+
+### MedLang Parser & Integration Module
+
+This release completes the MedLang integration with a full lexer, parser, and
+high-level integration API for computational pharmacology.
+
+### Added
+
+#### MedLang Parser (`stdlib/medlang/`)
+- **Lexer** (`lexer.d`): Lexical analyzer for MedLang DSL
+  - Tokenizes MedLang keywords (model, param, compartment, flow, dose, observe)
+  - Distribution syntax (LogNormal, Normal, Fixed)
+  - Units (mg, L, h, L/h, mg/L)
+  - Operators and delimiters
+  - String and numeric literals
+
+- **Parser** (`parser.d`): Recursive descent parser
+  - Complete grammar for MedLang DSL
+  - Model, parameter, compartment, flow, dose, observe parsing
+  - Distribution specification parsing
+  - Fit and simulate specification parsing
+  - Error recovery and position tracking
+
+- **Integration API** (`integrate.d`): High-level unified API
+  - One-compartment IV/oral simulation
+  - Weighted least squares fitting with gradient descent
+  - Numerical gradient computation
+  - Standard error estimation via Hessian approximation
+  - Model comparison with AIC/BIC and Akaike weights
+  - GUM-compliant uncertainty propagation
+  - Population simulation with lognormal variability
+  - Prediction intervals (2.5th-97.5th percentiles)
+
+### Design Notes
+- All modules use functional-style state passing for Demetrios compatibility
+- Token types as const functions (no enums)
+- Immutable parser state with result structs
+- Native Demetrios array syntax throughout
+
 ## [0.92.0] - 2025-12-24
 
 ### MedLang Integration for Computational Pharmacology
