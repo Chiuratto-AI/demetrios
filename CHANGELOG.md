@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.91.0] - 2025-12-24
+
+### Statistics & Bayesian Inference Modules
+
+This release adds comprehensive statistical analysis and Bayesian inference
+capabilities, completing the scientific computing triad: simulate → fit → infer.
+
+### Added
+
+#### Statistics Module (`stdlib/stats/`)
+- **Descriptive** (`descriptive.d`): GUM-compliant descriptive statistics
+  - Mean, variance, std with expanded uncertainty (k=2, 95% coverage)
+  - Skewness, kurtosis (Fisher's definition)
+  - Correlation with Fisher z-based uncertainty
+  - Robust statistics: median, IQR, MAD
+- **Inferential** (`inferential.d`): Hypothesis testing with effect sizes
+  - One-sample, independent, paired t-tests
+  - Welch's t-test for unequal variances
+  - One-way ANOVA (3 groups) with eta-squared
+  - Mann-Whitney U test with rank-biserial correlation
+  - Cohen's d effect size interpretation
+- **Resampling** (`resampling.d`): Distribution-free inference
+  - Bootstrap CI for mean, median, correlation
+  - Permutation test for mean differences
+  - Permutation test for correlation significance
+  - Percentile-based confidence intervals
+- **Multiple Testing** (`multiple_testing.d`): Error rate control
+  - Bonferroni correction (FWER control)
+  - Holm step-down procedure
+  - Benjamini-Hochberg FDR correction
+  - Effective number of tests for correlated variables
+
+#### Bayesian Module (`stdlib/bayes/`)
+- **Prior** (`prior.d`): Prior distribution library
+  - Normal, LogNormal, Uniform, Beta, Gamma priors
+  - HalfNormal, HalfCauchy for scale parameters
+  - Exponential, Cauchy for heavy-tailed priors
+  - Weakly informative prior recommendations (Stan-style)
+- **MCMC** (`mcmc.d`): Markov Chain Monte Carlo sampling
+  - Metropolis-Hastings with symmetric proposals
+  - Adaptive proposal tuning during warmup
+  - Posterior mean, std, median, 95% credible intervals
+  - Acceptance rate monitoring
+- **VI** (`vi.d`): Variational Inference
+  - Mean-field Gaussian variational family
+  - ELBO optimization with reparameterization trick
+  - Gradient ascent with configurable learning rate
+  - Convergence monitoring
+- **Diagnostics** (`diagnostics.d`): Convergence assessment
+  - Gelman-Rubin split R-hat (should be < 1.01)
+  - Effective sample size (ESS) via autocorrelation
+  - Monte Carlo standard error (MCSE)
+  - Autocorrelation at arbitrary lags
+
+### References
+- Efron & Tibshirani (1993): Bootstrap methods
+- Benjamini & Hochberg (1995): FDR control
+- Gelman et al. (2013): Bayesian Data Analysis
+- Vehtari et al. (2021): R-hat and ESS improvements
+
 ## [0.90.0] - 2025-12-24
 
 ### fMRI Processing & Multimodal Fusion Modules
