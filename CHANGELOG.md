@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.92.0] - 2025-12-24
+
+### MedLang Integration for Computational Pharmacology
+
+This release adds the MedLang integration module, providing a high-level API
+for pharmacokinetic/pharmacodynamic (PK/PD) modeling with native uncertainty
+quantification, bridging computational pharmacology and clinical reasoning.
+
+### Added
+
+#### MedLang Module (`stdlib/medlang/`)
+- **Core API** (`mod.d`): High-level PK/PD modeling interface
+  - One-compartment IV/oral models with analytical solutions
+  - Two-compartment models with macro-constant parameterization
+  - Emax and sigmoid Emax pharmacodynamic models
+  - Effect compartment for hysteresis handling
+  - Dosing protocols (bolus, infusion, oral, repeated)
+  - NCA metrics (AUC, Cmax, Tmax, t½, MRT)
+  - Steady-state calculations with accumulation ratios
+  - GUM-compliant parameter uncertainty (CV%, 95% CI)
+
+- **AST** (`ast.d`): Abstract syntax tree for MedLang DSL
+  - Parameter nodes with prior distributions (Normal, LogNormal, Beta, Gamma)
+  - Compartment nodes (central, peripheral, depot, effect site)
+  - Flow nodes (linear, saturable Michaelis-Menten)
+  - Dosing nodes with bioavailability and lag time
+  - Observation/error models (additive, proportional, combined)
+  - Covariate effects (power, linear, exponential)
+  - Pre-built model templates (1-comp IV/oral, 2-comp IV)
+
+- **Codegen** (`codegen.d`): ODE generation and simulation
+  - ODE systems for standard PK models
+  - RK4 solver integration with adaptive stepping
+  - Weighted least squares objective function
+  - Gradient descent optimizer for parameter estimation
+  - GUM uncertainty propagation via finite differences
+  - AIC/BIC model comparison metrics
+  - Prediction bands with 50%/90% intervals
+
+### Design Philosophy
+- Bridge between MedLang clinical DSL and Demetrios numerical infrastructure
+- Native integration with ODE solvers and Bayesian inference modules
+- First-class support for PK/PD modeling paradigms (NONMEM-like)
+- Programmatic model construction for automated workflow generation
+
+### References
+- Gabrielsson & Weiner: Pharmacokinetic and Pharmacodynamic Data Analysis
+- Bonate: Pharmacokinetic-Pharmacodynamic Modeling and Simulation
+- NONMEM User's Guides (Beal & Sheiner)
+- GUM: Guide to Expression of Uncertainty in Measurement
+
 ## [0.91.0] - 2025-12-24
 
 ### Statistics & Bayesian Inference Modules
