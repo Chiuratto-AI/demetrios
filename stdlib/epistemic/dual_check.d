@@ -98,21 +98,21 @@ fn rng_new(seed: i64) -> Rng {
     return Rng { state: seed }
 }
 
-fn rng_next(rng: Rng) -> RngResult {
+fn rng_next(s: Rng) -> RngResult {
     let a: i64 = 1103515245
     let c: i64 = 12345
     let m: i64 = 2147483648
 
-    var next_state = a * rng.state + c
-    while next_state < 0 { next_state = next_state + m }
-    while next_state >= m { next_state = next_state - m }
+    var next_state = a * s.state + c
+    next_state = next_state % m
+    if next_state < 0 { next_state = next_state + m }
 
     let u = (next_state as f64) / (m as f64)
     return RngResult { value: u, rng: Rng { state: next_state } }
 }
 
-fn rng_normal(rng: Rng) -> RngResult {
-    let r1 = rng_next(rng)
+fn rng_normal(s: Rng) -> RngResult {
+    let r1 = rng_next(s)
     let u1 = r1.value
     let rng2 = r1.rng
 
@@ -131,8 +131,8 @@ fn rng_normal(rng: Rng) -> RngResult {
     return RngResult { value: z, rng: rng3 }
 }
 
-fn rng_normal_params(rng: Rng, mean: f64, std: f64) -> RngResult {
-    let r = rng_normal(rng)
+fn rng_normal_params(s: Rng, mean: f64, std: f64) -> RngResult {
+    let r = rng_normal(s)
     return RngResult { value: mean + std * r.value, rng: r.rng }
 }
 

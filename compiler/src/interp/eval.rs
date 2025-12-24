@@ -119,6 +119,16 @@ impl Interpreter {
     fn eval_block(&mut self, block: &HirBlock) -> Result<Value, ControlFlow> {
         self.env.push_scope();
 
+        let result = self.eval_block_inner(block);
+
+        // Always pop scope, even on early return/break/continue
+        self.env.pop_scope();
+
+        result
+    }
+
+    /// Inner block evaluation (without scope management)
+    fn eval_block_inner(&mut self, block: &HirBlock) -> Result<Value, ControlFlow> {
         let mut result = Value::Unit;
 
         for (i, stmt) in block.stmts.iter().enumerate() {
@@ -154,7 +164,6 @@ impl Interpreter {
             }
         }
 
-        self.env.pop_scope();
         Ok(result)
     }
 
