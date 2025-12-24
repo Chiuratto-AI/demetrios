@@ -54,19 +54,17 @@ fn rng_new(seed: i64) -> RngState {
 }
 
 // Generate next uniform random in [0, 1)
-fn rng_next(rng: RngState) -> (f64, RngState) {
+fn rng_next(s: RngState) -> (f64, RngState) {
     // LCG: state = (a * state + c) mod m
     let a: i64 = 1103515245
     let c: i64 = 12345
     let m: i64 = 2147483648  // 2^31
 
-    var next_state = a * rng.state + c
-    // Manual modulo for positive result
-    while next_state < 0 {
+    var next_state = a * s.state + c
+    // Use modulo operator for efficient remainder calculation
+    next_state = next_state % m
+    if next_state < 0 {
         next_state = next_state + m
-    }
-    while next_state >= m {
-        next_state = next_state - m
     }
 
     let u = (next_state as f64) / (m as f64)
@@ -74,8 +72,8 @@ fn rng_next(rng: RngState) -> (f64, RngState) {
 }
 
 // Box-Muller transform: generate standard normal from two uniforms
-fn rng_normal(rng: RngState) -> (f64, RngState) {
-    let r1 = rng_next(rng)
+fn rng_normal(s: RngState) -> (f64, RngState) {
+    let r1 = rng_next(s)
     let u1 = r1.0
     let rng2 = r1.1
 
@@ -97,11 +95,11 @@ fn rng_normal(rng: RngState) -> (f64, RngState) {
 }
 
 // Generate normal with given mean and std
-fn rng_normal_params(rng: RngState, mean: f64, std: f64) -> (f64, RngState) {
-    let r = rng_normal(rng)
+fn rng_normal_params(s: RngState, mean: f64, std: f64) -> (f64, RngState) {
+    let r = rng_normal(s)
     let z = r.0
-    let rng2 = r.1
-    return (mean + std * z, rng2)
+    let s2 = r.1
+    return (mean + std * z, s2)
 }
 
 // ============================================================================
