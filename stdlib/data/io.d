@@ -687,15 +687,25 @@ fn main() -> i32 {
 
     print("Paired columns: PASS\n")
 
-    // Test CSV writing - create simple float column to avoid struct+array bug
+    // Test CSV writing
     var df4 = dataframe_new()
     let simple_vals: [f64] = [10.0, 20.0]
     df4 = dataframe_add_column(df4, column_float("data", simple_vals))
 
-    // Note: write_csv has a known interpreter bug with struct field array access + string concat
-    // The reading functionality is fully tested above
-    // Writing tests can be run with JIT when available
-    print("CSV writing: SKIPPED (interpreter limitation)\n")
+    let csv4 = write_csv_simple(df4)
+    if csv4.len() == 0 { return 11 }
+    print("CSV writing (float): PASS\n")
+
+    // Test writing epistemic columns
+    var df5 = dataframe_new()
+    let epi_vals: [f64] = [100.0, 102.0]
+    let epi_uncerts: [f64] = [2.0, 2.5]
+    let epi_confs: [f64] = [0.95, 0.90]
+    df5 = dataframe_add_column(df5, column_epistemic("measurement", epi_vals, epi_uncerts, epi_confs))
+
+    let csv5 = write_csv_simple(df5)
+    if csv5.len() == 0 { return 12 }
+    print("CSV writing (epistemic): PASS\n")
 
     print("All CSV I/O tests PASSED\n")
     0

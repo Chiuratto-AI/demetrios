@@ -845,6 +845,11 @@ impl Interpreter {
                 Ok(Value::Int(if b { 1 } else { 0 }))
             }
 
+            // Int/Float/Bool to String casts
+            (Value::Int(n), HirType::String) => Ok(Value::String(n.to_string())),
+            (Value::Float(f), HirType::String) => Ok(Value::String(format!("{}", f))),
+            (Value::Bool(b), HirType::String) => Ok(Value::String(if b { "true" } else { "false" }.to_string())),
+
             // Identity cast - value stays the same
             (v, _) => Ok(v),
         }
