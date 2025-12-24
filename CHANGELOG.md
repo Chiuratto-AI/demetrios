@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.88.0] - 2025-12-24
+
+### Numerical Optimization Module
+
+This release adds a comprehensive numerical optimization library with algorithms
+for nonlinear least squares, quasi-Newton methods, derivative-free optimization,
+global optimization, and GUM-compliant uncertainty quantification.
+
+### Added
+
+#### Optimize Module (`stdlib/optimize/`)
+- **Levenberg-Marquardt** (`levenberg_marquardt.d`): Nonlinear least squares
+  - Gauss-Newton with adaptive damping (trust region)
+  - Finite-difference Jacobian computation
+  - Cholesky decomposition for solving damped normal equations
+  - Exponential curve fitting example
+- **BFGS** (`bfgs.d`): Quasi-Newton optimization
+  - BFGS inverse Hessian approximation
+  - Backtracking line search with Armijo condition
+  - Superlinear convergence for smooth problems
+  - Quadratic and Rosenbrock test functions
+- **Nelder-Mead** (`nelder_mead.d`): Derivative-free simplex method
+  - Reflection, expansion, contraction, and shrink operations
+  - Robust for noisy or non-differentiable objectives
+  - No gradient computation required
+- **Differential Evolution** (`differential_evolution.d`): Global optimization
+  - Population-based stochastic search
+  - rand/1 mutation strategy
+  - Effective for multi-modal and high-dimensional problems
+  - Sphere and Rastrigin test functions
+- **Uncertainty** (`uncertainty.d`): GUM-compliant uncertainty quantification
+  - Covariance estimation from Jacobian and residuals
+  - Confidence intervals with t-distribution quantiles
+  - Correlation matrix computation
+  - Linear uncertainty propagation
+  - Relative standard error (%CV) calculation
+
 ## [0.87.0] - 2025-12-24
 
 ### Random Number Generation Module
