@@ -543,10 +543,9 @@ impl Interpreter {
                 Err(ControlFlow::Return(Value::Unit))
             }
 
-            HirExprKind::Cast { expr: inner, .. } => {
-                // For now, just evaluate the inner expression
-                // Real casting would convert types
-                self.eval_expr(inner)
+            HirExprKind::Cast { expr: inner, target } => {
+                let val = self.eval_expr(inner)?;
+                self.cast_value(val, target)
             }
 
             HirExprKind::Closure { params, body } => {
@@ -730,6 +729,56 @@ impl Interpreter {
             HirLiteral::Float(f) => Value::Float(*f),
             HirLiteral::Char(c) => Value::String(c.to_string()),
             HirLiteral::String(s) => Value::String(s.clone()),
+        }
+    }
+
+    /// Cast a value to a target type
+    fn cast_value(&self, val: Value, target: &HirType) -> Result<Value, ControlFlow> {
+        match (val, target) {
+            // Integer to integer casts (with proper truncation/sign extension)
+            (Value::Int(n), HirType::I8) => Ok(Value::Int((n as i8) as i64)),
+            (Value::Int(n), HirType::I16) => Ok(Value::Int((n as i16) as i64)),
+            (Value::Int(n), HirType::I32) => Ok(Value::Int((n as i32) as i64)),
+            (Value::Int(n), HirType::I64) => Ok(Value::Int(n)),
+            (Value::Int(n), HirType::I128) => Ok(Value::Int(n)), // Can't represent i128 fully
+            (Value::Int(n), HirType::Isize) => Ok(Value::Int((n as isize) as i64)),
+            (Value::Int(n), HirType::U8) => Ok(Value::Int((n as u8) as i64)),
+            (Value::Int(n), HirType::U16) => Ok(Value::Int((n as u16) as i64)),
+            (Value::Int(n), HirType::U32) => Ok(Value::Int((n as u32) as i64)),
+            (Value::Int(n), HirType::U64) => Ok(Value::Int(n as i64)),
+            (Value::Int(n), HirType::U128) => Ok(Value::Int(n)), // Can't represent u128 fully
+            (Value::Int(n), HirType::Usize) => Ok(Value::Int((n as usize) as i64)),
+
+            // Float to integer casts
+            (Value::Float(f), HirType::I8) => Ok(Value::Int((f as i8) as i64)),
+            (Value::Float(f), HirType::I16) => Ok(Value::Int((f as i16) as i64)),
+            (Value::Float(f), HirType::I32) => Ok(Value::Int((f as i32) as i64)),
+            (Value::Float(f), HirType::I64) => Ok(Value::Int(f as i64)),
+            (Value::Float(f), HirType::Isize) => Ok(Value::Int((f as isize) as i64)),
+            (Value::Float(f), HirType::U8) => Ok(Value::Int((f as u8) as i64)),
+            (Value::Float(f), HirType::U16) => Ok(Value::Int((f as u16) as i64)),
+            (Value::Float(f), HirType::U32) => Ok(Value::Int((f as u32) as i64)),
+            (Value::Float(f), HirType::U64) => Ok(Value::Int(f as i64)),
+            (Value::Float(f), HirType::Usize) => Ok(Value::Int((f as usize) as i64)),
+
+            // Integer to float casts
+            (Value::Int(n), HirType::F32) => Ok(Value::Float((n as f32) as f64)),
+            (Value::Int(n), HirType::F64) => Ok(Value::Float(n as f64)),
+
+            // Float to float casts
+            (Value::Float(f), HirType::F32) => Ok(Value::Float((f as f32) as f64)),
+            (Value::Float(f), HirType::F64) => Ok(Value::Float(f)),
+
+            // Bool conversions
+            (Value::Bool(b), HirType::I8 | HirType::I16 | HirType::I32 | HirType::I64 | HirType::Isize) => {
+                Ok(Value::Int(if b { 1 } else { 0 }))
+            }
+            (Value::Bool(b), HirType::U8 | HirType::U16 | HirType::U32 | HirType::U64 | HirType::Usize) => {
+                Ok(Value::Int(if b { 1 } else { 0 }))
+            }
+
+            // Identity cast - value stays the same
+            (v, _) => Ok(v),
         }
     }
 
