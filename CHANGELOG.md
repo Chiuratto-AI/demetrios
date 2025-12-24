@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.89.0] - 2025-12-24
+
+### Signal Processing & Connectivity Modules
+
+This release adds comprehensive biosignal analysis capabilities for EEG, ECG,
+and time series data, along with brain connectivity measures.
+
+### Added
+
+#### Signal Module (`stdlib/signal/`)
+- **Filter** (`filter.d`): Digital signal filtering
+  - Butterworth filter coefficient computation (lowpass, highpass, bandpass)
+  - Notch filter for powerline interference (50/60 Hz)
+  - FIR filter design with windowed sinc method
+  - Zero-phase filtering via forward-backward application
+- **Spectral** (`spectral.d`): Frequency domain analysis
+  - Radix-2 Cooley-Tukey FFT implementation
+  - Periodogram and Welch's method for PSD estimation
+  - EEG band power extraction (delta, theta, alpha, beta, gamma)
+  - Spectral entropy for signal complexity
+  - Hanning window implementation
+- **Epoch** (`epoch.d`): Event-related analysis
+  - Event-locked segmentation for ERP extraction
+  - Baseline correction with pre-stimulus window
+  - Artifact rejection by amplitude threshold
+  - Trial averaging with standard error of the mean
+- **Fractal** (`fractal.d`): Nonlinear dynamics
+  - Higuchi Fractal Dimension (HFD) for signal complexity
+  - Detrended Fluctuation Analysis (DFA) for long-range correlations
+  - Permutation entropy for irregularity quantification
+
+#### Connectivity Module (`stdlib/connectivity/`)
+- **Phase** (`phase.d`): Phase synchronization measures
+  - Phase Locking Value (PLV) for synchronization strength
+  - Phase Lag Index (PLI) for volume conduction robustness
+  - Weighted PLI (wPLI) with improved SNR
+  - Debiased wPLI (dwPLI) for small sample correction
+  - Hilbert transform via FFT for instantaneous phase
+  - Connectivity matrix computation for multi-channel data
+
 ## [0.88.0] - 2025-12-24
 
 ### Numerical Optimization Module
