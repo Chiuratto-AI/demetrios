@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.87.0] - 2025-12-24
+
+### Random Number Generation Module
+
+This release adds a comprehensive random number generation library with
+probability distributions and PK/PD variability support.
+
+### Added
+
+#### Random Module (`stdlib/random/`)
+- **RNG** (`rng.d`): High-quality random number generators
+  - PCG64: Default generator with excellent statistical quality
+  - Xoshiro256++: Fast generator for simulations
+  - SplitMix64: For seeding other generators
+  - Functional state passing (no global mutable state)
+- **Distributions** (`distributions.d`): Probability distributions
+  - Continuous: Uniform, Normal, LogNormal, Exponential, Gamma, Beta
+  - Discrete: Poisson, Bernoulli
+  - Box-Muller transform for Normal sampling
+  - Marsaglia & Tsang method for Gamma sampling
+- **Sampling** (`sampling.d`): Random sampling utilities
+  - `sample_index`, `sample_one_f64`, `sample_one_i64`
+  - `sample_weighted_index`: Weighted random selection
+  - `shuffle_f64`, `shuffle_i64`: Fisher-Yates shuffle
+  - `resample_f64`: Bootstrap resampling
+- **PK/PD Variability** (`sampling.d`):
+  - `IIV`: Inter-Individual Variability parameters
+  - `generate_individual_pk`: Individual PK parameters with IIV
+  - `generate_population`: Virtual population generation
+  - Residual error models: proportional, additive, combined
+
 ## [0.86.0] - 2025-12-24
 
 ### DataFrame Module & Causal Inference Reorganization
