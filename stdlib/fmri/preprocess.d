@@ -7,12 +7,38 @@
 // - Esteban et al. (2019): "fMRIPrep: a robust preprocessing pipeline"
 // - Power et al. (2012): "Spurious but systematic correlations..."
 
-extern "C" {
-    fn sqrt(x: f64) -> f64;
-    fn sin(x: f64) -> f64;
-    fn cos(x: f64) -> f64;
-    fn exp(x: f64) -> f64;
-    fn fabs(x: f64) -> f64;
+// ============================================================================
+// MATH HELPERS (inline implementations)
+// ============================================================================
+
+fn abs_f64(x: f64) -> f64 {
+    if x < 0.0 { 0.0 - x } else { x }
+}
+
+fn sqrt_f64(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 }
+    var y = x
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y
+}
+
+fn exp_f64(x: f64) -> f64 {
+    var result = 1.0
+    var term = 1.0
+    var n: i64 = 1
+    while n < 20 {
+        term = term * x / n as f64
+        result = result + term
+        n = n + 1
+    }
+    result
 }
 
 fn pi() -> f64 { 3.14159265358979323846 }
@@ -48,13 +74,13 @@ fn motion_params_new() -> MotionParams {
 fn framewise_displacement(prev: MotionParams, curr: MotionParams) -> f64 {
     let r = 50.0  // mm, approximate head radius
 
-    let dx = fabs(curr.tx - prev.tx)
-    let dy = fabs(curr.ty - prev.ty)
-    let dz = fabs(curr.tz - prev.tz)
+    let dx = abs_f64(curr.tx - prev.tx)
+    let dy = abs_f64(curr.ty - prev.ty)
+    let dz = abs_f64(curr.tz - prev.tz)
 
-    let drx = fabs(curr.rx - prev.rx)
-    let dry = fabs(curr.ry - prev.ry)
-    let drz = fabs(curr.rz - prev.rz)
+    let drx = abs_f64(curr.rx - prev.rx)
+    let dry = abs_f64(curr.ry - prev.ry)
+    let drz = abs_f64(curr.rz - prev.rz)
 
     dx + dy + dz + r * (drx + dry + drz)
 }
@@ -100,7 +126,7 @@ fn gaussian_kern_new(fwhm_mm: f64, voxel_size: f64) -> SmoothKernel {
     var i: i64 = 0
     while i < size {
         let dx = (i - half) as f64
-        let w = exp(-dx * dx / (2.0 * sigma_vox * sigma_vox))
+        let w = exp_f64(0.0 - dx * dx / (2.0 * sigma_vox * sigma_vox))
         kern.weights[i as usize] = w
         sum = sum + w
         i = i + 1
@@ -188,7 +214,7 @@ fn detrend_linear(data: [f64; 200], n: i64) -> [f64; 200] {
     let nf = n as f64
     let denom = nf * sum_tt - sum_t * sum_t
 
-    if fabs(denom) > 1e-10 {
+    if abs_f64(denom) > 1e-10 {
         let b = (nf * sum_ty - sum_t * sum_y) / denom
         let a = (sum_y - b * sum_t) / nf
 
@@ -244,7 +270,7 @@ fn zscore(data: [f64; 200], n: i64) -> [f64; 200] {
         sum_sq = sum_sq + diff * diff
         i = i + 1
     }
-    let std = sqrt(sum_sq / ((n - 1) as f64))
+    let std = sqrt_f64(sum_sq / ((n - 1) as f64))
 
     if std > 1e-10 {
         i = 0
@@ -260,10 +286,6 @@ fn zscore(data: [f64; 200], n: i64) -> [f64; 200] {
 // ============================================================================
 // TESTS
 // ============================================================================
-
-fn abs_f64(x: f64) -> f64 {
-    if x < 0.0 { -x } else { x }
-}
 
 fn test_fd_calc() -> bool {
     // Test FD calculation logic

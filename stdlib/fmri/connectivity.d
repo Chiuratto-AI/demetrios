@@ -7,11 +7,52 @@
 // - Biswal et al. (1995): "Functional connectivity in the motor cortex..."
 // - Power et al. (2011): "Functional network organization"
 
-extern "C" {
-    fn sqrt(x: f64) -> f64;
-    fn log(x: f64) -> f64;
-    fn exp(x: f64) -> f64;
-    fn fabs(x: f64) -> f64;
+// ============================================================================
+// MATH HELPERS (inline implementations)
+// ============================================================================
+
+fn abs_f64(x: f64) -> f64 {
+    if x < 0.0 { 0.0 - x } else { x }
+}
+
+fn sqrt_f64(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 }
+    var y = x
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y = (y + x / y) / 2.0
+    y
+}
+
+fn exp_f64(x: f64) -> f64 {
+    var result = 1.0
+    var term = 1.0
+    var n: i64 = 1
+    while n < 20 {
+        term = term * x / n as f64
+        result = result + term
+        n = n + 1
+    }
+    result
+}
+
+fn log_f64(x: f64) -> f64 {
+    if x <= 0.0 { return 0.0 - 1000.0 }
+    var y = x - 1.0
+    if y > 1.0 { y = 1.0 }
+    if y < -0.9 { y = -0.9 }
+    var n: i64 = 0
+    while n < 20 {
+        let ey = exp_f64(y)
+        y = y + (x - ey) / ey
+        n = n + 1
+    }
+    y
 }
 
 // ============================================================================
@@ -41,7 +82,7 @@ fn pearson_corr(x: [f64; 100], y: [f64; 100], n: i64) -> f64 {
     let var_x = sum_xx - sum_x * sum_x / nf
     let var_y = sum_yy - sum_y * sum_y / nf
 
-    let denom = sqrt(var_x * var_y)
+    let denom = sqrt_f64(var_x * var_y)
     if denom > 1e-10 {
         return cov_xy / denom
     } else {
@@ -52,18 +93,18 @@ fn pearson_corr(x: [f64; 100], y: [f64; 100], n: i64) -> f64 {
 /// Fisher z-transformation: z = arctanh(r)
 fn fisher_z(r: f64) -> f64 {
     let r_clamped = if r > 0.999 { 0.999 } else if r < -0.999 { -0.999 } else { r }
-    0.5 * log((1.0 + r_clamped) / (1.0 - r_clamped))
+    0.5 * log_f64((1.0 + r_clamped) / (1.0 - r_clamped))
 }
 
 /// Inverse Fisher z-transformation: r = tanh(z)
 fn fisher_z_inv(z: f64) -> f64 {
-    let e2z = exp(2.0 * z)
+    let e2z = exp_f64(2.0 * z)
     (e2z - 1.0) / (e2z + 1.0)
 }
 
 /// Standard error of Fisher z
 fn fisher_z_se(n: i64) -> f64 {
-    1.0 / sqrt((n - 3) as f64)
+    1.0 / sqrt_f64((n - 3) as f64)
 }
 
 // ============================================================================
@@ -125,7 +166,7 @@ fn node_degree(corr_row: [f64; 10], n_nodes: i64, threshold: f64) -> i64 {
     var degree: i64 = 0
     var j: i64 = 0
     while j < n_nodes {
-        if fabs(corr_row[j as usize]) > threshold {
+        if abs_f64(corr_row[j as usize]) > threshold {
             degree = degree + 1
         }
         j = j + 1
@@ -136,10 +177,6 @@ fn node_degree(corr_row: [f64; 10], n_nodes: i64, threshold: f64) -> i64 {
 // ============================================================================
 // TESTS
 // ============================================================================
-
-fn abs_f64(x: f64) -> f64 {
-    if x < 0.0 { -x } else { x }
-}
 
 fn test_pearson_perfect() -> bool {
     // Perfect positive correlation
