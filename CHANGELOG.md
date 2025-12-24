@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.86.0] - 2025-12-24
+
+### DataFrame Module & Causal Inference Reorganization
+
+This release adds a full DataFrame module with epistemic integration and reorganizes
+the causal inference modules into their own directory.
+
+### Added
+
+#### DataFrame Module (`stdlib/data/`)
+- **Series** (`series.d`): Typed columns (Float, Int, String, Bool, Epistemic)
+  - Aggregations: sum, mean, var, std, min, max
+  - Epistemic series with uncertainty propagation
+  - Element-wise operations and filtering
+- **Frame** (`frame.d`): DataFrame with type-erased columns
+  - Row/column access, slicing, filtering
+  - Aggregations across columns
+  - Drop column operations
+- **I/O** (`io.d`): CSV parsing with uncertainty notation
+  - Value±uncertainty format: `100.0±2.0` or `100.0+-2.0`
+  - Paired column detection: `value`, `value_u`, `value_conf`
+  - Automatic type inference (numeric vs string)
+- **Operations** (`ops.d`): GroupBy and transformations
+  - GroupBy with epistemic-aware aggregations
+  - Cumsum, cummax, rolling mean
+  - Missing value handling: fillna, dropna
+
+#### Causal Inference Module (`stdlib/causal/`)
+- Reorganized from `stdlib/epistemic/` into dedicated directory
+- **Core** (`core.d`): DAG, do-calculus, interventions
+- **Discovery** (`discovery.d`): PC, FCI structure learning
+- **Uplift** (`uplift.d`): CATE learners (S/T/X-learner)
+- **Refutation** (`refutation.d`): Robustness and sensitivity tests
+
+### Fixed
+
+#### Interpreter
+- **Type casting**: Int/Float/Bool to String casts now work properly
+  - `42 as String` correctly returns `"42"` instead of raw Int
+  - Fixes string concatenation with cast results
+- **Scope leak**: Fixed return/break/continue not properly restoring scope
+- **String methods**: Added `slice()` and `byte_at()` for string manipulation
+- **Escape sequences**: Proper processing of `\n`, `\t`, `\\` in string literals
+
+### Notes
+
+All DataFrame and CSV I/O tests now pass in the interpreter. The causal modules
+are reorganized but some use advanced syntax (Counterfactual enum, Knowledge type)
+that requires further parser support.
+
 ## [0.85.0] - 2025-12-23
 
 ### MCTS Module for Game Playing & Optimization
